@@ -31,6 +31,8 @@ O diferencial aqui é dar ao usuário a sensação de que ele está conversando 
 
 Funcionamento: Ao enviar a mensagem para a persona, ativa um gatilho de webhook do meu n8n com um fluxo de agente IA enviando o id da persona, a mensagem do usuário e o id do usuário. Assim o fluxo de IA gera a mensagem de resposta e envia para o front.
 
+Design: Parecido com um WhatsApp mesmo.
+
 ---
 
 ## 🗄️ Estrutura de Banco de Dados (MVP)
