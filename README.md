@@ -1,36 +1,81 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Persona - Sistema de Personas Sintéticas
 
-## Getting Started
+Sistema web para criação, visualização e teste de personas sintéticas com perfis psicológicos completos.
 
-First, run the development server:
+## Funcionalidades
+
+- **Lista de Personas**: Visualização em grid com filtros por nome e gênero
+- **Mapa Interativo**: Visualização geográfica com clusterização (focado no Brasil)
+- **Perfil Completo**: 7 abas com todos os dados psicológicos, demográficos e históricos
+- **Chat com IA**: Interface estilo WhatsApp para conversar com as personas
+
+## Tecnologias
+
+- **Frontend**: Next.js 16, React 19, TypeScript, Tailwind CSS
+- **Backend**: Supabase (PostgreSQL)
+- **Mapas**: Leaflet.js com MarkerCluster
+- **IA**: Integração via Webhook (n8n)
+
+## Configuração
+
+### 1. Clone o repositório
+
+```bash
+git clone https://github.com/seu-usuario/persona.git
+cd persona
+```
+
+### 2. Instale as dependências
+
+```bash
+npm install
+```
+
+### 3. Configure as variáveis de ambiente
+
+Crie um arquivo `.env.local` na raiz do projeto:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=sua_url_do_supabase
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sua_chave_anon_do_supabase
+```
+
+### 4. Execute o projeto
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Acesse [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy na Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Faça push do código para o GitHub
+2. Importe o projeto na [Vercel](https://vercel.com)
+3. Configure as variáveis de ambiente no painel da Vercel
+4. Deploy automático!
 
-## Learn More
+## Estrutura do Banco de Dados
 
-To learn more about Next.js, take a look at the following resources:
+### Tabela `personas`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Coluna | Tipo | Descrição |
+|--------|------|-----------|
+| id | UUID | Identificador único |
+| name | Text | Nome completo |
+| age | Integer | Idade |
+| gender | Text | Gênero |
+| city | Text | Cidade |
+| state | Char(2) | UF |
+| lat/lng | Float | Coordenadas |
+| demographic_json | JSONB | Dados demográficos IBGE |
+| psychology_json | JSONB | Big Five, DISC, Eneagrama, Arquétipos |
+| beliefs_json | JSONB | Religião, política, vieses cognitivos |
+| career_json | JSONB | Cargo, skills, contexto profissional |
+| lifestyle_json | JSONB | Rotinas, mídias, hábitos |
+| health_json | JSONB | Atividades, saúde mental |
+| history_json | JSONB | Biografia, traumas, aspirações |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Licença
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
