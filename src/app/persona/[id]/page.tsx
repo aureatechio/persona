@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
+import { Sidebar } from '@/components/Sidebar';
 import { 
   ArrowLeft, 
   User, 
@@ -24,7 +25,8 @@ import {
   Dumbbell,
   AlertTriangle,
   Star,
-  Compass
+  Compass,
+  Menu
 } from 'lucide-react';
 
 export default function PersonaProfilePage() {
@@ -32,6 +34,7 @@ export default function PersonaProfilePage() {
   const router = useRouter();
   const [persona, setPersona] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetchPersona();
@@ -69,88 +72,107 @@ export default function PersonaProfilePage() {
     { id: 'history', label: 'História', icon: BookOpen },
   ];
 
+  const archetypePrimary = persona.archetype_primary || persona.psychology_json?.archetypes?.primary || 'Neutro';
+  const socialClass = persona.social_class || persona.demographic_json?.socioeconomico?.classe_social;
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-black/80 backdrop-blur-md border-b border-zinc-800">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-zinc-500 hover:text-white transition-colors">
-              <ArrowLeft size={20} />
+    <div className="min-h-screen bg-black text-white flex overflow-x-hidden">
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+        {/* Header */}
+        <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-zinc-900">
+          <div className="max-w-6xl mx-auto px-4 md:px-8 py-5 flex items-center justify-between">
+            <div className="flex items-center gap-4 md:gap-6">
+              <button 
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800 transition-colors"
+              >
+                <Menu size={24} />
+              </button>
+              <Link href="/" className="text-zinc-500 hover:text-white transition-all p-2 hover:bg-zinc-900 rounded-xl">
+                <ArrowLeft size={20} />
+              </Link>
+              <h1 className="font-bold text-lg md:text-xl tracking-tight truncate">Perfil da Persona</h1>
+            </div>
+            <Link 
+              href={`/chat/${id}`}
+              className="flex items-center gap-2 bg-white text-black px-4 md:px-6 py-2.5 md:py-3 rounded-2xl font-bold hover:bg-zinc-200 transition-all active:scale-95 shadow-lg shadow-white/5 text-sm md:text-base"
+            >
+              <MessageSquare size={18} />
+              <span className="hidden sm:inline">Iniciar Chat</span>
+              <span className="sm:hidden">Chat</span>
             </Link>
-            <h1 className="font-bold text-lg">Perfil da Persona</h1>
           </div>
-          <Link 
-            href={`/chat/${id}`}
-            className="flex items-center gap-2 bg-white text-black px-4 py-2 rounded-lg font-medium hover:bg-zinc-200 transition-colors"
-          >
-            <MessageSquare size={16} />
-            Iniciar Chat
-          </Link>
-        </div>
-      </header>
+        </header>
+
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-b from-zinc-900 to-black py-12">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-8">
-            <div className="w-32 h-32 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500 border-4 border-zinc-700">
-              <User size={64} />
+      <section className="bg-gradient-to-b from-zinc-950 to-black py-16 border-b border-zinc-900/50 font-sans">
+        <div className="max-w-6xl mx-auto px-8">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-10">
+            <div className="w-40 h-40 rounded-[2.5rem] bg-zinc-900 flex items-center justify-center text-zinc-500 border border-zinc-800 shadow-2xl overflow-hidden">
+              {persona.photo_path ? (
+                <img src={persona.photo_path} alt={persona.name} className="w-full h-full object-cover" />
+              ) : (
+                <User size={80} />
+              )}
             </div>
             <div className="text-center md:text-left flex-1">
-              <h2 className="text-3xl font-bold mb-2">{persona.name}</h2>
-              <p className="text-zinc-400 flex items-center justify-center md:justify-start gap-2 mb-4">
-                <MapPin size={16} />
-                {persona.age} anos • {persona.city}, {persona.state}
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-                <span className="px-3 py-1 bg-amber-500/20 text-amber-400 rounded-full text-sm font-medium border border-amber-500/30">
-                  {persona.psychology_json?.archetypes?.primary || 'Neutro'}
-                </span>
-                <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium border border-blue-500/30">
-                  Enneagrama {persona.psychology_json?.enneagram?.core_type}w{persona.psychology_json?.enneagram?.wing}
-                </span>
-                <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-sm font-medium border border-purple-500/30">
-                  {persona.demographic_json?.socioeconomico?.classe_social}
-                </span>
+                <h2 className="text-4xl font-black mb-3 tracking-tight">{persona.name}</h2>
+                <p className="text-zinc-500 flex items-center justify-center md:justify-start gap-2 mb-6 font-medium">
+                  <MapPin size={18} />
+                  {persona.age} anos • {persona.city}, {persona.state}
+                </p>
+                <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+                  <span className="px-4 py-2 bg-amber-500/10 text-amber-400 rounded-2xl text-sm font-bold border border-amber-500/20">
+                    {archetypePrimary}
+                  </span>
+                  <span className="px-4 py-2 bg-blue-500/10 text-blue-400 rounded-2xl text-sm font-bold border border-blue-500/20">
+                    Enneagrama {persona.psychology_json?.enneagram?.core_type}w{persona.psychology_json?.enneagram?.wing}
+                  </span>
+                  <span className="px-4 py-2 bg-purple-500/10 text-purple-400 rounded-2xl text-sm font-bold border border-purple-500/20">
+                    {socialClass}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Tabs Navigation */}
-      <nav className="sticky top-[65px] z-40 bg-black border-b border-zinc-800 overflow-x-auto">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex gap-1">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap border-b-2 ${
-                  activeTab === tab.id 
-                    ? 'text-white border-white' 
-                    : 'text-zinc-500 border-transparent hover:text-zinc-300'
-                }`}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-              </button>
-            ))}
+        {/* Tabs Navigation */}
+        <nav className="sticky top-[81px] z-40 bg-black/95 backdrop-blur-md border-b border-zinc-900 overflow-x-auto scrollbar-hide">
+          <div className="max-w-6xl mx-auto px-8">
+            <div className="flex gap-2">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-6 py-5 text-sm font-bold transition-all whitespace-nowrap border-b-2 ${
+                    activeTab === tab.id 
+                      ? 'text-white border-white' 
+                      : 'text-zinc-500 border-transparent hover:text-zinc-300'
+                  }`}
+                >
+                  <tab.icon size={18} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      </nav>
+        </nav>
 
-      {/* Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {activeTab === 'overview' && <OverviewTab persona={persona} />}
-        {activeTab === 'psychology' && <PsychologyTab persona={persona} />}
-        {activeTab === 'beliefs' && <BeliefsTab persona={persona} />}
-        {activeTab === 'career' && <CareerTab persona={persona} />}
-        {activeTab === 'lifestyle' && <LifestyleTab persona={persona} />}
-        {activeTab === 'health' && <HealthTab persona={persona} />}
-        {activeTab === 'history' && <HistoryTab persona={persona} />}
-      </main>
+        {/* Content */}
+        <main className="max-w-6xl mx-auto px-8 py-12 w-full">
+          {activeTab === 'overview' && <OverviewTab persona={persona} />}
+          {activeTab === 'psychology' && <PsychologyTab persona={persona} />}
+          {activeTab === 'beliefs' && <BeliefsTab persona={persona} />}
+          {activeTab === 'career' && <CareerTab persona={persona} />}
+          {activeTab === 'lifestyle' && <LifestyleTab persona={persona} />}
+          {activeTab === 'health' && <HealthTab persona={persona} />}
+          {activeTab === 'history' && <HistoryTab persona={persona} />}
+        </main>
+      </div>
     </div>
   );
 }
@@ -159,9 +181,9 @@ export default function PersonaProfilePage() {
 
 function SectionCard({ title, icon: Icon, children, className = '' }: any) {
   return (
-    <div className={`bg-zinc-900 rounded-xl border border-zinc-800 p-6 ${className}`}>
-      <h3 className="flex items-center gap-2 text-lg font-bold mb-4">
-        {Icon && <Icon size={20} className="text-zinc-400" />}
+    <div className={`bg-zinc-950 rounded-[2rem] border border-zinc-900 p-8 shadow-sm hover:shadow-xl hover:shadow-white/[0.02] transition-all ${className}`}>
+      <h3 className="flex items-center gap-3 text-xl font-black mb-8 tracking-tight">
+        {Icon && <Icon size={24} className="text-zinc-500" />}
         {title}
       </h3>
       {children}
@@ -172,11 +194,12 @@ function SectionCard({ title, icon: Icon, children, className = '' }: any) {
 function ProgressBar({ value, max = 10, color = 'bg-white' }: any) {
   const percentage = (value / max) * 100;
   return (
-    <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
-      <div className={`h-full ${color} rounded-full transition-all`} style={{ width: `${percentage}%` }} />
+    <div className="h-3 bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/50 shadow-inner">
+      <div className={`h-full ${color} rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(255,255,255,0.1)]`} style={{ width: `${percentage}%` }} />
     </div>
   );
 }
+
 
 function StatItem({ label, value, max = 10, color }: any) {
   return (
@@ -200,6 +223,12 @@ function OverviewTab({ persona }: { persona: any }) {
   const family = demo?.familia_e_estado_civil;
   const geo = demo?.geolocalizacao;
   const ibge = demo?.padroes_ibge;
+  const genderIdentity = persona.gender_identity || identity?.genero;
+  const socialClass = persona.social_class || socio?.classe_social;
+  const educationLevel = persona.education_level || socio?.escolaridade;
+  const civilStatus = persona.civil_status || family?.estado_civil;
+  const regionBr = persona.region_br || geo?.regiao;
+  const areaType = persona.area_type || geo?.tipo_area;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -208,7 +237,7 @@ function OverviewTab({ persona }: { persona: any }) {
         <div className="space-y-3 text-sm">
           <div className="flex justify-between"><span className="text-zinc-500">Nome</span><span>{identity?.nome_completo}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Idade</span><span>{identity?.idade} anos</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Gênero</span><span>{identity?.genero}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Gênero</span><span>{genderIdentity}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Etnia</span><span>{identity?.etnia}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Altura</span><span>{identity?.altura_cm} cm</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Peso</span><span>{identity?.peso_kg} kg</span></div>
@@ -220,8 +249,8 @@ function OverviewTab({ persona }: { persona: any }) {
         <div className="space-y-3 text-sm">
           <div className="flex justify-between"><span className="text-zinc-500">Cidade</span><span>{geo?.cidade}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Estado</span><span>{geo?.estado}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Região</span><span>{geo?.regiao}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Tipo de Área</span><span>{geo?.tipo_area}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Região</span><span>{regionBr}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Tipo de Área</span><span>{areaType}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Coordenadas</span><span className="text-xs text-zinc-400">{geo?.coordenadas?.latitude}, {geo?.coordenadas?.longitude}</span></div>
         </div>
       </SectionCard>
@@ -229,8 +258,8 @@ function OverviewTab({ persona }: { persona: any }) {
       {/* Socioeconômico */}
       <SectionCard title="Perfil Socioeconômico" icon={TrendingUp}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Classe Social</span><span className="font-bold text-emerald-400">{socio?.classe_social}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Escolaridade</span><span>{socio?.escolaridade}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Classe Social</span><span className="font-bold text-emerald-400">{socialClass}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Escolaridade</span><span>{educationLevel}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Setor</span><span>{socio?.setor_economico}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Ocupação</span><span className="text-right max-w-[150px] truncate">{socio?.ocupacao_principal}</span></div>
         </div>
@@ -249,7 +278,7 @@ function OverviewTab({ persona }: { persona: any }) {
       {/* Família */}
       <SectionCard title="Família e Estado Civil" icon={Users}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Estado Civil</span><span>{family?.estado_civil}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Estado Civil</span><span>{civilStatus}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Mora com</span><span>{family?.mora_com}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Tem Filhos</span><span>{family?.tem_filhos ? 'Sim' : 'Não'}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Dependentes</span><span>{family?.dependentes}</span></div>
