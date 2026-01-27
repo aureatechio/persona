@@ -67,14 +67,15 @@ export default function PersonaMap({ personas }: PersonaMapProps) {
         const marker = L.marker([persona.lat, persona.lng]);
         
         const popupContent = `
-          <div class="p-2 min-w-[150px] bg-zinc-900 text-white rounded-lg">
-            <h4 class="font-bold text-base mb-1">${persona.name}</h4>
-            <p class="text-xs text-zinc-400 mb-3">${persona.age} anos • ${persona.city}, ${persona.state}</p>
-            <a href="/chat/${persona.id}" class="block w-full text-center bg-white text-black text-xs font-bold py-2 rounded hover:bg-zinc-200 transition-colors">
+          <div class="p-4 min-w-[180px] bg-zinc-900 text-white">
+            <h4 class="font-bold text-lg mb-1">${persona.name}</h4>
+            <p class="text-xs text-zinc-400 mb-4">${persona.age} anos • ${persona.city}, ${persona.state}</p>
+            <a href="/chat/${persona.id}" class="block w-full text-center bg-white text-black text-xs font-bold py-3 rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/5">
               Iniciar Chat
             </a>
           </div>
         `;
+
 
         marker.bindPopup(popupContent, {
           className: 'custom-leaflet-popup'
@@ -92,15 +93,16 @@ export default function PersonaMap({ personas }: PersonaMapProps) {
   }, [personas]);
 
   return (
-    <div className="relative w-full h-full rounded-xl overflow-hidden border border-zinc-800">
+    <div className="relative w-full h-full rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
       <div id="map-container" className="w-full h-full z-0" />
       <style jsx global>{`
         .leaflet-popup-content-wrapper {
           background: #18181b !important;
           color: white !important;
           border: 1px solid #27272a !important;
-          border-radius: 12px !important;
+          border-radius: 24px !important;
           padding: 0 !important;
+          overflow: hidden !important;
         }
         .leaflet-popup-content {
           margin: 0 !important;
@@ -116,4 +118,5 @@ export default function PersonaMap({ personas }: PersonaMapProps) {
       `}</style>
     </div>
   );
+
 }
