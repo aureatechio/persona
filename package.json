@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.93.1",
@@ -17,8 +18,10 @@
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "leaflet.markercluster": "^1.5.3",
+    "lightningcss-darwin-arm64": "^1.30.2",
     "lucide-react": "^0.562.0",
     "next": "16.1.4",
+    "openai": "^6.21.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-leaflet": "^5.0.0",

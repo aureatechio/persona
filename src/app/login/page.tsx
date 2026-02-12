@@ -19,12 +19,21 @@ export default function LoginPage() {
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
       if (error) {
-        setError('Credenciais inválidas. Verifique seu email e senha.');
+        console.error('Login error:', error.message, error.status);
+        if (error.message === 'Invalid login credentials') {
+          setError('Credenciais inválidas. Verifique seu email e senha.');
+        } else if (error.message === 'Email not confirmed') {
+          setError('Email ainda não confirmado. Verifique sua caixa de entrada.');
+        } else if (error.status === 429) {
+          setError('Muitas tentativas. Aguarde alguns minutos e tente novamente.');
+        } else {
+          setError(`Erro ao fazer login: ${error.message}`);
+        }
         return;
       }
 
