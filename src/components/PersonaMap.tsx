@@ -1,25 +1,32 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
-import Link from 'next/link';
 
 interface PersonaMapProps {
   personas: any[];
 }
 
 export default function PersonaMap({ personas }: PersonaMapProps) {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const clusterRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // Filtra apenas personas com coordenadas válidas (memoizado)
+  const validPersonas = useMemo(
+    () => personas.filter(p => p.lat != null && p.lng != null && !isNaN(p.lat) && !isNaN(p.lng)),
+    [personas]
+  );
 
-    // Fix for default marker icons in Leaflet with Next.js
+  // Inicializar mapa uma vez
+  useEffect(() => {
+    if (typeof window === 'undefined' || !mapContainerRef.current) return;
+
+    // Fix Leaflet default icons
     // @ts-ignore
     delete L.Icon.Default.prototype._getIconUrl;
     L.Icon.Default.mergeOptions({
@@ -28,73 +35,97 @@ export default function PersonaMap({ personas }: PersonaMapProps) {
       shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
     });
 
-    if (!mapRef.current) {
-      // Limites geográficos do Brasil
-      const brasilBounds = L.latLngBounds(
-        L.latLng(-33.75, -73.99), // Sudoeste (extremo sul e oeste)
-        L.latLng(5.27, -32.39)   // Nordeste (extremo norte e leste)
-      );
+    if (mapRef.current) return; // já inicializado
 
-      mapRef.current = L.map('map-container', {
-        center: [-14.235, -51.9253], // Centro do Brasil
-        zoom: 4,
-        minZoom: 4,
-        maxZoom: 18,
-        maxBounds: brasilBounds,
-        maxBoundsViscosity: 1.0 // Impede completamente de sair dos limites
-      });
+    const brasilBounds = L.latLngBounds(
+      L.latLng(-33.75, -73.99),
+      L.latLng(5.27, -32.39)
+    );
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 18,
-        bounds: brasilBounds
-      }).addTo(mapRef.current);
-
-      // Ajustar a visualização para os limites do Brasil
-      mapRef.current.fitBounds(brasilBounds, { padding: [20, 20] });
-    }
-
-    if (clusterRef.current) {
-      mapRef.current.removeLayer(clusterRef.current);
-    }
-
-    // @ts-ignore
-    clusterRef.current = L.markerClusterGroup();
-
-    personas.forEach(persona => {
-      if (persona.lat && persona.lng) {
-        const marker = L.marker([persona.lat, persona.lng]);
-        
-        const popupContent = `
-          <div class="p-4 min-w-[180px] bg-zinc-900 text-white">
-            <h4 class="font-bold text-lg mb-1">${persona.name}</h4>
-            <p class="text-xs text-zinc-400 mb-4">${persona.age} anos • ${persona.city}, ${persona.state}</p>
-            <a href="/chat/${persona.id}" class="block w-full text-center bg-white text-black text-xs font-bold py-3 rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/5">
-              Iniciar Chat
-            </a>
-          </div>
-        `;
-
-
-        marker.bindPopup(popupContent, {
-          className: 'custom-leaflet-popup'
-        });
-        
-        clusterRef.current.addLayer(marker);
-      }
+    mapRef.current = L.map(mapContainerRef.current, {
+      center: [-14.235, -51.9253],
+      zoom: 4,
+      minZoom: 4,
+      maxZoom: 18,
+      maxBounds: brasilBounds,
+      maxBoundsViscosity: 1.0,
     });
 
-    mapRef.current.addLayer(clusterRef.current);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 18,
+    }).addTo(mapRef.current);
+
+    mapRef.current.fitBounds(brasilBounds, { padding: [20, 20] });
 
     return () => {
-      // Cleanup is handled by Next.js component lifecycle if needed
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
-  }, [personas]);
+  }, []);
+
+  // Atualizar markers quando personas mudam
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove cluster anterior
+    if (clusterRef.current) {
+      map.removeLayer(clusterRef.current);
+      clusterRef.current = null;
+    }
+
+    if (validPersonas.length === 0) return;
+
+    // @ts-ignore
+    const cluster = L.markerClusterGroup({
+      chunkedLoading: true,       // carrega em chunks para não travar
+      chunkInterval: 100,         // ms entre chunks
+      chunkDelay: 10,             // delay entre processamento
+      maxClusterRadius: 50,       // agrupa markers próximos
+      disableClusteringAtZoom: 14,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+    });
+
+    // Criar todos os markers de uma vez (o chunkedLoading cuida do batching)
+    const markers = validPersonas.map(persona => {
+      const marker = L.marker([persona.lat, persona.lng]);
+
+      marker.bindPopup(`
+        <div class="p-4 min-w-[180px] bg-zinc-900 text-white">
+          <h4 class="font-bold text-lg mb-1">${persona.name || 'Persona'}</h4>
+          <p class="text-xs text-zinc-400 mb-4">${persona.age || '?'} anos • ${persona.city || ''}, ${persona.state || ''}</p>
+          <a href="/chat/${persona.id}" class="block w-full text-center bg-white text-black text-xs font-bold py-3 rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/5">
+            Iniciar Chat
+          </a>
+        </div>
+      `, { className: 'custom-leaflet-popup' });
+
+      return marker;
+    });
+
+    cluster.addLayers(markers); // batch add (mais rápido que addLayer individual)
+    map.addLayer(cluster);
+    clusterRef.current = cluster;
+  }, [validPersonas]);
 
   return (
-    <div className="relative w-full h-full rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
-      <div id="map-container" className="w-full h-full z-0" />
+    <div className="relative w-full h-full rounded-3xl overflow-hidden border border-zinc-800/50 shadow-2xl shadow-black/20">
+      <div ref={mapContainerRef} className="w-full h-full z-0" />
+
+      {/* Counter overlay */}
+      {validPersonas.length > 0 && (
+        <div className="absolute top-4 right-4 z-[1000] px-3 py-1.5 rounded-xl bg-zinc-950/80 backdrop-blur-sm border border-zinc-800/50">
+          <span className="text-[10px] font-bold text-zinc-400 tabular-nums">
+            {validPersonas.length.toLocaleString('pt-BR')} no mapa
+          </span>
+        </div>
+      )}
+
       <style jsx global>{`
         .leaflet-popup-content-wrapper {
           background: #18181b !important;
@@ -115,8 +146,20 @@ export default function PersonaMap({ personas }: PersonaMapProps) {
         .leaflet-container {
           background: #09090b !important;
         }
+        .marker-cluster-small,
+        .marker-cluster-medium,
+        .marker-cluster-large {
+          background-color: rgba(16, 185, 129, 0.15) !important;
+        }
+        .marker-cluster-small div,
+        .marker-cluster-medium div,
+        .marker-cluster-large div {
+          background-color: rgba(16, 185, 129, 0.6) !important;
+          color: white !important;
+          font-weight: 700 !important;
+          font-size: 12px !important;
+        }
       `}</style>
     </div>
   );
-
 }
