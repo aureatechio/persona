@@ -184,14 +184,36 @@ async def analyze(request: AnalyzeRequest):
             })
 
         # ── 6. Aggregate Results ──────────────────────────────────────
-        yield sse_event("phase", {
-            "phase": "aggregating",
-            "message": "Compilando resultados...",
-        })
-
         processing_time = (time.time() - start_time) * 1000
-        final_results = aggregate_results(personas, all_results, request.question)
-        final_results["processingTime"] = processing_time
+
+        try:
+            final_results = aggregate_results(personas, all_results, request.question)
+            final_results["processingTime"] = processing_time
+        except Exception as e:
+            print(f"[Pipeline] Aggregator error: {e}")
+            import traceback
+            traceback.print_exc()
+            # Fallback: retorna dados mínimos do progress
+            pos = sum(1 for r in all_results if r.sentiment == "positive")
+            neg = sum(1 for r in all_results if r.sentiment == "negative")
+            neu = sum(1 for r in all_results if r.sentiment == "neutral")
+            final_results = {
+                "total": len(all_results),
+                "positive": pos,
+                "negative": neg,
+                "neutral": neu,
+                "processingTime": processing_time,
+                "archetypes": [],
+                "clusterResults": [],
+                "comments": [{"personaName": r.persona_id, "sentiment": r.sentiment, "comment": r.comment, "archetype": "", "age": 0, "location": "", "state": "", "region": "", "generation": ""} for r in all_results],
+                "ideologicalPoints": [],
+                "quadrants": [],
+                "regions": [],
+                "generations": [],
+                "educationLevels": [],
+                "politicalFigures": [],
+                "intensityBands": [],
+            }
 
         yield sse_event("results", final_results)
 

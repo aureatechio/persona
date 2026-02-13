@@ -165,31 +165,31 @@ def aggregate_results(
             total_neutral += 1
 
         # Cluster
-        cid = persona.get("cluster_id", "?")
+        cid = persona.get("cluster_id") or "unknown"
         cluster_data[cid]["count"] += 1
         cluster_data[cid][sentiment] += 1
 
         # Quadrant
-        eco = persona.get("score_economico") or 0.0
-        cost = persona.get("score_costumes") or 0.0
+        eco = float(persona.get("score_economico") or 0)
+        cost = float(persona.get("score_costumes") or 0)
         quadrant = _classify_quadrant(eco, cost)
         quadrant_data[quadrant]["count"] += 1
         quadrant_data[quadrant][sentiment] += 1
         quadrant_data[quadrant]["cluster_counts"][cid] += 1
 
         # Region
-        region = persona.get("region_br", "Não informado")
+        region = persona.get("region_br") or "Não informado"
         region_data[region]["count"] += 1
         region_data[region][sentiment] += 1
 
         # Generation
-        gen = persona.get("generation", "Não informado")
+        gen = persona.get("generation") or "Não informado"
         generation_data[gen]["count"] += 1
         generation_data[gen][sentiment] += 1
-        generation_data[gen]["total_age"] += persona.get("age", 0)
+        generation_data[gen]["total_age"] += int(persona.get("age") or 0)
 
         # Education
-        edu = persona.get("education_level", "Não informado")
+        edu = persona.get("education_level") or "Não informado"
         education_data[edu]["count"] += 1
         education_data[edu][sentiment] += 1
         education_data[edu]["total_intensity"] += (abs(eco) + abs(cost)) / 2
@@ -269,9 +269,9 @@ def aggregate_results(
     for cid, data in cluster_data.items():
         if data["count"] > 0:
             cluster_results.append({
-                "id": cid,
-                "name": CLUSTER_NAMES.get(cid, cid),
-                "macro": CLUSTER_MACROS.get(cid, "Transversal"),
+                "id": cid or "unknown",
+                "name": CLUSTER_NAMES.get(cid, cid) or "Desconhecido",
+                "macro": CLUSTER_MACROS.get(cid, "Transversal") or "Transversal",
                 "count": data["count"],
                 "positive": data["positive"],
                 "negative": data["negative"],
