@@ -32,40 +32,27 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // getUser() faz chamada ao servidor Supabase e refresh do token se expirado
-  // Isso é OBRIGATÓRIO para manter a sessão ativa
+  // CRITICAL: getUser() refreshes the token if expired.
+  // This keeps the session alive between requests and prevents session loss.
   const { data: { user } } = await supabase.auth.getUser();
 
-  const url = request.nextUrl.clone();
+  const { pathname } = request.nextUrl;
 
-  // Se não está logado e não está em rota pública → redirecionar para /login
-  if (!user && url.pathname !== '/login') {
+  // Public routes that don't need auth
+  const isPublicRoute = pathname === '/login';
+
+  // Not logged in and not on public route → redirect to login
+  if (!user && !isPublicRoute) {
+    const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
-  // Se está logado e tenta acessar /login → redirecionar para home
-  if (user && url.pathname === '/login') {
+  // Logged in and trying to access login → redirect to home
+  if (user && isPublicRoute) {
+    const url = request.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
-  }
-
-  // Verificação de Admin para a rota /users
-  if (user && url.pathname.startsWith('/users')) {
-    const { data: profile, error } = await supabase
-      .from('users')
-      .select('user_type')
-      .eq('id', user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Proxy: Erro ao buscar perfil:', error);
-    }
-
-    if (profile && profile.user_type !== 'admin') {
-      url.pathname = '/';
-      return NextResponse.redirect(url);
-    }
   }
 
   return response;

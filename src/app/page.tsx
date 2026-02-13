@@ -953,32 +953,36 @@ export default function ArenaPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Fetch real persona count + ALL data (paginated to bypass Supabase 1000-row limit)
+  // Fetch persona count (lightweight, HEAD only - no data transferred)
   useEffect(() => {
     (async () => {
       const { count } = await supabase.from('personas').select('*', { count: 'exact', head: true });
       if (count && count > 0) setPersonaCount(count);
-
-      // Fetch all rows in batches of 1000
-      const batchSize = 1000;
-      const total = count || 2000;
-      let allData: any[] = [];
-
-      for (let from = 0; from < total; from += batchSize) {
-        const { data } = await supabase
-          .from('personas')
-          .select('*')
-          .range(from, from + batchSize - 1);
-        if (data && data.length > 0) {
-          allData = [...allData, ...data];
-        } else {
-          break;
-        }
-      }
-
-      if (allData.length > 0) setAllPersonas(allData);
     })();
   }, []);
+
+  // Lazy-load ALL persona data only when needed (first simulation)
+  const loadAllPersonas = useCallback(async (): Promise<any[]> => {
+    if (allPersonas.length > 0) return allPersonas;
+
+    const batchSize = 1000;
+    let allData: any[] = [];
+
+    for (let from = 0; from < personaCount; from += batchSize) {
+      const { data } = await supabase
+        .from('personas')
+        .select('*')
+        .range(from, from + batchSize - 1);
+      if (data && data.length > 0) {
+        allData = [...allData, ...data];
+      } else {
+        break;
+      }
+    }
+
+    if (allData.length > 0) setAllPersonas(allData);
+    return allData;
+  }, [allPersonas, personaCount]);
 
   // Animated counters for results
   const animPositive = useAnimatedNumber(simulation?.positive ?? 0, 2500, phase === 'results');
@@ -1103,9 +1107,12 @@ export default function ArenaPage() {
     // 1. Run sync simulation for metrics (instant)
     const metrics = runSimulation(q, personaCount);
 
-    // 2. Build persona list for AI and start generating comments (async)
+    // 2. Lazy-load personas if not yet loaded (only on first simulation)
+    const personas = await loadAllPersonas();
+
+    // 3. Build persona list for AI and start generating comments (async)
     const topicScores = detectTopics(q);
-    const personasForAI = buildPersonasForAI(q, allPersonas, topicScores);
+    const personasForAI = buildPersonasForAI(q, personas, topicScores);
 
     // 3. Launch BOTH models in parallel
     const claudePromise = generateAIComments(q, personasForAI);
@@ -1149,7 +1156,7 @@ export default function ArenaPage() {
     setSimulation(fullResult);
     setPhase('results');
     setTimeout(() => setShowComments(true), 800);
-  }, [question, personaCount, allPersonas]);
+  }, [question, personaCount, loadAllPersonas]);
 
   const handleReset = () => {
     setPhase('idle');

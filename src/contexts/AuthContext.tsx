@@ -4,7 +4,6 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { useRouter } from 'next/navigation';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { ensureProfileAction } from '@/app/actions/userActions';
 
 export type UserType = 'normal' | 'admin';
 
@@ -25,6 +24,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Cache profile in memory to avoid re-fetching on every navigation
+const profileCache = new Map<string, UserProfile>();
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -34,47 +36,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initializedRef = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string, email: string | null, name: string | null) => {
+    // Check cache first - instant return
+    const cached = profileCache.get(userId);
+    if (cached) {
+      setProfile(cached);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('*')
+        .select('id, email, name, user_type')
         .eq('id', userId)
         .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116' && email) {
-          const { data: emailData, error: emailError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('email', email)
-            .maybeSingle();
-
-          if (!emailError && emailData) {
-            setProfile(emailData as UserProfile);
-            return;
-          }
-        }
         console.error('Error fetching profile:', error);
         return;
       }
 
-      if (!data) {
-        if (email) {
-          const result = await ensureProfileAction({
-            id: userId,
-            email,
-            name: name ?? email.split('@')[0] ?? 'Usuário',
-          });
-
-          if (result?.profile) {
-            setProfile(result.profile as UserProfile);
-            return;
-          }
-        }
+      if (data) {
+        const p = data as UserProfile;
+        profileCache.set(userId, p);
+        setProfile(p);
         return;
       }
 
-      setProfile(data as UserProfile);
+      // Profile not found - try by email as fallback
+      if (email) {
+        const { data: emailData } = await supabase
+          .from('users')
+          .select('id, email, name, user_type')
+          .eq('email', email)
+          .maybeSingle();
+
+        if (emailData) {
+          const p = emailData as UserProfile;
+          profileCache.set(userId, p);
+          setProfile(p);
+          return;
+        }
+      }
     } catch (err) {
       console.error('Unexpected error fetching profile:', err);
     }
@@ -84,16 +86,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    // 1. Restaurar sessão existente do storage/cookies
     const initSession = async () => {
       try {
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error('Error getting session:', error);
-          setLoading(false);
-          return;
-        }
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
 
         if (currentSession?.user) {
           setSession(currentSession);
@@ -111,16 +106,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // 2. Escutar mudanças de auth (login, logout, token refresh)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      // TOKEN_REFRESHED: apenas atualiza sessão silenciosamente
       if (event === 'TOKEN_REFRESHED') {
         setSession(newSession);
         setUser(newSession?.user ?? null);
         return;
       }
 
-      // SIGNED_IN: usuário fez login
       if (event === 'SIGNED_IN' && newSession?.user) {
         setSession(newSession);
         setUser(newSession.user);
@@ -133,16 +125,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // SIGNED_OUT: limpar tudo
       if (event === 'SIGNED_OUT') {
         setSession(null);
         setUser(null);
         setProfile(null);
+        profileCache.clear();
         setLoading(false);
         return;
       }
 
-      // Qualquer outro evento
       setSession(newSession);
       setUser(newSession?.user ?? null);
       if (!newSession?.user) {
@@ -158,24 +149,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchProfile]);
 
-  // SignOut robusto: limpa estado local PRIMEIRO, depois tenta revogar no servidor
   const signOut = useCallback(async () => {
-    // 1. Limpar estado local imediatamente (garante que a UI responde)
     setUser(null);
     setProfile(null);
     setSession(null);
+    profileCache.clear();
 
-    // 2. Tentar signOut no Supabase (scope: 'local' limpa cookies/storage mesmo se API falhar)
     try {
-      const { error } = await supabase.auth.signOut({ scope: 'local' });
-      if (error) {
-        console.error('SignOut API error (ignorado):', error.message);
-      }
+      await supabase.auth.signOut({ scope: 'local' });
     } catch (err) {
-      console.error('SignOut exception (ignorado):', err);
+      console.error('SignOut error (ignored):', err);
     }
 
-    // 3. Redirecionar para login (sempre, independente de erros)
     router.push('/login');
   }, [router]);
 
