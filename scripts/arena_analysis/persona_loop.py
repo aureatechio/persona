@@ -221,7 +221,7 @@ class PersonaLoop:
     async def run(
         self,
         question: str,
-        context: ContextResult,
+        context: ContextResult | None,
         personas: list[dict[str, Any]],
     ) -> AsyncGenerator[BatchProgress, None]:
         """

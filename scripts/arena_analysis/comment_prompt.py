@@ -131,29 +131,32 @@ Responda APENAS com um array JSON válido. Nenhum texto antes ou depois."""
 
 def build_batch_prompt(
     question: str,
-    context: ContextResult,
+    context: ContextResult | None,
     personas: list[dict[str, Any]],
 ) -> str:
     """
     Constroi o prompt de usuario para um batch de personas.
 
-    Cada persona recebe seu perfil completo + o contexto validado.
+    Cada persona recebe seu perfil completo + o contexto validado (se houver).
     A IA retorna sentimento + comentário para cada uma.
     """
     # Bloco de contexto
-    context_block = f"""TEMA: "{question}"
+    if context and context.contexto:
+        context_block = f"""TEMA: "{question}"
 
 CONTEXTO FACTUAL (use para EMBASAR suas respostas, NÃO para copiar):
 {context.contexto}
 """
-    if context.figuras:
-        figuras_text = ", ".join(
-            f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
-        )
-        context_block += f"\nFIGURAS MENCIONADAS: {figuras_text}"
+        if context.figuras:
+            figuras_text = ", ".join(
+                f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
+            )
+            context_block += f"\nFIGURAS MENCIONADAS: {figuras_text}"
 
-    if context.periodo:
-        context_block += f"\nPERÍODO: {context.periodo}"
+        if context.periodo:
+            context_block += f"\nPERÍODO: {context.periodo}"
+    else:
+        context_block = f'TEMA: "{question}"'
 
     # Bloco de personas
     persona_lines = []

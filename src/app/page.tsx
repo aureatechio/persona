@@ -65,7 +65,6 @@ export default function ArenaPage() {
   const [clusterDropdownOpen, setClusterDropdownOpen] = useState(false);
   const [effectivePersonaCount, setEffectivePersonaCount] = useState(0);
   const [pipelinePhase, setPipelinePhase] = useState('');
-  const [contextPreview, setContextPreview] = useState<{ tema: string; figuras: any[]; periodo: string } | null>(null);
   const [commentsToShow, setCommentsToShow] = useState(30);
   const [commentFilter, setCommentFilter] = useState<'all' | Sentiment>('all');
 
@@ -250,7 +249,6 @@ export default function ArenaPage() {
     setSimulation(null);
     setShowComments(false);
     setPipelinePhase('Analisando personas...');
-    setContextPreview(null);
     setCommentsToShow(30);
     setCommentFilter('all');
 
@@ -277,6 +275,7 @@ export default function ArenaPage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let streamDone = false;
+      let hasResults = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -299,11 +298,6 @@ export default function ArenaPage() {
                 break;
 
               case 'context':
-                setContextPreview({
-                  tema: payload.data.tema || '',
-                  figuras: payload.data.figuras || [],
-                  periodo: payload.data.periodo || '',
-                });
                 break;
 
               case 'personas_loaded':
@@ -334,6 +328,7 @@ export default function ArenaPage() {
 
               case 'results':
                 setSimulation(payload.data as EnhancedSimulationResult);
+                hasResults = true;
                 break;
 
               case 'done':
@@ -356,6 +351,14 @@ export default function ArenaPage() {
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
+
+      // Se já recebemos os results do Python, não fazer fallback
+      if (hasResults) {
+        console.warn('[Arena] Stream ended after results, ignoring:', err);
+        setPhase('results');
+        setTimeout(() => setShowComments(true), 800);
+        return;
+      }
 
       // ── Fallback: JS simulation ─────────────────────────────────────
       console.warn('[Arena] Python backend offline, fallback JS:', err);
@@ -409,7 +412,6 @@ export default function ArenaPage() {
     setProcessedCount(0);
     setShowComments(false);
     setPipelinePhase('');
-    setContextPreview(null);
     setCommentsToShow(30);
     setCommentFilter('all');
   };
@@ -643,26 +645,6 @@ export default function ArenaPage() {
                   <span className="text-[10px] text-zinc-600">100%</span>
                 </div>
               </div>
-
-              {/* Context Preview */}
-              {contextPreview && (
-                <div className="mt-4 px-6 py-4 rounded-2xl bg-zinc-950/80 border border-violet-500/20 max-w-lg backdrop-blur-sm animate-fade-in-up">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-violet-400/60 mb-2">Contexto Identificado</p>
-                  <p className="text-sm text-zinc-300 font-medium text-center">{contextPreview.tema}</p>
-                  {contextPreview.figuras.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 justify-center">
-                      {contextPreview.figuras.map((f: any, i: number) => (
-                        <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-violet-500/10 text-violet-400 text-[10px] font-bold border border-violet-500/20">
-                          {f.nome} &middot; {f.cargo}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {contextPreview.periodo && (
-                    <p className="text-[10px] text-zinc-500 text-center mt-2">{contextPreview.periodo}</p>
-                  )}
-                </div>
-              )}
 
               {/* Submitted question */}
               <div className="mt-4 px-6 py-4 rounded-2xl bg-zinc-950/80 border border-zinc-900 max-w-lg backdrop-blur-sm">

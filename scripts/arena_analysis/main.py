@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from arena_analysis.config import settings
+from arena_analysis.query_analyzer import QueryAnalyzer
 from arena_analysis.web_researcher import ArenaWebResearcher
 from arena_analysis.context_builder import ContextBuilder
 from arena_analysis.context_validator import ContextValidator
@@ -47,6 +48,7 @@ app.add_middleware(
 )
 
 # ── Singletons ────────────────────────────────────────────────────────────────
+query_analyzer = QueryAnalyzer()
 web_researcher = ArenaWebResearcher()
 context_builder = ContextBuilder()
 context_validator = ContextValidator()
@@ -95,78 +97,58 @@ async def analyze(request: AnalyzeRequest):
         start_time = time.time()
         total_tokens = 0
 
-        # ── 1. Web Research (SEMPRE) ──────────────────────────────────
+        # ── 1. Query Analysis — IA decide se precisa pesquisar ────────
         yield sse_event("phase", {
-            "phase": "web_research",
-            "message": "Pesquisando contexto na web...",
+            "phase": "analyzing_query",
+            "message": "Analisando pergunta...",
         })
 
-        web_result = await web_researcher.research(request.question)
-        total_tokens += 0  # Tavily nao usa tokens LLM
+        analysis = await query_analyzer.analyze(request.question)
+        context = None
 
-        yield sse_event("web_complete", {
-            "snippets_count": len(web_result.snippets),
-            "sources_count": len(web_result.sources),
-            "has_context": bool(web_result.combined_context),
-        })
-
-        # ── 2. Context Builder ────────────────────────────────────────
-        yield sse_event("phase", {
-            "phase": "building_context",
-            "message": "Criando contexto com IA...",
-        })
-
-        context = await context_builder.build(
-            question=request.question,
-            web_context=web_result.combined_context,
-        )
-        total_tokens += context.prompt_tokens + context.output_tokens
-
-        yield sse_event("context", {
-            "tema": context.tema,
-            "contexto": context.contexto[:500],  # Preview
-            "figuras": context.figuras,
-            "periodo": context.periodo,
-        })
-
-        # ── 3. Context Validator ──────────────────────────────────────
-        yield sse_event("phase", {
-            "phase": "validating_context",
-            "message": "Verificando precisão do contexto...",
-        })
-
-        validation = await context_validator.validate(
-            question=request.question,
-            context=context,
-            web_context=web_result.combined_context,
-        )
-        total_tokens += validation.prompt_tokens + validation.output_tokens
-
-        # Se REVISE, roda context_builder de novo com feedback
-        if validation.verdict == "REVISE" and validation.corrections:
+        if analysis.needs_research:
+            # ── 1b. Web Research ─────────────────────────────────────
             yield sse_event("phase", {
-                "phase": "rebuilding_context",
-                "message": "Corrigindo contexto...",
+                "phase": "web_research",
+                "message": "Pesquisando contexto na web...",
+            })
+
+            web_result = await web_researcher.research(request.question)
+
+            yield sse_event("web_complete", {
+                "snippets_count": len(web_result.snippets),
+                "sources_count": len(web_result.sources),
+            })
+
+            # ── 1c. Context Builder ──────────────────────────────────
+            yield sse_event("phase", {
+                "phase": "building_context",
+                "message": "Criando contexto com IA...",
             })
 
             context = await context_builder.build(
                 question=request.question,
                 web_context=web_result.combined_context,
-                feedback=validation.corrections,
             )
             total_tokens += context.prompt_tokens + context.output_tokens
 
-            yield sse_event("context", {
-                "tema": context.tema,
-                "contexto": context.contexto[:500],
-                "figuras": context.figuras,
-                "periodo": context.periodo,
-            })
+            # ── 1d. Context Validator ────────────────────────────────
+            validation = await context_validator.validate(
+                question=request.question,
+                context=context,
+                web_context=web_result.combined_context,
+            )
+            total_tokens += validation.prompt_tokens + validation.output_tokens
 
-        yield sse_event("validation", {
-            "verdict": validation.verdict,
-            "issues": validation.issues,
-        })
+            if validation.verdict == "REVISE" and validation.corrections:
+                context = await context_builder.build(
+                    question=request.question,
+                    web_context=web_result.combined_context,
+                    feedback=validation.corrections,
+                )
+                total_tokens += context.prompt_tokens + context.output_tokens
+        else:
+            print(f"[Pipeline] Pesquisa pulada: {analysis.reason}")
 
         # ── 4. Carregar Personas ──────────────────────────────────────
         yield sse_event("phase", {
