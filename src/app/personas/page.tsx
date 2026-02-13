@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { PersonaCard } from '@/components/PersonaCard';
@@ -22,7 +22,7 @@ const PersonaMap = dynamic(() => import('@/components/PersonaMap'), {
 const PAGE_SIZE = 30;
 
 // Campos necessários para o card
-const LIST_FIELDS = 'id,name,age,city,state,gender,photo_path,gender_identity,civil_status,social_class,education_level,generation,political_leaning,archetype_primary,disc_main_factor,macro_religion,cronotype,region_br,area_type,psychology_json,career_json,beliefs_json,demographic_json';
+const LIST_FIELDS = 'id,name,age,city,state,gender,photo_path,gender_identity,civil_status,social_class,education_level,generation,political_leaning,archetype_primary,disc_main_factor,macro_religion,cronotype,region_br,area_type,apelido_politico,cluster_id,nome_grupo,score_economico,score_costumes,psychology_json,career_json,beliefs_json,demographic_json';
 
 // Campos mínimos para o mapa (apenas lat/lng + popup)
 const MAP_FIELDS = 'id,name,age,city,state,lat,lng';
@@ -46,6 +46,11 @@ interface Filters {
   ethnicity: string;
   minIncome: string;
   maxIncome: string;
+  nomeGrupo: string;
+  minScoreEconomico: string;
+  maxScoreEconomico: string;
+  minScoreCostumes: string;
+  maxScoreCostumes: string;
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -67,6 +72,11 @@ const EMPTY_FILTERS: Filters = {
   ethnicity: '',
   minIncome: '',
   maxIncome: '',
+  nomeGrupo: '',
+  minScoreEconomico: '',
+  maxScoreEconomico: '',
+  minScoreCostumes: '',
+  maxScoreCostumes: '',
 };
 
 function applyFilters(query: any, f: Filters) {
@@ -87,18 +97,41 @@ function applyFilters(query: any, f: Filters) {
   if (f.educationLevel) query = query.eq('education_level', f.educationLevel);
   if (f.minIncome) query = query.filter('demographic_json->renda_e_financas->>renda_mensal_individual', 'gte', parseInt(f.minIncome));
   if (f.maxIncome) query = query.filter('demographic_json->renda_e_financas->>renda_mensal_individual', 'lte', parseInt(f.maxIncome));
+  if (f.nomeGrupo) query = query.eq('nome_grupo', f.nomeGrupo);
+  if (f.minScoreEconomico) query = query.gte('score_economico', parseFloat(f.minScoreEconomico));
+  if (f.maxScoreEconomico) query = query.lte('score_economico', parseFloat(f.maxScoreEconomico));
+  if (f.minScoreCostumes) query = query.gte('score_costumes', parseFloat(f.minScoreCostumes));
+  if (f.maxScoreCostumes) query = query.lte('score_costumes', parseFloat(f.maxScoreCostumes));
   if (f.search) query = query.or(`name.ilike.%${f.search}%,city.ilike.%${f.search}%,state.ilike.%${f.search}%`);
   return query;
 }
 
-export default function PersonasPage() {
+export default function PersonasPageWrapper() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="space-y-4 w-full max-w-7xl px-6">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-24 bg-zinc-900/50 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      </div>
+    }>
+      <PersonasPage />
+    </Suspense>
+  );
+}
+
+function PersonasPage() {
   const { session, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialView = searchParams.get('view') === 'map' ? 'map' : 'grid';
   const [personas, setPersonas] = useState<any[]>([]);
   const [mapPersonas, setMapPersonas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [mapLoading, setMapLoading] = useState(false);
-  const [view, setView] = useState<'grid' | 'map'>('grid');
+  const [view, setView] = useState<'grid' | 'map'>(initialView);
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -132,6 +165,15 @@ export default function PersonasPage() {
     socialClass: ['A', 'B1', 'B2', 'C1', 'C2', 'D', 'E'],
     educationLevel: ['Fundamental', 'Médio', 'Superior Incompleto', 'Superior Completo', 'Pós-Graduação/MBA', 'Mestrado/Doutorado'],
     civilStatus: ['Solteiro', 'Casado', 'União Estável', 'Divorciado', 'Viúvo'],
+    nomeGrupo: [
+      'Base Social', 'Trabalhista', 'Progressista Urbano', 'Regulador Técnico',
+      'Desenvolvimentista', 'Centro-Esquerda Moderada',
+      'Centro Econômico', 'Centro Conservador', 'Institucional', 'Gestor Pragmático',
+      'Volátil Econômico', 'Empreendedor Urbano', 'Classe Média Sensível', 'Cético Político',
+      'Liberal de Mercado', 'Conservador Religioso', 'Nacionalista', 'Linha Dura Segurança',
+      'Antissistema', 'Pequeno Empresário', 'Direita Digital', 'Conservador Tradicional',
+      'Desengajado', 'Anti-Incumbente',
+    ],
   };
 
   // ── Auth guard ─────────────────────────────────────────────────────────
@@ -315,6 +357,7 @@ export default function PersonasPage() {
                   ['Gênero', 'genderIdentity', enumOptions.genderIdentity, 'Todos'],
                   ['Religião', 'macroReligion', enumOptions.macroReligion, 'Todas'],
                   ['Política', 'politicalLeaning', enumOptions.politicalLeaning, 'Todas'],
+                  ['Cluster Ideológico', 'nomeGrupo', enumOptions.nomeGrupo, 'Todos'],
                   ['Classe Social', 'socialClass', enumOptions.socialClass, 'Todas'],
                   ['Estado Civil', 'civilStatus', enumOptions.civilStatus, 'Todos'],
                   ['Escolaridade', 'educationLevel', enumOptions.educationLevel, 'Todas'],
@@ -372,8 +415,28 @@ export default function PersonasPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-600 px-2">Score Econômico</label>
+                  <div className="flex items-center gap-3">
+                    <input type="number" step="0.1" min="-1" max="1" placeholder="-1" className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-4 focus:outline-none focus:border-zinc-600 transition-colors text-sm" value={filters.minScoreEconomico} onChange={(e) => setFilters({...filters, minScoreEconomico: e.target.value})} />
+                    <span className="text-zinc-700 text-xs">até</span>
+                    <input type="number" step="0.1" min="-1" max="1" placeholder="+1" className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-4 focus:outline-none focus:border-zinc-600 transition-colors text-sm" value={filters.maxScoreEconomico} onChange={(e) => setFilters({...filters, maxScoreEconomico: e.target.value})} />
+                  </div>
+                  <p className="text-[9px] text-zinc-600 px-2">-1 = Estado forte | +1 = Mercado livre</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-600 px-2">Score Costumes</label>
+                  <div className="flex items-center gap-3">
+                    <input type="number" step="0.1" min="-1" max="1" placeholder="-1" className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-4 focus:outline-none focus:border-zinc-600 transition-colors text-sm" value={filters.minScoreCostumes} onChange={(e) => setFilters({...filters, minScoreCostumes: e.target.value})} />
+                    <span className="text-zinc-700 text-xs">até</span>
+                    <input type="number" step="0.1" min="-1" max="1" placeholder="+1" className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-2.5 px-4 focus:outline-none focus:border-zinc-600 transition-colors text-sm" value={filters.maxScoreCostumes} onChange={(e) => setFilters({...filters, maxScoreCostumes: e.target.value})} />
+                  </div>
+                  <p className="text-[9px] text-zinc-600 px-2">-1 = Progressista | +1 = Conservador</p>
+                </div>
+
                 <div className="flex items-end lg:col-span-2">
-                  <button 
+                  <button
                     onClick={handleClearFilters}
                     className="text-xs font-bold text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-3"
                   >

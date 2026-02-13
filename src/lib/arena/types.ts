@@ -1,0 +1,132 @@
+// ── Arena Types ──────────────────────────────────────────────────────────────
+
+export type Phase = 'idle' | 'processing' | 'results';
+export type Sentiment = 'positive' | 'negative' | 'neutral';
+
+export interface ArchetypeResult {
+  id: string;
+  name: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export interface CommentResult {
+  archetype: string;
+  sentiment: Sentiment;
+  comment: string;
+  personaName: string;
+  age: number;
+  location: string;
+  state: string;
+  region: string;
+  generation: string;
+}
+
+export interface ClusterResult {
+  id: string;
+  name: string;
+  macro: 'Progressista' | 'Moderado' | 'Conservador' | 'Transversal';
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export interface SimulationResult {
+  total: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  archetypes: ArchetypeResult[];
+  clusterResults: ClusterResult[];
+  comments: CommentResult[];
+  processingTime: number;
+}
+
+// ── New types for enhanced 2D analysis ──────────────────────────────────────
+
+export interface IdeologicalPoint {
+  personaId: string;
+  name: string;
+  scoreEco: number;
+  scoreCost: number;
+  clusterId: string;
+  clusterName: string;
+  sentiment: Sentiment;
+  region: string;
+  generation: string;
+  educationLevel: string;
+}
+
+export type Quadrant =
+  | 'esq_progressista'
+  | 'esq_conservador'
+  | 'dir_conservador'
+  | 'dir_progressista';
+
+export interface QuadrantResult {
+  quadrant: Quadrant;
+  label: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  dominantClusters: string[];
+}
+
+export interface RegionResult {
+  region: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export interface GenerationResult {
+  generation: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  avgAge: number;
+}
+
+export interface EducationResult {
+  level: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  avgIntensity: number;
+}
+
+export type PoliticalFigure = 'lula' | 'bolsonaro';
+
+export interface PoliticalFigureDetection {
+  figure: PoliticalFigure;
+  label: string;
+  supportCount: number;
+  attackCount: number;
+  neutralCount: number;
+  supportClusters: string[];
+  attackClusters: string[];
+}
+
+export interface IntensityBand {
+  label: string;
+  range: [number, number];
+  count: number;
+  avgSentimentScore: number;
+}
+
+export interface EnhancedSimulationResult extends SimulationResult {
+  ideologicalPoints: IdeologicalPoint[];
+  quadrants: QuadrantResult[];
+  regions: RegionResult[];
+  generations: GenerationResult[];
+  educationLevels: EducationResult[];
+  politicalFigures: PoliticalFigureDetection[];
+  intensityBands: IntensityBand[];
+}

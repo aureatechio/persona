@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const initializedRef = useRef(false);
 
-  const fetchProfile = useCallback(async (userId: string, email: string | null, name: string | null) => {
+  const fetchProfile = useCallback(async (userId: string, email: string | null) => {
     // Check cache first - instant return
     const cached = profileCache.get(userId);
     if (cached) {
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .maybeSingle();
 
       if (error) {
-        console.error('Error fetching profile:', error);
+        console.error('[Auth] Error fetching profile:', error);
         return;
       }
 
@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch (err) {
-      console.error('Unexpected error fetching profile:', err);
+      console.error('[Auth] Unexpected error fetching profile:', err);
     }
   }, []);
 
@@ -86,63 +86,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    const initSession = async () => {
-      try {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+    // Use onAuthStateChange as the SOLE session source.
+    // It fires immediately with INITIAL_SESSION (the session from cookies),
+    // then again on SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, etc.
+    // The proxy (server-side) already validated and refreshed the token,
+    // so the cookies are guaranteed to contain a valid session.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+      console.log('[Auth] onAuthStateChange:', event, currentSession ? 'has session' : 'no session');
 
-        if (currentSession?.user) {
-          setSession(currentSession);
-          setUser(currentSession.user);
-          await fetchProfile(
-            currentSession.user.id,
-            currentSession.user.email ?? null,
-            currentSession.user.user_metadata?.name ?? null
-          );
-        }
-      } catch (err) {
-        console.error('Error initializing session:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      setSession(currentSession);
+      setUser(currentSession?.user ?? null);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (event === 'TOKEN_REFRESHED') {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
-        return;
-      }
-
-      if (event === 'SIGNED_IN' && newSession?.user) {
-        setSession(newSession);
-        setUser(newSession.user);
-        await fetchProfile(
-          newSession.user.id,
-          newSession.user.email ?? null,
-          newSession.user.user_metadata?.name ?? null
+      if (currentSession?.user) {
+        // Don't await profile fetch for INITIAL_SESSION — it would block loading
+        // Instead, start it async and let it update state when done
+        fetchProfile(
+          currentSession.user.id,
+          currentSession.user.email ?? null,
         );
-        setLoading(false);
-        return;
-      }
-
-      if (event === 'SIGNED_OUT') {
-        setSession(null);
-        setUser(null);
+      } else {
         setProfile(null);
         profileCache.clear();
-        setLoading(false);
-        return;
       }
 
-      setSession(newSession);
-      setUser(newSession?.user ?? null);
-      if (!newSession?.user) {
-        setProfile(null);
-      }
       setLoading(false);
     });
-
-    initSession();
 
     return () => {
       subscription.unsubscribe();
@@ -158,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await supabase.auth.signOut({ scope: 'local' });
     } catch (err) {
-      console.error('SignOut error (ignored):', err);
+      console.error('[Auth] SignOut error (ignored):', err);
     }
 
     router.push('/login');

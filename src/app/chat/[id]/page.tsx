@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Sidebar } from '@/components/Sidebar';
@@ -46,10 +46,12 @@ export default function ChatPage() {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [pendingResponses, setPendingResponses] = useState(0);
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const sendQueueRef = useRef<Promise<void>>(Promise.resolve());
 
 
   useEffect(() => {
@@ -239,32 +241,13 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    if (!user?.id) return;
-
-    const chatId = await ensureChat();
-    if (!chatId) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    const messageToSend = input;
-    setInput('');
-    setLoading(true);
-
+  const processSend = useCallback(async (chatId: string, messageToSend: string) => {
     try {
       const { data: savedUserMessage, error: saveUserError } = await supabase
         .from('messages')
         .insert({
           chat_id: chatId,
-          user_id: user.id,
+          user_id: user!.id,
           persona_id: personaId,
           message: messageToSend,
           bot_message: false,
@@ -278,12 +261,12 @@ export default function ChatPage() {
         updateChatSummary(chatId, savedUserMessage.created_at);
       }
 
-      const response = await fetch('https://webhook.aureatech.io/webhook/persona-aurea-conversa', {
+      const response = await fetch(process.env.NEXT_PUBLIC_PERSONA_CHAT_API || 'https://webhook.aureatech.io/webhook/persona-aurea-conversa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           chat_id: chatId,
-          user_id: user.id,
+          user_id: user!.id,
           persona_id: personaId,
           message: messageToSend,
         })
@@ -294,7 +277,7 @@ export default function ChatPage() {
       const data = await response.json();
 
       const assistantMessage: Message = {
-        id: Date.now().toString(),
+        id: (Date.now() + Math.random()).toString(),
         role: 'assistant',
         content: data.response || data.output || data.message || 'Desculpe, tive um problema ao processar sua mensagem.',
         thought: data.thought,
@@ -307,7 +290,7 @@ export default function ChatPage() {
         .from('messages')
         .insert({
           chat_id: chatId,
-          user_id: user.id,
+          user_id: user!.id,
           persona_id: personaId,
           message: assistantMessage.content,
           bot_message: true,
@@ -323,15 +306,45 @@ export default function ChatPage() {
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
       const errorMessage: Message = {
-        id: Date.now().toString(),
+        id: (Date.now() + Math.random()).toString(),
         role: 'assistant',
-        content: 'Erro de conexão com o servidor de IA. Verifique o webhook do n8n.',
+        content: 'Erro de conexão com o servidor de IA.',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
-      setLoading(false);
+      setPendingResponses(prev => Math.max(0, prev - 1));
     }
+  }, [user, personaId]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim()) return;
+    if (!user?.id) return;
+
+    const chatId = await ensureChat();
+    if (!chatId) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    const messageToSend = input;
+    setInput('');
+    setPendingResponses(prev => prev + 1);
+
+    // Foco no input
+    setTimeout(() => inputRef.current?.focus(), 0);
+
+    // Serializa envios: cada mensagem espera a anterior terminar
+    // assim o backend sempre tem o historico completo no Supabase
+    sendQueueRef.current = sendQueueRef.current.then(
+      () => processSend(chatId, messageToSend)
+    );
   };
 
   if (!persona) return null;
@@ -473,31 +486,43 @@ export default function ChatPage() {
           </div>
 
           {/* Input Area */}
-          <div className="p-8 border-t border-zinc-900 bg-black">
-            <form onSubmit={handleSendMessage} className="relative flex items-center gap-4 max-w-5xl mx-auto">
-              <input 
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={activeChatId ? `Mensagem para ${persona.name}...` : 'Selecione um chat para conversar'}
-                disabled={loading || !activeChatId}
-                className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl py-4 px-8 pr-16 focus:outline-none focus:border-zinc-600 transition-all disabled:opacity-50 shadow-inner"
-              />
-              <button 
-                type="submit"
-                disabled={!input.trim() || loading || !activeChatId}
-                className="absolute right-2.5 w-11 h-11 bg-white text-black rounded-xl flex items-center justify-center hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:bg-zinc-800 shadow-xl active:scale-95"
-              >
-                {loading ? (
-                  <div className="w-5 h-5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                ) : (
+          <div className="border-t border-zinc-900 bg-black">
+            {/* Typing indicator */}
+            {pendingResponses > 0 && (
+              <div className="px-8 pt-4 pb-0 max-w-5xl mx-auto">
+                <div className="flex items-center gap-3 text-zinc-400">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce [animation-delay:300ms]" />
+                  </div>
+                  <span className="text-xs font-medium">{persona.name} está digitando</span>
+                </div>
+              </div>
+            )}
+            <div className="p-8 pt-4">
+              <form onSubmit={handleSendMessage} className="relative flex items-center gap-4 max-w-5xl mx-auto">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder={activeChatId ? `Mensagem para ${persona.name}...` : 'Selecione um chat para conversar'}
+                  disabled={!activeChatId}
+                  className="flex-1 bg-zinc-900 border border-zinc-800 rounded-2xl py-4 px-8 pr-16 focus:outline-none focus:border-zinc-600 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-inner"
+                />
+                <button
+                  type="submit"
+                  disabled={!input.trim() || !activeChatId}
+                  className="absolute right-2.5 w-11 h-11 bg-white text-black rounded-xl flex items-center justify-center hover:bg-zinc-200 transition-all disabled:opacity-50 disabled:bg-zinc-800 shadow-xl active:scale-95"
+                >
                   <Send size={20} />
-                )}
-              </button>
-            </form>
-            <p className="text-[10px] text-zinc-700 text-center mt-6 uppercase tracking-[0.2em] font-black">
-              Persona AI • Respostas baseadas em dados sintéticos
-            </p>
+                </button>
+              </form>
+              <p className="text-[10px] text-zinc-700 text-center mt-6 uppercase tracking-[0.2em] font-black">
+                Persona AI • Respostas baseadas em dados sintéticos
+              </p>
+            </div>
           </div>
         </main>
 

@@ -22,6 +22,11 @@ export interface PersonaForAI {
   ethnicity: string;
   civilStatus: string;
   occupation: string;
+  // Ideological 2D positioning
+  clusterId?: string;
+  clusterName?: string;
+  scoreEconomico?: number;
+  scoreCostumes?: number;
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
@@ -162,7 +167,46 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    • Ateu: Sem expressões religiosas, pode ATACAR religião ("esse papo de deus é ó 🤡", "religião é ópio"). Humor ácido sobre crença alheia.
    • Matriz Africana: "Axé", "Salve", pode reclamar de intolerância religiosa
 
-10. POSICIONAMENTO POLÍTICO — GERA EXATAMENTE O QUE O PERFIL FARIA:
+10. POSICIONAMENTO IDEOLÓGICO 2D — REGRA CRUCIAL PARA FIDELIDADE POLÍTICA:
+
+   Cada persona possui dois scores ideológicos que definem sua posição PRECISA:
+
+   ★ SCORE ECONÔMICO (-1.0 a +1.0):
+   • -1.0 = Estado forte, redistributivo (ex: defende Bolsa Família, SUS universal, taxação de ricos)
+   • 0.0 = Centro econômico (pragmático, aceita mercado E estado)
+   • +1.0 = Mercado livre, Estado mínimo (ex: quer privatizar tudo, reduzir impostos, desregulamentar)
+
+   ★ SCORE COSTUMES (-1.0 a +1.0):
+   • -1.0 = Progressista total (defende direitos LGBTQ+, legalização drogas, feminismo, secularismo)
+   • 0.0 = Neutro/moderado em costumes
+   • +1.0 = Conservador total (contra aborto, contra casamento gay, pró-família tradicional, pró-religião no Estado)
+
+   ★ CLUSTER IDEOLÓGICO — cada persona pertence a 1 dos 24 clusters:
+   PROGRESSISTAS: P1=Base Social, P2=Trabalhista, P3=Progressista Urbano, P4=Regulador Técnico, P5=Desenvolvimentista, P6=Centro-Esquerda Moderada
+   MODERADOS: M1=Centro Econômico, M2=Centro Conservador, M3=Institucional, M4=Gestor Pragmático, M5=Volátil Econômico, M6=Empreendedor Urbano, M7=Classe Média Sensível, M8=Cético Político
+   CONSERVADORES: C1=Liberal de Mercado, C2=Conservador Religioso, C3=Nacionalista, C4=Linha Dura Segurança, C5=Antissistema, C6=Pequeno Empresário, C7=Direita Digital, C8=Conservador Tradicional
+   TRANSVERSAIS: T1=Desengajado, T2=Anti-Incumbente
+
+   ★ COMO USAR OS SCORES NA SIMULAÇÃO:
+   • Score econômico NEGATIVO + tema sobre governo/economia → tende a DEFENDER políticas redistributivas
+   • Score econômico POSITIVO + tema sobre governo/economia → tende a CRITICAR intervenção estatal
+   • Score costumes POSITIVO + tema social (LGBTQ+, drogas, aborto) → conservador, usa religião
+   • Score costumes NEGATIVO + tema social → progressista, defende liberdades
+
+   ★ REGRA DA VARIAÇÃO INDIVIDUAL — CRÍTICA:
+   Duas personas no MESMO cluster podem ter respostas DIFERENTES. Se ambas são P6 (Centro-Esquerda Moderada), mas uma tem score_economico=-0.23 e outra -0.31, a segunda é MAIS de esquerda. Scores próximos de 0 geram opiniões mais DIVIDIDAS e AMBÍGUAS. Scores extremos geram opiniões FORTES.
+
+   ★ REGRA DO SENSO CRÍTICO POR ESCOLARIDADE:
+   Pessoa com alta escolaridade + score de esquerda pode AINDA ASSIM reconhecer problemas do seu lado político. Ex: "Sou de esquerda sim mas não sou cego, corrupção é corrupção" — isso é REALISTA para alguém com Mestrado e score -0.3. Já alguém com Fundamental e score -0.8 defende cegamente por lealdade.
+   Da mesma forma, pessoa culta de direita pode criticar excessos do próprio lado.
+
+   ★ SOBRE FIGURAS POLÍTICAS — CONTEXTO OBRIGATÓRIO:
+   Quando o tema mencionar figuras políticas, considere:
+   • Lula: Líder do PT (esquerda). Personas com score_economico < -0.3 tendem a apoiar/defender. Personas com score > 0.3 tendem a atacar. PORÉM escolaridade alta MESMO de esquerda pode reconhecer problemas de corrupção (Mensalão, Lava Jato). Defender ≠ ser cego.
+   • Bolsonaro: Líder da direita conservadora. Personas com score_costumes > 0.5 E score_economico > 0.2 tendem a apoiar. Progressistas atacam.
+   • O cluster e os scores determinam a INTENSIDADE e DIREÇÃO da opinião, mas NUNCA resulte em 0% ou 100% de concordância em qualquer grupo — isso não reflete a realidade brasileira.
+
+11. POSICIONAMENTO POLÍTICO — GERA EXATAMENTE O QUE O PERFIL FARIA:
 
    ★ EXTREMA DIREITA / DIREITA CONSERVADORA:
    O comentário DEVE conter opiniões FORTES e PRECONCEITUOSAS quando o tema permitir:
@@ -278,7 +322,11 @@ export function buildUserPrompt(question: string, personas: PersonaForAI[]): str
       : p.sentiment === 'negative' ? 'DISCORDA/CRITICA'
       : 'INDECISO/NEUTRO';
 
-    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion} | Sentimento: ${sentimentLabel}`;
+    const ideologyPart = p.scoreEconomico != null && p.scoreCostumes != null
+      ? ` | Cluster: ${p.clusterId || '?'}(${p.clusterName || '?'}) | ScoreEco: ${p.scoreEconomico.toFixed(3)} | ScoreCost: ${p.scoreCostumes.toFixed(3)}`
+      : '';
+
+    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion}${ideologyPart} | Sentimento: ${sentimentLabel}`;
   }).join('\n');
 
   return `TEMA: "${question}"
@@ -288,7 +336,7 @@ GERE 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 ⚠️ CHECKLIST OBRIGATÓRIO PRA CADA COMENTÁRIO:
 1. ESCOLARIDADE → Fundamental = MUITOS erros ("nois", "concerteza", "mim fazer", sem acentos). Superior/Pós = correto mas CASUAL.
 2. ESTADO → Use gírias DAQUELE estado (oxe, uai, bah, mano, mermão). OBRIGATÓRIO.
-3. POLÍTICO → Direita em tema social = preconceito REAL. Esquerda = ataque a elite. CENTRO = pode zoar os dois lados.
+3. POLÍTICO + SCORES 2D → Use ScoreEco e ScoreCost para calibrar INTENSIDADE. Score perto de 0 = opinião dividida/ambígua. Score extremo = opinião forte. Escolaridade alta + score moderado = pode criticar o PRÓPRIO lado.
 4. RELIGIÃO → Evangélico = cita Deus/Bíblia SEMPRE. Ateu = pode atacar religião.
 5. GERAÇÃO → Gen Z = abreviações (vc, pq, slk, mds, kkkkk, 💀). Boomer = MAIÚSCULA, "!!!", "???".
 6. PROFISSÃO → Pedreiro ≠ advogado. A vivência muda opinião E vocabulário.

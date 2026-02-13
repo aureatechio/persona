@@ -29,6 +29,10 @@ export interface PersonaContext {
   areaType: string;
   archetypeId: string;
   name: string;
+  // Ideological 2D positioning
+  clusterName?: string;
+  scoreEconomico?: number;
+  scoreCostumes?: number;
 }
 
 export interface WritingStyle {

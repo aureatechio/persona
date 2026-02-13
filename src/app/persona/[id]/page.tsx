@@ -124,6 +124,9 @@ export default function PersonaProfilePage() {
                   <MapPin size={18} />
                   {persona.age} anos • {persona.city}, {persona.state}
                 </p>
+                {persona.apelido_politico && (
+                  <p className="text-zinc-400 text-sm font-medium mb-4">&ldquo;{persona.apelido_politico}&rdquo;</p>
+                )}
                 <div className="flex flex-wrap gap-3 justify-center md:justify-start">
                   <span className="px-4 py-2 bg-amber-500/10 text-amber-400 rounded-2xl text-sm font-bold border border-amber-500/20">
                     {archetypePrimary}
@@ -134,6 +137,12 @@ export default function PersonaProfilePage() {
                   <span className="px-4 py-2 bg-purple-500/10 text-purple-400 rounded-2xl text-sm font-bold border border-purple-500/20">
                     {socialClass}
                   </span>
+                  {persona.nome_grupo && (
+                    <span className="px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-2xl text-sm font-bold border border-emerald-500/20">
+                      {persona.cluster_id && <span className="opacity-60 mr-1.5">{persona.cluster_id}</span>}
+                      {persona.nome_grupo}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -293,6 +302,89 @@ function OverviewTab({ persona }: { persona: any }) {
           <div className="text-zinc-400 text-xs mt-2">{ibge?.perfil_regional_ibge}</div>
         </div>
       </SectionCard>
+
+      {/* Posicionamento Ideológico 2D */}
+      {(persona.score_economico != null && persona.score_costumes != null) && (
+        <SectionCard title="Posicionamento Ideológico 2D" icon={Target} className="md:col-span-2 lg:col-span-3">
+          <div className="flex flex-col lg:flex-row gap-8 items-start">
+            {/* 2D Chart */}
+            <div className="relative w-full max-w-[320px] aspect-square mx-auto lg:mx-0">
+              {/* Grid background */}
+              <div className="absolute inset-0 bg-zinc-900/50 rounded-2xl border border-zinc-800/50 overflow-hidden">
+                {/* Quadrant colors */}
+                <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-blue-500/[0.03]" />
+                <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-violet-500/[0.03]" />
+                <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-red-500/[0.03]" />
+                <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-amber-500/[0.03]" />
+                {/* Grid lines */}
+                <div className="absolute left-1/2 top-0 w-px h-full bg-zinc-700/40" />
+                <div className="absolute top-1/2 left-0 h-px w-full bg-zinc-700/40" />
+                {/* Persona dot */}
+                <div
+                  className="absolute w-4 h-4 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/40 -translate-x-1/2 -translate-y-1/2 ring-2 ring-emerald-400/20 z-10"
+                  style={{
+                    left: `${((persona.score_economico + 1) / 2) * 100}%`,
+                    top: `${((persona.score_costumes + 1) / 2) * 100}%`,
+                  }}
+                />
+              </div>
+              {/* Axis labels */}
+              <span className="absolute -left-2 top-1/2 -translate-y-1/2 -translate-x-full text-[9px] text-zinc-500 font-bold whitespace-nowrap">Estado forte</span>
+              <span className="absolute -right-2 top-1/2 -translate-y-1/2 translate-x-full text-[9px] text-zinc-500 font-bold whitespace-nowrap">Mercado livre</span>
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full text-[9px] text-zinc-500 font-bold pb-1">Progressista</span>
+              <span className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-full text-[9px] text-zinc-500 font-bold pt-1">Conservador</span>
+            </div>
+
+            {/* Details */}
+            <div className="flex-1 space-y-6">
+              {persona.nome_grupo && (
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-2">Cluster Ideológico</p>
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
+                    <span className="text-emerald-400/60 font-bold text-sm">{persona.cluster_id}</span>
+                    <span className="text-emerald-400 font-bold text-sm">{persona.nome_grupo}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-1">Eixo Econômico</p>
+                  <p className="text-2xl font-bold text-white">{persona.score_economico?.toFixed(3)}</p>
+                  <div className="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-red-500 via-zinc-400 to-blue-500 rounded-full"
+                      style={{ width: '100%', clipPath: `inset(0 ${100 - ((persona.score_economico + 1) / 2) * 100}% 0 0)` }}
+                    />
+                  </div>
+                  <p className="text-[9px] text-zinc-500 mt-1">
+                    {persona.score_economico < -0.3 ? 'Redistributivo' : persona.score_economico > 0.3 ? 'Pró-mercado' : 'Centro econômico'}
+                  </p>
+                </div>
+
+                <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-1">Eixo Costumes</p>
+                  <p className="text-2xl font-bold text-white">{persona.score_costumes?.toFixed(3)}</p>
+                  <div className="mt-2 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-violet-500 via-zinc-400 to-amber-500 rounded-full"
+                      style={{ width: '100%', clipPath: `inset(0 ${100 - ((persona.score_costumes + 1) / 2) * 100}% 0 0)` }}
+                    />
+                  </div>
+                  <p className="text-[9px] text-zinc-500 mt-1">
+                    {persona.score_costumes < -0.3 ? 'Progressista' : persona.score_costumes > 0.3 ? 'Conservador' : 'Neutro'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-xs text-zinc-500 space-y-1">
+                <p>Orientação política: <span className="text-zinc-300">{persona.political_leaning}</span></p>
+                <p>Voto 2022 baseado no perfil do cluster</p>
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }

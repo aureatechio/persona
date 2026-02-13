@@ -22,7 +22,7 @@ from supabase import create_client
 
 SUPABASE_URL = "https://sobfplitrzgggzqsycew.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvYmZwbGl0cnpnZ2d6cXN5Y2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzMTY4NTgsImV4cCI6MjA4Mzg5Mjg1OH0.0UOS6R0j7QwO6N7QIgrksA9iXr_82kL2a1QGjdTlsGA"
-CSV_PATH = "/Users/arthurcavallini/Downloads/personas_2002_IBGE_LIKE_MACRO_REGIONAL_CLEAN - personas_2002_IBGE_LIKE_MACRO_REGIONAL_CLEAN.csv.csv"
+CSV_PATH = "/Users/arthurcavallini/Downloads/personas_2002_IBGE_like_clusters_2D_variacao.csv"
 MARIANA_ID = "b94accc1-7a04-4051-9d09-500b1ede7df0"
 BATCH_SIZE = 25
 
@@ -1406,6 +1406,13 @@ def build_persona(row):
     religiao_csv = row["religiao"]
     voto = row["voto_2022"]
 
+    # New 2D ideological fields
+    apelido_politico = row.get("apelido_politico", "")
+    cluster_id = row.get("cluster_id", "")
+    nome_grupo = row.get("nome_grupo", "")
+    score_economico = float(row.get("score_economico", 0))
+    score_costumes = float(row.get("score_costumes", 0))
+
     # Derived fields
     lat, lng = get_coords(city, state)
     education_level = map_education(escolaridade)
@@ -1439,6 +1446,12 @@ def build_persona(row):
         "cronotype": cronotype,
         "region_br": region,
         "area_type": area_type,
+        # New 2D ideological fields
+        "apelido_politico": apelido_politico,
+        "cluster_id": cluster_id,
+        "nome_grupo": nome_grupo,
+        "score_economico": score_economico,
+        "score_costumes": score_costumes,
         # Internal fields for generators (removed before DB insert)
         "_porte": porte,
         "_escolaridade_detalhada": escolaridade,

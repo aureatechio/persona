@@ -19,27 +19,32 @@ export async function proxy(request: NextRequest) {
         return request.cookies.getAll();
       },
       setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) => {
-          request.cookies.set(name, value);
-        });
-        response = NextResponse.next({
-          request: { headers: request.headers },
-        });
         cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value);
           response.cookies.set(name, value, options);
         });
       },
     },
   });
 
-  // CRITICAL: getUser() refreshes the token if expired.
-  // This keeps the session alive between requests and prevents session loss.
-  const { data: { user } } = await supabase.auth.getUser();
+  // CRITICAL: getUser() validates the token with the Supabase server
+  // and automatically refreshes expired tokens via the setAll callback.
+  // This keeps the session alive across page reloads.
+  // DO NOT replace with getSession() — it only reads cookies without validation.
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  
+  console.log(`[Proxy] ${request.nextUrl.pathname} → user: ${user?.email ?? 'none'}, error: ${userError?.message ?? 'none'}`);
 
   const { pathname } = request.nextUrl;
 
   // Public routes that don't need auth
   const isPublicRoute = pathname === '/login';
+
+  // Skip auth check for API routes (they handle their own auth)
+  const isApiRoute = pathname.startsWith('/api');
+  if (isApiRoute) {
+    return response;
+  }
 
   // Not logged in and not on public route → redirect to login
   if (!user && !isPublicRoute) {
@@ -60,6 +65,13 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization)
+     * - favicon.ico
+     * - Static assets (svg, png, jpg, etc.)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };

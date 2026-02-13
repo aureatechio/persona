@@ -1,6 +1,6 @@
 'use client';
 
-import { List, Map as MapIcon, MessageSquare, User, Settings, LogOut, Users, Megaphone, Activity } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,18 +20,19 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
 
   const menuItems = [
     { id: 'arena', label: 'Pulse Arena', icon: Activity, active: pathname === '/', href: '/' },
-    { id: 'grid', label: 'Lista de Personas', icon: List, active: view === 'grid' && isPersonas, href: '/personas' },
-    { id: 'map', label: 'Mapa Interativo', icon: MapIcon, active: view === 'map' && isPersonas, href: '/personas' },
+    { id: 'grid', label: 'Lista de Personas', icon: List, active: view === 'grid' && isPersonas, href: '/personas?view=grid' },
+    { id: 'map', label: 'Mapa Interativo', icon: MapIcon, active: view === 'map' && isPersonas, href: '/personas?view=map' },
   ];
 
   const handleNavigation = (item: any) => {
     const isHomeView = item.id === 'grid' || item.id === 'map';
     if (isPersonas && setView && isHomeView) {
       setView(item.id as 'grid' | 'map');
+      onClose();
     } else {
       router.push(item.href);
+      onClose();
     }
-    onClose();
   };
 
   return (
@@ -75,18 +76,6 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
                 <span className="text-sm">{item.label}</span>
               </button>
             ))}
-
-            <button
-                onClick={() => handleNavigation({ id: 'campanhas', href: '/campanhas' })}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
-                  pathname === '/campanhas'
-                    ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Megaphone size={20} />
-                <span className="text-sm">Campanhas</span>
-              </button>
 
             {profile?.user_type === 'admin' && (
               <button

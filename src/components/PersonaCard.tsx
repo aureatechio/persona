@@ -22,11 +22,32 @@ interface PersonaCardProps {
     cronotype?: string;
     region_br?: string;
     area_type?: string;
+    apelido_politico?: string;
+    cluster_id?: string;
+    nome_grupo?: string;
+    score_economico?: number;
+    score_costumes?: number;
     psychology_json: any;
     career_json: any;
     beliefs_json: any;
     demographic_json: any;
   };
+}
+
+function IdeologyDot({ scoreEco, scoreCost }: { scoreEco: number; scoreCost: number }) {
+  // Map -1..+1 to 0..100%
+  const left = ((scoreEco + 1) / 2) * 100;
+  const top = ((scoreCost + 1) / 2) * 100;
+  return (
+    <div className="relative w-10 h-10 bg-zinc-800/60 rounded-lg border border-zinc-700/30 shrink-0" title={`Eco: ${scoreEco.toFixed(2)} | Cost: ${scoreCost.toFixed(2)}`}>
+      <div className="absolute w-px h-full left-1/2 top-0 bg-zinc-700/40" />
+      <div className="absolute h-px w-full top-1/2 left-0 bg-zinc-700/40" />
+      <div
+        className="absolute w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50 -translate-x-1/2 -translate-y-1/2"
+        style={{ left: `${left}%`, top: `${top}%` }}
+      />
+    </div>
+  );
 }
 
 export function PersonaCard({ persona }: PersonaCardProps) {
@@ -37,6 +58,8 @@ export function PersonaCard({ persona }: PersonaCardProps) {
   const disc = persona.psychology_json?.disc_profile;
   const maritalStatus = persona.civil_status || persona.demographic_json?.familia_e_estado_civil?.estado_civil || 'Não informado';
   const income = persona.demographic_json?.renda_e_financas?.renda_mensal_individual;
+  const clusterLabel = persona.nome_grupo || null;
+  const hasScores = persona.score_economico != null && persona.score_costumes != null;
 
   // Encontrar o perfil DISC dominante
   const discDominante = persona.disc_main_factor || (disc ? Object.entries(disc).reduce((a, b) => (a[1] as number) > (b[1] as number) ? a : b)[0] : null);
@@ -69,8 +92,16 @@ export function PersonaCard({ persona }: PersonaCardProps) {
             <MapPin size={14} className="mr-1.5 shrink-0" />
             <span className="truncate">{persona.age} anos • {persona.city}, {persona.state}</span>
           </div>
-          <div className="mt-2 inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700">
-            {archetype}
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-zinc-800 text-zinc-400 border border-zinc-700">
+              {archetype}
+            </span>
+            {clusterLabel && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                {persona.cluster_id && <span className="opacity-60">{persona.cluster_id}</span>}
+                {clusterLabel}
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -95,9 +126,14 @@ export function PersonaCard({ persona }: PersonaCardProps) {
 
         <div className="flex items-start gap-3">
           <Shield size={16} className="text-zinc-600 mt-0.5 shrink-0" />
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-0.5">Política</p>
-            <p className="text-sm text-zinc-300 font-medium line-clamp-1">{politics}</p>
+          <div className="flex items-center gap-2">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-0.5">Política</p>
+              <p className="text-sm text-zinc-300 font-medium line-clamp-1">{politics}</p>
+            </div>
+            {hasScores && (
+              <IdeologyDot scoreEco={persona.score_economico!} scoreCost={persona.score_costumes!} />
+            )}
           </div>
         </div>
 
