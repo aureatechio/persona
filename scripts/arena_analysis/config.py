@@ -50,9 +50,10 @@ class Settings:
     )
 
     # Batching (por provider)
-    batch_size: int = 15  # personas por batch
-    max_parallel_claude: int = 5  # batches Claude simultaneos
-    max_parallel_openai: int = 10  # batches OpenAI simultaneos (rate limit maior)
+    batch_size: int = 25  # personas por batch (mais = menos API calls)
+    max_parallel_claude: int = 5  # batches Claude simultaneos (rate limit baixo)
+    max_parallel_openai: int = 15  # batches OpenAI simultaneos (rate limit alto)
+    claude_share: float = 0.30  # 30% dos batches pro Claude, 70% pro GPT
     max_tokens_per_batch: int = 4096  # tokens de saida por batch
 
     # Web search

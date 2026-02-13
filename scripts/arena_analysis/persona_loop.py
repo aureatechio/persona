@@ -223,11 +223,11 @@ class PersonaLoop:
         total = len(personas)
         batches = _chunk_list(personas, settings.batch_size)
 
-        # Divide batches: metade Claude, metade GPT (se disponível)
+        # Divide batches: 30% Claude, 70% GPT (GPT tem rate limit maior)
         if self._has_openai:
-            mid = len(batches) // 2
-            claude_batches = batches[:mid]
-            openai_batches = batches[mid:]
+            split = max(1, int(len(batches) * settings.claude_share))
+            claude_batches = batches[:split]
+            openai_batches = batches[split:]
             print(
                 f"[PersonaLoop] {total} personas, {len(batches)} batches | "
                 f"Claude: {len(claude_batches)} batches (max {settings.max_parallel_claude}p) | "
