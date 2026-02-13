@@ -257,6 +257,7 @@ export default function ArenaPage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    let hasResults = false;
     try {
       // ── Try Python SSE backend ──────────────────────────────────────
       const arenaApi = process.env.NEXT_PUBLIC_ARENA_API || '/api/arena';
@@ -275,7 +276,6 @@ export default function ArenaPage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let streamDone = false;
-      let hasResults = false;
 
       while (true) {
         const { done, value } = await reader.read();

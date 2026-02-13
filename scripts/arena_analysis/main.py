@@ -210,6 +210,7 @@ async def analyze(request: AnalyzeRequest):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
         },
     )
 
@@ -227,4 +228,4 @@ if __name__ == "__main__":
     print(f"  Claude: max {settings.max_parallel_claude}p | GPT: max {settings.max_parallel_openai}p")
     print(f"  Starting on http://localhost:{port}")
     print(f"  Docs: http://localhost:{port}/docs\n")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
