@@ -4,10 +4,10 @@ import type { QuadrantResult, Quadrant } from '@/lib/arena/types';
 import { CLUSTERS } from '@/lib/arena/constants';
 
 const QUADRANT_CONFIG: Record<Quadrant, { icon: string; gradient: string; border: string; text: string; bg: string }> = {
-  esq_progressista: { icon: '🟢', gradient: 'from-emerald-500/10 to-emerald-600/5', border: 'border-emerald-500/20', text: 'text-emerald-400', bg: 'bg-emerald-500' },
-  esq_conservador: { icon: '🟡', gradient: 'from-amber-500/10 to-amber-600/5', border: 'border-amber-500/20', text: 'text-amber-400', bg: 'bg-amber-500' },
-  dir_conservador: { icon: '🔴', gradient: 'from-rose-500/10 to-rose-600/5', border: 'border-rose-500/20', text: 'text-rose-400', bg: 'bg-rose-500' },
-  dir_progressista: { icon: '🔵', gradient: 'from-indigo-500/10 to-indigo-600/5', border: 'border-indigo-500/20', text: 'text-indigo-400', bg: 'bg-indigo-500' },
+  esq_progressista: { icon: '🔴', gradient: 'from-rose-500/10 to-rose-600/5', border: 'border-rose-500/20', text: 'text-rose-400', bg: 'bg-rose-500' },
+  esq_conservador: { icon: '🔵', gradient: 'from-sky-500/10 to-sky-600/5', border: 'border-sky-500/20', text: 'text-sky-400', bg: 'bg-sky-500' },
+  dir_conservador: { icon: '🔵', gradient: 'from-sky-500/10 to-sky-600/5', border: 'border-sky-500/20', text: 'text-sky-400', bg: 'bg-sky-500' },
+  dir_progressista: { icon: '🔴', gradient: 'from-rose-500/10 to-rose-600/5', border: 'border-rose-500/20', text: 'text-rose-400', bg: 'bg-rose-500' },
 };
 
 const QUADRANT_ORDER: Quadrant[] = ['esq_progressista', 'dir_progressista', 'esq_conservador', 'dir_conservador'];

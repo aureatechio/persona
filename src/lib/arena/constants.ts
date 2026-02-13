@@ -44,10 +44,10 @@ export const CLUSTERS = [
 ];
 
 export const MACRO_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  Progressista: { bg: 'bg-emerald-500/10', text: 'text-emerald-400', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
-  Moderado: { bg: 'bg-amber-500/10', text: 'text-amber-400', border: 'border-amber-500/20', dot: 'bg-amber-400' },
-  Conservador: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20', dot: 'bg-rose-400' },
-  Transversal: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/20', dot: 'bg-sky-400' },
+  Progressista: { bg: 'bg-rose-500/10', text: 'text-rose-400', border: 'border-rose-500/20', dot: 'bg-rose-400' },
+  Moderado: { bg: 'bg-zinc-400/10', text: 'text-zinc-300', border: 'border-zinc-400/20', dot: 'bg-zinc-300' },
+  Conservador: { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/20', dot: 'bg-sky-400' },
+  Transversal: { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20', dot: 'bg-violet-400' },
 };
 
 export const MACRO_GROUPS = ['Progressista', 'Moderado', 'Conservador', 'Transversal'] as const;

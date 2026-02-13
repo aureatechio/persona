@@ -44,16 +44,16 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
 
     ctx.globalAlpha = 0.04;
     // Top-left: Esq+Conservador
-    ctx.fillStyle = '#f59e0b';
+    ctx.fillStyle = '#38bdf8';
     ctx.fillRect(pad, pad, plotW / 2, plotH / 2);
     // Top-right: Dir+Conservador
-    ctx.fillStyle = '#f43f5e';
+    ctx.fillStyle = '#38bdf8';
     ctx.fillRect(cx, pad, plotW / 2, plotH / 2);
     // Bottom-left: Esq+Progressista
-    ctx.fillStyle = '#10b981';
+    ctx.fillStyle = '#f43f5e';
     ctx.fillRect(pad, cy, plotW / 2, plotH / 2);
     // Bottom-right: Dir+Progressista
-    ctx.fillStyle = '#6366f1';
+    ctx.fillStyle = '#f43f5e';
     ctx.fillRect(cx, cy, plotW / 2, plotH / 2);
     ctx.globalAlpha = 1;
 
@@ -95,13 +95,13 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
     // Quadrant labels
     ctx.font = 'bold 12px Manrope, sans-serif';
     ctx.globalAlpha = 0.45;
-    ctx.fillStyle = '#10b981';
-    ctx.fillText('Esq + Progressista', pad + plotW * 0.25, pad + plotH * 0.92);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillText('Esq + Conservador', pad + plotW * 0.25, pad + plotH * 0.08);
     ctx.fillStyle = '#f43f5e';
+    ctx.fillText('Esq + Progressista', pad + plotW * 0.25, pad + plotH * 0.92);
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('Esq + Conservador', pad + plotW * 0.25, pad + plotH * 0.08);
+    ctx.fillStyle = '#38bdf8';
     ctx.fillText('Dir + Conservador', pad + plotW * 0.75, pad + plotH * 0.08);
-    ctx.fillStyle = '#6366f1';
+    ctx.fillStyle = '#f43f5e';
     ctx.fillText('Dir + Progressista', pad + plotW * 0.75, pad + plotH * 0.92);
     ctx.globalAlpha = 1;
 
@@ -186,7 +186,7 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
   return (
     <div className="mb-8">
       <div className="flex items-center gap-2.5 mb-4 px-1">
-        <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-emerald-500/20 to-violet-500/20 flex items-center justify-center">
+        <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-rose-500/20 to-sky-500/20 flex items-center justify-center">
           <div className="w-2 h-2 rounded-full bg-white/50" />
         </div>
         <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-400">

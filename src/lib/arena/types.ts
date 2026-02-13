@@ -130,3 +130,37 @@ export interface EnhancedSimulationResult extends SimulationResult {
   politicalFigures: PoliticalFigureDetection[];
   intensityBands: IntensityBand[];
 }
+
+// ── SSE Event Types (Python Arena Backend) ──────────────────────────────────
+
+export type ArenaSSEEventType =
+  | 'phase'
+  | 'web_complete'
+  | 'context'
+  | 'validation'
+  | 'personas_loaded'
+  | 'progress'
+  | 'results'
+  | 'done';
+
+export interface ArenaSSEContext {
+  tema: string;
+  contexto: string;
+  figuras: Array<{ nome: string; cargo: string; relevancia?: string }>;
+  periodo: string;
+}
+
+export interface ArenaSSEProgress {
+  processed: number;
+  total: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export interface ArenaSSEDone {
+  processing_time_ms: number;
+  total_personas: number;
+  total_comments: number;
+  total_tokens: number;
+}

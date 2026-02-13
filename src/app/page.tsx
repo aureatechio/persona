@@ -20,7 +20,7 @@ import {
 import { DashboardAnalytics } from '@/components/DashboardAnalytics';
 
 // ── Arena modules ────────────────────────────────────────────────────────────
-import type { Phase, CommentResult, EnhancedSimulationResult } from '@/lib/arena';
+import type { Phase, Sentiment, CommentResult, EnhancedSimulationResult } from '@/lib/arena';
 import {
   CLUSTERS,
   MACRO_COLORS,
@@ -30,7 +30,6 @@ import {
   detectTopics,
   buildPersonasForAI,
   generateAIComments,
-  generateOpenAIComments,
   runEnhancedSimulation,
 } from '@/lib/arena';
 
@@ -62,13 +61,16 @@ export default function ArenaPage() {
   const [personaCount, setPersonaCount] = useState(2000);
   const [showComments, setShowComments] = useState(false);
   const [allPersonas, setAllPersonas] = useState<any[]>([]);
-  const [openaiComments, setOpenaiComments] = useState<CommentResult[]>([]);
-  const [activeModel, setActiveModel] = useState<'claude' | 'openai'>('claude');
   const [selectedCluster, setSelectedCluster] = useState<string | null>(null);
   const [clusterDropdownOpen, setClusterDropdownOpen] = useState(false);
   const [effectivePersonaCount, setEffectivePersonaCount] = useState(0);
+  const [pipelinePhase, setPipelinePhase] = useState('');
+  const [contextPreview, setContextPreview] = useState<{ tema: string; figuras: any[]; periodo: string } | null>(null);
+  const [commentsToShow, setCommentsToShow] = useState(30);
+  const [commentFilter, setCommentFilter] = useState<'all' | Sentiment>('all');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   // Canvas refs
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -247,93 +249,168 @@ export default function ArenaPage() {
     setProcessedCount(0);
     setSimulation(null);
     setShowComments(false);
-    setOpenaiComments([]);
-    setActiveModel('claude');
+    setPipelinePhase('Analisando personas...');
+    setContextPreview(null);
+    setCommentsToShow(30);
+    setCommentFilter('all');
+
+    // Abort previous request if any
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      // 1. Start counter animation immediately (loading feedback)
-      const animDuration = 5000;
-      const animStart = performance.now();
-      let animStopped = false;
-      let currentEffectiveCount = personaCount;
-      let enhancedResult: EnhancedSimulationResult | null = null;
-      let metricsRevealed = false;
+      // ── Try Python SSE backend ──────────────────────────────────────
+      const response = await fetch('/api/arena/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, cluster_filter: selectedCluster || null }),
+        signal: controller.signal,
+      });
 
-      const animateProcessing = (time: number) => {
-        if (animStopped) return;
-        const elapsed = time - animStart;
-        const progress = Math.min(elapsed / animDuration, 1);
-        const eased = 1 - Math.pow(1 - progress, 2);
-        setProcessedCount(Math.round(currentEffectiveCount * eased));
+      if (!response.ok || !response.body) {
+        throw new Error('Python backend unavailable');
+      }
 
-        if (!metricsRevealed && enhancedResult && progress >= 0.7) {
-          metricsRevealed = true;
-          setSimulation({ ...enhancedResult, comments: [] });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let streamDone = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const chunks = buffer.split('\n\n');
+        buffer = chunks.pop() || '';
+
+        for (const chunk of chunks) {
+          const line = chunk.trim();
+          if (!line.startsWith('data: ')) continue;
+
+          try {
+            const payload = JSON.parse(line.slice(6));
+
+            switch (payload.type) {
+              case 'phase':
+                setPipelinePhase(payload.data.message);
+                break;
+
+              case 'context':
+                setContextPreview({
+                  tema: payload.data.tema || '',
+                  figuras: payload.data.figuras || [],
+                  periodo: payload.data.periodo || '',
+                });
+                break;
+
+              case 'personas_loaded':
+                setEffectivePersonaCount(payload.data.count);
+                break;
+
+              case 'progress':
+                setProcessedCount(payload.data.processed);
+                setEffectivePersonaCount(payload.data.total);
+                setSimulation(prev => ({
+                  total: payload.data.total,
+                  positive: payload.data.positive,
+                  negative: payload.data.negative,
+                  neutral: payload.data.neutral,
+                  archetypes: prev?.archetypes || [],
+                  clusterResults: prev?.clusterResults || [],
+                  comments: prev?.comments || [],
+                  processingTime: prev?.processingTime || 0,
+                  ideologicalPoints: prev?.ideologicalPoints || [],
+                  quadrants: prev?.quadrants || [],
+                  regions: prev?.regions || [],
+                  generations: prev?.generations || [],
+                  educationLevels: prev?.educationLevels || [],
+                  politicalFigures: prev?.politicalFigures || [],
+                  intensityBands: prev?.intensityBands || [],
+                }));
+                break;
+
+              case 'results':
+                setSimulation(payload.data as EnhancedSimulationResult);
+                break;
+
+              case 'done':
+                streamDone = true;
+                setProcessedCount(payload.data.total_personas);
+                setPhase('results');
+                setTimeout(() => setShowComments(true), 800);
+                break;
+            }
+          } catch (parseErr) {
+            console.warn('[Arena] SSE parse error:', parseErr);
+          }
         }
+      }
 
-        if (progress < 1) {
-          requestAnimationFrame(animateProcessing);
-        }
-      };
-      requestAnimationFrame(animateProcessing);
+      // Safety: if stream ended without explicit 'done' event
+      if (!streamDone) {
+        setPhase('results');
+        setTimeout(() => setShowComments(true), 800);
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
 
-      // 2. Lazy-load personas
-      const allData = await loadAllPersonas();
+      // ── Fallback: JS simulation ─────────────────────────────────────
+      console.warn('[Arena] Python backend offline, fallback JS:', err);
+      setPipelinePhase('Analisando personas...');
 
-      // 3. Filter by cluster if selected
-      const targetPersonas = selectedCluster
-        ? allData.filter((p: any) => p.cluster_id === selectedCluster)
-        : allData;
-      const effectiveCount = selectedCluster ? targetPersonas.length : personaCount;
-      currentEffectiveCount = effectiveCount;
-      setEffectivePersonaCount(effectiveCount);
+      try {
+        const allData = await loadAllPersonas();
+        const targetPersonas = selectedCluster
+          ? allData.filter((p: any) => p.cluster_id === selectedCluster)
+          : allData;
+        const effectiveCount = targetPersonas.length || personaCount;
+        setEffectivePersonaCount(effectiveCount);
 
-      // 4. Run enhanced simulation (sync — includes all 2D analysis)
-      const enhanced = runEnhancedSimulation(q, effectiveCount, targetPersonas);
-      enhancedResult = enhanced;
+        // Animate counter
+        const animDuration = 5000;
+        const animStart = performance.now();
+        let animStopped = false;
 
-      // 5. Build persona list for AI
-      const topicScores = detectTopics(q);
-      const personasForAI = buildPersonasForAI(q, targetPersonas, topicScores);
+        const animateCount = (time: number) => {
+          if (animStopped) return;
+          const progress = Math.min((time - animStart) / animDuration, 1);
+          const eased = 1 - Math.pow(1 - progress, 2);
+          setProcessedCount(Math.round(effectiveCount * eased));
+          if (progress < 1) requestAnimationFrame(animateCount);
+        };
+        requestAnimationFrame(animateCount);
 
-      // 6. Launch BOTH models in parallel
-      const claudePromise = generateAIComments(q, personasForAI);
-      const openaiPromise = generateOpenAIComments(q, personasForAI);
+        const enhanced = runEnhancedSimulation(q, effectiveCount, targetPersonas);
+        const topicScores = detectTopics(q);
+        const personasForAI = buildPersonasForAI(q, targetPersonas, topicScores);
+        const claudeComments = await generateAIComments(q, personasForAI);
 
-      // 7. Wait for BOTH to arrive
-      const [claudeComments, gptComments] = await Promise.all([claudePromise, openaiPromise]);
-
-      // 8. Stop animation and finalize
-      animStopped = true;
-
-      // 9. Store OpenAI comments separately
-      setOpenaiComments(gptComments);
-
-      // 10. Merge metrics + Claude comments as primary result
-      const fullResult: EnhancedSimulationResult = {
-        ...enhanced,
-        comments: claudeComments,
-      };
-
-      setSimulation(fullResult);
-      setProcessedCount(effectiveCount);
-      setPhase('results');
-      setTimeout(() => setShowComments(true), 800);
-    } catch (err) {
-      console.error('[Arena] Erro na análise:', err);
-      setPhase('idle');
+        animStopped = true;
+        setSimulation({ ...enhanced, comments: claudeComments });
+        setProcessedCount(effectiveCount);
+        setPhase('results');
+        setTimeout(() => setShowComments(true), 800);
+      } catch (fallbackErr) {
+        console.error('[Arena] Fallback also failed:', fallbackErr);
+        setPhase('idle');
+      }
     }
   }, [question, personaCount, selectedCluster, loadAllPersonas]);
 
   const handleReset = () => {
+    if (abortRef.current) abortRef.current.abort();
     setPhase('idle');
     setSimulation(null);
     setQuestion('');
     setSubmittedQuestion('');
     setProcessedCount(0);
     setShowComments(false);
-    setOpenaiComments([]);
-    setActiveModel('claude');
+    setPipelinePhase('');
+    setContextPreview(null);
+    setCommentsToShow(30);
+    setCommentFilter('all');
   };
 
   const pct = (n: number) =>
@@ -523,33 +600,6 @@ export default function ArenaPage() {
                 </div>
               </div>
 
-              {/* 10 Archetype Cards */}
-              <div className="w-full max-w-4xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600 text-center mb-5">
-                  10 Perfis de Personas na Análise
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                  {ARCHETYPES.map((arch, idx) => {
-                    const Icon = arch.icon;
-                    const count = Math.round(personaCount * BASE_DISTRIBUTION[idx]);
-                    return (
-                      <div
-                        key={arch.id}
-                        className={`group p-4 rounded-2xl bg-zinc-950/70 border ${arch.border} text-center transition-all duration-300 hover:scale-[1.05] hover:bg-zinc-950 animate-fade-in-up backdrop-blur-sm`}
-                        style={{ animationDelay: `${400 + idx * 80}ms` }}
-                      >
-                        <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${arch.gradient} mx-auto mb-2.5 flex items-center justify-center transition-transform group-hover:scale-110`}>
-                          <Icon size={18} className={arch.text} />
-                        </div>
-                        <p className="text-xs font-bold text-white mb-0.5">{arch.name}</p>
-                        <p className="text-[9px] text-zinc-500 mb-2 leading-tight">{arch.subtitle}</p>
-                        <p className={`text-lg font-black ${arch.text} tabular-nums`}>{count.toLocaleString('pt-BR')}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
             </div>
           )}
 
@@ -561,8 +611,15 @@ export default function ArenaPage() {
               {/* Processing Orb */}
               <ProcessingOrb />
 
+              {/* Pipeline Phase */}
+              {pipelinePhase && (
+                <p className="text-sm text-violet-400 font-medium mt-6 mb-1 animate-pulse">
+                  {pipelinePhase}
+                </p>
+              )}
+
               {/* Counter */}
-              <p className="text-5xl sm:text-6xl md:text-7xl font-black tabular-nums tracking-tight mt-8 mb-2 bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+              <p className="text-5xl sm:text-6xl md:text-7xl font-black tabular-nums tracking-tight mt-4 mb-2 bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
                 {processedCount.toLocaleString('pt-BR')}
               </p>
               <p className="text-sm text-zinc-500 mb-6">
@@ -586,8 +643,28 @@ export default function ArenaPage() {
                 </div>
               </div>
 
+              {/* Context Preview */}
+              {contextPreview && (
+                <div className="mt-4 px-6 py-4 rounded-2xl bg-zinc-950/80 border border-violet-500/20 max-w-lg backdrop-blur-sm animate-fade-in-up">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-violet-400/60 mb-2">Contexto Identificado</p>
+                  <p className="text-sm text-zinc-300 font-medium text-center">{contextPreview.tema}</p>
+                  {contextPreview.figuras.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3 justify-center">
+                      {contextPreview.figuras.map((f: any, i: number) => (
+                        <span key={i} className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-violet-500/10 text-violet-400 text-[10px] font-bold border border-violet-500/20">
+                          {f.nome} &middot; {f.cargo}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {contextPreview.periodo && (
+                    <p className="text-[10px] text-zinc-500 text-center mt-2">{contextPreview.periodo}</p>
+                  )}
+                </div>
+              )}
+
               {/* Submitted question */}
-              <div className="mt-8 px-6 py-4 rounded-2xl bg-zinc-950/80 border border-zinc-900 max-w-lg backdrop-blur-sm">
+              <div className="mt-4 px-6 py-4 rounded-2xl bg-zinc-950/80 border border-zinc-900 max-w-lg backdrop-blur-sm">
                 <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-2">Pergunta</p>
                 <p className="text-sm text-zinc-300 text-center leading-relaxed">&ldquo;{submittedQuestion}&rdquo;</p>
               </div>
@@ -717,27 +794,6 @@ export default function ArenaPage() {
                   </div>
                 </div>
 
-                {/* ── Archetype Breakdown ──────────────────────────────── */}
-                <div className="mb-8">
-                  <div className="flex items-center gap-2 mb-4 px-1">
-                    <TrendingUp size={14} className="text-zinc-500" />
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                      Análise por Perfil de Persona
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {ARCHETYPES.map((arch, idx) => {
-                      const result = simulation.archetypes.find(a => a.id === arch.id);
-                      if (!result) return null;
-                      return (
-                        <div key={arch.id} style={{ animationDelay: `${600 + idx * 100}ms` }}>
-                          <ArchetypeBar archetype={arch} result={result} />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
                 {/* ── Cluster Ideological Breakdown ───────────────────── */}
                 {simulation.clusterResults.length > 0 && (
                   <div className="mb-8">
@@ -755,11 +811,11 @@ export default function ArenaPage() {
 
                       return (
                         <div key={macro} className="mb-6">
-                          <div className="flex items-center gap-2 mb-3 px-1">
-                            <div className={`w-2 h-2 rounded-full ${macroColors.dot}`} />
-                            <p className={`text-[10px] font-black uppercase tracking-widest ${macroColors.text}`}>
+                          <div className="flex items-center gap-3 mb-4 px-1">
+                            <div className={`w-3 h-3 rounded-full ${macroColors.dot}`} />
+                            <p className={`text-base font-black uppercase tracking-wide ${macroColors.text}`}>
                               {macro === 'Progressista' ? 'Progressistas' : macro === 'Moderado' ? 'Moderados' : macro === 'Conservador' ? 'Conservadores' : 'Transversais'}
-                              <span className="text-zinc-600 ml-2">
+                              <span className="text-zinc-600 ml-3 text-xs font-bold">
                                 ({results.reduce((s, r) => s + r.count, 0).toLocaleString('pt-BR')} personas)
                               </span>
                             </p>
@@ -814,116 +870,76 @@ export default function ArenaPage() {
                   <EducationAnalysis educationLevels={simulation.educationLevels} />
                 )}
 
-                {/* ── Comments Section with Model Toggle ─────────────── */}
-                {showComments && (
-                  <div className="mb-8 animate-fade-in-up">
-                    {/* Header with Model Toggle */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-1">
-                      <div className="flex items-center gap-2">
+                {/* ── Comments Section — All Personas ──────────────────── */}
+                {showComments && simulation.comments.length > 0 && (() => {
+                  const filteredComments = commentFilter === 'all'
+                    ? simulation.comments
+                    : simulation.comments.filter(c => c.sentiment === commentFilter);
+                  const visibleComments = filteredComments.slice(0, commentsToShow);
+                  const hasMore = filteredComments.length > commentsToShow;
+                  const remaining = filteredComments.length - commentsToShow;
+
+                  return (
+                    <div className="mb-8 animate-fade-in-up">
+                      {/* Header */}
+                      <div className="flex items-center gap-2 mb-4 px-1">
                         <Eye size={14} className="text-zinc-500" />
                         <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-                          Principais Reações
+                          Reações das Personas
                         </p>
+                        <span className="text-[10px] text-zinc-600 font-bold ml-2">
+                          {simulation.comments.length.toLocaleString('pt-BR')} comentários
+                        </span>
                       </div>
 
-                      {/* Model Toggle */}
-                      <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-900/80 border border-zinc-800/50">
-                        <button
-                          onClick={() => setActiveModel('claude')}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
-                            activeModel === 'claude'
-                              ? 'bg-violet-500/20 text-violet-300 border border-violet-500/30 shadow-lg shadow-violet-500/10'
-                              : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
-                          }`}
-                        >
-                          <Sparkles size={13} />
-                          Claude
-                        </button>
-                        <button
-                          onClick={() => setActiveModel('openai')}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 ${
-                            activeModel === 'openai'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-lg shadow-emerald-500/10'
-                              : 'text-zinc-500 hover:text-zinc-300 border border-transparent'
-                          }`}
-                        >
-                          <Zap size={13} />
-                          GPT-4o
-                        </button>
+                      {/* Filter Tabs */}
+                      <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+                        {([
+                          { key: 'all' as const, label: 'Todos', active: 'bg-white/10 text-white border-white/20' },
+                          { key: 'positive' as const, label: 'A Favor', active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+                          { key: 'neutral' as const, label: 'Neutros', active: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+                          { key: 'negative' as const, label: 'Contra', active: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+                        ]).map(({ key, label, active }) => {
+                          const count = key === 'all'
+                            ? simulation.comments.length
+                            : simulation.comments.filter(c => c.sentiment === key).length;
+                          const isActive = commentFilter === key;
+
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => { setCommentFilter(key); setCommentsToShow(30); }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-200 ${
+                                isActive ? active : 'text-zinc-500 border-zinc-800/50 hover:text-zinc-300 hover:border-zinc-700/50'
+                              }`}
+                            >
+                              {label} ({count.toLocaleString('pt-BR')})
+                            </button>
+                          );
+                        })}
                       </div>
-                    </div>
 
-                    {/* Active model indicator */}
-                    <div className="mb-4 px-1">
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold border ${
-                        activeModel === 'claude'
-                          ? 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-                          : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                      }`}>
-                        <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${activeModel === 'claude' ? 'bg-violet-400' : 'bg-emerald-400'}`} />
-                        {activeModel === 'claude' ? 'Claude Haiku 4.5' : 'GPT-4o'}
-                        {' '}&middot;{' '}
-                        {(activeModel === 'claude' ? simulation.comments : openaiComments).length} comentários
-                      </span>
-                    </div>
+                      {/* Comments Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {visibleComments.map((comment, idx) => (
+                          <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
+                        ))}
+                      </div>
 
-                    {/* Comments Grid */}
-                    {(() => {
-                      const currentComments = activeModel === 'claude' ? simulation.comments : openaiComments;
-                      return (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                          {/* Positive */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-3 px-1">
-                              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">A Favor ({pct(simulation.positive)}%)</span>
-                            </div>
-                            <div className="space-y-3">
-                              {currentComments
-                                .filter(c => c.sentiment === 'positive')
-                                .slice(0, 5)
-                                .map((comment, idx) => (
-                                  <CommentBubble key={`${activeModel}-pos-${idx}`} comment={comment} index={idx} />
-                                ))}
-                            </div>
-                          </div>
-
-                          {/* Neutral */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-3 px-1">
-                              <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-amber-400">Neutros ({pct(simulation.neutral)}%)</span>
-                            </div>
-                            <div className="space-y-3">
-                              {currentComments
-                                .filter(c => c.sentiment === 'neutral')
-                                .slice(0, 5)
-                                .map((comment, idx) => (
-                                  <CommentBubble key={`${activeModel}-neu-${idx}`} comment={comment} index={idx} />
-                                ))}
-                            </div>
-                          </div>
-
-                          {/* Negative */}
-                          <div>
-                            <div className="flex items-center gap-2 mb-3 px-1">
-                              <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-rose-400">Contra ({pct(simulation.negative)}%)</span>
-                            </div>
-                            <div className="space-y-3">
-                              {currentComments
-                                .filter(c => c.sentiment === 'negative')
-                                .slice(0, 5)
-                                .map((comment, idx) => (
-                                  <CommentBubble key={`${activeModel}-neg-${idx}`} comment={comment} index={idx} />
-                                ))}
-                            </div>
-                          </div>
+                      {/* Load More */}
+                      {hasMore && (
+                        <div className="text-center mt-6">
+                          <button
+                            onClick={() => setCommentsToShow(prev => prev + 30)}
+                            className="px-6 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/50 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-700/50 transition-all duration-200"
+                          >
+                            Carregar mais {Math.min(30, remaining)} de {remaining.toLocaleString('pt-BR')} restantes
+                          </button>
                         </div>
-                      );
-                    })()}
-                  </div>
-                )}
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* ── Demographic Profile ────────────────────────────── */}
                 {allPersonas.length > 0 && (

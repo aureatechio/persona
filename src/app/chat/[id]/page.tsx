@@ -237,7 +237,29 @@ export default function ChatPage() {
   };
 
   const handleCreateChat = async () => {
-    await ensureChat();
+    if (!user?.id || !personaId) return;
+
+    const { data, error } = await supabase
+      .from('chats')
+      .insert({ user_id: user.id, persona_id: personaId })
+      .select('id, created_at')
+      .single();
+
+    if (error || !data) {
+      console.error('Erro ao criar novo chat:', error);
+      return;
+    }
+
+    const newChat: ChatSummary = {
+      id: data.id,
+      createdAt: data.created_at,
+      messageCount: 0,
+      lastMessageAt: null,
+    };
+
+    setChats((prev) => [newChat, ...prev]);
+    setActiveChatId(data.id);
+    setMessages([]);
   };
 
   const updateChatSummary = (chatId: string, lastMessageAt: string) => {
@@ -277,6 +299,31 @@ export default function ChatPage() {
         updateChatSummary(chatId, savedUserMessage.created_at);
       }
 
+      // Monta contexto de identidade da persona para evitar alucinações
+      // O backend DEVE usar esses dados para reforçar a coerência da persona
+      const personaIdentity = persona ? {
+        name: persona.name,
+        age: persona.age,
+        gender: persona.gender_identity || persona.gender,
+        city: persona.city,
+        state: persona.state,
+        region: persona.region,
+        political_leaning: persona.political_leaning,
+        score_economico: persona.score_economico,
+        score_costumes: persona.score_costumes,
+        macro_religion: persona.macro_religion,
+        education_level: persona.education_level,
+        social_class: persona.social_class,
+        generation: persona.generation,
+        archetype_primary: persona.archetype_primary || persona.psychology_json?.archetypes?.primary,
+        cluster_name: persona.nome_grupo,
+        occupation: persona.career_json?.atuação_e_cargo?.cargo_atual || persona.demographic_json?.socioeconomico?.ocupacao_principal,
+        core_values: (persona.psychology_json?.core_values || []).map((v: any) => v.value),
+        political_detail: persona.beliefs_json?.orientação_política || {},
+        religion_detail: persona.beliefs_json?.religião || {},
+        aversions: (persona.beliefs_json?.aversões || []).map((a: any) => a.alvo),
+      } : {};
+
       const response = await fetch(process.env.NEXT_PUBLIC_PERSONA_CHAT_API || 'https://webhook.aureatech.io/webhook/persona-aurea-conversa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,6 +332,7 @@ export default function ChatPage() {
           user_id: user!.id,
           persona_id: personaId,
           message: messageToSend,
+          persona_identity: personaIdentity,
         })
       });
 
@@ -331,7 +379,7 @@ export default function ChatPage() {
     } finally {
       setPendingResponses(prev => Math.max(0, prev - 1));
     }
-  }, [user, personaId]);
+  }, [user, personaId, persona]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
