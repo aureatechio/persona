@@ -97,13 +97,17 @@ def _fallback_results(personas: list[dict[str, Any]]) -> list[PersonaResult]:
 
 class PersonaLoop:
     """
-    Processa TODAS as personas dividindo batches entre Claude + GPT em paralelo.
+    Processa TODAS as personas dividindo batches entre Claude + GPT (2 chaves) em paralelo.
     """
 
     def __init__(self):
         self._claude = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self._openai = openai.OpenAI(api_key=settings.openai_api_key)
-        self._has_openai = bool(settings.openai_api_key)
+        self._openai_clients: list[openai.OpenAI] = []
+        if settings.openai_api_key:
+            self._openai_clients.append(openai.OpenAI(api_key=settings.openai_api_key))
+        if settings.openai_api_key_2:
+            self._openai_clients.append(openai.OpenAI(api_key=settings.openai_api_key_2))
+        self._has_openai = len(self._openai_clients) > 0
 
     # ── Claude batch ─────────────────────────────────────────────────────
     async def _process_claude(
@@ -165,15 +169,19 @@ class PersonaLoop:
         context: ContextResult,
         personas: list[dict[str, Any]],
         semaphore: asyncio.Semaphore,
+        client: openai.OpenAI = None,
+        key_id: int = 0,
         retry: int = 0,
     ) -> list[PersonaResult]:
+        oai = client or self._openai_clients[0]
+        tag = f"GPT-{key_id+1}"
         async with semaphore:
             user_prompt = build_batch_prompt(question, context, personas)
             try:
                 loop = asyncio.get_event_loop()
                 response = await loop.run_in_executor(
                     None,
-                    lambda: self._openai.chat.completions.create(
+                    lambda: oai.chat.completions.create(
                         model=settings.openai_model,
                         max_tokens=settings.max_tokens_per_batch,
                         messages=[
@@ -188,12 +196,12 @@ class PersonaLoop:
 
             except json.JSONDecodeError as e:
                 if retry < 2:
-                    print(f"[GPT] JSON error, retry {retry+1}/2...")
+                    print(f"[{tag}] JSON error, retry {retry+1}/2...")
                     await asyncio.sleep(2)
                     return await self._process_openai(
-                        question, context, personas, semaphore, retry + 1
+                        question, context, personas, semaphore, oai, key_id, retry + 1
                     )
-                print(f"[GPT] JSON error after retries, fallback")
+                print(f"[{tag}] JSON error after retries, fallback")
                 return _fallback_results(personas)
 
             except Exception as e:
@@ -201,12 +209,12 @@ class PersonaLoop:
                 max_r = 3 if is_rate else 1
                 if retry < max_r:
                     wait = (retry + 1) * 3 if is_rate else 2
-                    print(f"[GPT] {'Rate limit' if is_rate else 'Error'}, retry {retry+1}/{max_r} in {wait}s...")
+                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {retry+1}/{max_r} in {wait}s...")
                     await asyncio.sleep(wait)
                     return await self._process_openai(
-                        question, context, personas, semaphore, retry + 1
+                        question, context, personas, semaphore, oai, key_id, retry + 1
                     )
-                print(f"[GPT] Error after retries, fallback: {e}")
+                print(f"[{tag}] Error after retries, fallback: {e}")
                 return _fallback_results(personas)
 
     # ── Run principal ────────────────────────────────────────────────────
@@ -222,20 +230,30 @@ class PersonaLoop:
         """
         total = len(personas)
         batches = _chunk_list(personas, settings.batch_size)
+        num_gpt_keys = len(self._openai_clients)
 
-        # Divide batches: 30% Claude, 70% GPT (GPT tem rate limit maior)
+        # Divide batches: Claude gets claude_share, rest split across GPT keys
         if self._has_openai:
             split = max(1, int(len(batches) * settings.claude_share))
             claude_batches = batches[:split]
-            openai_batches = batches[split:]
+            gpt_batches = batches[split:]
+
+            # Distribui GPT batches round-robin entre as chaves
+            gpt_groups: list[list[list]] = [[] for _ in range(num_gpt_keys)]
+            for i, batch in enumerate(gpt_batches):
+                gpt_groups[i % num_gpt_keys].append(batch)
+
+            gpt_info = " + ".join(
+                f"GPT-{i+1}: {len(g)}b" for i, g in enumerate(gpt_groups)
+            )
             print(
                 f"[PersonaLoop] {total} personas, {len(batches)} batches | "
-                f"Claude: {len(claude_batches)} batches (max {settings.max_parallel_claude}p) | "
-                f"GPT: {len(openai_batches)} batches (max {settings.max_parallel_openai}p)"
+                f"Claude: {len(claude_batches)}b (max {settings.max_parallel_claude}p) | "
+                f"{gpt_info} (max {settings.max_parallel_openai}p total)"
             )
         else:
             claude_batches = batches
-            openai_batches = []
+            gpt_groups = []
             print(
                 f"[PersonaLoop] {total} personas, {len(batches)} batches | "
                 f"Claude only (max {settings.max_parallel_claude}p)"
@@ -249,16 +267,18 @@ class PersonaLoop:
         negative = 0
         neutral = 0
 
-        # Lança TODOS os batches de ambos providers de uma vez
+        # Lança TODOS os batches de todos os providers de uma vez
         all_tasks = []
         for batch in claude_batches:
             all_tasks.append(
                 self._process_claude(question, context, batch, sem_claude)
             )
-        for batch in openai_batches:
-            all_tasks.append(
-                self._process_openai(question, context, batch, sem_openai)
-            )
+        for key_id, group in enumerate(gpt_groups):
+            client = self._openai_clients[key_id]
+            for batch in group:
+                all_tasks.append(
+                    self._process_openai(question, context, batch, sem_openai, client, key_id)
+                )
 
         # Colhe resultados conforme completam
         for coro in asyncio.as_completed(all_tasks):

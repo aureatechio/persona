@@ -38,9 +38,12 @@ class Settings:
     )
     model: str = "claude-haiku-4-5-20251001"
 
-    # LLM — OpenAI
+    # LLM — OpenAI (2 chaves = dobro de rate limit)
     openai_api_key: str = field(
         default_factory=lambda: os.environ.get("OPENAI_API_KEY", "")
+    )
+    openai_api_key_2: str = field(
+        default_factory=lambda: os.environ.get("OPENAI_API_KEY_2", "")
     )
     openai_model: str = "gpt-4o-mini"
 
@@ -52,8 +55,8 @@ class Settings:
     # Batching (por provider)
     batch_size: int = 25  # personas por batch (mais = menos API calls)
     max_parallel_claude: int = 5  # batches Claude simultaneos (rate limit baixo)
-    max_parallel_openai: int = 15  # batches OpenAI simultaneos (rate limit alto)
-    claude_share: float = 0.30  # 30% dos batches pro Claude, 70% pro GPT
+    max_parallel_openai: int = 20  # batches OpenAI simultaneos (2 chaves = mais paralelo)
+    claude_share: float = 0.20  # 20% Claude, 80% GPT (GPT tem 2 chaves agora)
     max_tokens_per_batch: int = 4096  # tokens de saida por batch
 
     # Web search
