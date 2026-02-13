@@ -79,7 +79,8 @@ async def health():
         "version": "2.0.0",
         "model": settings.model,
         "batch_size": settings.batch_size,
-        "max_parallel": settings.max_parallel,
+        "max_parallel_claude": settings.max_parallel_claude,
+        "max_parallel_openai": settings.max_parallel_openai,
     }
 
 
@@ -235,9 +236,13 @@ async def analyze(request: AnalyzeRequest):
 if __name__ == "__main__":
     import uvicorn
 
+    import os
+
+    port = int(os.environ.get("PORT", 8000))
     print("\n  Arena Analysis v2.0.0")
     print(f"  Model: {settings.model}")
-    print(f"  Batch: {settings.batch_size} personas × {settings.max_parallel} parallel")
-    print("  Starting on http://localhost:8001")
-    print("  Docs: http://localhost:8001/docs\n")
-    uvicorn.run(app, host="0.0.0.0", port=3002)
+    print(f"  Batch: {settings.batch_size} personas")
+    print(f"  Claude: max {settings.max_parallel_claude}p | GPT: max {settings.max_parallel_openai}p")
+    print(f"  Starting on http://localhost:{port}")
+    print(f"  Docs: http://localhost:{port}/docs\n")
+    uvicorn.run(app, host="0.0.0.0", port=port)
