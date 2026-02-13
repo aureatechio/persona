@@ -63,6 +63,34 @@ const QUADRANT_LABELS: Record<Quadrant, string> = {
   dir_progressista: 'Direita + Progressista',
 };
 
+// ── Question Polarity Detection ──────────────────────────────────────────────
+
+const ADVERSARIAL_KEYWORDS = [
+  'preso', 'prender', 'condenar', 'punir', 'cadeia', 'culpado', 'corrupto',
+  'ladrao', 'criminoso', 'cassado', 'impeach', 'banir', 'expuls', 'derrub',
+  'julgado', 'investigad', 'indiciado', 'condena', 'roubo',
+  'renunci', 'demiti', 'tirar', 'acabar', 'errad', 'fracass', 'incompetent',
+];
+
+const SUPPORTIVE_KEYWORDS = [
+  'bom', 'melhor', 'excelente', 'competente', 'inocente', 'voltar', 'retorn',
+  'apoiar', 'defende', 'correto', 'certo', 'grande', 'heroi',
+  'genial', 'admirav', 'benefici', 'ajud', 'trabalho', 'gestao', 'acert',
+];
+
+export type QuestionPolarity = 'adversarial' | 'supportive' | 'neutral';
+
+export function detectQuestionPolarity(question: string, figure: PoliticalFigure): QuestionPolarity {
+  const norm = normalize(question);
+  let advScore = 0;
+  let supScore = 0;
+  for (const kw of ADVERSARIAL_KEYWORDS) { if (norm.includes(kw)) advScore++; }
+  for (const kw of SUPPORTIVE_KEYWORDS) { if (norm.includes(kw)) supScore++; }
+  if (advScore > supScore && advScore > 0) return 'adversarial';
+  if (supScore > advScore && supScore > 0) return 'supportive';
+  return 'neutral';
+}
+
 // ── Political Figure Detection (Section 5.5) ─────────────────────────────────
 
 export function detectPoliticalFigures(question: string): PoliticalFigure[] {
@@ -77,21 +105,40 @@ export function detectPoliticalFigures(question: string): PoliticalFigure[] {
   return figures;
 }
 
+/**
+ * Determines how a persona feels about a question involving a political figure.
+ * When polarity='neutral' (default), returns the persona's raw stance toward the figure.
+ * When polarity='adversarial' (e.g. "Lula deveria estar preso"), inverts:
+ *   - Supporter of figure → DISAGREES with the adversarial proposition
+ *   - Opponent of figure → AGREES with the adversarial proposition
+ */
 export function adjustSentimentForPoliticalFigure(
   scoreEco: number,
   scoreCost: number,
   figure: PoliticalFigure,
+  polarity: QuestionPolarity = 'neutral',
 ): Sentiment {
+  // 1. Determine persona's stance toward the political figure
+  let figureStance: Sentiment = 'neutral';
+
   if (figure === 'lula') {
-    // Eco < -0.3 tends to support, Eco > +0.3 tends to attack
-    if (scoreEco < -0.3) return 'positive';
-    if (scoreEco > 0.3) return 'negative';
-    return 'neutral';
+    if (scoreEco < -0.3) figureStance = 'positive';
+    else if (scoreEco > 0.3) figureStance = 'negative';
+  } else {
+    // Bolsonaro
+    if (scoreEco > 0.2 && scoreCost > 0.5) figureStance = 'positive';
+    else if (scoreEco < -0.3 || scoreCost < -0.3) figureStance = 'negative';
   }
-  // Bolsonaro: Eco > +0.2 AND Cost > +0.5 support. Eco < -0.3 OR Cost < -0.3 attack
-  if (scoreEco > 0.2 && scoreCost > 0.5) return 'positive';
-  if (scoreEco < -0.3 || scoreCost < -0.3) return 'negative';
-  return 'neutral';
+
+  // 2. Map figure stance to question sentiment based on polarity
+  if (polarity === 'adversarial' && figureStance !== 'neutral') {
+    // Question is AGAINST the figure → invert
+    // Supporters of figure DISAGREE with question, opponents AGREE
+    return figureStance === 'positive' ? 'negative' : 'positive';
+  }
+
+  // supportive or neutral: figure stance maps directly to question sentiment
+  return figureStance;
 }
 
 // ── 2D Sentiment Simulation (Section 5.4) ────────────────────────────────────
@@ -107,10 +154,10 @@ export function simulate2DSentiment(
   // Check for political figure mentions first
   const figures = detectPoliticalFigures(question);
   if (figures.length > 0) {
-    // Use the first detected figure for sentiment adjustment
-    const figureSentiment = adjustSentimentForPoliticalFigure(ecoScore, costScore, figures[0]);
-    // Add noise: 20% chance of deviating from expected sentiment
-    if (Math.random() > 0.2) return figureSentiment;
+    const polarity = detectQuestionPolarity(question, figures[0]);
+    const figureSentiment = adjustSentimentForPoliticalFigure(ecoScore, costScore, figures[0], polarity);
+    // 75% use figure-based sentiment, 25% fall through to topic analysis for variance
+    if (Math.random() > 0.25) return figureSentiment;
   }
 
   // Topic-based sentiment using 2D scores

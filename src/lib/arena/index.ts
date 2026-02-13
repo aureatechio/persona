@@ -59,6 +59,7 @@ export {
   computeIntensity,
   modulateByEducation,
   classifyQuadrant,
+  detectQuestionPolarity,
   detectPoliticalFigures,
   adjustSentimentForPoliticalFigure,
   simulate2DSentiment,
@@ -70,3 +71,5 @@ export {
   computeIntensityCorrelation,
   runEnhancedSimulation,
 } from './analysis-2d';
+
+export type { QuestionPolarity } from './analysis-2d';

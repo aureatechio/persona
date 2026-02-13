@@ -91,11 +91,11 @@ export function simulatePersonaSentiment(
   }
 
   const baseScore = totalWeight > 0 ? weightedScore / totalWeight : 0.5;
-  const noise = (Math.random() - 0.5) * 0.2;
+  const noise = (Math.random() - 0.5) * 0.3;
   const finalScore = Math.max(0, Math.min(1, baseScore + noise));
 
-  if (finalScore > 0.55) return 'positive';
-  if (finalScore < 0.45) return 'negative';
+  if (finalScore > 0.52) return 'positive';
+  if (finalScore < 0.48) return 'negative';
   return 'neutral';
 }
 
@@ -262,10 +262,46 @@ export function runSimulation(question: string, personaCount: number, personas?:
 function computePersonaSentimentForAI(
   persona: Record<string, any>,
   topicScores: Record<string, number>,
+  question: string,
 ): Sentiment {
   const ecoScore = persona.score_economico ?? 0;
   const costScore = persona.score_costumes ?? 0;
+  const norm = normalize(question);
 
+  // ── Political figure detection with polarity ──
+  const hasLula = norm.includes('lula') || norm.includes('petista') || norm.includes(' pt ') || norm.includes('partido dos trabalhadores');
+  const hasBolsonaro = norm.includes('bolsonaro') || norm.includes('bolsonarism') || norm.includes('capitao');
+
+  if (hasLula || hasBolsonaro) {
+    // Detect if question is adversarial or supportive toward the figure
+    const advKws = ['preso', 'prender', 'condenar', 'punir', 'cadeia', 'culpado', 'corrupto', 'criminoso', 'cassado', 'impeach', 'condena', 'crime', 'renunci', 'demiti', 'errad', 'fracass', 'incompetent'];
+    const supKws = ['bom', 'melhor', 'excelente', 'competente', 'inocente', 'voltar', 'retorn', 'apoiar', 'defende', 'correto', 'certo', 'heroi', 'benefici', 'ajud', 'trabalho', 'gestao', 'acert'];
+
+    let adv = 0, sup = 0;
+    for (const k of advKws) { if (norm.includes(k)) adv++; }
+    for (const k of supKws) { if (norm.includes(k)) sup++; }
+    const isAdversarial = adv > sup && adv > 0;
+
+    // Determine persona's stance toward the figure
+    let figureStance: Sentiment = 'neutral';
+    if (hasLula) {
+      if (ecoScore < -0.3) figureStance = 'positive';
+      else if (ecoScore > 0.3) figureStance = 'negative';
+    } else {
+      if (ecoScore > 0.2 && costScore > 0.5) figureStance = 'positive';
+      else if (ecoScore < -0.3 || costScore < -0.3) figureStance = 'negative';
+    }
+
+    // Invert for adversarial questions (e.g. "Lula deveria estar preso")
+    if (isAdversarial && figureStance !== 'neutral') {
+      figureStance = figureStance === 'positive' ? 'negative' : 'positive';
+    }
+
+    // 75% use figure sentiment, 25% fall through to topic analysis
+    if (Math.random() > 0.25) return figureStance;
+  }
+
+  // ── Topic-based sentiment ──
   const biasMap: Record<string, number> = {
     crime: 0.5 + costScore * 0.5,
     social: 0.5 - costScore * 0.5,
@@ -297,7 +333,7 @@ function computePersonaSentimentForAI(
 // ── Build Personas for AI ────────────────────────────────────────────────────
 
 export function buildPersonasForAI(
-  _question: string,
+  question: string,
   personas: Record<string, any>[],
   topicScores: Record<string, number>,
 ): PersonaForAI[] {
@@ -381,8 +417,8 @@ export function buildPersonasForAI(
         };
       }
 
-      // Compute sentiment from persona's ideological scores + topic
-      const sentiment = computePersonaSentimentForAI(persona, topicScores);
+      // Compute sentiment from persona's ideological scores + topic + question polarity
+      const sentiment = computePersonaSentimentForAI(persona, topicScores, question);
       result.push(mapPersona(persona, archetype.id, sentiment));
     }
   }
