@@ -1,28 +1,45 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { PersonaCard } from '@/components/PersonaCard';
-import { Search, Filter, Menu } from 'lucide-react';
+import { Search, Filter, Menu, ChevronLeft, ChevronRight, MapPin, Users } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Sidebar } from '@/components/Sidebar';
 
 const PersonaMap = dynamic(() => import('@/components/PersonaMap'), { 
   ssr: false,
-  loading: () => <div className="h-full w-full flex items-center justify-center bg-zinc-900 animate-pulse rounded-3xl">Carregando mapa...</div>
+  loading: () => (
+    <div className="h-full w-full flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-xl border border-white/[0.06] rounded-3xl gap-3">
+      <MapPin size={32} className="text-zinc-600 animate-pulse" />
+      <p className="text-sm text-zinc-500 font-medium">Carregando mapa...</p>
+    </div>
+  )
 });
+
+const PAGE_SIZE = 30;
+
+// Campos mínimos necessários para o card (evita carregar JSONs gigantes desnecessariamente)
+const LIST_SELECT_FIELDS = 'id,name,age,city,state,gender,photo_path,gender_identity,civil_status,social_class,education_level,generation,political_leaning,archetype_primary,disc_main_factor,macro_religion,cronotype,region_br,area_type,psychology_json,career_json,beliefs_json,demographic_json';
+
+// Campos mínimos para o mapa (lat/lng + popup info)
+const MAP_SELECT_FIELDS = 'id,name,age,city,state,lat,lng';
 
 export default function Home() {
   const { session, loading: authLoading } = useAuth();
   const router = useRouter();
   const [personas, setPersonas] = useState<any[]>([]);
+  const [mapPersonas, setMapPersonas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mapLoading, setMapLoading] = useState(false);
   const [view, setView] = useState<'grid' | 'map'>('grid');
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [filters, setFilters] = useState({
     search: '',
     genderIdentity: '',
@@ -99,12 +116,17 @@ export default function Home() {
       router.push('/login');
       return;
     }
-    fetchPersonas();
+    fetchPersonas(0);
   }, [authLoading, session]);
 
-  function buildFilteredQuery(selectFields = '*') {
-    let query = supabase.from('personas').select(selectFields);
+  // Quando muda para view=map, busca dados leves do mapa (somente lat/lng/nome)
+  useEffect(() => {
+    if (view === 'map' && mapPersonas.length === 0 && session) {
+      fetchMapPersonas();
+    }
+  }, [view, session]);
 
+  function applyFilters(query: any) {
     if (filters.genderIdentity) query = query.eq('gender_identity', filters.genderIdentity);
     if (filters.macroReligion) query = query.eq('macro_religion', filters.macroReligion);
     if (filters.politicalLeaning) query = query.eq('political_leaning', filters.politicalLeaning);
@@ -142,23 +164,67 @@ export default function Home() {
     return query;
   }
 
-  async function fetchPersonas() {
+  // Fetch paginado para a lista (apenas campos necessários)
+  const fetchPersonas = useCallback(async (page: number) => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch all rows in batches of 1000 to bypass Supabase default limit
+      // 1. Buscar count total
+      let countQuery = supabase.from('personas').select('*', { count: 'exact', head: true });
+      countQuery = applyFilters(countQuery);
+      const { count, error: countError } = await countQuery;
+
+      if (countError) {
+        console.error('Supabase count error:', countError);
+        setError(countError.message);
+        return;
+      }
+
+      setTotalCount(count || 0);
+
+      // 2. Buscar página atual (apenas campos necessários)
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let dataQuery = supabase.from('personas').select(LIST_SELECT_FIELDS);
+      dataQuery = applyFilters(dataQuery);
+      const { data, error: queryError } = await dataQuery
+        .order('name', { ascending: true })
+        .range(from, to);
+
+      if (queryError) {
+        console.error('Supabase query error:', queryError);
+        setError(queryError.message);
+        return;
+      }
+
+      setPersonas(data || []);
+      setCurrentPage(page);
+    } catch (err) {
+      console.error('Fetch personas error:', err);
+      setError(err instanceof Error ? err.message : 'Erro ao carregar personas');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  // Fetch otimizado para o mapa (somente lat/lng + info do popup)
+  async function fetchMapPersonas() {
+    setMapLoading(true);
+    try {
       const batchSize = 1000;
       let allData: any[] = [];
       let from = 0;
 
-      while (true) {
-        const { data, error: queryError } = await buildFilteredQuery()
-          .range(from, from + batchSize - 1);
+      // Busca em batches mas com campos muito leves
+      for (let i = 0; i < 10; i++) { // max 10 batches = 10000 personas
+        let query = supabase.from('personas').select(MAP_SELECT_FIELDS);
+        query = applyFilters(query);
+        const { data, error: queryError } = await query.range(from, from + batchSize - 1);
 
         if (queryError) {
-          console.error('Supabase query error:', queryError);
-          setError(queryError.message);
-          return;
+          console.error('Map query error:', queryError);
+          break;
         }
 
         if (data && data.length > 0) {
@@ -169,14 +235,22 @@ export default function Home() {
         from += batchSize;
       }
 
-      setPersonas(allData);
+      setMapPersonas(allData);
     } catch (err) {
-      console.error('Fetch personas error:', err);
-      setError(err instanceof Error ? err.message : 'Erro ao carregar personas');
+      console.error('Fetch map personas error:', err);
     } finally {
-      setLoading(false);
+      setMapLoading(false);
     }
   }
+
+  // Reset paginação quando filtros mudam
+  function handleSearch() {
+    setCurrentPage(0);
+    setMapPersonas([]); // força refetch do mapa com novos filtros
+    fetchPersonas(0);
+  }
+
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   return (
     <div className="flex min-h-screen bg-black text-white overflow-x-hidden font-sans">
@@ -209,7 +283,7 @@ export default function Home() {
                   className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-3 md:py-4 pl-12 pr-4 focus:outline-none focus:border-zinc-600 transition-colors text-sm md:text-base shadow-inner"
                   value={filters.search}
                   onChange={(e) => setFilters({...filters, search: e.target.value})}
-                  onKeyDown={(e) => e.key === 'Enter' && fetchPersonas()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 />
               </div>
               
@@ -226,7 +300,7 @@ export default function Home() {
               </button>
 
               <button 
-                onClick={fetchPersonas}
+                onClick={handleSearch}
                 className="bg-zinc-100 hover:bg-white text-black px-8 py-3 rounded-2xl transition-all active:scale-95 flex items-center gap-2 font-black shadow-lg shadow-white/5"
               >
                 Buscar
@@ -462,10 +536,10 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="flex items-end lg:col-span-2">
+                <div className="flex items-end lg:col-span-2 gap-3">
                   <button 
                     onClick={() => {
-                      setFilters({
+                      const cleared = {
                         search: '',
                         genderIdentity: '',
                         macroReligion: '',
@@ -484,7 +558,13 @@ export default function Home() {
                         ethnicity: '',
                         minIncome: '',
                         maxIncome: '',
-                      });
+                      };
+                      setFilters(cleared);
+                      // Fetch com filtros limpos após setState
+                      setTimeout(() => {
+                        setMapPersonas([]);
+                        fetchPersonas(0);
+                      }, 0);
                     }}
                     className="text-xs font-bold text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-3"
                   >
@@ -495,34 +575,112 @@ export default function Home() {
             )}
           </section>
 
+          {/* Counter badge */}
+          {!loading && !error && (
+            <div className="flex items-center gap-2 mb-6">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-zinc-900/60 border border-zinc-800/50 backdrop-blur-sm">
+                <Users size={14} className="text-zinc-500" />
+                <span className="text-xs font-bold text-zinc-300 tabular-nums">
+                  {totalCount.toLocaleString('pt-BR')} personas encontradas
+                </span>
+              </div>
+              {view === 'grid' && totalPages > 1 && (
+                <span className="text-[10px] text-zinc-600 font-medium">
+                  Página {currentPage + 1} de {totalPages}
+                </span>
+              )}
+            </div>
+          )}
+
           {loading ? (
-            <div className="flex justify-center items-center h-64">
+            <div className="flex flex-col items-center justify-center h-64 gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+              <p className="text-xs text-zinc-500">Carregando personas...</p>
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-red-500/30 rounded-3xl bg-red-500/5">
               <p className="text-red-400 text-sm mb-4">Erro ao carregar personas: {error}</p>
               <button
-                onClick={fetchPersonas}
+                onClick={() => fetchPersonas(currentPage)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white border border-white/[0.08] hover:border-white/[0.15] rounded-xl font-medium text-sm active:scale-[0.97] transition-all duration-200"
               >
                 Tentar novamente
               </button>
             </div>
           ) : view === 'grid' ? (
-            <div className="flex flex-col gap-4">
-              {personas.map(persona => (
-                <PersonaCard key={persona.id} persona={persona} />
-              ))}
-              {personas.length === 0 && (
-                <div className="col-span-full text-center py-20 text-zinc-500 border border-dashed border-zinc-800 rounded-3xl">
-                  Nenhuma persona encontrada com esses filtros.
+            <>
+              <div className="flex flex-col gap-4">
+                {personas.map(persona => (
+                  <PersonaCard key={persona.id} persona={persona} />
+                ))}
+                {personas.length === 0 && (
+                  <div className="col-span-full text-center py-20 text-zinc-500 border border-dashed border-zinc-800 rounded-3xl">
+                    Nenhuma persona encontrada com esses filtros.
+                  </div>
+                )}
+              </div>
+
+              {/* Paginação */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-8 mb-4">
+                  <button
+                    onClick={() => fetchPersonas(currentPage - 1)}
+                    disabled={currentPage === 0}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm font-bold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft size={16} />
+                    Anterior
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 7) {
+                        pageNum = i;
+                      } else if (currentPage < 3) {
+                        pageNum = i;
+                      } else if (currentPage > totalPages - 4) {
+                        pageNum = totalPages - 7 + i;
+                      } else {
+                        pageNum = currentPage - 3 + i;
+                      }
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => fetchPersonas(pageNum)}
+                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all active:scale-95 ${
+                            pageNum === currentPage
+                              ? 'bg-white text-black shadow-lg shadow-white/10'
+                              : 'bg-zinc-900 text-zinc-400 border border-zinc-800 hover:bg-zinc-800 hover:text-white'
+                          }`}
+                        >
+                          {pageNum + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => fetchPersonas(currentPage + 1)}
+                    disabled={currentPage >= totalPages - 1}
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm font-bold text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    Próxima
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
               )}
-            </div>
+            </>
           ) : (
             <div className="h-[700px]">
-              <PersonaMap personas={personas} />
+              {mapLoading ? (
+                <div className="h-full w-full flex flex-col items-center justify-center bg-zinc-950/80 backdrop-blur-xl border border-white/[0.06] rounded-3xl gap-3">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                  <p className="text-xs text-zinc-500">Carregando mapa com {totalCount.toLocaleString('pt-BR')} personas...</p>
+                </div>
+              ) : (
+                <PersonaMap personas={mapPersonas} />
+              )}
             </div>
           )}
         </div>

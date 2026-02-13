@@ -9,8 +9,6 @@ import {
   Brain,
   Shield,
   Heart,
-  Scale,
-  Rocket,
   Users,
   RotateCcw,
   Sparkles,
@@ -18,6 +16,14 @@ import {
   Zap,
   TrendingUp,
   Eye,
+  Target,
+  BookOpen,
+  Megaphone,
+  Flame,
+  Crown,
+  Smartphone,
+  GraduationCap,
+  Wrench,
 } from 'lucide-react';
 import { DashboardAnalytics } from '@/components/DashboardAnalytics';
 import { generateComment } from '@/lib/comment-generator';
@@ -59,76 +65,142 @@ interface SimulationResult {
   processingTime: number;
 }
 
-// ── Archetype Definitions (5 Personas) ───────────────────────────────────────
+// ── Archetype Definitions (10 Perfis Brasileiros) ───────────────────────────
 const ARCHETYPES = [
   {
-    id: 'traditionalist',
-    name: 'Tradicionalista',
-    subtitle: 'Conservador & Religioso',
-    icon: Shield,
-    gradient: 'from-blue-500/20 to-blue-600/5',
-    border: 'border-blue-500/20',
-    text: 'text-blue-400',
-    bg: 'bg-blue-500',
-    dot: 'bg-blue-400',
-    political: ['Direita', 'Centro-Direita', 'Extrema Direita'],
-    sentimentBias: { crime: 0.85, social: 0.2, economy: 0.7, politics: 0.6, environment: 0.25, general: 0.5 },
+    id: 'patriota_radical',
+    name: 'Patriota Radical',
+    subtitle: 'Intervenção Militar & Armas',
+    icon: Target,
+    gradient: 'from-green-500/20 to-green-600/5',
+    border: 'border-green-500/20',
+    text: 'text-green-400',
+    bg: 'bg-green-500',
+    dot: 'bg-green-400',
+    political: ['Extrema Direita', 'Direita'],
+    sentimentBias: { crime: 0.9, social: 0.1, economy: 0.6, politics: 0.7, environment: 0.15, general: 0.4 },
   },
   {
-    id: 'activist',
-    name: 'Engajado Social',
-    subtitle: 'Justiça & Direitos Humanos',
-    icon: Heart,
+    id: 'pastor_evangelico',
+    name: 'Pastor Evangélico',
+    subtitle: 'Fé, Moral & Julgamento',
+    icon: BookOpen,
+    gradient: 'from-violet-500/20 to-violet-600/5',
+    border: 'border-violet-500/20',
+    text: 'text-violet-400',
+    bg: 'bg-violet-500',
+    dot: 'bg-violet-400',
+    political: ['Direita', 'Centro-Direita', 'Extrema Direita'],
+    sentimentBias: { crime: 0.75, social: 0.1, economy: 0.5, politics: 0.55, environment: 0.3, general: 0.4 },
+  },
+  {
+    id: 'policial_militar',
+    name: 'Força da Lei',
+    subtitle: 'Policial, Militar & Ordem',
+    icon: Shield,
+    gradient: 'from-indigo-500/20 to-indigo-600/5',
+    border: 'border-indigo-500/20',
+    text: 'text-indigo-400',
+    bg: 'bg-indigo-500',
+    dot: 'bg-indigo-400',
+    political: ['Direita', 'Centro-Direita', 'Extrema Direita'],
+    sentimentBias: { crime: 0.95, social: 0.2, economy: 0.55, politics: 0.65, environment: 0.25, general: 0.45 },
+  },
+  {
+    id: 'militante_esquerda',
+    name: 'Militante Social',
+    subtitle: 'Anti-Fascista & Direitos',
+    icon: Megaphone,
     gradient: 'from-rose-500/20 to-rose-600/5',
     border: 'border-rose-500/20',
     text: 'text-rose-400',
     bg: 'bg-rose-500',
     dot: 'bg-rose-400',
-    political: ['Esquerda', 'Centro-Esquerda', 'Extrema Esquerda'],
-    sentimentBias: { crime: 0.2, social: 0.9, economy: 0.35, politics: 0.7, environment: 0.85, general: 0.5 },
+    political: ['Esquerda', 'Extrema Esquerda', 'Centro-Esquerda'],
+    sentimentBias: { crime: 0.15, social: 0.95, economy: 0.2, politics: 0.3, environment: 0.9, general: 0.5 },
   },
   {
-    id: 'analyst',
-    name: 'Analítico Racional',
-    subtitle: 'Dados & Evidências',
-    icon: Brain,
+    id: 'mae_familia',
+    name: 'Mãe de Família',
+    subtitle: 'Proteção, Filhos & Valores',
+    icon: Heart,
+    gradient: 'from-pink-500/20 to-pink-600/5',
+    border: 'border-pink-500/20',
+    text: 'text-pink-400',
+    bg: 'bg-pink-500',
+    dot: 'bg-pink-400',
+    political: ['Centro', 'Centro-Direita', 'Centro-Esquerda'],
+    sentimentBias: { crime: 0.6, social: 0.45, economy: 0.4, politics: 0.45, environment: 0.5, general: 0.45 },
+  },
+  {
+    id: 'jovem_periferia',
+    name: 'Jovem Periferia',
+    subtitle: 'Funk, Quebrada & Resistência',
+    icon: Flame,
+    gradient: 'from-yellow-500/20 to-yellow-600/5',
+    border: 'border-yellow-500/20',
+    text: 'text-yellow-400',
+    bg: 'bg-yellow-500',
+    dot: 'bg-yellow-400',
+    political: ['Esquerda', 'Centro-Esquerda', 'Centro'],
+    sentimentBias: { crime: 0.15, social: 0.75, economy: 0.2, politics: 0.3, environment: 0.5, general: 0.4 },
+  },
+  {
+    id: 'elite_indignada',
+    name: 'Elite Indignada',
+    subtitle: 'Classe A, Impostos & Emigrar',
+    icon: Crown,
+    gradient: 'from-sky-500/20 to-sky-600/5',
+    border: 'border-sky-500/20',
+    text: 'text-sky-400',
+    bg: 'bg-sky-500',
+    dot: 'bg-sky-400',
+    political: ['Centro-Direita', 'Direita', 'Centro-Liberal'],
+    sentimentBias: { crime: 0.7, social: 0.3, economy: 0.85, politics: 0.5, environment: 0.4, general: 0.5 },
+  },
+  {
+    id: 'tiozao_zap',
+    name: 'Tiozão do Zap',
+    subtitle: 'Correntes, Fake News & CAPS',
+    icon: Smartphone,
+    gradient: 'from-orange-500/20 to-orange-600/5',
+    border: 'border-orange-500/20',
+    text: 'text-orange-400',
+    bg: 'bg-orange-500',
+    dot: 'bg-orange-400',
+    political: ['Direita', 'Extrema Direita', 'Centro-Direita'],
+    sentimentBias: { crime: 0.85, social: 0.15, economy: 0.6, politics: 0.7, environment: 0.2, general: 0.45 },
+  },
+  {
+    id: 'intelectual',
+    name: 'Intelectual Crítico',
+    subtitle: 'Pós-Graduação & Ironia',
+    icon: GraduationCap,
     gradient: 'from-cyan-500/20 to-cyan-600/5',
     border: 'border-cyan-500/20',
     text: 'text-cyan-400',
     bg: 'bg-cyan-500',
     dot: 'bg-cyan-400',
-    political: ['Centro', 'Centro-Liberal'],
-    sentimentBias: { crime: 0.5, social: 0.55, economy: 0.6, politics: 0.45, environment: 0.6, general: 0.5 },
+    political: ['Centro-Esquerda', 'Centro', 'Esquerda'],
+    sentimentBias: { crime: 0.4, social: 0.7, economy: 0.5, politics: 0.4, environment: 0.75, general: 0.5 },
   },
   {
-    id: 'moderate',
-    name: 'Moderado',
-    subtitle: 'Equilíbrio & Consenso',
-    icon: Scale,
-    gradient: 'from-amber-500/20 to-amber-600/5',
-    border: 'border-amber-500/20',
-    text: 'text-amber-400',
-    bg: 'bg-amber-500',
-    dot: 'bg-amber-400',
-    political: ['Centro', 'Centro-Esquerda', 'Centro-Direita'],
-    sentimentBias: { crime: 0.5, social: 0.5, economy: 0.5, politics: 0.5, environment: 0.5, general: 0.5 },
-  },
-  {
-    id: 'entrepreneur',
-    name: 'Empreendedor',
-    subtitle: 'Resultados & Inovação',
-    icon: Rocket,
-    gradient: 'from-emerald-500/20 to-emerald-600/5',
-    border: 'border-emerald-500/20',
-    text: 'text-emerald-400',
-    bg: 'bg-emerald-500',
-    dot: 'bg-emerald-400',
-    political: ['Centro-Liberal', 'Centro-Direita', 'Direita'],
-    sentimentBias: { crime: 0.65, social: 0.3, economy: 0.85, politics: 0.55, environment: 0.35, general: 0.5 },
+    id: 'trabalhador',
+    name: 'Trabalhador Revoltado',
+    subtitle: 'CLT, Salário & Sobrevivência',
+    icon: Wrench,
+    gradient: 'from-red-500/20 to-red-600/5',
+    border: 'border-red-500/20',
+    text: 'text-red-400',
+    bg: 'bg-red-500',
+    dot: 'bg-red-400',
+    political: ['Centro-Esquerda', 'Esquerda', 'Centro'],
+    sentimentBias: { crime: 0.45, social: 0.5, economy: 0.2, politics: 0.25, environment: 0.4, general: 0.35 },
   },
 ];
 
-const BASE_DISTRIBUTION = [0.22, 0.20, 0.18, 0.22, 0.18];
+//                          [patriota, pastor, policial, militante, mae, jovem, elite, tiozao, intelectual, trabalhador]
+const BASE_DISTRIBUTION = [0.08,     0.12,   0.06,     0.10,      0.14, 0.12,  0.08,  0.10,  0.08,        0.12];
 
 // ── Topic Detection Keywords ─────────────────────────────────────────────────
 const TOPICS: Record<string, string[]> = {
@@ -140,24 +212,24 @@ const TOPICS: Record<string, string[]> = {
 };
 
 // ── Dynamic Archetype Distribution by Topic ─────────────────────────────────
-// Order: [traditionalist, activist, analyst, moderate, entrepreneur]
+// Order: [patriota, pastor, policial, militante, mae, jovem, elite, tiozao, intelectual, trabalhador]
 const TOPIC_DISTRIBUTIONS: Record<string, number[]> = {
-  crime:       [0.30, 0.15, 0.15, 0.22, 0.18], // traditionalist leads
-  social:      [0.20, 0.30, 0.12, 0.22, 0.16], // activist leads
-  economy:     [0.18, 0.14, 0.18, 0.18, 0.32], // entrepreneur leads
-  politics:    [0.24, 0.22, 0.16, 0.20, 0.18], // balanced, slight traditional/activist
-  environment: [0.15, 0.30, 0.18, 0.22, 0.15], // activist leads
-  general:     [0.22, 0.20, 0.18, 0.22, 0.18], // base distribution
+  crime:       [0.14, 0.10, 0.14, 0.08, 0.12, 0.10, 0.06, 0.12, 0.06, 0.08],
+  social:      [0.08, 0.14, 0.04, 0.18, 0.10, 0.14, 0.06, 0.06, 0.12, 0.08],
+  economy:     [0.06, 0.06, 0.04, 0.08, 0.12, 0.10, 0.18, 0.08, 0.10, 0.18],
+  politics:    [0.14, 0.10, 0.08, 0.12, 0.08, 0.08, 0.10, 0.14, 0.08, 0.08],
+  environment: [0.04, 0.06, 0.04, 0.20, 0.10, 0.10, 0.08, 0.06, 0.18, 0.14],
+  general:     [0.08, 0.12, 0.06, 0.10, 0.14, 0.12, 0.08, 0.10, 0.08, 0.12],
 };
 
 function getTopicDistribution(topicScores: Record<string, number>): number[] {
-  const result = [0, 0, 0, 0, 0];
+  const result = new Array(ARCHETYPES.length).fill(0);
   let totalWeight = 0;
 
   for (const [topic, score] of Object.entries(topicScores)) {
     if (score <= 0) continue;
     const dist = TOPIC_DISTRIBUTIONS[topic] || TOPIC_DISTRIBUTIONS['general'];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < ARCHETYPES.length; i++) {
       result[i] += dist[i] * score;
     }
     totalWeight += score;
@@ -170,13 +242,121 @@ function getTopicDistribution(topicScores: Record<string, number>): number[] {
   return result.map(v => v / sum);
 }
 
-// ── Archetype → Persona mapping helper ──────────────────────────────────────
+// ── Archetype → Persona SMART matching ──────────────────────────────────────
+// Score-based matching: higher score = better fit for this archetype
+
+type PersonaScorer = (p: Record<string, any>) => number;
+
+const ARCHETYPE_SCORERS: Record<string, PersonaScorer> = {
+  patriota_radical: (p) => {
+    let s = 0;
+    if (['Extrema Direita', 'Direita'].includes(p.political_leaning)) s += 4;
+    if (p.gender_identity === 'Masculino') s += 1;
+    if (['Policial Militar', 'Vigilante'].includes(p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual)) s += 2;
+    if (['Evangélico/Protestante', 'Católico'].includes(p.macro_religion)) s += 1;
+    if (['Fundamental', 'Médio'].includes(p.education_level)) s += 1;
+    return s;
+  },
+  pastor_evangelico: (p) => {
+    let s = 0;
+    if (p.macro_religion === 'Evangélico/Protestante') s += 5;
+    if (['Direita', 'Centro-Direita', 'Extrema Direita'].includes(p.political_leaning)) s += 2;
+    if (['Boomer', 'Gen X'].includes(p.generation)) s += 1;
+    return s;
+  },
+  policial_militar: (p) => {
+    let s = 0;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Policial Militar', 'Vigilante'].includes(cargo)) s += 6;
+    if (['Técnico em Segurança do Trabalho', 'Soldador', 'Operador de Máquinas'].includes(cargo)) s += 2;
+    if (['Direita', 'Centro-Direita', 'Extrema Direita'].includes(p.political_leaning)) s += 3;
+    if (p.gender_identity === 'Masculino') s += 1;
+    if (['Boomer', 'Gen X'].includes(p.generation)) s += 1;
+    return s;
+  },
+  militante_esquerda: (p) => {
+    let s = 0;
+    if (['Esquerda', 'Extrema Esquerda'].includes(p.political_leaning)) s += 4;
+    if (p.political_leaning === 'Centro-Esquerda') s += 2;
+    if (['Gen Z', 'Millennial'].includes(p.generation)) s += 2;
+    if (['Ateu/Agnóstico', 'Espiritualidade Eclética'].includes(p.macro_religion)) s += 1;
+    if (['Superior Completo', 'Mestrado/Doutorado'].includes(p.education_level)) s += 1;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Professor', 'Professor Universitário', 'Assistente Social', 'Psicólogo Clínico'].includes(cargo)) s += 2;
+    return s;
+  },
+  mae_familia: (p) => {
+    let s = 0;
+    if (p.gender_identity === 'Feminino') s += 4;
+    if (['Casado', 'União Estável', 'Viúvo', 'Divorciado'].includes(p.civil_status)) s += 3;
+    if (['C1', 'C2', 'D'].includes(p.social_class)) s += 2;
+    if (['Gen X', 'Millennial'].includes(p.generation)) s += 1;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Diarista', 'Costureira', 'Manicure', 'Cabeleireiro/Barbeiro', 'Recepcionista', 'Auxiliar Administrativo', 'Cozinheiro', 'Lavadeira'].includes(cargo)) s += 2;
+    return s;
+  },
+  jovem_periferia: (p) => {
+    let s = 0;
+    if (p.generation === 'Gen Z') s += 4;
+    if (p.generation === 'Millennial' && (p.age || 30) < 30) s += 3;
+    if (['D', 'E', 'C2'].includes(p.social_class)) s += 3;
+    if (['Fundamental', 'Médio'].includes(p.education_level)) s += 2;
+    if (p.area_type === 'Capital/Metrópole') s += 1;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Motoboy/Entregador', 'Atendente', 'Balconista', 'Ajudante de Obra', 'Servente', 'Catador de Recicláveis', 'Ambulante', 'Garçom/Garçonete', 'Operador de Caixa', 'Faxineiro'].includes(cargo)) s += 2;
+    return s;
+  },
+  elite_indignada: (p) => {
+    let s = 0;
+    if (['A', 'B1'].includes(p.social_class)) s += 4;
+    if (['Superior Completo', 'Mestrado/Doutorado', 'Pós-Graduação/MBA'].includes(p.education_level)) s += 2;
+    if (['Centro-Direita', 'Direita', 'Centro-Liberal', 'Libertário'].includes(p.political_leaning)) s += 2;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['CEO', 'CTO', 'Empresário', 'Advogado', 'Médico Clínico', 'Médico Especialista', 'Cirurgião', 'Desembargador', 'Juiz', 'Diretor Financeiro', 'Diretor de Marketing', 'VP de Vendas', 'Gestor de Fundos', 'Sócio de Escritório', 'Consultor Estratégico', 'Analista de Investimentos'].includes(cargo)) s += 3;
+    return s;
+  },
+  tiozao_zap: (p) => {
+    let s = 0;
+    if (p.generation === 'Boomer') s += 4;
+    if (p.generation === 'Gen X') s += 2;
+    if (p.gender_identity === 'Masculino') s += 2;
+    if (['Direita', 'Extrema Direita', 'Centro-Direita'].includes(p.political_leaning)) s += 2;
+    if (['Fundamental', 'Médio'].includes(p.education_level)) s += 1;
+    return s;
+  },
+  intelectual: (p) => {
+    let s = 0;
+    if (['Mestrado/Doutorado', 'Pós-Graduação/MBA'].includes(p.education_level)) s += 5;
+    if (p.education_level === 'Superior Completo') s += 2;
+    if (['Centro-Esquerda', 'Centro', 'Esquerda', 'Centro-Liberal'].includes(p.political_leaning)) s += 2;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Professor Universitário', 'Professor', 'Economista', 'Advogado', 'Psicólogo Clínico', 'Analista de Dados Sênior'].includes(cargo)) s += 3;
+    if (['Ateu/Agnóstico', 'Espírita (Kardecista)', 'Espiritualidade Eclética'].includes(p.macro_religion)) s += 1;
+    return s;
+  },
+  trabalhador: (p) => {
+    let s = 0;
+    if (['C1', 'C2', 'D', 'E'].includes(p.social_class)) s += 3;
+    if (['Fundamental', 'Médio'].includes(p.education_level)) s += 2;
+    const cargo = p.career_json?.['atuação_e_cargo']?.cargo_atual || p.career_json?.atuacao_e_cargo?.cargo_atual || '';
+    if (['Pedreiro', 'Soldador', 'Mecânico Especializado', 'Eletricista', 'Operador de Máquinas', 'Motorista de App', 'Motoboy/Entregador', 'Vendedor', 'Porteiro', 'Servente', 'Ajudante de Obra', 'Cozinheiro', 'Auxiliar de Cozinha', 'Balconista', 'Atendente'].includes(cargo)) s += 3;
+    if (['Centro-Esquerda', 'Esquerda', 'Centro', 'Apolítico'].includes(p.political_leaning)) s += 1;
+    return s;
+  },
+};
+
+// Fallback political mapping (used when scoring isn't enough)
 const ARCHETYPE_TO_POLITICAL: Record<string, string[]> = {
-  traditionalist: ['Direita', 'Centro-Direita', 'Extrema Direita'],
-  activist: ['Esquerda', 'Centro-Esquerda', 'Extrema Esquerda'],
-  analyst: ['Centro', 'Centro-Liberal'],
-  moderate: ['Centro', 'Centro-Esquerda', 'Centro-Direita'],
-  entrepreneur: ['Centro-Liberal', 'Centro-Direita', 'Direita', 'Libertário'],
+  patriota_radical: ['Extrema Direita', 'Direita'],
+  pastor_evangelico: ['Direita', 'Centro-Direita', 'Extrema Direita'],
+  policial_militar: ['Direita', 'Centro-Direita', 'Extrema Direita'],
+  militante_esquerda: ['Esquerda', 'Extrema Esquerda', 'Centro-Esquerda'],
+  mae_familia: ['Centro', 'Centro-Direita', 'Centro-Esquerda'],
+  jovem_periferia: ['Esquerda', 'Centro-Esquerda', 'Centro'],
+  elite_indignada: ['Centro-Direita', 'Direita', 'Centro-Liberal', 'Libertário'],
+  tiozao_zap: ['Direita', 'Extrema Direita', 'Centro-Direita'],
+  intelectual: ['Centro-Esquerda', 'Centro', 'Esquerda'],
+  trabalhador: ['Centro-Esquerda', 'Esquerda', 'Centro'],
 };
 
 /** Map a DB persona row to PersonaContext for the comment generator */
@@ -332,35 +512,85 @@ function mapPersona(persona: Record<string, any>, archetypeId: string, sentiment
 }
 
 /** Build list of personas to send to AI for comment generation.
- *  Guarantees ALL 35 personas are UNIQUE — never repeats. */
+ *  Distributes ~35 comments proportionally across all archetypes.
+ *  Guarantees ALL personas are UNIQUE — never repeats. */
 function buildPersonasForAI(
   _question: string,
   personas: Record<string, any>[],
-  _topicScores: Record<string, number>,
+  topicScores: Record<string, number>,
 ): PersonaForAI[] {
+  const TOTAL_COMMENTS = 35;
   const result: PersonaForAI[] = [];
   const usedIds = new Set<string>();
-  const sentimentTypes: Sentiment[] = ['positive', 'negative', 'neutral'];
 
-  for (const archetype of ARCHETYPES) {
+  // Calculate how many comments each archetype gets (proportional to topic)
+  const distribution = getTopicDistribution(topicScores);
+  const rawCounts = ARCHETYPES.map((_, idx) => distribution[idx] * TOTAL_COMMENTS);
+  const commentCounts = rawCounts.map(c => Math.max(2, Math.round(c)));
+
+  // Adjust to hit exactly TOTAL_COMMENTS
+  let currentTotal = commentCounts.reduce((a, b) => a + b, 0);
+  while (currentTotal > TOTAL_COMMENTS) {
+    const maxIdx = commentCounts.indexOf(Math.max(...commentCounts));
+    commentCounts[maxIdx]--;
+    currentTotal--;
+  }
+  while (currentTotal < TOTAL_COMMENTS) {
+    const minIdx = commentCounts.indexOf(Math.min(...commentCounts));
+    commentCounts[minIdx]++;
+    currentTotal++;
+  }
+
+  for (let archIdx = 0; archIdx < ARCHETYPES.length; archIdx++) {
+    const archetype = ARCHETYPES[archIdx];
+    const count = commentCounts[archIdx];
+    const scorer = ARCHETYPE_SCORERS[archetype.id];
+
+    // Score all personas and sort by best match (highest score first), then shuffle within top tier
+    const scored = personas
+      .map(p => ({ persona: p, score: scorer ? scorer(p) : 0 }))
+      .filter(s => s.score >= 3) // minimum threshold
+      .sort((a, b) => b.score - a.score);
+
+    // Take top matches and shuffle for variety
+    const topTier = scored.slice(0, Math.max(50, count * 5));
+    const matchingPersonas = shuffle(topTier.map(s => s.persona));
+
+    // Fallback: political leaning match
     const matchingPolitical = ARCHETYPE_TO_POLITICAL[archetype.id] || [];
-
-    // Get matching personas for this archetype, shuffled for variety
-    const matchingPersonas = shuffle(
+    const fallbackPool = shuffle(
       personas.filter(p => matchingPolitical.includes(p.political_leaning))
     );
 
-    // Fallback pool: all personas shuffled (for when matching runs out)
-    const fallbackPool = shuffle([...personas]);
+    // Distribute sentiments: at least 1 positive, 1 negative, rest mixed
+    const sentiments: Sentiment[] = [];
+    if (count >= 3) {
+      sentiments.push('positive', 'negative', 'neutral');
+      for (let i = 3; i < count; i++) {
+        sentiments.push(pickRandom(['positive', 'negative'] as Sentiment[]));
+      }
+    } else if (count === 2) {
+      sentiments.push('positive', 'negative');
+    } else {
+      sentiments.push(pickRandom(['positive', 'negative', 'neutral'] as Sentiment[]));
+    }
 
-    for (const sentiment of sentimentTypes) {
-      const numComments = sentiment === 'neutral' ? 1 : 3;
+    for (const sentiment of sentiments) {
+      let persona: Record<string, any> | null = null;
 
-      for (let i = 0; i < numComments; i++) {
-        let persona: Record<string, any> | null = null;
+      // Try matching personas first (never reuse)
+      for (const p of matchingPersonas) {
+        const pid = p.id || p.name;
+        if (!usedIds.has(pid)) {
+          persona = p;
+          usedIds.add(pid);
+          break;
+        }
+      }
 
-        // Try matching personas first (never reuse)
-        for (const p of matchingPersonas) {
+      // If no matching left, use fallback pool (never reuse)
+      if (!persona) {
+        for (const p of fallbackPool) {
           const pid = p.id || p.name;
           if (!usedIds.has(pid)) {
             persona = p;
@@ -368,41 +598,29 @@ function buildPersonasForAI(
             break;
           }
         }
-
-        // If no matching left, use fallback pool (never reuse)
-        if (!persona) {
-          for (const p of fallbackPool) {
-            const pid = p.id || p.name;
-            if (!usedIds.has(pid)) {
-              persona = p;
-              usedIds.add(pid);
-              break;
-            }
-          }
-        }
-
-        // If still nothing (shouldn't happen with 2000+ personas), create synthetic
-        if (!persona) {
-          persona = {
-            name: `Persona_${usedIds.size + 1}`,
-            age: Math.floor(Math.random() * 50) + 18,
-            state: pickRandom(['SP', 'RJ', 'MG', 'BA', 'RS', 'CE', 'PE', 'PA', 'GO', 'PR']),
-            region_br: pickRandom(['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul']),
-            generation: pickRandom(['Gen Z', 'Millennial', 'Gen X', 'Boomer']),
-            education_level: pickRandom(['Fundamental', 'Médio', 'Superior Incompleto', 'Superior Completo']),
-            social_class: pickRandom(['A', 'B1', 'B2', 'C1', 'C2', 'D', 'E']),
-            political_leaning: pickRandom(matchingPolitical.length > 0 ? matchingPolitical : ['Centro']),
-            macro_religion: pickRandom(['Católico', 'Evangélico', 'Espírita', 'Ateu']),
-            gender_identity: pickRandom(['Masculino', 'Feminino']),
-            area_type: pickRandom(['Capital/Metrópole', 'Urbana/Interior', 'Rural']),
-            civil_status: pickRandom(['Solteiro', 'Casado', 'Divorciado']),
-            demographic_json: { identidade_basica: { etnia: pickRandom(['Branco', 'Pardo', 'Negro', 'Amarelo']) } },
-            career_json: { atuação_e_cargo: { cargo_atual: pickRandom(['Autônomo', 'Vendedor', 'Motorista', 'Doméstica', 'Empresário', 'Professor']) } },
-          };
-        }
-
-        result.push(mapPersona(persona, archetype.id, sentiment));
       }
+
+      // If still nothing (shouldn't happen with 2000+ personas), create synthetic
+      if (!persona) {
+        persona = {
+          name: `Persona_${usedIds.size + 1}`,
+          age: Math.floor(Math.random() * 50) + 18,
+          state: pickRandom(['SP', 'RJ', 'MG', 'BA', 'RS', 'CE', 'PE', 'PA', 'GO', 'PR']),
+          region_br: pickRandom(['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul']),
+          generation: pickRandom(['Gen Z', 'Millennial', 'Gen X', 'Boomer']),
+          education_level: pickRandom(['Fundamental', 'Médio', 'Superior Incompleto', 'Superior Completo']),
+          social_class: pickRandom(['A', 'B1', 'B2', 'C1', 'C2', 'D', 'E']),
+          political_leaning: pickRandom(matchingPolitical.length > 0 ? matchingPolitical : ['Centro']),
+          macro_religion: pickRandom(['Católico', 'Evangélico', 'Espírita', 'Ateu']),
+          gender_identity: pickRandom(['Masculino', 'Feminino']),
+          area_type: pickRandom(['Capital/Metrópole', 'Urbana/Interior', 'Rural']),
+          civil_status: pickRandom(['Solteiro', 'Casado', 'Divorciado']),
+          demographic_json: { identidade_basica: { etnia: pickRandom(['Branco', 'Pardo', 'Negro', 'Amarelo']) } },
+          career_json: { atuação_e_cargo: { cargo_atual: pickRandom(['Autônomo', 'Vendedor', 'Motorista', 'Doméstica', 'Empresário', 'Professor']) } },
+        };
+      }
+
+      result.push(mapPersona(persona, archetype.id, sentiment));
     }
   }
 
@@ -1065,7 +1283,7 @@ export default function ArenaPage() {
               {/* 5 Archetype Cards */}
               <div className="w-full max-w-4xl">
                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-zinc-600 text-center mb-5">
-                  5 Perfis de Personas na Análise
+                  10 Perfis de Personas na Análise
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
                   {ARCHETYPES.map((arch, idx) => {
