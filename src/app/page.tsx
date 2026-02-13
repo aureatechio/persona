@@ -260,8 +260,7 @@ export default function ArenaPage() {
     let hasResults = false;
     try {
       // ── Try Python SSE backend ──────────────────────────────────────
-      const arenaApi = process.env.NEXT_PUBLIC_ARENA_API || '/api/arena';
-      const response = await fetch(`${arenaApi}/analyze`, {
+      const response = await fetch('/api/arena/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, cluster_filter: selectedCluster || null }),
