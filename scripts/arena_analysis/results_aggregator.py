@@ -277,7 +277,7 @@ def aggregate_results(
                 "negative": data["negative"],
                 "neutral": data["neutral"],
             })
-    cluster_results.sort(key=lambda c: c["id"])
+    cluster_results.sort(key=lambda c: c["id"] or "")
 
     # Quadrant results
     quadrants = []

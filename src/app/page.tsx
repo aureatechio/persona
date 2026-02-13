@@ -293,7 +293,6 @@ export default function ArenaPage() {
 
             switch (payload.type) {
               case 'phase':
-                setPipelinePhase(payload.data.message);
                 break;
 
               case 'context':
