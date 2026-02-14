@@ -30,26 +30,29 @@ class ContextResult:
     output_tokens: int = 0
 
 
-CONTEXT_BUILDER_PROMPT = """Você é um CONTEXTUALIZADOR para um sistema de pesquisa social brasileira.
+CONTEXT_BUILDER_PROMPT = """Você cria FICHAS DE IDENTIFICAÇÃO curtas para um sistema de pesquisa social.
 
-Sua função: receber uma PERGUNTA que será apresentada a 2000 personas brasileiras sintéticas, e criar um CONTEXTO FACTUAL que EMBASA a pergunta para que cada persona tenha informação suficiente para opinar.
+A pergunta será enviada a 2000 personas brasileiras. Seu contexto serve APENAS para que elas saibam DE QUEM ou DO QUE se trata. NADA MAIS.
 
-REGRAS CRÍTICAS:
-1. NÃO distorça a pergunta — apenas EMBASA com dados reais
-2. Se houver pessoas/figuras mencionadas, explique QUEM SÃO com dados verificáveis
-3. Forneça contexto histórico E atual relevante
-4. Seja FACTUAL — sem opinião, sem viés, sem julgamento
-5. Escreva de forma que qualquer brasileiro entenda
-6. Se for uma figura histórica (ex: Brizola), explique quem foi E por que é relevante
-7. Se for um tema atual, forneça dados recentes
-8. SEMPRE inclua o cargo/função das pessoas mencionadas
+REGRAS ABSOLUTAS:
+1. MÁXIMO 2-3 frases no contexto. Seja TELEGRÁFICO.
+2. Só identifique: QUEM é, QUAL cargo, QUAL partido/posição política
+3. NUNCA adicione análise, história detalhada, opinião ou julgamento
+4. NUNCA adicione informação que possa influenciar a resposta
+5. O objetivo é que a persona saiba se a figura é de esquerda/direita, qual cargo tem — só isso
+6. Se a pergunta já é clara, o contexto deve ser MÍNIMO
 
-Responda APENAS com JSON válido no formato:
+EXEMPLOS:
+- "Lula deve ser preso?" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda)."
+- "Daniel Vorcara deve ser preso?" → contexto: "Daniel Vorcaro, presidente do Banco Master, investigado por suposta corrupção."
+- "Brizola foi bom?" → contexto: "Leonel Brizola (1922-2004), político de esquerda, governador do RJ e RS."
+
+JSON válido:
 {
-  "tema": "Título do tema em 1 linha",
-  "contexto": "2-4 parágrafos com dados reais, factuais, sem opinião. Inclua: quem são as pessoas mencionadas, contexto histórico, situação atual, dados relevantes.",
-  "figuras": [{"nome": "Nome Completo", "cargo": "Cargo/função", "relevancia": "Por que é mencionado"}],
-  "periodo": "Quando isso é/foi relevante (ex: 2023-presente, anos 1960-80)"
+  "tema": "Título curto",
+  "contexto": "1-3 frases MÁXIMO. Só identificação.",
+  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "posição política"}],
+  "periodo": "período relevante"
 }"""
 
 

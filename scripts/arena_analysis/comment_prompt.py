@@ -140,23 +140,23 @@ def build_batch_prompt(
     Cada persona recebe seu perfil completo + o contexto validado (se houver).
     A IA retorna sentimento + comentário para cada uma.
     """
-    # Bloco de contexto
+    # Bloco de contexto — MÍNIMO, só identificação
     if context and context.contexto:
-        context_block = f"""TEMA: "{question}"
-
-CONTEXTO FACTUAL (use para EMBASAR suas respostas, NÃO para copiar):
-{context.contexto}
-"""
+        figuras_text = ""
         if context.figuras:
-            figuras_text = ", ".join(
+            figuras_text = " | ".join(
                 f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
             )
-            context_block += f"\nFIGURAS MENCIONADAS: {figuras_text}"
 
-        if context.periodo:
-            context_block += f"\nPERÍODO: {context.periodo}"
+        context_block = f"""PERGUNTA: "{question}"
+
+QUEM/O QUE É (apenas para você saber de quem se trata, NÃO mude sua opinião por causa disso):
+{context.contexto}
+{f"FIGURAS: {figuras_text}" if figuras_text else ""}
+
+⚠️ RESPONDA SOBRE A PERGUNTA ACIMA. O contexto serve APENAS para identificar pessoas/eventos. Sua opinião deve vir do SEU PERFIL, não do contexto."""
     else:
-        context_block = f'TEMA: "{question}"'
+        context_block = f'PERGUNTA: "{question}"'
 
     # Bloco de personas
     persona_lines = []
