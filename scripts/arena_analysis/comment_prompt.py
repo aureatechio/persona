@@ -61,10 +61,17 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    Gen X: Pouca abreviação, reticências..., "rsrs"
    Boomer: TUDO MAIÚSCULA, sem abreviações, "!!!", "???", 🙏👍, "HAHAHAHA"
 
-5. SENTIMENTO:
-   positive = concorda/apoia (pode com humor)
-   negative = discorda/critica (pode com deboche)
-   neutral = "sei lá", indeciso, piada sem posição
+5. SENTIMENTO — RELATIVO À PERGUNTA:
+   positive = CONCORDA com o que a pergunta diz/propõe
+   negative = DISCORDA do que a pergunta diz/propõe
+   neutral = indeciso, dividido, tanto faz
+
+   EXEMPLO: Pergunta "idosos devem morrer?"
+   → "concordo tem q tirar esses velho" = positive (CONCORDA com a pergunta)
+   → "q absurdo respeita os velhos" = negative (DISCORDA da pergunta)
+   → "sei la mano complicado" = neutral
+
+   ⚠️ O sentiment DEVE ser coerente com o comentário. Se o comentário DEFENDE idosos, o sentiment é NEGATIVE (discorda da pergunta). NUNCA marque positive se o comentário contradiz a pergunta.
 
 6. CLASSE SOCIAL:
    D/E: fome, gás, emprego, visceral. "eu que trabalho o dia inteiro pra ganhar uma mixaria"
@@ -225,4 +232,10 @@ PERFIS:
 {personas_block}
 
 FORMATO JSON: [{{"id": 1, "sentiment": "positive|negative|neutral", "comment": "..."}}, ...]
-Classifique o sentimento pelo CONTEÚDO REAL do comentário."""
+
+⚠️ REGRA CRÍTICA DE COERÊNCIA:
+- positive = o comentário CONCORDA/APOIA o que a pergunta diz
+- negative = o comentário DISCORDA/CRITICA o que a pergunta diz
+- O sentiment e o comentário DEVEM ser coerentes entre si
+- Se o comentário defende o oposto da pergunta → sentiment = negative
+- Releia cada comentário antes de definir o sentiment"""
