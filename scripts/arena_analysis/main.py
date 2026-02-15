@@ -31,6 +31,7 @@ from arena_analysis.context_validator import ContextValidator
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
+from arena_analysis.electoral_engine import ElectoralEngine
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -53,11 +54,21 @@ web_researcher = ArenaWebResearcher()
 context_builder = ContextBuilder()
 context_validator = ContextValidator()
 persona_loop = PersonaLoop()
+electoral_engine = ElectoralEngine()
 
 
-# ── Request Model ─────────────────────────────────────────────────────────────
+# ── Request Models ────────────────────────────────────────────────────────────
 class AnalyzeRequest(BaseModel):
     question: str
+    cluster_filter: Optional[str] = None
+
+
+class ElectoralRequest(BaseModel):
+    candidate_a: dict
+    candidate_b: dict
+    round_number: int = 1
+    proposals: list[dict] = []
+    previous_votes: dict = {}
     cluster_filter: Optional[str] = None
 
 
@@ -223,6 +234,213 @@ async def analyze(request: AnalyzeRequest):
             "total_personas": total_personas,
             "total_comments": len(final_results.get("comments", [])),
             "total_tokens": total_tokens,
+        })
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Transfer-Encoding": "chunked",
+        },
+    )
+
+
+# ── Electoral Arena Endpoint ──────────────────────────────────────────────────
+
+@app.post("/api/arena/electoral")
+async def electoral_analyze(request: ElectoralRequest):
+    """
+    Simulação eleitoral com pipeline AI completo.
+    Retorna SSE stream com progresso e resultados.
+    """
+
+    async def generate():
+        start_time = time.time()
+
+        # ── 1. Web Research — notícias atuais dos candidatos ─────────
+        yield sse_event("phase", {
+            "phase": "researching",
+            "message": f"Pesquisando notícias sobre {request.candidate_a.get('name', '?')} e {request.candidate_b.get('name', '?')}...",
+        })
+
+        context_a = None
+        context_b = None
+
+        # Research both candidates in parallel
+        name_a = request.candidate_a.get("name", "Candidato A")
+        name_b = request.candidate_b.get("name", "Candidato B")
+
+        if request.round_number == 1:
+            # Only research on first round
+            research_a = web_researcher.research(f"{name_a} político Brasil")
+            research_b = web_researcher.research(f"{name_b} político Brasil")
+            web_a, web_b = await asyncio.gather(research_a, research_b)
+
+            yield sse_event("web_complete", {
+                "snippets_a": len(web_a.snippets),
+                "snippets_b": len(web_b.snippets),
+            })
+
+            # Build context for both
+            yield sse_event("phase", {
+                "phase": "building_context",
+                "message": "Criando contexto com IA...",
+            })
+
+            ctx_a = context_builder.build(
+                question=f"Quem é {name_a}?",
+                web_context=web_a.combined_context,
+            )
+            ctx_b = context_builder.build(
+                question=f"Quem é {name_b}?",
+                web_context=web_b.combined_context,
+            )
+            context_a, context_b = await asyncio.gather(ctx_a, ctx_b)
+
+            yield sse_event("context", {
+                "candidateA": {
+                    "name": name_a,
+                    "context": context_a.contexto if context_a else "",
+                },
+                "candidateB": {
+                    "name": name_b,
+                    "context": context_b.contexto if context_b else "",
+                },
+            })
+
+        # ── 2. Load Personas ────────────────────────────────────────
+        yield sse_event("phase", {
+            "phase": "loading_personas",
+            "message": "Carregando personas...",
+        })
+
+        personas = load_personas(cluster_filter=request.cluster_filter)
+        total_personas = len(personas)
+
+        yield sse_event("personas_loaded", {
+            "count": total_personas,
+        })
+
+        # ── 3. Voting Loop ──────────────────────────────────────────
+        yield sse_event("phase", {
+            "phase": "voting",
+            "message": f"Processando {total_personas} votos com IA...",
+        })
+
+        # Determine loser name for proposals context
+        loser_name = None
+        if request.proposals:
+            # Determine who is the loser based on previous votes
+            prev_a = sum(1 for v in request.previous_votes.values() if v == "candidateA")
+            prev_b = sum(1 for v in request.previous_votes.values() if v == "candidateB")
+            if prev_a < prev_b:
+                loser_name = name_a
+            else:
+                loser_name = name_b
+
+        all_votes = []
+        async for progress in electoral_engine.run_voting(
+            candidate_a=request.candidate_a,
+            candidate_b=request.candidate_b,
+            context_a=context_a,
+            context_b=context_b,
+            personas=personas,
+            proposals=request.proposals if request.round_number > 1 else None,
+            loser_name=loser_name,
+        ):
+            all_votes.extend(progress.results)
+            yield sse_event("voting_progress", {
+                "processed": progress.processed,
+                "total": progress.total,
+                "votesA": progress.votes_a,
+                "votesB": progress.votes_b,
+                "abstentions": progress.abstentions,
+            })
+
+        # ── 4. Aggregate Results ────────────────────────────────────
+        processing_time = (time.time() - start_time) * 1000
+
+        round_results = electoral_engine.aggregate_electoral_results(
+            candidate_a=request.candidate_a,
+            candidate_b=request.candidate_b,
+            personas=personas,
+            votes=all_votes,
+            round_number=request.round_number,
+        )
+        round_results["processingTime"] = processing_time
+
+        yield sse_event("round_results", round_results)
+
+        # ── 5. Compute Shifts (Round >= 2) ──────────────────────────
+        if request.round_number > 1 and request.previous_votes:
+            shifts = electoral_engine.compute_shifts(
+                previous_votes=request.previous_votes,
+                current_votes=all_votes,
+                personas=personas,
+            )
+            yield sse_event("shifts", shifts)
+
+        # ── 6. Extract Criticisms ───────────────────────────────────
+        winner_side = round_results["winner"]
+        if winner_side != "tie":
+            winner_name_str = name_a if winner_side == "candidateA" else name_b
+            winner_party = (
+                request.candidate_a.get("party", "?")
+                if winner_side == "candidateA"
+                else request.candidate_b.get("party", "?")
+            )
+
+            yield sse_event("phase", {
+                "phase": "extracting_criticisms",
+                "message": f"Extraindo críticas dos eleitores de {winner_name_str}...",
+            })
+
+            criticisms = await electoral_engine.extract_criticisms(
+                winner_name=winner_name_str,
+                winner_party=winner_party,
+                votes=all_votes,
+                personas=personas,
+                winner_side=winner_side,
+            )
+            yield sse_event("criticisms", criticisms)
+
+            # ── 7. Generate Proposals ───────────────────────────────
+            loser_side = "candidateB" if winner_side == "candidateA" else "candidateA"
+            loser_data = (
+                request.candidate_a if loser_side == "candidateA"
+                else request.candidate_b
+            )
+            winner_data = (
+                request.candidate_a if winner_side == "candidateA"
+                else request.candidate_b
+            )
+            margin = abs(round_results["votesA"] - round_results["votesB"])
+
+            yield sse_event("phase", {
+                "phase": "generating_proposals",
+                "message": f"Gerando propostas para {loser_data.get('name', '?')}...",
+            })
+
+            proposals = await electoral_engine.generate_proposals(
+                loser=loser_data,
+                winner=winner_data,
+                margin=margin,
+                criticisms=criticisms,
+                total_voters=total_personas,
+            )
+            yield sse_event("proposals", proposals)
+        else:
+            yield sse_event("criticisms", [])
+            yield sse_event("proposals", [])
+
+        # ── 8. Done ─────────────────────────────────────────────────
+        yield sse_event("done", {
+            "processing_time_ms": processing_time,
+            "total_personas": total_personas,
+            "round_number": request.round_number,
         })
 
     return StreamingResponse(
