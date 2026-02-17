@@ -265,7 +265,7 @@ function PersonasPage() {
       let allData: any[] = [];
       const batchSize = 1000;
 
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; ; i++) {
         let q = supabase.from('personas').select(MAP_FIELDS);
         q = applyFilters(q, f);
         const { data, error: err } = await q.range(i * batchSize, (i + 1) * batchSize - 1);

@@ -73,3 +73,6 @@ export {
 } from './analysis-2d';
 
 export type { QuestionPolarity } from './analysis-2d';
+
+// Data-Driven Persona Sentiment
+export { computePersonaSentiment } from './persona-sentiment';

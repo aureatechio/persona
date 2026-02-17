@@ -59,6 +59,78 @@ function pickWeightedIntensity(): Intensity {
   return 'mild';
 }
 
+// ── Archetype ID Mapping ────────────────────────────────────────────────────
+// Maps archetype IDs from ARCHETYPE_SCORERS (persona-sentiment system)
+// to template keys in COMMENT_TEMPLATES
+
+const ARCHETYPE_TO_TEMPLATE: Record<string, string> = {
+  patriota_radical: 'traditionalist',
+  pastor_evangelico: 'traditionalist',
+  policial_militar: 'traditionalist',
+  tiozao_zap: 'traditionalist',
+  militante_esquerda: 'activist',
+  jovem_periferia: 'activist',
+  progressista_base: 'activist',
+  intelectual: 'analyst',
+  mae_familia: 'moderate',
+  trabalhador: 'moderate',
+  elite_indignada: 'entrepreneur',
+};
+
+// ── Sentiment-Specific Fallback Templates ──────────────────────────────────
+// When no archetype/topic template matches, use sentiment-appropriate fallbacks
+
+const POSITIVE_FALLBACKS: CommentTemplate[] = [
+  { base: 'concordo sim, acho que faz sentido isso', intensity: 'mild' },
+  { base: 'apoio total, tá na hora disso acontecer', intensity: 'moderate' },
+  { base: 'finalmente alguém falando o que eu penso', intensity: 'moderate' },
+  { base: 'isso aí, apoio demais essa ideia', intensity: 'mild' },
+  { base: '{opener} é isso mesmo!! tá certíssimo', intensity: 'moderate' },
+  { base: 'penso igual, o povo precisa entender que isso é necessário', intensity: 'mild' },
+  { base: 'até que enfim uma coisa que faz sentido nesse país', intensity: 'moderate' },
+  { base: 'concordo e quem discorda não vive a realidade', intensity: 'strong' },
+  { base: 'quem é contra não entende como funciona de verdade', intensity: 'strong' },
+  { base: '{opener} pode me chamar de louco mas eu concordo com isso sim', intensity: 'mild' },
+  { base: 'na minha vivência isso é a mais pura verdade', intensity: 'mild' },
+  { base: 'o povo tem que apoiar isso sim, chega de ficar em cima do muro', intensity: 'moderate' },
+];
+
+const NEGATIVE_FALLBACKS: CommentTemplate[] = [
+  { base: 'discordo completamente, isso não faz nenhum sentido', intensity: 'mild' },
+  { base: 'quem defende isso não tá vivendo na realidade', intensity: 'moderate' },
+  { base: 'que absurdo, como alguém pode apoiar isso', intensity: 'strong' },
+  { base: '{opener} isso tá errado demais, pelo amor', intensity: 'moderate' },
+  { base: 'não concordo de jeito nenhum, isso vai dar problema', intensity: 'mild' },
+  { base: 'ridículo isso, não tem cabimento', intensity: 'moderate' },
+  { base: 'cada dia uma loucura nova nesse país', intensity: 'mild' },
+  { base: 'sou totalmente contra, isso é um retrocesso', intensity: 'moderate' },
+  { base: '{opener} na boa isso é uma palhaçada, desculpa quem pensa diferente', intensity: 'strong' },
+  { base: 'isso é inaceitável, ponto final', intensity: 'strong' },
+  { base: 'não dá pra concordar com isso nem a pau', intensity: 'moderate' },
+  { base: 'isso vai prejudicar muita gente e ninguém tá vendo', intensity: 'mild' },
+];
+
+const NEUTRAL_FALLBACKS: CommentTemplate[] = [
+  { base: 'acho que tem argumentos dos dois lados que fazem sentido', intensity: 'mild' },
+  { base: 'é uma questão complexa, não dá pra simplificar assim', intensity: 'mild' },
+  { base: 'sinceramente tô dividido nessa, depende de como for feito', intensity: 'mild' },
+  { base: 'tem prós e contras, não é tão simples quanto parece', intensity: 'mild' },
+  { base: 'olha, depende muito do contexto, não dá pra generalizar', intensity: 'mild' },
+  { base: 'entendo quem é contra e quem é a favor, é complicado', intensity: 'mild' },
+  { base: 'pra mim falta informação pra tomar uma posição firme sobre isso', intensity: 'mild' },
+  { base: 'em tese concordo mas na prática complica bastante', intensity: 'mild' },
+  { base: 'vejo pontos válidos mas também vejo riscos sérios nisso', intensity: 'mild' },
+  { base: 'essa discussão é mais complexa do que parece na superfície', intensity: 'mild' },
+  { base: 'confesso que é um tema que me divide bastante', intensity: 'mild' },
+  { base: 'depende muito, tem nuances que ninguém tá considerando', intensity: 'mild' },
+];
+
+function getSentimentFallbacks(sentiment: Sentiment): CommentTemplate[] {
+  if (sentiment === 'positive') return POSITIVE_FALLBACKS;
+  if (sentiment === 'negative') return NEGATIVE_FALLBACKS;
+  return NEUTRAL_FALLBACKS;
+}
+
 // ── Step 1: Select Template ────────────────────────────────────────────────────
 
 function selectTemplate(
@@ -66,22 +138,17 @@ function selectTemplate(
   sentiment: Sentiment,
   topic: string,
 ): CommentTemplate {
-  const fallbackTemplates: CommentTemplate[] = [
-    { base: 'entendo os dois lados dessa questão, é complexo', intensity: 'mild' },
-    { base: 'preciso pensar mais sobre isso antes de dar minha opinião', intensity: 'mild' },
-    { base: 'é uma questão que divide muita gente e eu entendo por quê', intensity: 'mild' },
-    { base: 'vejo argumentos bons dos dois lados, difícil se posicionar', intensity: 'mild' },
-    { base: 'sinceramente essa é uma questão que me faz pensar bastante', intensity: 'mild' },
-  ];
+  // Map scorer archetype IDs to template keys
+  const templateKey = ARCHETYPE_TO_TEMPLATE[archetypeId] || archetypeId;
 
-  const archetype = COMMENT_TEMPLATES[archetypeId];
+  const archetype = COMMENT_TEMPLATES[templateKey];
   if (!archetype) {
-    return pickRandom(fallbackTemplates);
+    return pickRandom(getSentimentFallbacks(sentiment));
   }
 
   const sentimentTemplates = archetype[sentiment];
   if (!sentimentTemplates) {
-    return pickRandom(fallbackTemplates);
+    return pickRandom(getSentimentFallbacks(sentiment));
   }
 
   // Try specific topic first, fallback to 'general'
@@ -90,7 +157,7 @@ function selectTemplate(
     pool = sentimentTemplates['general'];
   }
   if (!pool || pool.length === 0) {
-    return pickRandom(fallbackTemplates);
+    return pickRandom(getSentimentFallbacks(sentiment));
   }
 
   // Pick by weighted intensity

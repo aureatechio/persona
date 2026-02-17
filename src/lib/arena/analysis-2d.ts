@@ -14,6 +14,7 @@ import type {
 } from './types';
 import { CLUSTERS } from './constants';
 import { normalize, detectTopics, runSimulation } from './engine';
+import { computePersonaSentiment } from './persona-sentiment';
 
 // ── Intensity by Magnitude (Section 5.1) ─────────────────────────────────────
 
@@ -143,69 +144,22 @@ export function adjustSentimentForPoliticalFigure(
 
 // ── 2D Sentiment Simulation (Section 5.4) ────────────────────────────────────
 
+/**
+ * DATA-DRIVEN sentiment: uses the persona's actual questionnaire responses
+ * (tema_*, q_*, votação, aprovação) instead of mechanical ideology formulas.
+ *
+ * Delegates to computePersonaSentiment which:
+ * 1. Checks for moral consensus (extreme questions)
+ * 2. Uses actual voting data for political figures
+ * 3. Maps question keywords → persona's real answers
+ * 4. Falls back to holistic profile analysis from all 80+ fields
+ */
 export function simulate2DSentiment(
   persona: Record<string, any>,
   topicScores: Record<string, number>,
   question: string,
 ): Sentiment {
-  const ecoScore = persona.score_economico ?? 0;
-  const costScore = persona.score_costumes ?? 0;
-
-  // Check for political figure mentions first
-  const figures = detectPoliticalFigures(question);
-  if (figures.length > 0) {
-    const polarity = detectQuestionPolarity(question, figures[0]);
-    const figureSentiment = adjustSentimentForPoliticalFigure(ecoScore, costScore, figures[0], polarity);
-    // 75% use figure-based sentiment, 25% fall through to topic analysis for variance
-    if (Math.random() > 0.25) return figureSentiment;
-  }
-
-  // Topic-based sentiment using 2D scores
-  // For 'general', derive bias from the persona's dominant ideological axis
-  // so personas with strong opinions don't default to neutral
-  const dominantAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
-  const generalBias = 0.5 + dominantAxis * 0.35;
-
-  const biasMap: Record<string, number> = {
-    crime: 0.5 + costScore * 0.5,
-    social: 0.5 - costScore * 0.5,
-    economy: 0.5 + ecoScore * 0.5,
-    politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
-    environment: 0.5 - ecoScore * 0.35,
-    general: generalBias,
-  };
-
-  let weightedScore = 0;
-  let totalWeight = 0;
-
-  for (const [topic, score] of Object.entries(topicScores)) {
-    if (score > 0) {
-      const bias = biasMap[topic] ?? 0.5;
-      weightedScore += bias * score;
-      totalWeight += score;
-    }
-  }
-
-  const baseScore = totalWeight > 0 ? weightedScore / totalWeight : 0.5;
-
-  // Modulate by intensity
-  const ecoIntensity = computeIntensity(ecoScore);
-  const costIntensity = computeIntensity(costScore);
-  const avgIntensity = (ecoIntensity.factor + costIntensity.factor) / 2;
-
-  // More extreme scores = less noise, more deterministic
-  const noiseRange = 0.2 * (1 - avgIntensity * 0.6);
-  const noise = (Math.random() - 0.5) * noiseRange;
-
-  // Education modulation
-  const eduLevel = persona.education_level || 'Médio';
-  const modulatedScore = modulateByEducation(baseScore + noise, eduLevel, 'neutral');
-  const finalScore = Math.max(0, Math.min(1, modulatedScore));
-
-  // Narrower neutral band: only truly centrist personas remain neutral
-  if (finalScore > 0.53) return 'positive';
-  if (finalScore < 0.47) return 'negative';
-  return 'neutral';
+  return computePersonaSentiment(persona, question);
 }
 
 // ── Aggregate Analyzers ──────────────────────────────────────────────────────

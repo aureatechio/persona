@@ -41,7 +41,8 @@ export async function POST(request: NextRequest) {
   const batches = chunkArray(personas, 8);
 
   try {
-    const batchResults = await Promise.all(
+    // Process each batch independently — partial failures don't kill everything
+    const batchResults = await Promise.allSettled(
       batches.map(async (batch) => {
         const userPrompt = buildUserPrompt(question, batch);
 
@@ -52,45 +53,68 @@ export async function POST(request: NextRequest) {
           messages: [{ role: 'user', content: userPrompt }],
         });
 
-        // Extract text content
         const textBlock = response.content.find(b => b.type === 'text');
         if (!textBlock || textBlock.type !== 'text') {
           throw new Error('No text in response');
         }
 
-        // Parse JSON from response
         const jsonText = textBlock.text.trim();
         const cleanJson = jsonText.replace(/^```json?\n?/, '').replace(/\n?```$/, '');
-        const parsed: { id: number; comment: string; sentiment?: string }[] = JSON.parse(cleanJson);
+        const parsed: { id: number; comment: string }[] = JSON.parse(cleanJson);
 
         return parsed;
       }),
     );
 
-    // Flatten and map back to personas
-    const allComments: { id: number; comment: string; sentiment?: string }[] = [];
-    let globalIdx = 0;
+    // Flatten results — for failed batches, use null placeholders
+    const allComments: ({ comment: string } | null)[] = [];
+    let batchStartIdx = 0;
 
-    for (const batchResult of batchResults) {
-      for (const item of batchResult) {
-        allComments.push({ id: globalIdx, comment: item.comment, sentiment: item.sentiment });
-        globalIdx++;
+    for (let b = 0; b < batchResults.length; b++) {
+      const batchSize = batches[b].length;
+      const result = batchResults[b];
+
+      if (result.status === 'fulfilled') {
+        for (let i = 0; i < batchSize; i++) {
+          const item = result.value[i];
+          allComments.push(item ? { comment: item.comment } : null);
+        }
+      } else {
+        console.error(`[Claude] Batch ${b} failed:`, result.reason);
+        for (let i = 0; i < batchSize; i++) {
+          allComments.push(null);
+        }
       }
+      batchStartIdx += batchSize;
     }
 
-    // Valid sentiments for type safety
-    const validSentiments = new Set(['positive', 'negative', 'neutral']);
+    // Check if we got at least some AI comments
+    const successCount = allComments.filter(c => c !== null).length;
+    if (successCount === 0) {
+      return NextResponse.json(
+        { error: 'All AI batches failed', fallback: true },
+        { status: 500 },
+      );
+    }
 
-    // Map comments to persona data — use AI-classified sentiment when available
+    // Deduplication: track used comments to prevent repeats
+    const usedTexts = new Set<string>();
+
     const comments = personas.map((persona, idx) => {
-      const aiComment = allComments[idx];
-      const aiSentiment = aiComment?.sentiment && validSentiments.has(aiComment.sentiment)
-        ? aiComment.sentiment as 'positive' | 'negative' | 'neutral'
-        : persona.sentiment;
+      let commentText = allComments[idx]?.comment || '';
+
+      // Check for empty or duplicate
+      const normalized = commentText.toLowerCase().replace(/[!?.…\s]+/g, '').trim();
+      if (!commentText || normalized.length < 5 || usedTexts.has(normalized)) {
+        commentText = '';
+      } else {
+        usedTexts.add(normalized);
+      }
+
       return {
         archetype: persona.archetypeId,
-        sentiment: aiSentiment,
-        comment: aiComment?.comment || 'sem comentário',
+        sentiment: persona.sentiment,
+        comment: commentText || `comentário de ${persona.name} sobre o tema`,
         personaName: persona.name,
         age: persona.age,
         location: persona.state,

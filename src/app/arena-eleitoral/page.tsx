@@ -170,6 +170,22 @@ export default function ArenaEleitoralPage() {
           }
         }
       }
+
+      // ── Fallback: generate criticisms & proposals if SSE didn't send them ──
+      const resultAfterSSE = currentResultRef.current;
+      if (round === 1 && resultAfterSSE && resultAfterSSE.winner !== 'tie') {
+        const winnerSide = resultAfterSSE.winner as 'candidateA' | 'candidateB';
+        const fallbackCrits = extractCriticisms(resultAfterSSE, winnerSide);
+        const loserData = winnerSide === 'candidateA' ? candidateB! : candidateA!;
+        const winnerData = winnerSide === 'candidateA' ? candidateA! : candidateB!;
+        const margin = Math.abs(resultAfterSSE.votesA - resultAfterSSE.votesB);
+
+        setCriticisms(prev => prev.length > 0 ? prev : fallbackCrits);
+        setProposals(prev => {
+          if (prev.length > 0) return prev;
+          return generateProposals(fallbackCrits, loserData, winnerData, margin);
+        });
+      }
     } catch (err: any) {
       if (err?.name === 'AbortError') return;
 

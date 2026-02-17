@@ -70,7 +70,7 @@ export async function generateOpenAIComments(
   }
 }
 
-/** Fallback: use template engine if AI is unavailable */
+/** Fallback: use template engine if AI is unavailable — with deduplication */
 export function generateFallbackComments(
   personasForAI: PersonaForAI[],
   question: string,
@@ -80,6 +80,9 @@ export function generateFallbackComments(
     (best, [topic, score]) => score > best[1] ? [topic, score] as [string, number] : best,
     ['general', 0] as [string, number],
   )[0];
+
+  const usedComments = new Set<string>();
+  const MAX_RETRIES = 5;
 
   return personasForAI.map(p => {
     const ctx: PersonaContext = {
@@ -91,7 +94,7 @@ export function generateFallbackComments(
       politicalLeaning: p.politicalLeaning,
       religion: p.religion,
       age: p.age,
-      gender: 'Masculino',
+      gender: p.gender || 'Masculino',
       areaType: p.areaType,
       archetypeId: p.archetypeId,
       name: p.name,
@@ -99,7 +102,19 @@ export function generateFallbackComments(
       scoreEconomico: p.scoreEconomico,
       scoreCostumes: p.scoreCostumes,
     };
-    const comment = generateComment(ctx, dominantTopic, p.sentiment);
+
+    // Generate with deduplication: retry if we get a duplicate
+    let comment = '';
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      comment = generateComment(ctx, dominantTopic, p.sentiment);
+      // Normalize for dedup comparison (ignore punctuation and case)
+      const normalized = comment.toLowerCase().replace(/[!?.…]+/g, '').trim();
+      if (!usedComments.has(normalized)) {
+        usedComments.add(normalized);
+        break;
+      }
+    }
+
     return {
       archetype: p.archetypeId,
       sentiment: p.sentiment,

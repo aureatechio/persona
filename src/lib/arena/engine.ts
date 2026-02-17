@@ -8,8 +8,8 @@ import {
   TOPICS,
   TOPIC_DISTRIBUTIONS,
   ARCHETYPE_SCORERS,
-  ARCHETYPE_TO_POLITICAL,
 } from './constants';
+import { computePersonaSentiment } from './persona-sentiment';
 
 // ── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -189,6 +189,77 @@ export function runSimulation(question: string, personaCount: number, personas?:
   const topicScores = detectTopics(question);
   const distribution = getTopicDistribution(topicScores);
 
+  // ── When we have REAL personas, use their ACTUAL DATA for everything ──
+  if (personas && personas.length > 0) {
+    let totalPositive = 0;
+    let totalNegative = 0;
+    let totalNeutral = 0;
+
+    const clusterMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+
+    // Compute sentiment for EACH persona using their real questionnaire data
+    for (const p of personas) {
+      const sentiment = computePersonaSentiment(p, question);
+
+      if (sentiment === 'positive') totalPositive++;
+      else if (sentiment === 'negative') totalNegative++;
+      else totalNeutral++;
+
+      // Also accumulate cluster-level results
+      const cid = p.cluster_id;
+      if (cid) {
+        if (!clusterMap.has(cid)) clusterMap.set(cid, { count: 0, positive: 0, negative: 0, neutral: 0 });
+        const entry = clusterMap.get(cid)!;
+        entry.count++;
+        if (sentiment === 'positive') entry.positive++;
+        else if (sentiment === 'negative') entry.negative++;
+        else entry.neutral++;
+      }
+    }
+
+    // Build cluster results
+    const clusterResults: ClusterResult[] = [];
+    for (const cluster of CLUSTERS) {
+      const data = clusterMap.get(cluster.id);
+      if (data && data.count > 0) {
+        clusterResults.push({
+          id: cluster.id,
+          name: cluster.name,
+          macro: cluster.macro,
+          count: data.count,
+          positive: data.positive,
+          negative: data.negative,
+          neutral: data.neutral,
+        });
+      }
+    }
+
+    // Build archetype results (for display only — the TOTALS come from real data above)
+    const archetypeResults: ArchetypeResult[] = [];
+    ARCHETYPES.forEach((archetype, idx) => {
+      const count = Math.round(personas.length * distribution[idx]);
+      archetypeResults.push({
+        id: archetype.id,
+        name: archetype.name,
+        count,
+        positive: Math.round(count * (totalPositive / personas.length)),
+        negative: Math.round(count * (totalNegative / personas.length)),
+        neutral: Math.round(count * (totalNeutral / personas.length)),
+      });
+    });
+
+    return {
+      total: personas.length,
+      positive: totalPositive,
+      negative: totalNegative,
+      neutral: totalNeutral,
+      archetypes: archetypeResults,
+      clusterResults,
+      processingTime: performance.now() - startTime,
+    };
+  }
+
+  // ── Fallback: no real personas available — use archetype-based simulation ──
   const archetypeResults: ArchetypeResult[] = [];
   let totalPositive = 0;
   let totalNegative = 0;
@@ -221,161 +292,93 @@ export function runSimulation(question: string, personaCount: number, personas?:
     });
   });
 
-  // Cluster-level sentiment analysis
-  const clusterResults: ClusterResult[] = [];
-  if (personas && personas.length > 0) {
-    const clusterMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-
-    for (const p of personas) {
-      const cid = p.cluster_id;
-      if (!cid) continue;
-      if (!clusterMap.has(cid)) clusterMap.set(cid, { count: 0, positive: 0, negative: 0, neutral: 0 });
-      const entry = clusterMap.get(cid)!;
-      entry.count++;
-
-      const ecoScore = p.score_economico ?? 0;
-      const costScore = p.score_costumes ?? 0;
-
-      // For 'general', derive from dominant ideological axis
-      const domAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
-
-      const pseudoBias = {
-        crime: 0.5 + costScore * 0.5,
-        social: 0.5 - costScore * 0.5,
-        economy: 0.5 + ecoScore * 0.5,
-        politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
-        environment: 0.5 - ecoScore * 0.35,
-        general: 0.5 + domAxis * 0.35,
-      };
-
-      let weightedScore = 0;
-      let totalWeight = 0;
-      for (const [topic, score] of Object.entries(topicScores)) {
-        if (score > 0) {
-          const bias = pseudoBias[topic as keyof typeof pseudoBias] ?? 0.5;
-          weightedScore += bias * score;
-          totalWeight += score;
-        }
-      }
-      const baseScore = totalWeight > 0 ? weightedScore / totalWeight : 0.5;
-      // Scale noise inversely with ideological magnitude
-      const magnitude = Math.sqrt(ecoScore * ecoScore + costScore * costScore) / Math.sqrt(2);
-      const noiseRange = 0.2 * (1 - magnitude * 0.6);
-      const noise = (Math.random() - 0.5) * noiseRange;
-      const finalScore = Math.max(0, Math.min(1, baseScore + noise));
-
-      // Narrower neutral band
-      if (finalScore > 0.53) entry.positive++;
-      else if (finalScore < 0.47) entry.negative++;
-      else entry.neutral++;
-    }
-
-    for (const cluster of CLUSTERS) {
-      const data = clusterMap.get(cluster.id);
-      if (data && data.count > 0) {
-        clusterResults.push({
-          id: cluster.id,
-          name: cluster.name,
-          macro: cluster.macro,
-          count: data.count,
-          positive: data.positive,
-          negative: data.negative,
-          neutral: data.neutral,
-        });
-      }
-    }
-  }
-
   return {
     total: personaCount,
     positive: totalPositive,
     negative: totalNegative,
     neutral: totalNeutral,
     archetypes: archetypeResults,
-    clusterResults,
+    clusterResults: [],
     processingTime: performance.now() - startTime,
   };
 }
 
-// ── Persona Sentiment for AI Comments ────────────────────────────────────────
+// ── Archetype Matching (for writing style) ───────────────────────────────────
 
-function computePersonaSentimentForAI(
-  persona: Record<string, any>,
-  topicScores: Record<string, number>,
-  question: string,
-): Sentiment {
-  const ecoScore = persona.score_economico ?? 0;
-  const costScore = persona.score_costumes ?? 0;
-  const norm = normalize(question);
+function findBestArchetype(persona: Record<string, any>): string {
+  let bestId = 'progressista_base';
+  let bestScore = 0;
 
-  // ── Political figure detection with polarity ──
-  const hasLula = norm.includes('lula') || norm.includes('petista') || norm.includes(' pt ') || norm.includes('partido dos trabalhadores');
-  const hasBolsonaro = norm.includes('bolsonaro') || norm.includes('bolsonarism') || norm.includes('capitao');
-
-  if (hasLula || hasBolsonaro) {
-    // Detect if question is adversarial or supportive toward the figure
-    const advKws = ['preso', 'prender', 'condenar', 'punir', 'cadeia', 'culpado', 'corrupto', 'criminoso', 'cassado', 'impeach', 'condena', 'crime', 'renunci', 'demiti', 'errad', 'fracass', 'incompetent'];
-    const supKws = ['bom', 'melhor', 'excelente', 'competente', 'inocente', 'voltar', 'retorn', 'apoiar', 'defende', 'correto', 'certo', 'heroi', 'benefici', 'ajud', 'trabalho', 'gestao', 'acert'];
-
-    let adv = 0, sup = 0;
-    for (const k of advKws) { if (norm.includes(k)) adv++; }
-    for (const k of supKws) { if (norm.includes(k)) sup++; }
-    const isAdversarial = adv > sup && adv > 0;
-
-    // Determine persona's stance toward the figure
-    let figureStance: Sentiment = 'neutral';
-    if (hasLula) {
-      if (ecoScore < -0.3) figureStance = 'positive';
-      else if (ecoScore > 0.3) figureStance = 'negative';
-    } else {
-      if (ecoScore > 0.2 && costScore > 0.5) figureStance = 'positive';
-      else if (ecoScore < -0.3 || costScore < -0.3) figureStance = 'negative';
-    }
-
-    // Invert for adversarial questions (e.g. "Lula deveria estar preso")
-    if (isAdversarial && figureStance !== 'neutral') {
-      figureStance = figureStance === 'positive' ? 'negative' : 'positive';
-    }
-
-    // 75% use figure sentiment, 25% fall through to topic analysis
-    if (Math.random() > 0.25) return figureStance;
-  }
-
-  // ── Topic-based sentiment ──
-  // For 'general', derive from dominant ideological axis instead of fixed 0.5
-  const dominantAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
-  const generalBias = 0.5 + dominantAxis * 0.35;
-
-  const biasMap: Record<string, number> = {
-    crime: 0.5 + costScore * 0.5,
-    social: 0.5 - costScore * 0.5,
-    economy: 0.5 + ecoScore * 0.5,
-    politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
-    environment: 0.5 - ecoScore * 0.35,
-    general: generalBias,
-  };
-
-  let weightedScore = 0;
-  let totalWeight = 0;
-  for (const [topic, score] of Object.entries(topicScores)) {
-    if (score > 0) {
-      const bias = biasMap[topic] ?? 0.5;
-      weightedScore += bias * score;
-      totalWeight += score;
+  for (const [id, scorer] of Object.entries(ARCHETYPE_SCORERS)) {
+    const score = scorer(persona);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = id;
     }
   }
 
-  const baseScore = totalWeight > 0 ? weightedScore / totalWeight : 0.5;
-  const noise = (Math.random() - 0.5) * 0.15;
-  const finalScore = Math.max(0, Math.min(1, baseScore + noise));
+  return bestId;
+}
 
-  // Narrower neutral band
-  if (finalScore > 0.53) return 'positive';
-  if (finalScore < 0.47) return 'negative';
-  return 'neutral';
+// ── Proportional Slot Allocation ─────────────────────────────────────────────
+
+function allocateSlots(
+  posCount: number,
+  negCount: number,
+  neuCount: number,
+  totalSlots: number,
+): [number, number, number] {
+  const total = posCount + negCount + neuCount;
+  if (total === 0) return [0, 0, totalSlots];
+
+  let pos = Math.round(totalSlots * (posCount / total));
+  let neg = Math.round(totalSlots * (negCount / total));
+  let neu = Math.round(totalSlots * (neuCount / total));
+
+  // Guarantee at least 1 slot per non-empty group
+  if (posCount > 0 && pos === 0) pos = 1;
+  if (negCount > 0 && neg === 0) neg = 1;
+  if (neuCount > 0 && neu === 0) neu = 1;
+
+  let sum = pos + neg + neu;
+
+  // Shrink from largest group to reach totalSlots
+  while (sum > totalSlots) {
+    if (neg >= pos && neg >= neu && neg > 1) neg--;
+    else if (pos >= neu && pos > 1) pos--;
+    else if (neu > 1) neu--;
+    else if (neg > 1) neg--;
+    else pos--;
+    sum--;
+  }
+
+  // Grow smallest group to reach totalSlots (proportional preference)
+  while (sum < totalSlots) {
+    const posR = total > 0 ? posCount / total : 0;
+    const negR = total > 0 ? negCount / total : 0;
+    const neuR = total > 0 ? neuCount / total : 0;
+
+    if (negR >= posR && negR >= neuR && negCount > 0) neg++;
+    else if (posR >= neuR && posCount > 0) pos++;
+    else if (neuCount > 0) neu++;
+    else neg++;
+    sum++;
+  }
+
+  return [pos, neg, neu];
 }
 
 // ── Build Personas for AI ────────────────────────────────────────────────────
+//
+// DATA-DRIVEN COMMENT SELECTION:
+//
+// 1. Computes sentiment for EVERY persona (20K) using their real data
+// 2. Groups personas by sentiment (positive / negative / neutral)
+// 3. Allocates comment slots PROPORTIONALLY to the actual distribution
+// 4. Guarantees at least 1 comment per non-empty group (even if only 1%)
+// 5. Selects diverse personas within each group (region, age, gender, cluster)
+// 6. Assigns archetype label for writing style purposes only
+//
 
 export function buildPersonasForAI(
   question: string,
@@ -383,90 +386,120 @@ export function buildPersonasForAI(
   topicScores: Record<string, number>,
 ): PersonaForAI[] {
   const TOTAL_COMMENTS = 35;
+
+  // ── Step 1: Analyze ALL personas using their real questionnaire data ──
+
+  const positivePool: Record<string, any>[] = [];
+  const negativePool: Record<string, any>[] = [];
+  const neutralPool: Record<string, any>[] = [];
+
+  for (const p of personas) {
+    const sentiment = computePersonaSentiment(p, question);
+    if (sentiment === 'positive') positivePool.push(p);
+    else if (sentiment === 'negative') negativePool.push(p);
+    else neutralPool.push(p);
+  }
+
+  const total = personas.length || 1;
+  const posPct = ((positivePool.length / total) * 100).toFixed(1);
+  const negPct = ((negativePool.length / total) * 100).toFixed(1);
+  const neuPct = ((neutralPool.length / total) * 100).toFixed(1);
+
+  console.log(
+    `[Arena] Massive data analysis: ${personas.length} personas analyzed → ` +
+    `${positivePool.length} positive (${posPct}%), ` +
+    `${negativePool.length} negative (${negPct}%), ` +
+    `${neutralPool.length} neutral (${neuPct}%)`,
+  );
+
+  // ── Step 2: Allocate comment slots PROPORTIONALLY ──
+
+  const [posSlots, negSlots, neuSlots] = allocateSlots(
+    positivePool.length,
+    negativePool.length,
+    neutralPool.length,
+    TOTAL_COMMENTS,
+  );
+
+  console.log(
+    `[Arena] Comment slots: ${posSlots} positive, ${negSlots} negative, ${neuSlots} neutral = ${posSlots + negSlots + neuSlots} total`,
+  );
+
+  // ── Step 3: Select diverse personas from each sentiment group ──
+
   const result: PersonaForAI[] = [];
   const usedIds = new Set<string>();
 
-  const distribution = getTopicDistribution(topicScores);
-  const rawCounts = ARCHETYPES.map((_, idx) => distribution[idx] * TOTAL_COMMENTS);
-  const commentCounts = rawCounts.map(c => Math.max(2, Math.round(c)));
+  function selectDiverseFromPool(
+    pool: Record<string, any>[],
+    count: number,
+    sentiment: Sentiment,
+  ): void {
+    if (pool.length === 0 || count <= 0) return;
 
-  let currentTotal = commentCounts.reduce((a, b) => a + b, 0);
-  while (currentTotal > TOTAL_COMMENTS) {
-    const maxIdx = commentCounts.indexOf(Math.max(...commentCounts));
-    commentCounts[maxIdx]--;
-    currentTotal--;
-  }
-  while (currentTotal < TOTAL_COMMENTS) {
-    const minIdx = commentCounts.indexOf(Math.min(...commentCounts));
-    commentCounts[minIdx]++;
-    currentTotal++;
-  }
+    const shuffled = shuffle([...pool]);
+    let selected = 0;
 
-  for (let archIdx = 0; archIdx < ARCHETYPES.length; archIdx++) {
-    const archetype = ARCHETYPES[archIdx];
-    const count = commentCounts[archIdx];
-    const scorer = ARCHETYPE_SCORERS[archetype.id];
+    // Diversity trackers
+    const usedRegions = new Set<string>();
+    const usedGenerations = new Set<string>();
+    const usedClusters = new Set<string>();
+    const usedGenders = new Set<string>();
+    const usedStates = new Set<string>();
+    const usedClasses = new Set<string>();
 
-    const scored = personas
-      .map(p => ({ persona: p, score: scorer ? scorer(p) : 0 }))
-      .filter(s => s.score >= 3)
-      .sort((a, b) => b.score - a.score);
+    // First pass: prioritize maximum diversity
+    for (const p of shuffled) {
+      if (selected >= count) break;
+      const pid = p.id || p.name;
+      if (usedIds.has(pid)) continue;
 
-    const topTier = scored.slice(0, Math.max(50, count * 5));
-    const matchingPersonas = shuffle(topTier.map(s => s.persona));
+      const region = p.region_br || '';
+      const gen = p.generation || '';
+      const cluster = p.cluster_id || '';
+      const gender = p.gender_identity || '';
+      const state = p.state || '';
+      const sclass = p.social_class || '';
 
-    const matchingPolitical = ARCHETYPE_TO_POLITICAL[archetype.id] || [];
-    const fallbackPool = shuffle(
-      personas.filter(p => matchingPolitical.includes(p.political_leaning))
-    );
+      const newDimensions =
+        (region && !usedRegions.has(region) ? 1 : 0) +
+        (gen && !usedGenerations.has(gen) ? 1 : 0) +
+        (cluster && !usedClusters.has(cluster) ? 1 : 0) +
+        (gender && !usedGenders.has(gender) ? 1 : 0) +
+        (state && !usedStates.has(state) ? 1 : 0) +
+        (sclass && !usedClasses.has(sclass) ? 1 : 0);
 
-    for (let ci = 0; ci < count; ci++) {
-      let persona: Record<string, any> | null = null;
+      if (newDimensions >= 1) {
+        usedIds.add(pid);
+        usedRegions.add(region);
+        usedGenerations.add(gen);
+        usedClusters.add(cluster);
+        usedGenders.add(gender);
+        usedStates.add(state);
+        usedClasses.add(sclass);
 
-      for (const p of matchingPersonas) {
-        const pid = p.id || p.name;
-        if (!usedIds.has(pid)) {
-          persona = p;
-          usedIds.add(pid);
-          break;
-        }
+        const archetypeId = findBestArchetype(p);
+        result.push(mapPersona(p, archetypeId, sentiment));
+        selected++;
       }
+    }
 
-      if (!persona) {
-        for (const p of fallbackPool) {
-          const pid = p.id || p.name;
-          if (!usedIds.has(pid)) {
-            persona = p;
-            usedIds.add(pid);
-            break;
-          }
-        }
-      }
+    // Second pass: fill remaining slots with any unused persona
+    for (const p of shuffled) {
+      if (selected >= count) break;
+      const pid = p.id || p.name;
+      if (usedIds.has(pid)) continue;
 
-      if (!persona) {
-        persona = {
-          name: `Persona_${usedIds.size + 1}`,
-          age: Math.floor(Math.random() * 50) + 18,
-          state: pickRandom(['SP', 'RJ', 'MG', 'BA', 'RS', 'CE', 'PE', 'PA', 'GO', 'PR']),
-          region_br: pickRandom(['Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul']),
-          generation: pickRandom(['Gen Z', 'Millennial', 'Gen X', 'Boomer']),
-          education_level: pickRandom(['Fundamental', 'Médio', 'Superior Incompleto', 'Superior Completo']),
-          social_class: pickRandom(['A', 'B1', 'B2', 'C1', 'C2', 'D', 'E']),
-          political_leaning: pickRandom(matchingPolitical.length > 0 ? matchingPolitical : ['Centro']),
-          macro_religion: pickRandom(['Católico', 'Evangélico', 'Espírita', 'Ateu']),
-          gender_identity: pickRandom(['Masculino', 'Feminino']),
-          area_type: pickRandom(['Capital/Metrópole', 'Urbana/Interior', 'Rural']),
-          civil_status: pickRandom(['Solteiro', 'Casado', 'Divorciado']),
-          demographic_json: { identidade_basica: { etnia: pickRandom(['Branco', 'Pardo', 'Negro', 'Amarelo']) } },
-          career_json: { atuação_e_cargo: { cargo_atual: pickRandom(['Autônomo', 'Vendedor', 'Motorista', 'Doméstica', 'Empresário', 'Professor']) } },
-        };
-      }
-
-      // Compute sentiment from persona's ideological scores + topic + question polarity
-      const sentiment = computePersonaSentimentForAI(persona, topicScores, question);
-      result.push(mapPersona(persona, archetype.id, sentiment));
+      usedIds.add(pid);
+      const archetypeId = findBestArchetype(p);
+      result.push(mapPersona(p, archetypeId, sentiment));
+      selected++;
     }
   }
+
+  selectDiverseFromPool(positivePool, posSlots, 'positive');
+  selectDiverseFromPool(negativePool, negSlots, 'negative');
+  selectDiverseFromPool(neutralPool, neuSlots, 'neutral');
 
   return shuffle(result);
 }

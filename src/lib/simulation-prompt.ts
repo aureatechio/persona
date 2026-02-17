@@ -440,6 +440,26 @@ export function buildUserPrompt(question: string, personas: PersonaForAI[]): str
 
 GERE 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve parecer COPIADO de um post REAL de brasileiro no Twitter/Instagram/Facebook.
 
+⚠️ REGRA MAIS IMPORTANTE — SENTIMENTO É OBRIGATÓRIO E VEM DOS DADOS:
+O "Sentimento" de cada perfil foi calculado por ANÁLISE DE DADOS MASSIVA (20.000 personas analisadas individualmente com base nos seus dados reais de questionário, votação, posições temáticas etc.). O sentimento NÃO é sugestão — é o RESULTADO DA PESQUISA. Você DEVE gerar o comentário COERENTE com o sentimento indicado:
+- Se "CONCORDA/APOIA" → o comentário DEVE expressar concordância/apoio ao tema, mesmo que polêmico
+- Se "DISCORDA/CRITICA" → o comentário DEVE expressar discordância/crítica ao tema
+- Se "INDECISO/NEUTRO" → o comentário DEVE mostrar ambivalência, ponderação, ou indecisão genuína
+Não reclassifique. Não inverta. Não amenize. O sentimento vem dos DADOS REAIS da persona.
+
+⚠️ REGRA SOBRE PERSONAS QUE CONCORDAM COM TEMAS POLÊMICOS:
+Quando uma persona tem sentimento "CONCORDA/APOIA" em tema polêmico ou extremo, você DEVE escrever o comentário COMO SE FOSSE aquela pessoa real. Na vida real, existem pessoas com visões extremas, e a simulação precisa refletir isso com fidelidade.
+USE o perfil completo da persona para construir o comentário:
+- Escolaridade → define como ela escreve (erros, vocabulário)
+- Região/Estado → define gírias e sotaque
+- Religião → define se usa Deus, Bíblia, fé
+- Geração → define se usa abreviações, emojis, caps
+- Profissão/Classe → define perspectiva e vivência
+- Dados do questionário → definem as posições concretas da persona
+O comentário NÃO pode ser genérico tipo "concordo" — deve ser escrito NA VOZ daquela pessoa, com seus maneirismos, erros, gírias, e justificativa baseada no que ela acredita (religião, política, vivência).
+Exemplo: Se uma persona evangélica, Fundamental, Boomer, do Nordeste, é "a favor" de pena de morte → o comentário deve soar como: "ESSE TIPO DE GENTE TEM QUE PAGAR PELO QUE FEZ SIM!! DEUS PERDOA MAS A JUSTIÇA TEM QUE SER FEITA 🙏🙏"
+NUNCA gere um comentário vazio, genérico ou desconectado do perfil da persona.
+
 ⚠️ CHECKLIST OBRIGATÓRIO PRA CADA COMENTÁRIO:
 1. ESCOLARIDADE → Fundamental = MUITOS erros ("nois", "concerteza", "mim fazer", sem acentos). Superior/Pós = correto mas CASUAL.
 2. ESTADO → Use gírias DAQUELE estado (oxe, uai, bah, mano, mermão). OBRIGATÓRIO.
@@ -449,23 +469,16 @@ GERE 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 6. PROFISSÃO → Pedreiro ≠ advogado. A vivência muda opinião E vocabulário.
 7. GÊNERO → Homem periferia ≠ mulher mãe ≠ LGBTQ+. Cada um fala diferente.
 8. PALAVRÕES → Se o perfil indica (jovem, periferia, radical) USE palavrões reais. Brasileiro xinga RINDO.
-9. SENTIMENTO → CONCORDA = apoia (pode com humor). DISCORDA = ataca (pode com deboche). NEUTRO = pondera os dois lados, vê complexidade, pode fazer piada sobre a indecisão. NUNCA "sei lá" — neutro é ponderado, não desinteressado.
+9. SENTIMENTO → OBRIGATÓRIO respeitar o sentimento indicado. CONCORDA = apoia (pode com humor). DISCORDA = ataca (pode com deboche). NEUTRO = pondera os dois lados, vê complexidade. NUNCA "sei lá" — neutro é ponderado.
 10. HUMOR BRASILEIRO → ~40-50% dos comentários devem ter humor: ironia, deboche, exagero, piada do cotidiano, "rir pra não chorar". MISTURE opinião com piada naturalmente. Brasileiro quase NUNCA é 100% sério.
 11. LINGUAGEM → INFORMAL SEMPRE. Nada de "eu penso que" ou "na minha opinião". Brasileiro vai direto: "mano isso é uma piada né", "pqp que palhaçada", "kkkk tô rindo de nervoso".
 12. QUESTIONÁRIO → Use as respostas do QUESTIONÁRIO pra calibrar: MaiorProblema define prioridade. SitEcon "Piorou" = reclama mais. ConfSTF baixo + ConfExército alto = perfil militarista. FamTradicional "Sim" = conservador em costumes. Impeach "Sim" = anti-Lula ativo.
-13. VARIAÇÃO → CADA comentário de uma PESSOA DIFERENTE. Varie tamanho (3 palavras a 30), tom, estilo, tipo de humor.
+13. VARIAÇÃO E UNICIDADE → CADA comentário DEVE ser COMPLETAMENTE DIFERENTE dos outros. NUNCA repita a mesma frase, estrutura ou ideia entre dois comentários. Varie DRASTICAMENTE: tamanho (5 palavras a 40), tom, estilo, tipo de humor, vocabulário, e abordagem ao tema. Se um comentário já disse "concordo", o próximo NÃO pode começar com "concordo". ZERO repetição. Cada persona é uma PESSOA REAL com vivência ÚNICA — o comentário deve refletir SUA vida, SUA perspectiva, SEU jeito de falar.
 
 PERFIS:
 ${personaLines}
 
-FORMATO DE RESPOSTA: Para cada perfil, gere o comentário E classifique o sentimento REAL do que foi escrito:
-- "positive" = o comentário APOIA/CONCORDA com o tema
-- "negative" = o comentário CRITICA/DISCORDA do tema
-- "neutral" = o comentário é indeciso, faz piada sem se posicionar, ou "tanto faz"
-
-⚠️ CLASSIFIQUE pelo CONTEÚDO REAL do comentário, não pelo que foi sugerido. Se a persona era pra concordar mas o comentário saiu irônico/contra, classifique como "negative". A CLASSIFICAÇÃO deve refletir o que o texto REALMENTE diz.
-
-JSON: [{"id": 1, "comment": "...", "sentiment": "positive"}, {"id": 2, "comment": "...", "sentiment": "negative"}, ...]`;
+JSON: [{"id": 1, "comment": "..."}, {"id": 2, "comment": "..."}, ...]`;
 }
 
 // ── Helper ───────────────────────────────────────────────────────────────────
