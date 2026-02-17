@@ -258,14 +258,22 @@ export default function ArenaPage() {
     abortRef.current = controller;
 
     let hasResults = false;
+    let useFallback = false;
+
     try {
-      // ── Try Python SSE backend ──────────────────────────────────────
+      // ── Try Python SSE backend (with 10s timeout) ─────────────────
+      const fetchTimeout = setTimeout(() => {
+        if (!hasResults) controller.abort();
+      }, 10000);
+
       const response = await fetch('/api/arena/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, cluster_filter: selectedCluster || null }),
         signal: controller.signal,
       });
+
+      clearTimeout(fetchTimeout);
 
       if (!response.ok || !response.body) {
         throw new Error('Python backend unavailable');
@@ -275,92 +283,117 @@ export default function ArenaPage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let streamDone = false;
+      let lastEventTime = Date.now();
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      // Stall detection: if no SSE event arrives within 12s, abort
+      const stallCheck = setInterval(() => {
+        if (Date.now() - lastEventTime > 12000 && !hasResults) {
+          console.warn('[Arena] SSE stalled - no events for 12s, aborting');
+          clearInterval(stallCheck);
+          reader.cancel();
+        }
+      }, 3000);
 
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() || '';
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        for (const chunk of chunks) {
-          const line = chunk.trim();
-          if (!line.startsWith('data: ')) continue;
+          lastEventTime = Date.now();
+          buffer += decoder.decode(value, { stream: true });
+          const chunks = buffer.split('\n\n');
+          buffer = chunks.pop() || '';
 
-          try {
-            const payload = JSON.parse(line.slice(6));
+          for (const chunk of chunks) {
+            const line = chunk.trim();
+            if (!line.startsWith('data: ')) continue;
 
-            switch (payload.type) {
-              case 'phase':
-                break;
+            try {
+              const payload = JSON.parse(line.slice(6));
 
-              case 'context':
-                break;
+              switch (payload.type) {
+                case 'phase':
+                  break;
 
-              case 'personas_loaded':
-                setEffectivePersonaCount(payload.data.count);
-                break;
+                case 'context':
+                  break;
 
-              case 'progress':
-                setProcessedCount(payload.data.processed);
-                setEffectivePersonaCount(payload.data.total);
-                setSimulation(prev => ({
-                  total: payload.data.total,
-                  positive: payload.data.positive,
-                  negative: payload.data.negative,
-                  neutral: payload.data.neutral,
-                  archetypes: prev?.archetypes || [],
-                  clusterResults: prev?.clusterResults || [],
-                  comments: prev?.comments || [],
-                  processingTime: prev?.processingTime || 0,
-                  ideologicalPoints: prev?.ideologicalPoints || [],
-                  quadrants: prev?.quadrants || [],
-                  regions: prev?.regions || [],
-                  generations: prev?.generations || [],
-                  educationLevels: prev?.educationLevels || [],
-                  politicalFigures: prev?.politicalFigures || [],
-                  intensityBands: prev?.intensityBands || [],
-                }));
-                break;
+                case 'personas_loaded':
+                  setEffectivePersonaCount(payload.data.count);
+                  break;
 
-              case 'results':
-                setSimulation(payload.data as EnhancedSimulationResult);
-                hasResults = true;
-                break;
+                case 'progress':
+                  setProcessedCount(payload.data.processed);
+                  setEffectivePersonaCount(payload.data.total);
+                  setSimulation(prev => ({
+                    total: payload.data.total,
+                    positive: payload.data.positive,
+                    negative: payload.data.negative,
+                    neutral: payload.data.neutral,
+                    archetypes: prev?.archetypes || [],
+                    clusterResults: prev?.clusterResults || [],
+                    comments: prev?.comments || [],
+                    processingTime: prev?.processingTime || 0,
+                    ideologicalPoints: prev?.ideologicalPoints || [],
+                    quadrants: prev?.quadrants || [],
+                    regions: prev?.regions || [],
+                    generations: prev?.generations || [],
+                    educationLevels: prev?.educationLevels || [],
+                    politicalFigures: prev?.politicalFigures || [],
+                    intensityBands: prev?.intensityBands || [],
+                  }));
+                  break;
 
-              case 'done':
-                streamDone = true;
-                setProcessedCount(payload.data.total_personas);
-                setPhase('results');
-                setTimeout(() => setShowComments(true), 800);
-                break;
+                case 'results':
+                  setSimulation(payload.data as EnhancedSimulationResult);
+                  hasResults = true;
+                  break;
+
+                case 'done':
+                  streamDone = true;
+                  setProcessedCount(payload.data.total_personas);
+                  setPhase('results');
+                  setTimeout(() => setShowComments(true), 800);
+                  break;
+              }
+            } catch (parseErr) {
+              console.warn('[Arena] SSE parse error:', parseErr);
             }
-          } catch (parseErr) {
-            console.warn('[Arena] SSE parse error:', parseErr);
           }
         }
+      } finally {
+        clearInterval(stallCheck);
       }
 
       // Safety: if stream ended without explicit 'done' event
-      if (!streamDone) {
+      if (!streamDone && hasResults) {
         setPhase('results');
         setTimeout(() => setShowComments(true), 800);
+      } else if (!streamDone && !hasResults) {
+        useFallback = true;
       }
     } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-
-      // Se já recebemos os results do Python, não fazer fallback
-      if (hasResults) {
-        console.warn('[Arena] Stream ended after results, ignoring:', err);
+      if (err?.name === 'AbortError' && hasResults) {
         setPhase('results');
         setTimeout(() => setShowComments(true), 800);
         return;
       }
+      if (err?.name === 'AbortError' && !hasResults) {
+        useFallback = true;
+      } else if (hasResults) {
+        console.warn('[Arena] Stream ended after results, ignoring:', err);
+        setPhase('results');
+        setTimeout(() => setShowComments(true), 800);
+        return;
+      } else {
+        useFallback = true;
+      }
+    }
 
-      // ── Fallback: JS simulation ─────────────────────────────────────
-      console.warn('[Arena] Python backend offline, fallback JS:', err);
-      setPipelinePhase('Analisando personas...');
+    // ── Fallback: JS simulation ───────────────────────────────────────
+    if (useFallback) {
+      console.warn('[Arena] Python backend offline, fallback JS');
+      setPipelinePhase('Simulação local...');
 
       try {
         const allData = await loadAllPersonas();

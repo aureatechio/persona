@@ -22,7 +22,7 @@ const PersonaMap = dynamic(() => import('@/components/PersonaMap'), {
 const PAGE_SIZE = 30;
 
 // Campos necessários para o card
-const LIST_FIELDS = 'id,name,age,city,state,gender,photo_path,gender_identity,civil_status,social_class,education_level,generation,political_leaning,archetype_primary,disc_main_factor,macro_religion,cronotype,region_br,area_type,apelido_politico,cluster_id,nome_grupo,score_economico,score_costumes,psychology_json,career_json,beliefs_json,demographic_json';
+const LIST_FIELDS = 'id,name,age,city,state,gender,photo_path,gender_identity,civil_status,social_class,education_level,generation,political_leaning,archetype_primary,disc_main_factor,macro_religion,cronotype,region_br,area_type,apelido_politico,cluster_id,nome_grupo,score_economico,score_costumes,psychology_json,career_json,beliefs_json,demographic_json,raca_cor,voto_2022,aprovacao_lula,voto_2026,religiao_subtipo,recebe_beneficio,usa_transporte_publico,time_futebol';
 
 // Campos mínimos para o mapa (apenas lat/lng + popup)
 const MAP_FIELDS = 'id,name,age,city,state,lat,lng';
@@ -51,6 +51,9 @@ interface Filters {
   maxScoreEconomico: string;
   minScoreCostumes: string;
   maxScoreCostumes: string;
+  voto2022: string;
+  aprovacaoLula: string;
+  recebeBeneficio: string;
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -77,6 +80,9 @@ const EMPTY_FILTERS: Filters = {
   maxScoreEconomico: '',
   minScoreCostumes: '',
   maxScoreCostumes: '',
+  voto2022: '',
+  aprovacaoLula: '',
+  recebeBeneficio: '',
 };
 
 function applyFilters(query: any, f: Filters) {
@@ -93,7 +99,7 @@ function applyFilters(query: any, f: Filters) {
   if (f.maxAge) query = query.lte('age', parseInt(f.maxAge));
   if (f.socialClass) query = query.eq('social_class', f.socialClass);
   if (f.civilStatus) query = query.eq('civil_status', f.civilStatus);
-  if (f.ethnicity) query = query.filter('demographic_json->identidade_basica->>etnia', 'eq', f.ethnicity);
+  if (f.ethnicity) query = query.eq('raca_cor', f.ethnicity);
   if (f.educationLevel) query = query.eq('education_level', f.educationLevel);
   if (f.minIncome) query = query.filter('demographic_json->renda_e_financas->>renda_mensal_individual', 'gte', parseInt(f.minIncome));
   if (f.maxIncome) query = query.filter('demographic_json->renda_e_financas->>renda_mensal_individual', 'lte', parseInt(f.maxIncome));
@@ -102,6 +108,9 @@ function applyFilters(query: any, f: Filters) {
   if (f.maxScoreEconomico) query = query.lte('score_economico', parseFloat(f.maxScoreEconomico));
   if (f.minScoreCostumes) query = query.gte('score_costumes', parseFloat(f.minScoreCostumes));
   if (f.maxScoreCostumes) query = query.lte('score_costumes', parseFloat(f.maxScoreCostumes));
+  if (f.voto2022) query = query.eq('voto_2022', f.voto2022);
+  if (f.aprovacaoLula) query = query.eq('aprovacao_lula', f.aprovacaoLula);
+  if (f.recebeBeneficio) query = query.eq('recebe_beneficio', f.recebeBeneficio);
   if (f.search) query = query.or(`name.ilike.%${f.search}%,city.ilike.%${f.search}%,state.ilike.%${f.search}%`);
   return query;
 }
@@ -174,6 +183,9 @@ function PersonasPage() {
       'Antissistema', 'Pequeno Empresário', 'Direita Digital', 'Conservador Tradicional',
       'Desengajado', 'Anti-Incumbente',
     ],
+    voto2022: ['Lula', 'Bolsonaro', 'Ciro', 'Simone Tebet', 'Nulo/Branco', 'Não votou'],
+    aprovacaoLula: ['Aprova', 'Desaprova', 'Neutro'],
+    recebeBeneficio: ['Sim', 'Não'],
   };
 
   // ── Auth guard ─────────────────────────────────────────────────────────
@@ -367,6 +379,9 @@ function PersonasPage() {
                   ['Cronotipo', 'cronotype', enumOptions.cronotype, 'Todos'],
                   ['Região', 'regionBr', enumOptions.regionBr, 'Todas'],
                   ['Tipo de Área', 'areaType', enumOptions.areaType, 'Todos'],
+                  ['Voto 2022', 'voto2022', enumOptions.voto2022, 'Todos'],
+                  ['Aprovação Lula', 'aprovacaoLula', enumOptions.aprovacaoLula, 'Todas'],
+                  ['Recebe Benefício', 'recebeBeneficio', enumOptions.recebeBeneficio, 'Todos'],
                 ] as [string, keyof Filters, string[], string][]).map(([label, key, options, placeholder]) => (
                   <div key={key} className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-zinc-600 px-2">{label}</label>

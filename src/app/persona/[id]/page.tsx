@@ -238,29 +238,33 @@ function OverviewTab({ persona }: { persona: any }) {
   const civilStatus = persona.civil_status || family?.estado_civil;
   const regionBr = persona.region_br || geo?.regiao;
   const areaType = persona.area_type || geo?.tipo_area;
+  const ethnicity = persona.raca_cor || identity?.etnia;
+  const religion = persona.macro_religion || persona.beliefs_json?.religião?.fé_ou_doutrina;
+  const religionSubtype = persona.religiao_subtipo;
+  const occupation = persona.career_json?.atuação_e_cargo?.cargo_atual;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {/* Identidade Básica */}
       <SectionCard title="Identidade Básica" icon={User}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Nome</span><span>{identity?.nome_completo}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Idade</span><span>{identity?.idade} anos</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Nome</span><span>{persona.name || identity?.nome_completo}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Idade</span><span>{persona.age || identity?.idade} anos</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Gênero</span><span>{genderIdentity}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Etnia</span><span>{identity?.etnia}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Altura</span><span>{identity?.altura_cm} cm</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Peso</span><span>{identity?.peso_kg} kg</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Raça/Cor</span><span>{ethnicity || 'Não informada'}</span></div>
+          {identity?.altura_cm && <div className="flex justify-between"><span className="text-zinc-500">Altura</span><span>{identity.altura_cm} cm</span></div>}
+          {identity?.peso_kg && <div className="flex justify-between"><span className="text-zinc-500">Peso</span><span>{identity.peso_kg} kg</span></div>}
         </div>
       </SectionCard>
 
       {/* Localização */}
       <SectionCard title="Localização" icon={MapPin}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Cidade</span><span>{geo?.cidade}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Estado</span><span>{geo?.estado}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Cidade</span><span>{persona.city || geo?.cidade}</span></div>
+          <div className="flex justify-between"><span className="text-zinc-500">Estado</span><span>{persona.state || geo?.estado}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Região</span><span>{regionBr}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Tipo de Área</span><span>{areaType}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Coordenadas</span><span className="text-xs text-zinc-400">{geo?.coordenadas?.latitude}, {geo?.coordenadas?.longitude}</span></div>
+          {geo?.coordenadas && <div className="flex justify-between"><span className="text-zinc-500">Coordenadas</span><span className="text-xs text-zinc-400">{geo.coordenadas.latitude}, {geo.coordenadas.longitude}</span></div>}
         </div>
       </SectionCard>
 
@@ -269,18 +273,19 @@ function OverviewTab({ persona }: { persona: any }) {
         <div className="space-y-3 text-sm">
           <div className="flex justify-between"><span className="text-zinc-500">Classe Social</span><span className="font-bold text-emerald-400">{socialClass}</span></div>
           <div className="flex justify-between"><span className="text-zinc-500">Escolaridade</span><span>{educationLevel}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Setor</span><span>{socio?.setor_economico}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Ocupação</span><span className="text-right max-w-[150px] truncate">{socio?.ocupacao_principal}</span></div>
+          {occupation && <div className="flex justify-between"><span className="text-zinc-500">Ocupação</span><span className="text-right max-w-[150px] truncate">{occupation}</span></div>}
+          {socio?.setor_economico && <div className="flex justify-between"><span className="text-zinc-500">Setor</span><span>{socio.setor_economico}</span></div>}
+          <div className="flex justify-between"><span className="text-zinc-500">Geração</span><span>{persona.generation}</span></div>
+          {persona.recebe_beneficio && <div className="flex justify-between"><span className="text-zinc-500">Recebe Benefício</span><span>{persona.recebe_beneficio}</span></div>}
+          {persona.usa_transporte_publico && <div className="flex justify-between"><span className="text-zinc-500">Transporte Público</span><span>{persona.usa_transporte_publico}</span></div>}
         </div>
       </SectionCard>
 
-      {/* Renda */}
-      <SectionCard title="Renda e Finanças" icon={TrendingUp}>
+      {/* Religião e Crenças */}
+      <SectionCard title="Religião" icon={Sparkles}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">Renda Individual</span><span className="font-bold text-green-400">R$ {finance?.renda_mensal_individual?.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Renda Familiar</span><span>R$ {finance?.renda_familiar_total?.toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Faixa IBGE</span><span>{finance?.faixa_renda_ibge}</span></div>
-          <StatItem label="Poder de Compra" value={finance?.poder_de_compra_nivel} color="bg-emerald-500" />
+          <div className="flex justify-between"><span className="text-zinc-500">Religião</span><span className="font-medium">{religion || 'Não informada'}</span></div>
+          {religionSubtype && <div className="flex justify-between"><span className="text-zinc-500">Subtipo</span><span>{religionSubtype}</span></div>}
         </div>
       </SectionCard>
 
@@ -288,20 +293,75 @@ function OverviewTab({ persona }: { persona: any }) {
       <SectionCard title="Família e Estado Civil" icon={Users}>
         <div className="space-y-3 text-sm">
           <div className="flex justify-between"><span className="text-zinc-500">Estado Civil</span><span>{civilStatus}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Mora com</span><span>{family?.mora_com}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Tem Filhos</span><span>{family?.tem_filhos ? 'Sim' : 'Não'}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Dependentes</span><span>{family?.dependentes}</span></div>
+          {family?.mora_com && <div className="flex justify-between"><span className="text-zinc-500">Mora com</span><span>{family.mora_com}</span></div>}
+          {family?.tem_filhos != null && <div className="flex justify-between"><span className="text-zinc-500">Tem Filhos</span><span>{family.tem_filhos ? 'Sim' : 'Não'}</span></div>}
+          {family?.dependentes != null && <div className="flex justify-between"><span className="text-zinc-500">Dependentes</span><span>{family.dependentes}</span></div>}
+          {persona.time_futebol && <div className="flex justify-between"><span className="text-zinc-500">Time</span><span>{persona.time_futebol}</span></div>}
         </div>
       </SectionCard>
 
-      {/* IBGE */}
-      <SectionCard title="Dados IBGE" icon={Compass}>
+      {/* Dados Eleitorais */}
+      <SectionCard title="Perfil Eleitoral" icon={Shield}>
         <div className="space-y-3 text-sm">
-          <div className="flex justify-between"><span className="text-zinc-500">IDH Municipal</span><span className="font-bold">{ibge?.indice_desenvolvimento_humano_municipal}</span></div>
-          <div className="flex justify-between"><span className="text-zinc-500">Densidade</span><span>{ibge?.densidade_demografica_local}</span></div>
-          <div className="text-zinc-400 text-xs mt-2">{ibge?.perfil_regional_ibge}</div>
+          {persona.voto_2022 && <div className="flex justify-between"><span className="text-zinc-500">Voto 2022</span><span className="font-bold">{persona.voto_2022}</span></div>}
+          {persona.aprovacao_lula && <div className="flex justify-between"><span className="text-zinc-500">Aprovação Lula</span><span>{persona.aprovacao_lula}</span></div>}
+          {persona.voto_2026 && <div className="flex justify-between"><span className="text-zinc-500">Intenção 2026</span><span>{persona.voto_2026}</span></div>}
+          <div className="flex justify-between"><span className="text-zinc-500">Orientação</span><span>{persona.political_leaning}</span></div>
         </div>
       </SectionCard>
+
+      {/* Temas Polêmicos */}
+      {(persona.tema_aborto || persona.tema_armas || persona.tema_maconha) && (
+        <SectionCard title="Posições Temáticas" icon={Target} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[
+              ['Aborto', persona.tema_aborto],
+              ['Armas', persona.tema_armas],
+              ['Maconha', persona.tema_maconha],
+              ['Privatizações', persona.tema_privatizacoes],
+              ['Cotas Raciais', persona.tema_cotas_raciais],
+              ['Casamento Gay', persona.tema_casamento_gay],
+            ].filter(([, v]) => v).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'A favor': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Contra': 'bg-red-500/10 text-red-400 border-red-500/20',
+                'Neutro': 'bg-zinc-800 text-zinc-400 border-zinc-700/50',
+                'Indeciso': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-800 text-zinc-400 border-zinc-700/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border text-center ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="text-sm font-bold">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Renda (only if JSON data available) */}
+      {finance && (
+        <SectionCard title="Renda e Finanças" icon={TrendingUp}>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between"><span className="text-zinc-500">Renda Individual</span><span className="font-bold text-green-400">R$ {finance.renda_mensal_individual?.toLocaleString()}</span></div>
+            {finance.renda_familiar_total && <div className="flex justify-between"><span className="text-zinc-500">Renda Familiar</span><span>R$ {finance.renda_familiar_total.toLocaleString()}</span></div>}
+            {finance.faixa_renda_ibge && <div className="flex justify-between"><span className="text-zinc-500">Faixa IBGE</span><span>{finance.faixa_renda_ibge}</span></div>}
+            {finance.poder_de_compra_nivel && <StatItem label="Poder de Compra" value={finance.poder_de_compra_nivel} color="bg-emerald-500" />}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* IBGE (only if data available) */}
+      {ibge && (
+        <SectionCard title="Dados IBGE" icon={Compass}>
+          <div className="space-y-3 text-sm">
+            <div className="flex justify-between"><span className="text-zinc-500">IDH Municipal</span><span className="font-bold">{ibge.indice_desenvolvimento_humano_municipal}</span></div>
+            <div className="flex justify-between"><span className="text-zinc-500">Densidade</span><span>{ibge.densidade_demografica_local}</span></div>
+            {ibge.perfil_regional_ibge && <div className="text-zinc-400 text-xs mt-2">{ibge.perfil_regional_ibge}</div>}
+          </div>
+        </SectionCard>
+      )}
 
       {/* Posicionamento Ideológico 2D */}
       {(persona.score_economico != null && persona.score_costumes != null) && (
@@ -398,6 +458,23 @@ function PsychologyTab({ persona }: { persona: any }) {
   const values = psych?.core_values;
   const outlook = psych?.outlook;
   const astro = psych?.astrology;
+
+  if (!psych || Object.keys(psych).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Brain size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados psicológicos detalhados não disponíveis para esta persona.</p>
+        {persona.disc_main_factor && (
+          <p className="text-zinc-400 text-sm mt-3">DISC Dominante: <span className="font-bold text-white">{persona.disc_main_factor}</span></p>
+        )}
+        {persona.archetype_primary && (
+          <p className="text-zinc-400 text-sm mt-1">Arquétipo: <span className="font-bold text-white">{persona.archetype_primary}</span></p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -535,6 +612,21 @@ function BeliefsTab({ persona }: { persona: any }) {
   const objections = beliefs?.objeções_padrões;
   const aversions = beliefs?.aversões;
 
+  if (!beliefs || Object.keys(beliefs).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Shield size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados detalhados de crenças não disponíveis para esta persona.</p>
+        <div className="mt-4 space-y-2 text-sm">
+          {persona.macro_religion && <p className="text-zinc-400">Religião: <span className="font-bold text-white">{persona.macro_religion}</span></p>}
+          {persona.political_leaning && <p className="text-zinc-400">Orientação Política: <span className="font-bold text-white">{persona.political_leaning}</span></p>}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Religião */}
@@ -626,6 +718,17 @@ function CareerTab({ persona }: { persona: any }) {
   const context = career?.contexto_profissional;
   const comm = career?.comunicação_e_linguagem;
 
+  if (!career || Object.keys(career).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Briefcase size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de carreira detalhados não disponíveis para esta persona.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Cargo Atual */}
@@ -711,6 +814,18 @@ function LifestyleTab({ persona }: { persona: any }) {
   const addictions = lifestyle?.vícios_e_dependências;
   const interPersonal = lifestyle?.relações_interpessoais;
   const intraPersonal = lifestyle?.relações_intrapessoais_e_materiais;
+
+  if (!lifestyle || Object.keys(lifestyle).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Activity size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de estilo de vida não disponíveis para esta persona.</p>
+        {persona.cronotype && <p className="text-zinc-400 text-sm mt-3">Cronotipo: <span className="font-bold text-white">{persona.cronotype}</span></p>}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -804,6 +919,17 @@ function HealthTab({ persona }: { persona: any }) {
   const conditions = health?.condições_e_doenças;
   const satisfaction = health?.satisfação_com_a_vida;
   const mental = health?.saude_mental_e_estresse;
+
+  if (!health || Object.keys(health).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Heart size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de saúde não disponíveis para esta persona.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -908,6 +1034,17 @@ function HistoryTab({ persona }: { persona: any }) {
   const traumas = history?.traumas_e_feridas;
   const recentEvents = history?.eventos_recentes;
   const historicalEvents = history?.eventos_historicos_vivenciados;
+
+  if (!history || Object.keys(history).length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <BookOpen size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de história pessoal não disponíveis para esta persona.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

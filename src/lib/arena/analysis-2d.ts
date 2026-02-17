@@ -161,13 +161,18 @@ export function simulate2DSentiment(
   }
 
   // Topic-based sentiment using 2D scores
+  // For 'general', derive bias from the persona's dominant ideological axis
+  // so personas with strong opinions don't default to neutral
+  const dominantAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
+  const generalBias = 0.5 + dominantAxis * 0.35;
+
   const biasMap: Record<string, number> = {
     crime: 0.5 + costScore * 0.5,
     social: 0.5 - costScore * 0.5,
     economy: 0.5 + ecoScore * 0.5,
     politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
     environment: 0.5 - ecoScore * 0.35,
-    general: 0.5,
+    general: generalBias,
   };
 
   let weightedScore = 0;
@@ -197,8 +202,9 @@ export function simulate2DSentiment(
   const modulatedScore = modulateByEducation(baseScore + noise, eduLevel, 'neutral');
   const finalScore = Math.max(0, Math.min(1, modulatedScore));
 
-  if (finalScore > 0.55) return 'positive';
-  if (finalScore < 0.45) return 'negative';
+  // Narrower neutral band: only truly centrist personas remain neutral
+  if (finalScore > 0.53) return 'positive';
+  if (finalScore < 0.47) return 'negative';
   return 'neutral';
 }
 

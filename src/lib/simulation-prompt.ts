@@ -27,6 +27,45 @@ export interface PersonaForAI {
   clusterName?: string;
   scoreEconomico?: number;
   scoreCostumes?: number;
+  // Electoral & political data
+  voto2022?: string;
+  aprovacaoLula?: string;
+  voto2026?: string;
+  // Theme positions
+  temaAborto?: string;
+  temaArmas?: string;
+  temaMaconha?: string;
+  temaPrivatizacoes?: string;
+  temaCotasRaciais?: string;
+  temaCasamentoGay?: string;
+  // Extra profile
+  recebeBeneficio?: string;
+  usaTransportePublico?: string;
+  religiaoSubtipo?: string;
+  timeFutebol?: string;
+  // Key questionnaire responses (most behaviorally significant)
+  qMaiorProblema?: string;
+  qAvaliacaoBolsonaro?: string;
+  qPoliticoFavorito?: string;
+  qSituacaoEconomica?: string;
+  qPerspectivaFuturo?: string;
+  qMidiaPrincipal?: string;
+  qVotoInfluenciadoPor?: string;
+  qImpeachmentLula?: string;
+  qIntervencaoMilitar?: string;
+  qFamiliaTradicional?: string;
+  qRacismoEstrutural?: string;
+  qMeritocracia?: string;
+  qReligiaoPolitica?: string;
+  qPenaMorte?: string;
+  qDrogasDescriminalizar?: string;
+  qMudancaClimaticaReal?: string;
+  qSusFunciona?: string;
+  qConfiancaStf?: number;
+  qConfiancaImprensa?: number;
+  qConfiancaIgreja?: number;
+  qConfiancaExercito?: number;
+  qDemocraciaImportante?: number;
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
@@ -152,7 +191,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
 7. SENTIMENTO — reação ao tema:
    • positive = concorda, apoia, celebra (mas pode celebrar COM HUMOR: "finalmente uma coisa boa nesse país kkkk")
    • negative = discorda, critica, ataca, xinga (pode xingar COM PIADA: "parabéns governo lindo por mais essa maravilha 🤡")
-   • neutral = "sei lá", "tanto faz", indeciso, ou faz piada sem se posicionar
+   • neutral = opinião dividida, vê prós e contras, pondera com argumentos dos dois lados, pode fazer piada sem se posicionar. NÃO USE "sei lá" ou "tanto faz" — neutro NUNCA é desinteressado, é alguém que PENSA nos dois lados e reconhece complexidade. Exemplos: "entendo quem defende mas tb entendo quem critica", "tem argumento bom dos dois lados", "é complicado julgar sem ver todos os fatos", "eu fico em cima do muro nessa pq tem razão dos dois lados"
 
 8. CLASSE SOCIAL & PROFISSÃO — muda vocabulário e perspectiva:
    • D/E (pedreiro, doméstica, catador, desempregado): Fome, conta de luz, preço do gás, violência, ônibus lotado. Tom EMOCIONAL, visceral. "eu que trabalho o dia inteiro pra ganhar uma mixaria". Humor de sobrevivência: "com esse salário eu rio pra não chorar memo"
@@ -199,6 +238,35 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    ★ REGRA DO SENSO CRÍTICO POR ESCOLARIDADE:
    Pessoa com alta escolaridade + score de esquerda pode AINDA ASSIM reconhecer problemas do seu lado político. Ex: "Sou de esquerda sim mas não sou cego, corrupção é corrupção" — isso é REALISTA para alguém com Mestrado e score -0.3. Já alguém com Fundamental e score -0.8 defende cegamente por lealdade.
    Da mesma forma, pessoa culta de direita pode criticar excessos do próprio lado.
+
+   ★ DADOS ELEITORAIS E QUESTIONÁRIO — CADA PERSONA TEM RESPOSTAS REAIS:
+
+   Cada persona traz dados concretos de um MEGA-QUESTIONÁRIO com 90 perguntas. Estes dados são DETERMINÍSTICOS e refletem o perfil ideológico real. USE-OS para calibrar o comentário:
+
+   ● Voto2022: Em quem votou no 2º turno 2022 (Lula, Bolsonaro, Branco/Nulo). DEFINE lealdade.
+   ● AprovLula: Aprovação do governo Lula (Aprova, Desaprova, NS/NR). DEFINE posição atual.
+   ● Voto2026: Intenção de voto 2026 1º turno. REVELA mudanças de opinião.
+   ● Temas: Posições sobre aborto, armas, maconha, privatizações, cotas raciais, casamento gay. Cada um "A favor" ou "Contra".
+   ● MaiorProblema: O que a persona acha que é o maior problema do Brasil (Desemprego, Saúde, Corrupção, Violência, Economia, Educação, Segurança). INFLUENCIA prioridades no comentário.
+   ● AvalBolsonaro: Como avalia o governo Bolsonaro (Ótimo, Bom, Regular, Ruim, Péssimo). CALIBRA saudosismo ou crítica.
+   ● PolFavorito: Político que mais admira. DEFINE referências no comentário.
+   ● SitEconomica: Percepção econômica últimos 12 meses (Melhorou, Igual, Piorou). MUDA TOM do comentário.
+   ● Perspectiva: Perspectiva de futuro (Otimista, Neutro, Pessimista). DEFINE esperança ou descrença.
+   ● MídiaPrincipal: Principal fonte de notícias (TV, Redes sociais, Internet). INDICA bolha informacional.
+   ● Influência no voto: O que mais influencia o voto (Internet, TV, Igreja, Família).
+   ● Confiança institucional: Notas 0-10 para STF, Congresso, Imprensa, Polícia, Exército, Igreja.
+     - Confiança alta no Exército + baixa no STF = perfil militarista/conservador
+     - Confiança alta na Imprensa + STF = perfil institucionalista/progressista
+     - Confiança alta na Igreja = religioso praticante que cita fé em tudo
+   ● Posições específicas: impeachment Lula, intervenção militar, família tradicional, racismo estrutural, meritocracia, religião na política, pena de morte, descriminalização drogas, mudança climática, SUS funciona.
+
+   ★ COMO USAR O QUESTIONÁRIO NA SIMULAÇÃO:
+   Se o tema é sobre ECONOMIA e a persona respondeu "Piorou" em situação econômica → ela RECLAMA mais intensamente.
+   Se o tema é sobre SEGURANÇA e a persona é "A favor" de pena de morte → ela pede "cadeia"/"matar tudo".
+   Se o tema é sobre FAMÍLIA e a persona acha que "Família deve ser homem+mulher+filhos" → ela ataca qualquer coisa progressista.
+   Se a persona acha que "SUS funciona=Não" e o tema é saúde → ela critica duramente.
+   Se a persona confia no Exército (nota alta) mas NÃO confia no STF (nota baixa) → ela pode pedir intervenção militar.
+   Os dados do questionário COMPLEMENTAM os scores 2D. Use-os para adicionar ESPECIFICIDADE ao comentário.
 
    ★ SOBRE FIGURAS POLÍTICAS — CONTEXTO OBRIGATÓRIO:
    Quando o tema mencionar figuras políticas, considere:
@@ -326,7 +394,46 @@ export function buildUserPrompt(question: string, personas: PersonaForAI[]): str
       ? ` | Cluster: ${p.clusterId || '?'}(${p.clusterName || '?'}) | ScoreEco: ${p.scoreEconomico.toFixed(3)} | ScoreCost: ${p.scoreCostumes.toFixed(3)}`
       : '';
 
-    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion}${ideologyPart} | Sentimento: ${sentimentLabel}`;
+    const electoralPart = p.voto2022 ? ` | Voto2022: ${p.voto2022} | AprovLula: ${p.aprovacaoLula || '?'} | Voto2026: ${p.voto2026 || '?'}` : '';
+
+    const themesPart = p.temaAborto ? ` | Aborto: ${p.temaAborto} | Armas: ${p.temaArmas || '?'} | Maconha: ${p.temaMaconha || '?'} | Privatiz: ${p.temaPrivatizacoes || '?'} | Cotas: ${p.temaCotasRaciais || '?'} | CasGay: ${p.temaCasamentoGay || '?'}` : '';
+
+    const extraParts = [
+      p.recebeBeneficio === 'Sim' ? 'Recebe benefício' : '',
+      p.usaTransportePublico === 'Sim' ? 'Usa transp. público' : '',
+      p.religiaoSubtipo ? `Rel.subtipo: ${p.religiaoSubtipo}` : '',
+      p.timeFutebol ? `Time: ${p.timeFutebol}` : '',
+    ].filter(Boolean).join(', ');
+    const extraStr = extraParts.length > 0 ? ` | ${extraParts}` : '';
+
+    // Key questionnaire responses (most behaviorally significant)
+    const questionnaireItems = [
+      p.qMaiorProblema ? `MaiorProblema: ${p.qMaiorProblema}` : '',
+      p.qAvaliacaoBolsonaro ? `AvalBolsonaro: ${p.qAvaliacaoBolsonaro}` : '',
+      p.qPoliticoFavorito ? `PolFavorito: ${p.qPoliticoFavorito}` : '',
+      p.qSituacaoEconomica ? `SitEcon: ${p.qSituacaoEconomica}` : '',
+      p.qPerspectivaFuturo ? `Futuro: ${p.qPerspectivaFuturo}` : '',
+      p.qMidiaPrincipal ? `Mídia: ${p.qMidiaPrincipal}` : '',
+      p.qVotoInfluenciadoPor ? `VotoInfluencia: ${p.qVotoInfluenciadoPor}` : '',
+      p.qImpeachmentLula ? `Impeach: ${p.qImpeachmentLula}` : '',
+      p.qIntervencaoMilitar ? `IntervMilitar: ${p.qIntervencaoMilitar}` : '',
+      p.qFamiliaTradicional ? `FamTradicional: ${p.qFamiliaTradicional}` : '',
+      p.qRacismoEstrutural ? `Racismo: ${p.qRacismoEstrutural}` : '',
+      p.qMeritocracia ? `Meritocracia: ${p.qMeritocracia}` : '',
+      p.qReligiaoPolitica ? `RelPolitica: ${p.qReligiaoPolitica}` : '',
+      p.qPenaMorte ? `PenaMorte: ${p.qPenaMorte}` : '',
+      p.qDrogasDescriminalizar ? `DescrimDrogas: ${p.qDrogasDescriminalizar}` : '',
+      p.qMudancaClimaticaReal ? `MudClima: ${p.qMudancaClimaticaReal}` : '',
+      p.qSusFunciona ? `SUS: ${p.qSusFunciona}` : '',
+      p.qConfiancaStf != null ? `ConfSTF: ${p.qConfiancaStf}` : '',
+      p.qConfiancaImprensa != null ? `ConfImprensa: ${p.qConfiancaImprensa}` : '',
+      p.qConfiancaIgreja != null ? `ConfIgreja: ${p.qConfiancaIgreja}` : '',
+      p.qConfiancaExercito != null ? `ConfExército: ${p.qConfiancaExercito}` : '',
+      p.qDemocraciaImportante != null ? `Democracia: ${p.qDemocraciaImportante}/10` : '',
+    ].filter(Boolean).join(', ');
+    const questStr = questionnaireItems ? ` | QUESTIONÁRIO: ${questionnaireItems}` : '';
+
+    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion}${ideologyPart}${electoralPart}${themesPart}${extraStr}${questStr} | Sentimento: ${sentimentLabel}`;
   }).join('\n');
 
   return `TEMA: "${question}"
@@ -342,10 +449,11 @@ GERE 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 6. PROFISSÃO → Pedreiro ≠ advogado. A vivência muda opinião E vocabulário.
 7. GÊNERO → Homem periferia ≠ mulher mãe ≠ LGBTQ+. Cada um fala diferente.
 8. PALAVRÕES → Se o perfil indica (jovem, periferia, radical) USE palavrões reais. Brasileiro xinga RINDO.
-9. SENTIMENTO → CONCORDA = apoia (pode com humor). DISCORDA = ataca (pode com deboche). NEUTRO = piada, "sei lá".
+9. SENTIMENTO → CONCORDA = apoia (pode com humor). DISCORDA = ataca (pode com deboche). NEUTRO = pondera os dois lados, vê complexidade, pode fazer piada sobre a indecisão. NUNCA "sei lá" — neutro é ponderado, não desinteressado.
 10. HUMOR BRASILEIRO → ~40-50% dos comentários devem ter humor: ironia, deboche, exagero, piada do cotidiano, "rir pra não chorar". MISTURE opinião com piada naturalmente. Brasileiro quase NUNCA é 100% sério.
 11. LINGUAGEM → INFORMAL SEMPRE. Nada de "eu penso que" ou "na minha opinião". Brasileiro vai direto: "mano isso é uma piada né", "pqp que palhaçada", "kkkk tô rindo de nervoso".
-12. VARIAÇÃO → CADA comentário de uma PESSOA DIFERENTE. Varie tamanho (3 palavras a 30), tom, estilo, tipo de humor.
+12. QUESTIONÁRIO → Use as respostas do QUESTIONÁRIO pra calibrar: MaiorProblema define prioridade. SitEcon "Piorou" = reclama mais. ConfSTF baixo + ConfExército alto = perfil militarista. FamTradicional "Sim" = conservador em costumes. Impeach "Sim" = anti-Lula ativo.
+13. VARIAÇÃO → CADA comentário de uma PESSOA DIFERENTE. Varie tamanho (3 palavras a 30), tom, estilo, tipo de humor.
 
 PERFIS:
 ${personaLines}

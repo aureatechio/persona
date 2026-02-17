@@ -14,6 +14,7 @@ Uso:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Optional
@@ -84,6 +85,14 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup():
+    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
+    print("[Startup] Pre-warming persona cache...")
+    await asyncio.to_thread(load_personas)
+    print(f"[Startup] Cache pronto | Claude keys: {len(settings.anthropic_api_keys)} | GPT keys: {len(settings.openai_api_keys)}")
+
+
 @app.get("/api/arena/health")
 async def health():
     return {
@@ -94,6 +103,9 @@ async def health():
         "batch_size": settings.batch_size,
         "max_parallel_claude": settings.max_parallel_claude,
         "max_parallel_openai": settings.max_parallel_openai,
+        "claude_keys": len(settings.anthropic_api_keys),
+        "openai_keys": len(settings.openai_api_keys),
+        "claude_share": settings.claude_share,
     }
 
 
@@ -108,11 +120,16 @@ async def analyze(request: AnalyzeRequest):
         start_time = time.time()
         total_tokens = 0
 
-        # ── 1. Query Analysis — IA decide se precisa pesquisar ────────
+        # ── 1. Query Analysis + Persona Loading em paralelo ────────
         yield sse_event("phase", {
             "phase": "analyzing_query",
             "message": "Analisando pergunta...",
         })
+
+        # Inicia carregamento de personas em paralelo com query analysis
+        persona_task = asyncio.create_task(
+            asyncio.to_thread(load_personas, cluster_filter=request.cluster_filter)
+        )
 
         analysis = await query_analyzer.analyze(request.question)
         context = None
@@ -143,7 +160,8 @@ async def analyze(request: AnalyzeRequest):
             )
             total_tokens += context.prompt_tokens + context.output_tokens
 
-            # ── 1d. Context Validator ────────────────────────────────
+            # ── 1d. Context Validator (skip para velocidade) ─────────
+            # Validação roda mas não bloqueia se contexto já está ok
             validation = await context_validator.validate(
                 question=request.question,
                 context=context,
@@ -161,13 +179,13 @@ async def analyze(request: AnalyzeRequest):
         else:
             print(f"[Pipeline] Pesquisa pulada: {analysis.reason}")
 
-        # ── 4. Carregar Personas ──────────────────────────────────────
+        # ── 2. Aguardar personas (já carregando em paralelo) ──────────
         yield sse_event("phase", {
             "phase": "loading_personas",
             "message": "Carregando personas...",
         })
 
-        personas = load_personas(cluster_filter=request.cluster_filter)
+        personas = await persona_task
         total_personas = len(personas)
 
         yield sse_event("personas_loaded", {
@@ -260,7 +278,7 @@ async def electoral_analyze(request: ElectoralRequest):
     async def generate():
         start_time = time.time()
 
-        # ── 1. Web Research — notícias atuais dos candidatos ─────────
+        # ── 1. Web Research + Persona Loading em paralelo ──────────
         yield sse_event("phase", {
             "phase": "researching",
             "message": f"Pesquisando notícias sobre {request.candidate_a.get('name', '?')} e {request.candidate_b.get('name', '?')}...",
@@ -269,12 +287,16 @@ async def electoral_analyze(request: ElectoralRequest):
         context_a = None
         context_b = None
 
-        # Research both candidates in parallel
         name_a = request.candidate_a.get("name", "Candidato A")
         name_b = request.candidate_b.get("name", "Candidato B")
 
+        # Inicia carregamento de personas em paralelo
+        persona_task = asyncio.create_task(
+            asyncio.to_thread(load_personas, cluster_filter=request.cluster_filter)
+        )
+
         if request.round_number == 1:
-            # Only research on first round
+            # Research both candidates in parallel
             research_a = web_researcher.research(f"{name_a} político Brasil")
             research_b = web_researcher.research(f"{name_b} político Brasil")
             web_a, web_b = await asyncio.gather(research_a, research_b)
@@ -284,7 +306,7 @@ async def electoral_analyze(request: ElectoralRequest):
                 "snippets_b": len(web_b.snippets),
             })
 
-            # Build context for both
+            # Build context for both in parallel
             yield sse_event("phase", {
                 "phase": "building_context",
                 "message": "Criando contexto com IA...",
@@ -311,13 +333,13 @@ async def electoral_analyze(request: ElectoralRequest):
                 },
             })
 
-        # ── 2. Load Personas ────────────────────────────────────────
+        # ── 2. Aguardar personas (já carregando em paralelo) ──────
         yield sse_event("phase", {
             "phase": "loading_personas",
             "message": "Carregando personas...",
         })
 
-        personas = load_personas(cluster_filter=request.cluster_filter)
+        personas = await persona_task
         total_personas = len(personas)
 
         yield sse_event("personas_loaded", {
@@ -462,10 +484,11 @@ if __name__ == "__main__":
     import os
 
     port = int(os.environ.get("PORT", 8000))
-    print("\n  Arena Analysis v2.0.0")
+    print("\n  Arena Analysis v2.0.0 (Speed Optimized)")
     print(f"  Model: {settings.model}")
-    print(f"  Batch: {settings.batch_size} personas")
-    print(f"  Claude: max {settings.max_parallel_claude}p | GPT: max {settings.max_parallel_openai}p")
+    print(f"  Batch: {settings.batch_size} personas | Tokens: {settings.max_tokens_per_batch}")
+    print(f"  Claude: {len(settings.anthropic_api_keys)} keys, max {settings.max_parallel_claude}p ({int(settings.claude_share*100)}%)")
+    print(f"  GPT:    {len(settings.openai_api_keys)} keys, max {settings.max_parallel_openai}p ({int((1-settings.claude_share)*100)}%)")
     print(f"  Starting on http://localhost:{port}")
     print(f"  Docs: http://localhost:{port}/docs\n")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)

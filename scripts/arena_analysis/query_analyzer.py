@@ -50,20 +50,16 @@ class AnalyzerResult:
 
 class QueryAnalyzer:
     def __init__(self):
-        self._claude = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._claude = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def analyze(self, question: str) -> AnalyzerResult:
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._claude.messages.create(
-                    model=settings.model,
-                    max_tokens=100,
-                    system=ANALYZER_PROMPT,
-                    messages=[{"role": "user", "content": question}],
-                    temperature=0,
-                ),
+            response = await self._claude.messages.create(
+                model=settings.model,
+                max_tokens=100,
+                system=ANALYZER_PROMPT,
+                messages=[{"role": "user", "content": question}],
+                temperature=0,
             )
             text = next(
                 (b.text for b in response.content if b.type == "text"), "{}"

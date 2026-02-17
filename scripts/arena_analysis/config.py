@@ -18,6 +18,21 @@ else:
     load_dotenv(_project_root / ".env")
 
 
+def _collect_keys(prefix: str) -> list[str]:
+    """Coleta todas as chaves com prefixo, ex: ANTHROPIC_API_KEY, _2, _3..."""
+    keys: list[str] = []
+    # Primeiro sem sufixo
+    base = os.environ.get(prefix, "")
+    if base:
+        keys.append(base)
+    # Depois _2, _3, ... _10
+    for i in range(2, 11):
+        val = os.environ.get(f"{prefix}_{i}", "")
+        if val:
+            keys.append(val)
+    return keys
+
+
 @dataclass
 class Settings:
     # Supabase
@@ -32,18 +47,21 @@ class Settings:
         or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
     )
 
-    # LLM — Claude
+    # LLM — Claude (todas as chaves)
     anthropic_api_key: str = field(
         default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", "")
     )
+    anthropic_api_keys: list[str] = field(
+        default_factory=lambda: _collect_keys("ANTHROPIC_API_KEY")
+    )
     model: str = "claude-haiku-4-5-20251001"
 
-    # LLM — OpenAI (2 chaves = dobro de rate limit)
+    # LLM — OpenAI (todas as chaves)
     openai_api_key: str = field(
         default_factory=lambda: os.environ.get("OPENAI_API_KEY", "")
     )
-    openai_api_key_2: str = field(
-        default_factory=lambda: os.environ.get("OPENAI_API_KEY_2", "")
+    openai_api_keys: list[str] = field(
+        default_factory=lambda: _collect_keys("OPENAI_API_KEY")
     )
     openai_model: str = "gpt-4o-mini"
 
@@ -52,12 +70,12 @@ class Settings:
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")
     )
 
-    # Batching (por provider)
-    batch_size: int = 25  # personas por batch (mais = menos API calls)
-    max_parallel_claude: int = 5  # batches Claude simultaneos (rate limit baixo)
-    max_parallel_openai: int = 20  # batches OpenAI simultaneos (2 chaves = mais paralelo)
-    claude_share: float = 0.20  # 20% Claude, 80% GPT (GPT tem 2 chaves agora)
-    max_tokens_per_batch: int = 4096  # tokens de saida por batch
+    # Batching (otimizado para 20K personas com 8 contas)
+    batch_size: int = 50  # personas por batch (50 = bom tradeoff confiabilidade/velocidade)
+    max_parallel_claude: int = 12  # batches Claude simultaneos (~3/chave, evita 50 RPM limit)
+    max_parallel_openai: int = 80  # batches OpenAI simultaneos (~20/chave, GPT aguenta 500 RPM)
+    claude_share: float = 0.10  # 10% Claude, 90% GPT (Claude=gargalo com 50 RPM/chave)
+    max_tokens_per_batch: int = 8192  # tokens de saida por batch (necessario para batch 50)
 
     # Web search
     max_web_results: int = 5

@@ -31,6 +31,14 @@ interface PersonaCardProps {
     career_json: any;
     beliefs_json: any;
     demographic_json: any;
+    raca_cor?: string;
+    voto_2022?: string;
+    aprovacao_lula?: string;
+    voto_2026?: string;
+    religiao_subtipo?: string;
+    recebe_beneficio?: string;
+    usa_transporte_publico?: string;
+    time_futebol?: string;
   };
 }
 
@@ -51,8 +59,8 @@ function IdeologyDot({ scoreEco, scoreCost }: { scoreEco: number; scoreCost: num
 }
 
 export function PersonaCard({ persona }: PersonaCardProps) {
-  const archetype = persona.archetype_primary || persona.psychology_json?.archetypes?.primary || 'Neutro';
-  const occupation = persona.career_json?.atuação_e_cargo?.cargo_atual || 'Não informado';
+  const archetype = persona.archetype_primary || persona.psychology_json?.archetypes?.primary || null;
+  const occupation = persona.career_json?.atuação_e_cargo?.cargo_atual || null;
   const religion = persona.macro_religion || persona.beliefs_json?.religião?.fé_ou_doutrina || 'Não informada';
   const politics = persona.political_leaning || persona.beliefs_json?.orientação_política?.espectro || 'Não informada';
   const disc = persona.psychology_json?.disc_profile;
@@ -60,6 +68,8 @@ export function PersonaCard({ persona }: PersonaCardProps) {
   const income = persona.demographic_json?.renda_e_financas?.renda_mensal_individual;
   const clusterLabel = persona.nome_grupo || null;
   const hasScores = persona.score_economico != null && persona.score_costumes != null;
+  const ethnicity = persona.raca_cor || persona.demographic_json?.identidade_basica?.etnia || null;
+  const voto2022 = persona.voto_2022 || null;
 
   // Encontrar o perfil DISC dominante
   const discDominante = persona.disc_main_factor || (disc ? Object.entries(disc).reduce((a, b) => (a[1] as number) > (b[1] as number) ? a : b)[0] : null);
@@ -156,9 +166,9 @@ export function PersonaCard({ persona }: PersonaCardProps) {
         <div className="flex items-start gap-3">
           <TrendingUp size={16} className="text-zinc-600 mt-0.5 shrink-0" />
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-0.5">Renda Mensal</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-0.5">{voto2022 ? 'Voto 2022' : income ? 'Renda Mensal' : 'Raça/Cor'}</p>
             <p className="text-sm text-zinc-300 font-medium line-clamp-1">
-              {income ? `R$ ${income.toLocaleString('pt-BR')}` : 'Não informada'}
+              {voto2022 || (income ? `R$ ${income.toLocaleString('pt-BR')}` : ethnicity || 'Não informada')}
             </p>
           </div>
         </div>

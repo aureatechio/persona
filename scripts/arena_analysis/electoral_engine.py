@@ -148,12 +148,18 @@ def _fallback_votes(personas: list[dict[str, Any]]) -> list[ElectoralVote]:
 
 class ElectoralEngine:
     def __init__(self):
-        self._claude = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        self._openai_clients: list[openai.OpenAI] = []
-        if settings.openai_api_key:
-            self._openai_clients.append(openai.OpenAI(api_key=settings.openai_api_key))
-        if settings.openai_api_key_2:
-            self._openai_clients.append(openai.OpenAI(api_key=settings.openai_api_key_2))
+        # Claude async clients — 1 por chave
+        self._claude_clients: list[anthropic.AsyncAnthropic] = [
+            anthropic.AsyncAnthropic(api_key=key)
+            for key in settings.anthropic_api_keys
+        ]
+        self._has_claude = len(self._claude_clients) > 0
+
+        # OpenAI async clients — 1 por chave
+        self._openai_clients: list[openai.AsyncOpenAI] = [
+            openai.AsyncOpenAI(api_key=key)
+            for key in settings.openai_api_keys
+        ]
         self._has_openai = len(self._openai_clients) > 0
 
     # ── Claude voting batch ───────────────────────────────────────────────
@@ -162,45 +168,46 @@ class ElectoralEngine:
         prompt: str,
         personas: list[dict[str, Any]],
         semaphore: asyncio.Semaphore,
-        retry: int = 0,
+        client: anthropic.AsyncAnthropic,
+        key_id: int = 0,
     ) -> list[ElectoralVote]:
+        tag = f"Electoral-Claude-{key_id+1}"
+        max_retries = 3
         async with semaphore:
-            try:
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self._claude.messages.create(
+            for attempt in range(max_retries + 1):
+                try:
+                    response = await client.messages.create(
                         model=settings.model,
                         max_tokens=settings.max_tokens_per_batch,
                         system=ELECTORAL_SYSTEM_PROMPT,
                         messages=[{"role": "user", "content": prompt}],
                         temperature=1.0,
-                    ),
-                )
-                text_block = next(
-                    (b for b in response.content if b.type == "text"), None
-                )
-                if not text_block:
-                    raise ValueError("No text block")
-                return _parse_electoral_response(text_block.text, personas)
+                    )
+                    text_block = next(
+                        (b for b in response.content if b.type == "text"), None
+                    )
+                    if not text_block:
+                        raise ValueError("No text block")
+                    return _parse_electoral_response(text_block.text, personas)
 
-            except json.JSONDecodeError:
-                if retry < 2:
-                    print(f"[Electoral-Claude] JSON error, retry {retry+1}/2...")
-                    await asyncio.sleep(2)
-                    return await self._vote_claude(prompt, personas, semaphore, retry + 1)
-                return _fallback_votes(personas)
+                except json.JSONDecodeError:
+                    if attempt < 2:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/2...")
+                        await asyncio.sleep(2)
+                        continue
+                    return _fallback_votes(personas)
 
-            except Exception as e:
-                is_rate = "rate_limit" in str(e) or "429" in str(e)
-                max_r = 3 if is_rate else 1
-                if retry < max_r:
-                    wait = (retry + 1) * 5 if is_rate else 2
-                    print(f"[Electoral-Claude] {'Rate limit' if is_rate else 'Error'}, retry {retry+1}/{max_r}...")
-                    await asyncio.sleep(wait)
-                    return await self._vote_claude(prompt, personas, semaphore, retry + 1)
-                print(f"[Electoral-Claude] Error after retries, fallback: {e}")
-                return _fallback_votes(personas)
+                except Exception as e:
+                    is_rate = "rate_limit" in str(e) or "429" in str(e)
+                    max_r = 3 if is_rate else 1
+                    if attempt < max_r:
+                        wait = (attempt + 1) * 5 if is_rate else 2
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r}...")
+                        await asyncio.sleep(wait)
+                        continue
+                    print(f"[{tag}] Error after retries, fallback: {e}")
+                    return _fallback_votes(personas)
+        return _fallback_votes(personas)
 
     # ── OpenAI voting batch ───────────────────────────────────────────────
     async def _vote_openai(
@@ -208,17 +215,15 @@ class ElectoralEngine:
         prompt: str,
         personas: list[dict[str, Any]],
         semaphore: asyncio.Semaphore,
-        client: openai.OpenAI,
+        client: openai.AsyncOpenAI,
         key_id: int = 0,
-        retry: int = 0,
     ) -> list[ElectoralVote]:
         tag = f"Electoral-GPT-{key_id+1}"
+        max_retries = 3
         async with semaphore:
-            try:
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: client.chat.completions.create(
+            for attempt in range(max_retries + 1):
+                try:
+                    response = await client.chat.completions.create(
                         model=settings.openai_model,
                         max_tokens=settings.max_tokens_per_batch,
                         messages=[
@@ -226,28 +231,28 @@ class ElectoralEngine:
                             {"role": "user", "content": prompt},
                         ],
                         temperature=1.0,
-                    ),
-                )
-                raw = response.choices[0].message.content or ""
-                return _parse_electoral_response(raw, personas)
+                    )
+                    raw = response.choices[0].message.content or ""
+                    return _parse_electoral_response(raw, personas)
 
-            except json.JSONDecodeError:
-                if retry < 2:
-                    print(f"[{tag}] JSON error, retry {retry+1}/2...")
-                    await asyncio.sleep(2)
-                    return await self._vote_openai(prompt, personas, semaphore, client, key_id, retry + 1)
-                return _fallback_votes(personas)
+                except json.JSONDecodeError:
+                    if attempt < 2:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/2...")
+                        await asyncio.sleep(2)
+                        continue
+                    return _fallback_votes(personas)
 
-            except Exception as e:
-                is_rate = "rate_limit" in str(e) or "429" in str(e)
-                max_r = 3 if is_rate else 1
-                if retry < max_r:
-                    wait = (retry + 1) * 3 if is_rate else 2
-                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {retry+1}/{max_r}...")
-                    await asyncio.sleep(wait)
-                    return await self._vote_openai(prompt, personas, semaphore, client, key_id, retry + 1)
-                print(f"[{tag}] Error after retries, fallback: {e}")
-                return _fallback_votes(personas)
+                except Exception as e:
+                    is_rate = "rate_limit" in str(e) or "429" in str(e)
+                    max_r = 3 if is_rate else 1
+                    if attempt < max_r:
+                        wait = (attempt + 1) * 3 if is_rate else 2
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r}...")
+                        await asyncio.sleep(wait)
+                        continue
+                    print(f"[{tag}] Error after retries, fallback: {e}")
+                    return _fallback_votes(personas)
+        return _fallback_votes(personas)
 
     # ── Run voting loop ───────────────────────────────────────────────────
     async def run_voting(
@@ -264,16 +269,27 @@ class ElectoralEngine:
         batches = _chunk_list(personas, settings.batch_size)
         num_gpt_keys = len(self._openai_clients)
 
+        num_claude_keys = len(self._claude_clients)
+
         # Split batches between Claude and GPT
         if self._has_openai:
             split = max(1, int(len(batches) * settings.claude_share))
             claude_batches = batches[:split]
             gpt_batches = batches[split:]
+
+            # Round-robin Claude batches entre as chaves
+            claude_groups: list[list[list]] = [[] for _ in range(num_claude_keys)]
+            for i, batch in enumerate(claude_batches):
+                claude_groups[i % num_claude_keys].append(batch)
+
+            # Round-robin GPT batches entre as chaves
             gpt_groups: list[list[list]] = [[] for _ in range(num_gpt_keys)]
             for i, batch in enumerate(gpt_batches):
                 gpt_groups[i % num_gpt_keys].append(batch)
         else:
-            claude_batches = batches
+            claude_groups = [[] for _ in range(num_claude_keys)]
+            for i, batch in enumerate(batches):
+                claude_groups[i % num_claude_keys].append(batch)
             gpt_groups = []
 
         sem_claude = asyncio.Semaphore(settings.max_parallel_claude)
@@ -286,15 +302,15 @@ class ElectoralEngine:
 
         # Launch all tasks
         all_tasks = []
-        batch_persona_map = []
 
-        for batch in claude_batches:
-            prompt = build_electoral_batch_prompt(
-                candidate_a, candidate_b, context_a, context_b,
-                batch, proposals, loser_name,
-            )
-            all_tasks.append(self._vote_claude(prompt, batch, sem_claude))
-            batch_persona_map.append(batch)
+        for key_id, group in enumerate(claude_groups):
+            client = self._claude_clients[key_id]
+            for batch in group:
+                prompt = build_electoral_batch_prompt(
+                    candidate_a, candidate_b, context_a, context_b,
+                    batch, proposals, loser_name,
+                )
+                all_tasks.append(self._vote_claude(prompt, batch, sem_claude, client, key_id))
 
         for key_id, group in enumerate(gpt_groups):
             client = self._openai_clients[key_id]
@@ -304,7 +320,6 @@ class ElectoralEngine:
                     batch, proposals, loser_name,
                 )
                 all_tasks.append(self._vote_openai(prompt, batch, sem_openai, client, key_id))
-                batch_persona_map.append(batch)
 
         print(f"[ElectoralEngine] {total} personas, {len(batches)} batches launched")
 
@@ -364,16 +379,12 @@ class ElectoralEngine:
         )
 
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._claude.messages.create(
-                    model=settings.model,
-                    max_tokens=4096,
-                    system=CRITICISM_EXTRACTOR_PROMPT,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.3,
-                ),
+            response = await self._claude_clients[0].messages.create(
+                model=settings.model,
+                max_tokens=4096,
+                system=CRITICISM_EXTRACTOR_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
             )
             text = next((b.text for b in response.content if b.type == "text"), "[]")
             parsed = json.loads(_clean_json(text))
@@ -415,16 +426,12 @@ class ElectoralEngine:
         )
 
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._claude.messages.create(
-                    model=settings.model,
-                    max_tokens=4096,
-                    system=PROPOSAL_GENERATOR_PROMPT,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.5,
-                ),
+            response = await self._claude_clients[0].messages.create(
+                model=settings.model,
+                max_tokens=4096,
+                system=PROPOSAL_GENERATOR_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
             )
             text = next((b.text for b in response.content if b.type == "text"), "[]")
             parsed = json.loads(_clean_json(text))

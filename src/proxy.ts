@@ -37,24 +37,24 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Public routes that don't need auth
-  const isPublicRoute = pathname === '/login';
-
-  // Skip auth check for API routes (they handle their own auth)
+  // Skip auth for API routes and arena pages
   const isApiRoute = pathname.startsWith('/api');
-  if (isApiRoute) {
+  const isArenaRoute = pathname === '/' || pathname === '/arena-eleitoral';
+  if (isApiRoute || isArenaRoute) {
     return response;
   }
 
-  // Not logged in and not on public route → redirect to login
-  if (!user && !isPublicRoute) {
+  const isLoginPage = pathname === '/login';
+
+  // Not logged in and not on login → redirect to login
+  if (!user && !isLoginPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
-  // Logged in and trying to access login → redirect to home
-  if (user && isPublicRoute) {
+  // Logged in and on login page → redirect to home
+  if (user && isLoginPage) {
     const url = request.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);

@@ -135,14 +135,50 @@ export function mapPersona(persona: Record<string, any>, archetypeId: string, se
     areaType: persona.area_type || 'Urbana/Interior',
     archetypeId,
     sentiment,
-    gender: persona.gender_identity || 'Masculino',
-    ethnicity: persona.demographic_json?.identidade_basica?.etnia || 'Não informado',
-    civilStatus: persona.civil_status || persona.demographic_json?.familia_e_estado_civil?.estado_civil || 'Solteiro',
+    gender: persona.gender_identity || persona.gender || 'Masculino',
+    ethnicity: persona.raca_cor || persona.demographic_json?.identidade_basica?.etnia || 'Não informado',
+    civilStatus: persona.civil_status || 'Solteiro',
     occupation: persona.career_json?.atuação_e_cargo?.cargo_atual || persona.career_json?.atuacao_e_cargo?.cargo_atual || 'Trabalhador',
     clusterId: persona.cluster_id || undefined,
     clusterName: persona.nome_grupo || undefined,
     scoreEconomico: persona.score_economico ?? undefined,
     scoreCostumes: persona.score_costumes ?? undefined,
+    voto2022: persona.voto_2022 || undefined,
+    aprovacaoLula: persona.aprovacao_lula || undefined,
+    voto2026: persona.voto_2026 || undefined,
+    temaAborto: persona.tema_aborto || undefined,
+    temaArmas: persona.tema_armas || undefined,
+    temaMaconha: persona.tema_maconha || undefined,
+    temaPrivatizacoes: persona.tema_privatizacoes || undefined,
+    temaCotasRaciais: persona.tema_cotas_raciais || undefined,
+    temaCasamentoGay: persona.tema_casamento_gay || undefined,
+    recebeBeneficio: persona.recebe_beneficio || undefined,
+    usaTransportePublico: persona.usa_transporte_publico || undefined,
+    religiaoSubtipo: persona.religiao_subtipo || undefined,
+    timeFutebol: persona.time_futebol || undefined,
+    // Key questionnaire responses
+    qMaiorProblema: persona.q_maior_problema || undefined,
+    qAvaliacaoBolsonaro: persona.q_avaliacao_bolsonaro || undefined,
+    qPoliticoFavorito: persona.q_politico_favorito || undefined,
+    qSituacaoEconomica: persona.q_situacao_economica || undefined,
+    qPerspectivaFuturo: persona.q_perspectiva_futuro || undefined,
+    qMidiaPrincipal: persona.q_midia_principal || undefined,
+    qVotoInfluenciadoPor: persona.q_voto_influenciado_por || undefined,
+    qImpeachmentLula: persona.q_impeachment_lula || undefined,
+    qIntervencaoMilitar: persona.q_intervencao_militar || undefined,
+    qFamiliaTradicional: persona.q_familia_tradicional || undefined,
+    qRacismoEstrutural: persona.q_racismo_estrutural || undefined,
+    qMeritocracia: persona.q_meritocracia || undefined,
+    qReligiaoPolitica: persona.q_religiao_politica || undefined,
+    qPenaMorte: persona.q_pena_morte || undefined,
+    qDrogasDescriminalizar: persona.q_drogas_descriminalizar || undefined,
+    qMudancaClimaticaReal: persona.q_mudanca_climatica_real || undefined,
+    qSusFunciona: persona.q_sus_funciona || undefined,
+    qConfiancaStf: persona.q_confianca_stf ?? undefined,
+    qConfiancaImprensa: persona.q_confianca_imprensa ?? undefined,
+    qConfiancaIgreja: persona.q_confianca_igreja ?? undefined,
+    qConfiancaExercito: persona.q_confianca_exercito ?? undefined,
+    qDemocraciaImportante: persona.q_democracia_importante ?? undefined,
   };
 }
 
@@ -200,13 +236,16 @@ export function runSimulation(question: string, personaCount: number, personas?:
       const ecoScore = p.score_economico ?? 0;
       const costScore = p.score_costumes ?? 0;
 
+      // For 'general', derive from dominant ideological axis
+      const domAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
+
       const pseudoBias = {
         crime: 0.5 + costScore * 0.5,
         social: 0.5 - costScore * 0.5,
         economy: 0.5 + ecoScore * 0.5,
         politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
         environment: 0.5 - ecoScore * 0.35,
-        general: 0.5,
+        general: 0.5 + domAxis * 0.35,
       };
 
       let weightedScore = 0;
@@ -225,8 +264,9 @@ export function runSimulation(question: string, personaCount: number, personas?:
       const noise = (Math.random() - 0.5) * noiseRange;
       const finalScore = Math.max(0, Math.min(1, baseScore + noise));
 
-      if (finalScore > 0.55) entry.positive++;
-      else if (finalScore < 0.45) entry.negative++;
+      // Narrower neutral band
+      if (finalScore > 0.53) entry.positive++;
+      else if (finalScore < 0.47) entry.negative++;
       else entry.neutral++;
     }
 
@@ -302,13 +342,17 @@ function computePersonaSentimentForAI(
   }
 
   // ── Topic-based sentiment ──
+  // For 'general', derive from dominant ideological axis instead of fixed 0.5
+  const dominantAxis = Math.abs(ecoScore) > Math.abs(costScore) ? ecoScore : costScore;
+  const generalBias = 0.5 + dominantAxis * 0.35;
+
   const biasMap: Record<string, number> = {
     crime: 0.5 + costScore * 0.5,
     social: 0.5 - costScore * 0.5,
     economy: 0.5 + ecoScore * 0.5,
     politics: 0.5 + ecoScore * 0.25 + costScore * 0.2,
     environment: 0.5 - ecoScore * 0.35,
-    general: 0.5,
+    general: generalBias,
   };
 
   let weightedScore = 0;
@@ -325,8 +369,9 @@ function computePersonaSentimentForAI(
   const noise = (Math.random() - 0.5) * 0.15;
   const finalScore = Math.max(0, Math.min(1, baseScore + noise));
 
-  if (finalScore > 0.55) return 'positive';
-  if (finalScore < 0.45) return 'negative';
+  // Narrower neutral band
+  if (finalScore > 0.53) return 'positive';
+  if (finalScore < 0.47) return 'negative';
   return 'neutral';
 }
 

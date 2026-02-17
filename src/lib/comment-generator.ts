@@ -66,14 +66,22 @@ function selectTemplate(
   sentiment: Sentiment,
   topic: string,
 ): CommentTemplate {
+  const fallbackTemplates: CommentTemplate[] = [
+    { base: 'entendo os dois lados dessa questão, é complexo', intensity: 'mild' },
+    { base: 'preciso pensar mais sobre isso antes de dar minha opinião', intensity: 'mild' },
+    { base: 'é uma questão que divide muita gente e eu entendo por quê', intensity: 'mild' },
+    { base: 'vejo argumentos bons dos dois lados, difícil se posicionar', intensity: 'mild' },
+    { base: 'sinceramente essa é uma questão que me faz pensar bastante', intensity: 'mild' },
+  ];
+
   const archetype = COMMENT_TEMPLATES[archetypeId];
   if (!archetype) {
-    return { base: 'sem opinião formada sobre isso', intensity: 'mild' };
+    return pickRandom(fallbackTemplates);
   }
 
   const sentimentTemplates = archetype[sentiment];
   if (!sentimentTemplates) {
-    return { base: 'sem opinião formada sobre isso', intensity: 'mild' };
+    return pickRandom(fallbackTemplates);
   }
 
   // Try specific topic first, fallback to 'general'
@@ -82,7 +90,7 @@ function selectTemplate(
     pool = sentimentTemplates['general'];
   }
   if (!pool || pool.length === 0) {
-    return { base: 'sem opinião formada sobre isso', intensity: 'mild' };
+    return pickRandom(fallbackTemplates);
   }
 
   // Pick by weighted intensity
@@ -441,7 +449,7 @@ export function generateComment(
 
   // Ensure it doesn't start with a space or lowercase issue after cleanup
   if (comment.length === 0) {
-    comment = 'sem opinião formada sobre isso';
+    comment = 'é uma questão complexa, entendo os dois lados';
   }
 
   return comment;

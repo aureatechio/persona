@@ -67,7 +67,7 @@ class ContextValidator:
     """Valida o contexto gerado antes de enviar para o loop de personas."""
 
     def __init__(self):
-        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
     async def validate(
         self,
@@ -102,16 +102,12 @@ class ContextValidator:
         user_prompt += "Valide o contexto e responda em JSON."
 
         try:
-            loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(
-                None,
-                lambda: self._client.messages.create(
-                    model=settings.model,
-                    max_tokens=800,
-                    system=VALIDATOR_PROMPT,
-                    messages=[{"role": "user", "content": user_prompt}],
-                    temperature=0.0,
-                ),
+            response = await self._client.messages.create(
+                model=settings.model,
+                max_tokens=800,
+                system=VALIDATOR_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+                temperature=0.0,
             )
 
             result.prompt_tokens = response.usage.input_tokens

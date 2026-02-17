@@ -113,24 +113,36 @@ const traditionalist: ArchetypeTemplates = {
     crime: [
       { base: 'entendo o ponto mas acho que precisa analisar melhor antes de decidir', intensity: 'mild' },
       { base: 'é complexo {filler} tem que ouvir os dois lados', intensity: 'mild' },
+      { base: 'entendo quem defende e quem critica {filler} segurança é tema que divide todo mundo', intensity: 'mild' },
+      { base: 'tem gente que sofre dos dois lados dessa questão {filler} não é preto no branco', intensity: 'moderate' },
     ],
     social: [
-      { base: 'não tenho certeza sobre isso {filler} é um tema difícil', intensity: 'mild' },
-      { base: 'preciso pensar mais sobre isso, não é tão simples', intensity: 'mild' },
+      { base: 'entendo os dois lados {filler} é um tema que divide famílias inteiras', intensity: 'mild' },
+      { base: 'minha cabeça diz uma coisa e meu coração outra nessa questão', intensity: 'mild' },
+      { base: 'preciso pensar mais sobre isso, não é tão simples como parece', intensity: 'mild' },
+      { base: 'conheço gente boa dos dois lados da discussão {filler} fico dividido', intensity: 'moderate' },
     ],
     economy: [
       { base: 'tem argumentos dos dois lados {filler} difícil dizer quem tá certo', intensity: 'mild' },
+      { base: 'na teoria faz sentido mas na prática ninguém sabe como vai ser {filler} é esperar pra ver', intensity: 'mild' },
+      { base: 'quem entende de economia mesmo discorda entre si {filler} imagina a gente', intensity: 'moderate' },
     ],
     politics: [
       { base: 'acho que os dois lados têm razão em parte {filler} política é complicado', intensity: 'mild' },
+      { base: 'já vi essa promessa de todo político e nunca dá certo {filler} fico desconfiado', intensity: 'moderate' },
+      { base: 'sinceramente não confio em nenhum dos lados pra resolver isso {filler} mas torço pra dar certo', intensity: 'moderate' },
     ],
     environment: [
-      { base: 'entendo os dois lados {filler} não é simples', intensity: 'mild' },
+      { base: 'entendo os dois lados {filler} preservar é importante mas o povo precisa trabalhar também', intensity: 'mild' },
+      { base: 'difícil achar o equilíbrio nessa questão {filler} quem vive da terra pensa diferente de quem mora na cidade', intensity: 'moderate' },
     ],
     general: [
-      { base: 'não tenho uma opinião formada sobre isso ainda, é complexo', intensity: 'mild' },
       { base: 'é uma questão que merece mais debate {filler} não dá pra simplificar', intensity: 'mild' },
-      { base: 'preciso ouvir mais argumentos antes de me posicionar', intensity: 'mild' },
+      { base: 'vejo argumentos bons dos dois lados {filler} fico em cima do muro nessa', intensity: 'mild' },
+      { base: 'entendo quem concorda e quem discorda {filler} a realidade é mais complicada do que parece', intensity: 'mild' },
+      { base: 'minha opinião muda dependendo do ângulo que eu olho {filler} é complexo mesmo', intensity: 'mild' },
+      { base: 'tenho amigos que pensam diferente de mim nisso e eu entendo o ponto deles {filler} é difícil', intensity: 'moderate' },
+      { base: 'consigo ver razão nos dois lados {filler} quando é assim eu prefiro pensar mais antes de falar', intensity: 'mild' },
     ],
   },
 };
@@ -374,26 +386,33 @@ const moderate: ArchetypeTemplates = {
   neutral: {
     crime: [
       { base: 'vejo pontos válidos nos dois lados {filler} muito difícil escolher', intensity: 'mild' },
+      { base: 'entendo quem pede mais rigor e quem pede mais humanidade {filler} é complicado', intensity: 'mild' },
     ],
     social: [
       { base: 'acho que a resposta tá no meio termo como sempre', intensity: 'mild' },
-      { base: 'sei la {filler} acho q tem argumento dos dois lados ne', intensity: 'mild' },
+      { base: 'consigo entender os dois lados {filler} cada um tem seus argumentos válidos', intensity: 'mild' },
+      { base: 'nessa eu fico dividido {filler} conheço gente boa que pensa diferente de mim', intensity: 'mild' },
     ],
     economy: [
-      { base: 'preciso pensar mais {filler} tem prós e contras', intensity: 'mild' },
+      { base: 'preciso pensar mais {filler} tem prós e contras que pesam igual', intensity: 'mild' },
+      { base: 'na teoria parece bom mas na prática tem riscos {filler} fico no meio', intensity: 'mild' },
     ],
     politics: [
       { base: 'a polarização não ajuda ninguém {filler} vamos buscar diálogo construtivo', intensity: 'mild' },
+      { base: 'cansei de político que só quer dividir {filler} queria ver alguém que juntasse os dois lados', intensity: 'moderate' },
     ],
     environment: [
       { base: 'é uma questão que pede ponderação não posições radicais', intensity: 'mild' },
+      { base: 'concordo que precisa cuidar do meio ambiente mas o trabalhador rural tb precisa sobreviver', intensity: 'mild' },
     ],
     general: [
       { base: 'vejo pontos válidos nos dois lados {filler} muito difícil escolher', intensity: 'mild' },
-      { base: 'sei la {filler} acho que tem argumento dos dois lados ne', intensity: 'mild' },
+      { base: 'fico em cima do muro nessa {filler} tem argumento bom dos dois lados', intensity: 'mild' },
       { base: 'acho que a resposta tá no meio termo como sempre', intensity: 'mild' },
       { base: 'a polarização não ajuda ninguém {filler} vamos buscar diálogo', intensity: 'mild' },
       { base: 'é uma questão que pede ponderação e não posições radicais', intensity: 'mild' },
+      { base: 'nessa eu entendo os dois lados {filler} a realidade é mais complexa do que parece', intensity: 'mild' },
+      { base: 'depende de como for feito {filler} pode ser bom ou ruim, é uma faca de dois gumes', intensity: 'moderate' },
     ],
   },
 };
