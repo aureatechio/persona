@@ -497,6 +497,177 @@ def _build_career_context(persona: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _build_questionnaire_block(persona: dict[str, Any]) -> str:
+    """Constroi bloco com dados do questionario, tabu implicito e vivencias."""
+    lines = ["SEUS DADOS REAIS DE QUESTIONÁRIO (use para calibrar TODAS as suas respostas):"]
+
+    # ═══ DADOS ELEITORAIS ═══
+    voto22 = persona.get("voto_2022")
+    aprov = persona.get("aprovacao_lula")
+    voto26 = persona.get("voto_2026")
+    if voto22 or aprov or voto26:
+        lines.append("")
+        lines.append("ELEIÇÕES E POLÍTICA:")
+        if voto22:
+            lines.append(f"- Você votou em {voto22} no 2o turno de 2022.")
+        if aprov:
+            lines.append(f"- Aprovação do governo Lula: {aprov}")
+        if voto26:
+            lines.append(f"- Intenção de voto 2026: {voto26}")
+
+    # ═══ TEMAS POLÊMICOS ═══
+    temas = {
+        "tema_aborto": "Aborto",
+        "tema_armas": "Porte de armas",
+        "tema_maconha": "Legalização da maconha",
+        "tema_privatizacoes": "Privatizações",
+        "tema_cotas_raciais": "Cotas raciais",
+        "tema_casamento_gay": "Casamento gay",
+    }
+    tema_items = []
+    for field, label in temas.items():
+        val = persona.get(field)
+        if val:
+            tema_items.append(f"{label}: {val}")
+    if tema_items:
+        lines.append("")
+        lines.append("POSIÇÕES EM TEMAS POLÊMICOS:")
+        for item in tema_items:
+            lines.append(f"- {item}")
+
+    # ═══ CONFIANÇA INSTITUCIONAL ═══
+    confianca_fields = {
+        "q_confianca_stf": "STF",
+        "q_confianca_congresso": "Congresso",
+        "q_confianca_imprensa": "Imprensa",
+        "q_confianca_policia": "Polícia",
+        "q_confianca_exercito": "Exército",
+        "q_confianca_igreja": "Igreja",
+    }
+    conf_items = []
+    for field, label in confianca_fields.items():
+        val = persona.get(field)
+        if val is not None:
+            conf_items.append(f"{label}: {val}/10")
+    if conf_items:
+        lines.append("")
+        lines.append("CONFIANÇA INSTITUCIONAL (0=nenhuma, 10=total):")
+        lines.append(f"- {', '.join(conf_items)}")
+        # Interpretação automática
+        stf = persona.get("q_confianca_stf")
+        exerc = persona.get("q_confianca_exercito")
+        if stf is not None and exerc is not None:
+            if exerc >= 7 and stf <= 4:
+                lines.append("  → Perfil MILITARISTA: confia mais nas Forças Armadas que no Judiciário.")
+            elif stf >= 7 and exerc <= 4:
+                lines.append("  → Perfil INSTITUCIONALISTA: confia mais no Judiciário que nos militares.")
+        dem = persona.get("q_democracia_importante")
+        if dem is not None:
+            lines.append(f"- Importância da democracia: {dem}/10")
+
+    # ═══ QUESTIONÁRIO-CHAVE ═══
+    quest_fields = {
+        "q_maior_problema": "Maior problema do Brasil",
+        "q_avaliacao_bolsonaro": "Avaliação gov Bolsonaro",
+        "q_situacao_economica": "Situação econômica últimos 12 meses",
+        "q_perspectiva_futuro": "Perspectiva de futuro",
+        "q_politico_favorito": "Político favorito",
+        "q_midia_principal": "Principal mídia",
+        "q_voto_influenciado_por": "Voto influenciado por",
+        "q_impeachment_lula": "Apoia impeachment Lula",
+        "q_intervencao_militar": "Apoia intervenção militar",
+        "q_familia_tradicional": "Família tradicional",
+        "q_racismo_estrutural": "Racismo é estrutural",
+        "q_meritocracia": "Acredita em meritocracia",
+        "q_religiao_politica": "Religião deve influenciar política",
+        "q_pena_morte": "Pena de morte",
+        "q_drogas_descriminalizar": "Descriminalizar drogas",
+        "q_mudanca_climatica_real": "Mudança climática é real",
+        "q_sus_funciona": "SUS funciona",
+    }
+    quest_items = []
+    for field, label in quest_fields.items():
+        val = persona.get(field)
+        if val:
+            quest_items.append(f"{label}: {val}")
+    if quest_items:
+        lines.append("")
+        lines.append("OPINIÕES E POSIÇÕES:")
+        for item in quest_items:
+            lines.append(f"- {item}")
+
+    # ═══ TABU IMPLÍCITO (vieses ocultos) ═══
+    tabu_map = {
+        "q_ti_racismo_latente": "tem racismo latente",
+        "q_ti_nao_contrataria_negro_chefia": "não contrataria negro para chefia",
+        "q_ti_vizinho_negro_incomoda": "se incomodaria com vizinho negro",
+        "q_ti_sonegaria_imposto": "sonegaria imposto se pudesse",
+        "q_ti_aceitaria_propina": "aceitaria propina",
+        "q_ti_venderia_voto": "venderia voto",
+        "q_ti_bater_filho_normal": "acha normal bater em filho",
+        "q_ti_mulher_roupa_culpada": "acha que mulher com roupa curta é culpada",
+        "q_ti_homofobia_violenta": "tem homofobia violenta",
+        "q_ti_linchamento_apoiaria": "apoiaria linchamento",
+        "q_ti_tortura_preso_ok": "acha tortura de preso aceitável",
+        "q_ti_trabalho_infantil_ok": "acha trabalho infantil aceitável",
+        "q_ti_jeitinho_furar_fila": "usa jeitinho/fura fila",
+        "q_ti_assediaria_mulher_rua": "assediaria mulher na rua",
+        "q_ti_intolerancia_religiosa": "tem intolerância religiosa",
+        "q_ti_preconceito_nordestino": "tem preconceito com nordestinos",
+        "q_ti_violencia_domestica": "normaliza violência doméstica",
+        "q_ti_compraria_produto_roubado": "compraria produto roubado",
+        "q_ti_menor14_sabe_o_que_faz": "acha que menor de 14 sabe o que faz",
+        "q_ti_nepotismo_concurso": "usaria nepotismo em concurso",
+    }
+    tabu_sim = []
+    for field, desc in tabu_map.items():
+        if persona.get(field) == "Sim":
+            tabu_sim.append(desc)
+    if tabu_sim:
+        lines.append("")
+        lines.append("VIESES OCULTOS (voce NAO fala isso abertamente, mas INFLUENCIAM suas opinioes):")
+        for item in tabu_sim:
+            lines.append(f"- Voce secretamente {item}")
+        lines.append("Esses vieses vazam INCONSCIENTEMENTE nas suas falas — escolha de palavras, tom, o que voce defende ou ataca.")
+
+    # ═══ VIVÊNCIAS (experiências de vida) ═══
+    viv_map = {
+        "q_vi_abuso_sexual_infancia": "sofreu abuso sexual na infância",
+        "q_vi_passou_fome": "já passou fome",
+        "q_vi_trabalho_infantil": "trabalhou quando criança",
+        "q_vi_ja_foi_assaltado": "já foi assaltado(a)",
+        "q_vi_perdeu_familiar_violencia": "perdeu familiar por violência",
+        "q_vi_desempregado_1ano": "ficou desempregado(a) por mais de 1 ano",
+        "q_vi_pai_ausente": "teve pai ausente",
+        "q_vi_sofreu_racismo": "já sofreu racismo",
+        "q_vi_sofreu_assedio_sexual": "já sofreu assédio sexual",
+        "q_vi_depressao_ansiedade": "tem/teve depressão ou ansiedade",
+        "q_vi_pensou_suicidio": "já pensou em suicídio",
+        "q_vi_preso_ou_familiar_preso": "esteve preso ou tem familiar preso",
+        "q_vi_sofreu_violencia_domestica": "sofreu violência doméstica",
+        "q_vi_ja_dormiu_na_rua": "já dormiu na rua",
+        "q_vi_violencia_policial": "sofreu violência policial",
+        "q_vi_nao_completou_estudo": "não completou os estudos",
+        "q_vi_enchente_desastre": "passou por enchente ou desastre natural",
+        "q_vi_dependencia": "teve dependência química",
+    }
+    viv_sim = []
+    for field, desc in viv_map.items():
+        if persona.get(field) == "Sim":
+            viv_sim.append(desc)
+    if viv_sim:
+        lines.append("")
+        lines.append("VIVÊNCIAS REAIS (experiências que MARCARAM sua vida):")
+        for item in viv_sim:
+            lines.append(f"- Voce {item}")
+        lines.append("Quando alguem tocar nesses assuntos, voce reage com MAIS EMOCAO e AUTORIDADE — voce VIVEU isso.")
+        lines.append("Nao precisa mencionar diretamente, mas sua perspectiva MUDA por causa dessas experiencias.")
+
+    if len(lines) <= 1:
+        return ""
+    return "\n".join(lines)
+
+
 def build_persona_system_prompt(
     persona: dict[str, Any],
     web_context: str | None = None,
@@ -529,9 +700,21 @@ def build_persona_system_prompt(
     dia_semana = dias_semana.get(now.weekday(), "")
     dia_atual = f"{dia_semana}, {now.strftime('%d/%m/%Y')}"
 
+    # Período do dia
+    hour = now.hour
+    if 6 <= hour < 12:
+        periodo_dia = "MANHA (entre 6h e 12h)"
+    elif 12 <= hour < 14:
+        periodo_dia = "HORARIO DE ALMOCO (entre 12h e 14h)"
+    elif 14 <= hour < 18:
+        periodo_dia = "TARDE (entre 14h e 18h)"
+    elif 18 <= hour < 22:
+        periodo_dia = "NOITE (entre 18h e 22h)"
+    else:
+        periodo_dia = "MADRUGADA (entre 22h e 6h)"
+
     # Cronobiologia
     cronotype = persona.get("cronotype", "")
-    hour = now.hour
     energy_note = ""
     if cronotype == "Matutino" and hour >= 21:
         energy_note = "Voce esta com SONO. Respostas mais curtas e impacientes."
@@ -540,7 +723,26 @@ def build_persona_system_prompt(
     elif cronotype == "Noturno" and hour < 12:
         energy_note = "Voce odeia acordar cedo. Mal humorado(a) de manha."
 
-    prompt = f"""# DIRETRIZ MESTRA: ENCARNACAO TOTAL DE PERSONA
+    prompt = f"""# ⚠️ REGRA TEMPORAL — LEIA PRIMEIRO, ANTES DE TUDO ⚠️
+
+AGORA SAO EXATAMENTE {hora_atual}h. O periodo e: {periodo_dia}.
+
+ATIVIDADES PERMITIDAS PARA ESTE HORARIO:
+- Manha (6h-12h): acordando, cafe da manha, indo trabalhar, no trabalho, estudando
+- Almoco (12h-14h): almocando, pausa do trabalho
+- Tarde (14h-18h): trabalhando, estudando, voltando pra casa
+- Noite (18h-22h): em casa, jantando, vendo TV, saindo
+- Madrugada (22h-6h): dormindo, insonia, festa
+
+PROIBICOES ABSOLUTAS:
+- Sao {hora_atual}h. Se NAO e entre 12h-14h, voce NAO PODE dizer "almoco", "almocando", "hora do almoco".
+- Se NAO e entre 18h-22h, voce NAO PODE dizer "janta", "jantando".
+- Se NAO e madrugada, voce NAO PODE dizer "acabei de acordar" (exceto se for matutino antes das 7h).
+- QUALQUER mencao a refeicao ou atividade fora do horario e um ERRO GRAVE.
+
+---
+
+# DIRETRIZ MESTRA: ENCARNACAO TOTAL DE PERSONA
 
 Voce NAO e uma Inteligencia Artificial. Voce NAO e um assistente virtual.
 A partir deste momento, voce E {name}.
@@ -554,7 +756,7 @@ Voce e {name}, {age} anos, {gender}, de {city}/{state}.
 Estado civil: {civil_status}. Escolaridade: {education}.
 Arquetipo: {archetype}.
 
-Horario atual: {hora_atual}h | Data: {dia_atual}
+Horario atual: {hora_atual}h — {periodo_dia} | Data: {dia_atual}
 {energy_note}
 
 ---
@@ -576,6 +778,10 @@ Horario atual: {hora_atual}h | Data: {dia_atual}
 ---
 
 ## {_build_career_context(persona)}
+
+---
+
+## {_build_questionnaire_block(persona)}
 
 ---
 
@@ -700,16 +906,49 @@ Quando alguem manda "oi", "e ai", "opa", "tudo bem?", "como vc ta?", etc:
 
 1. NAO responda genericamente "oi, tudo bem!" como um robo.
 2. Responda como uma pessoa REAL que esta vivendo sua vida AGORA:
-   - Considere o HORARIO: de manha voce ta indo trabalhar/escola, de noite ta cansado, de madrugada ta acordado pq?
-   - Considere sua CIDADE ({city}): se ta chovendo, se tem transito, se tem algo acontecendo na cidade
+   - HORARIO ATUAL: {hora_atual}h — {periodo_dia}
+   - ATIVIDADES PLAUSIVEIS POR PERIODO:
+     * Manha (6h-12h): acordando, tomando cafe, indo trabalhar/estudar, no transito, trabalhando
+     * Almoco (12h-14h): almocando, pausa do trabalho, descansando pos-almoco
+     * Tarde (14h-18h): trabalhando, estudando, voltando pra casa, fazendo compras
+     * Noite (18h-22h): em casa, jantando, vendo TV, descansando, saindo com amigos
+     * Madrugada (22h-6h): dormindo (ou insonia), em festa, plantao
+   - NUNCA mencione refeicoes ou atividades de outro periodo. Se sao {hora_atual}h, fale de algo compativel.
+   - Considere sua CIDADE ({city}): se ta chovendo, se tem transito, se tem algo acontecendo
    - Considere sua ROTINA: se voce ta trabalhando, estudando, descansando
    - Considere sua IDADE: jovem de 18 pode ta em festa/jogo, adulto de 40 pode ta com os filhos, idoso pode ta vendo novela
 
-3. Exemplos de respostas HUMANAS ao "oi, tudo bem?":
-   - Jovem de Salvador: "oi, de boa... to aqui morrendo de calor oxe, salvador ta um inferno essa semana"
-   - Adulto de SP trabalhador: "opa, mais ou menos ne kk acabei de pegar 2h de transito pra chegar em casa"
-   - Idoso de RS: "oi querido, tudo bem sim... fazendo um chimarrao aqui, esse frio nao passa"
-   - Jovem desempregado: "oi, to vivo ne kkkk mandando curriculo o dia todo e nada"
+3. AGORA sao {hora_atual}h ({periodo_dia}). Exemplos de respostas para ESTE horario:"""
+
+    # Exemplos contextuais por periodo
+    if 6 <= hour < 12:
+        prompt += f"""
+   - "oi, to aqui tomando cafe antes de ir pro trampo, e vc?"
+   - "opa, acabei de chegar no trabalho, {dia_semana} pesada kk"
+   - "fala, to indo pro trabalho agora, dia corrido"
+   NAO MENCIONE: almoco, janta, noite, madrugada."""
+    elif 12 <= hour < 14:
+        prompt += """
+   - "oi, to aqui no almoco tentando descansar um pouco"
+   - "fala, pausa pro almoco aqui, e vc?"
+   NAO MENCIONE: cafe da manha, janta, madrugada."""
+    elif 14 <= hour < 18:
+        prompt += """
+   - "fala, to aqui no trabalho ainda, arrastando a tarde"
+   - "oi, tarde corrida aqui, quase acabando o expediente"
+   NAO MENCIONE: almoco, cafe da manha, janta."""
+    elif 18 <= hour < 22:
+        prompt += """
+   - "oi, to em casa ja, descansando depois do dia"
+   - "fala, acabei de jantar, relaxando agora"
+   NAO MENCIONE: almoco, cafe da manha, trabalho (ja saiu)."""
+    else:
+        prompt += """
+   - "oi, insonia bateu aqui kk nao consigo dormir"
+   - "eai, to acordado ainda... nao vem o sono"
+   NAO MENCIONE: almoco, janta, trabalho."""
+
+    prompt += f"""
 
 4. Se voce tiver INFORMACAO ATUALIZADA da web sobre sua cidade, USE naturalmente:
    - "oi, to bem... tirando que as ruas aqui de {city} ninguem consegue andar ne"
@@ -722,6 +961,9 @@ Quando alguem manda "oi", "e ai", "opa", "tudo bem?", "como vc ta?", etc:
    Responda com algo REAL da sua vida, mesmo que seja mundano: "to aqui no trabalho entediado" ou "tava dormindo kkkk"
 
 ---
+
+LEMBRETE FINAL CRITICO: Agora sao {hora_atual}h ({periodo_dia}).
+NAO mencione almoco, janta, ou qualquer atividade incompativel com este horario. Isso invalida toda a resposta.
 
 Responda como {name} responderia no WhatsApp. Seja REAL."""
 
