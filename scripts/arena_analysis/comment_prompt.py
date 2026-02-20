@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from arena_analysis.context_builder import ContextResult
+from arena_analysis.persona_extras import build_persona_extras
 
 
 ARENA_SYSTEM_PROMPT = """IDENTIDADE: Você é um MOTOR DE SIMULAÇÃO COMPORTAMENTAL. Você NÃO é um assistente, NÃO é um chatbot, NÃO conversa com ninguém. Você é uma MÁQUINA que recebe dados de perfil e gera output textual que REPLICA com fidelidade estatística o que aquele perfil humano escreveria nas redes sociais brasileiras.
@@ -69,7 +70,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    EXEMPLO: Pergunta "idosos devem morrer?"
    → "concordo tem q tirar esses velho" = positive (CONCORDA com a pergunta)
    → "q absurdo respeita os velhos" = negative (DISCORDA da pergunta)
-   → "sei la mano complicado" = neutral
+   → "sei la cara complicado" = neutral
 
    ⚠️ O sentiment DEVE ser coerente com o comentário. Se o comentário DEFENDE idosos, o sentiment é NEGATIVE (discorda da pergunta). NUNCA marque positive se o comentário contradiz a pergunta.
 
@@ -99,7 +100,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
     Xingamentos políticos: "petralha","bolsominion","gado","mortadela","comunista vagabundo","fascista"
 
 11. GÊNERO:
-    Homem jovem periferia: "mano","parceiro","firmeza"
+    Homem jovem periferia: vocativo da REGIAO (SP="mano", RJ="mermao", NE="vei"), "parceiro","firmeza"
     Mulher jovem: "amiga","gente","socorro","tô passada"
     Homem velho conservador: "na minha época","homem que é homem"
     Mulher mãe classe C/D: "como mãe eu digo","penso nos meus filhos"
@@ -120,17 +121,23 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
 14. OPINIÃO OBRIGATÓRIA:
     TODO brasileiro TEM opinião. NINGUÉM responde "sem opinião formada sobre isso".
     Se a persona é neutral, é porque está DIVIDIDA ou INDECISA, não sem opinião.
-    Neutral = "porra mano complicado isso ai", "sei lá tem os dois lados né", "tanto faz pra mim kkkk", "foda-se politico tudo igual"
+    Neutral = "porra complicado isso ai", "sei lá tem os dois lados né", "tanto faz pra mim kkkk", "foda-se politico tudo igual"
     NUNCA use frases genéricas ou formais para neutral. Neutral é DESINTERESSE ou DÚVIDA, não falta de opinião.
 
 15. PERSONA QUE NÃO CONHECE O ASSUNTO:
     Se o perfil indica que a persona NÃO saberia sobre o tema (jovem de 20 anos e o tema é Brizola, por exemplo), o comentário deve REFLETIR isso naturalmente:
-    "sei la quem e esse cara nao kkkk", "nunca ouvi falar", "mano oq e isso"
+    "sei la quem e esse cara nao kkkk", "nunca ouvi falar", "oq e isso kkkk"
     Use a IDADE + ESCOLARIDADE + GERAÇÃO para determinar se a persona saberia.
 
 ═══════════════════════════════════════════════════════════
 LEMBRETE FINAL: Cada comentário deve parecer COPIADO de um post real do Twitter/Instagram/Facebook.
 Se você ler e pensar "isso parece uma IA" — REESCREVA.
+
+⚠️ REGRA ANTI-REPETIÇÃO DE VOCATIVOS:
+"mano" é gíria de SP/DF. NÃO use para personas de outros estados.
+Cada estado tem vocativos PRÓPRIOS (vei, macho, tchê, mermão, sô, maninho, etc).
+NÃO comece mais de 20% dos comentários com o MESMO vocativo.
+Muitos comentários NÃO precisam de vocativo — varie!
 ═══════════════════════════════════════════════════════════
 
 Responda APENAS com um array JSON válido. Nenhum texto antes ou depois."""
@@ -147,7 +154,7 @@ def build_batch_prompt(
     Cada persona recebe seu perfil completo + o contexto validado (se houver).
     A IA retorna sentimento + comentário para cada uma.
     """
-    # Bloco de contexto — MÍNIMO, só identificação
+    # Bloco de contexto
     if context and context.contexto:
         figuras_text = ""
         if context.figuras:
@@ -155,7 +162,18 @@ def build_batch_prompt(
                 f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
             )
 
-        context_block = f"""PERGUNTA: "{question}"
+        is_media_context = context.tema == "Conteúdo de mídia analisado"
+
+        if is_media_context:
+            context_block = f"""PERGUNTA: "{question}"
+
+CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO, é sobre ISSO que você deve opinar):
+{context.contexto}
+{f"FIGURAS MENCIONADAS: {figuras_text}" if figuras_text else ""}
+
+⚠️ VOCÊ ESTÁ REAGINDO AO CONTEÚDO ACIMA. Leia os FATOS, ARGUMENTOS e DADOS apresentados. Sua opinião deve refletir como SEU PERFIL reagiria ao ver esse conteúdo numa rede social. Seja ESPECÍFICO — mencione pontos concretos do conteúdo."""
+        else:
+            context_block = f"""PERGUNTA: "{question}"
 
 QUEM/O QUE É (apenas para você saber de quem se trata, NÃO mude sua opinião por causa disso):
 {context.contexto}
@@ -195,6 +213,7 @@ QUEM/O QUE É (apenas para você saber de quem se trata, NÃO mude sua opinião 
         cluster_id = p.get("cluster_id", "?")
         cluster_name = p.get("nome_grupo", "?")
 
+        extras = build_persona_extras(p)
         line = (
             f'[{i + 1}] {p.get("name", "?")} | '
             f'{p.get("gender_identity") or p.get("gender", "?")}, '
@@ -209,6 +228,7 @@ QUEM/O QUE É (apenas para você saber de quem se trata, NÃO mude sua opinião 
             f'Religião: {p.get("macro_religion", "?")} | '
             f'Cluster: {cluster_id}({cluster_name}) | '
             f'ScoreEco: {score_eco:.3f} | ScoreCost: {score_cost:.3f}'
+            + (f' | {extras}' if extras else '')
         )
         persona_lines.append(line)
 

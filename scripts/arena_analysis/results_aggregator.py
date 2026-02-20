@@ -6,6 +6,7 @@ Todos os dados vêm das respostas reais da IA, não de fórmulas.
 """
 from __future__ import annotations
 
+import heapq
 import math
 from collections import defaultdict
 from typing import Any
@@ -134,8 +135,10 @@ def aggregate_results(
     # Scatter points
     ideological_points: list[dict] = []
 
-    # Comments
-    all_comments: list[dict] = []
+    # Top comments por sentimento (heap min de tamanho 10 cada)
+    _MAX_PER_SENTIMENT = 10
+    _comment_heaps: dict[str, list[tuple[int, int, dict]]] = defaultdict(list)
+    _comment_counter = 0
 
     # Detect political figures in question
     norm_q = question.lower()
@@ -245,12 +248,10 @@ def aggregate_results(
                 "educationLevel": edu,
             })
 
-        # Comment
+        # Comment — mantém só top 10 por sentimento (por tamanho do comentário)
         if comment:
-            # Extract archetype
             archetype = persona.get("archetype_primary", "moderate")
-
-            all_comments.append({
+            entry = {
                 "archetype": archetype,
                 "sentiment": sentiment,
                 "comment": comment,
@@ -260,7 +261,13 @@ def aggregate_results(
                 "state": persona.get("state", ""),
                 "region": region,
                 "generation": gen,
-            })
+            }
+            heap = _comment_heaps[sentiment]
+            _comment_counter += 1
+            if len(heap) < _MAX_PER_SENTIMENT:
+                heapq.heappush(heap, (len(comment), _comment_counter, entry))
+            elif len(comment) > heap[0][0]:
+                heapq.heapreplace(heap, (len(comment), _comment_counter, entry))
 
     # ── Build final result ──
 
@@ -387,6 +394,11 @@ def aggregate_results(
         if data["count"] > 0
     ]
 
+    # Extrai top 10 por sentimento dos heaps (max 30 comments)
+    best_comments: list[dict] = []
+    for heap in _comment_heaps.values():
+        best_comments.extend(item for _, _, item in sorted(heap, reverse=True))
+
     return {
         "total": total,
         "positive": total_positive,
@@ -394,7 +406,7 @@ def aggregate_results(
         "neutral": total_neutral,
         "archetypes": archetypes,
         "clusterResults": cluster_results,
-        "comments": all_comments,
+        "comments": best_comments,
         "processingTime": 0,  # Set by main.py
         "ideologicalPoints": ideological_points,
         "quadrants": quadrants,

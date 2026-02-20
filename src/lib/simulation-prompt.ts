@@ -66,6 +66,46 @@ export interface PersonaForAI {
   qConfiancaIgreja?: number;
   qConfiancaExercito?: number;
   qDemocraciaImportante?: number;
+  // Tabu Implícito (hidden biases — all 20)
+  tiRacismoLatente?: string;
+  tiNaoContratariaNegro?: string;
+  tiVizinhoNegroIncomoda?: string;
+  tiSonegaria?: string;
+  tiAceitariaPropina?: string;
+  tiVenderiaVoto?: string;
+  tiBaterFilho?: string;
+  tiMulherRoupaCulpada?: string;
+  tiHomofobiaViolenta?: string;
+  tiLinchamento?: string;
+  tiTorturaPreso?: string;
+  tiTrabalhoInfantil?: string;
+  tiJeitinhoFila?: string;
+  tiAssediariaMulherRua?: string;
+  tiIntoleranciaReligiosa?: string;
+  tiPreconceitoNordestino?: string;
+  tiViolenciaDomestica?: string;
+  tiComprariaRoubado?: string;
+  tiMenor14SabeOQueFaz?: string;
+  tiNepotismoConcurso?: string;
+  // Vivências (lived experiences — all 18)
+  viAbusoSexualInfancia?: string;
+  viPassouFome?: string;
+  viTrabalhoInfantil?: string;
+  viJaFoiAssaltado?: string;
+  viPerdeuFamiliarViolencia?: string;
+  viDesempregado1Ano?: string;
+  viPaiAusente?: string;
+  viSofreuRacismo?: string;
+  viSofreuAssedioSexual?: string;
+  viDepressaoAnsiedade?: string;
+  viPensouSuicidio?: string;
+  viPresoOuFamiliarPreso?: string;
+  viSofreuViolenciaDomestica?: string;
+  viJaDormiuNaRua?: string;
+  viViolenciaPolicial?: string;
+  viNaoCompletouEstudo?: string;
+  viEnchenteDesastre?: string;
+  viDependencia?: string;
 }
 
 // ── System Prompt ────────────────────────────────────────────────────────────
@@ -139,7 +179,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
 
 4. EXPRESSÕES IDIOMÁTICAS & VIRAIS — use variadas, NUNCA repita a mesma:
    CLÁSSICAS: "pagar de doido", "tá de sacanagem", "na cara dura", "empurrar com a barriga", "pisar na bola", "meter o louco", "passar pano", "botar a boca no trombone", "tá de brincadeira", "tudo farinha do mesmo saco", "Deus me livre", "é de fuder", "tá foda", "senta lá Cláudia", "não é mole não", "pelo amor", "dá nem pra acreditar", "que palhaçada", "aí é foda", "é osso", "tô nem aí"
-   VIRAIS ATUAIS: "confia" (irônico), "não tanko" (não aguento), "tô passada", "é sobre isso", "calabreso" (calma irmão), "cringe", "surtei", "chocada", "tô rindo de nervoso", "a audácia", "o Brasil não é pra fracos", "primeiro mundo é diferente né", "faz o L / faz o B" (político), "seloko", "mano do céu"
+   VIRAIS ATUAIS: "confia" (irônico), "não tanko" (não aguento), "tô passada", "é sobre isso", "calabreso" (calma irmão), "cringe", "surtei", "chocada", "tô rindo de nervoso", "a audácia", "o Brasil não é pra fracos", "primeiro mundo é diferente né", "faz o L / faz o B" (político), "seloko", "meu deus do céu"
    META-COMENTÁRIOS: "vim pelos comentários kkkk", "os comentários > a notícia", "tô aqui só pelo entretenimento", "cadê a pipoca 🍿", "melhor que Netflix", "esse país é um reality show", "Brasil sendo Brasil"
 
 5. HUMOR BRASILEIRO — REGRA FUNDAMENTAL DA SIMULAÇÃO:
@@ -308,10 +348,10 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
     • "merda", "bosta", "desgraçado", "arrombado", "cuzão", "vai tomar no cu"
     • Intensidade varia: Gen Z jovem periferia = palavrão em cada frase. Boomer evangélico = quase nunca (mas quando sai, sai com RAIVA). Mulher mãe = menos, mas usa "caramba", "misericórdia", "cruz credo".
     • Xingamentos políticos: "petralha", "bolsominion", "gado", "mortadela", "coxinha", "comunista vagabundo", "fascista", "gadão do mito"
-    • Palavrão com humor: "pqp mano kkkkkkk" — brasileiro xinga RINDO
+    • Palavrão com humor: "pqp kkkkkkk", "caralho vei kkkk" — brasileiro xinga RINDO
 
 12. GÊNERO muda a forma de falar:
-    • Homem jovem periferia: "mano", "parceiro", "mlk", "é os guri", "firmeza", "fé"
+    • Homem jovem periferia: vocativo DA REGIÃO ("mano" SÓ se for de SP/DF, "mermão" se RJ, "vei" se NE, etc), "parceiro", "mlk", "firmeza", "fé"
     • Mulher jovem: "amiga", "gente", "socorro", "ai meu deus", "gata", "tô passada", "não tanko"
     • Homem velho conservador: Autoritário. "na minha época", "homem que é homem", "eu que sou pai de família"
     • Mulher mãe classe C/D: "como mãe eu digo", "penso nos meus filhos", "que mundo é esse meu Deus"
@@ -345,10 +385,10 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
 
 16. LINGUAGEM COLOQUIAL — ASSIM QUE BRASILEIRO FALA DE VERDADE:
     Brasileiro na internet NÃO fala "correto". Mesmo quem tem escolaridade alta escreve de forma SUPER casual. Exemplos de como brasileiro realmente digita:
-    • "mano" pra começar qualquer frase
+    • Vocativos VARIAM por região e pessoa — NUNCA repita o mesmo vocativo em vários comentários:
+      SP: "mano", "mina", "mlk" | RJ: "mermão", "parceiro", "cria" | MG: "sô", "cê" | BA/PE/NE: "vei", "macho", "mah" | RS: "tchê", "guri" | PA/AM: "maninho" | Genéricos: "irmão", "brother", "parça", "cara", "véi"
     • "tipo" como muleta ("tipo, não faz sentido")
     • "aí" como conectivo ("aí o cara vem e fala que...")
-    • "irmão" / "brother" / "parça" como vocativo
     • "olha" / "ó" pra chamar atenção
     • "né" no final de quase tudo
     • "sei lá" quando quer parecer indiferente
@@ -356,6 +396,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
     • Diminutivos: "rapidinho", "pouquinho", "favorzinho", "golpinho"
     • Aumentativos pejorativos: "problemão", "confusão", "bagunção"
     • NUNCA começa com "Eu penso que..." ou "Na minha opinião..." — brasileiro vai direto: "isso aí é uma palhaçada", "q merda hein"
+    • ⚠️ PROIBIDO repetir o mesmo vocativo ("mano", "vei", "irmão" etc) em mais de 20% dos comentários de um batch. VARIE!
 
 17. PROIBIDO TERMINANTEMENTE:
     ❌ Vocabulário acadêmico: "multifatorial", "sistêmico", "paradigma", "dicotomia"
@@ -378,6 +419,13 @@ Se você ler o comentário e pensar "isso parece uma IA" — REESCREVA.
 Gerar um comentário "limpo" para um perfil agressivo = DADO CORROMPIDO.
 Gerar um comentário sem humor para um perfil que na vida real faria piada = DADO CORROMPIDO.
 A PRECISÃO da simulação depende de você respeitar CADA atributo do perfil.
+
+⚠️ REGRA ANTI-REPETIÇÃO DE VOCATIVOS:
+A palavra "mano" é gíria de SÃO PAULO. NÃO use "mano" para personas de outros estados.
+Cada estado tem seus vocativos PRÓPRIOS (vei, macho, tchê, mermão, sô, maninho, etc).
+Mesmo para personas de SP, NÃO comece TODOS os comentários com "mano".
+Se mais de 20% dos comentários de um batch usam a MESMA palavra como vocativo, REESCREVA variando.
+Vocativos são apenas UMA ferramenta — muitos comentários não precisam de vocativo nenhum.
 ═══════════════════════════════════════════════════════════
 
 Responda APENAS com um array JSON válido. Nenhum texto antes ou depois.`;
@@ -433,7 +481,55 @@ export function buildUserPrompt(question: string, personas: PersonaForAI[]): str
     ].filter(Boolean).join(', ');
     const questStr = questionnaireItems ? ` | QUESTIONÁRIO: ${questionnaireItems}` : '';
 
-    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion}${ideologyPart}${electoralPart}${themesPart}${extraStr}${questStr} | Sentimento: ${sentimentLabel}`;
+    // Tabu implícito (hidden biases — all 20, shape how they comment on sensitive topics)
+    const tabuItems = [
+      p.tiRacismoLatente === 'Sim' ? 'RacismoLatente' : '',
+      p.tiNaoContratariaNegro === 'Sim' ? 'NãoContratariaNegro' : '',
+      p.tiVizinhoNegroIncomoda === 'Sim' ? 'VizinhoNegroIncomoda' : '',
+      p.tiSonegaria === 'Sim' ? 'Sonegaria' : '',
+      p.tiAceitariaPropina === 'Sim' ? 'AceitaPropina' : '',
+      p.tiVenderiaVoto === 'Sim' ? 'VenderiaVoto' : '',
+      p.tiBaterFilho === 'Sim' ? 'BaterFilhoNormal' : '',
+      p.tiMulherRoupaCulpada === 'Sim' ? 'CulpaVítima' : '',
+      p.tiHomofobiaViolenta === 'Sim' ? 'HomofobiaViolenta' : '',
+      p.tiLinchamento === 'Sim' ? 'ApoiaLinchamento' : '',
+      p.tiTorturaPreso === 'Sim' ? 'TorturaOK' : '',
+      p.tiTrabalhoInfantil === 'Sim' ? 'TrabInfantilOK' : '',
+      p.tiJeitinhoFila === 'Sim' ? 'JeitinhoFila' : '',
+      p.tiAssediariaMulherRua === 'Sim' ? 'AssédioRua' : '',
+      p.tiIntoleranciaReligiosa === 'Sim' ? 'IntolerânciaRelig' : '',
+      p.tiPreconceitoNordestino === 'Sim' ? 'XenofobiaNordeste' : '',
+      p.tiViolenciaDomestica === 'Sim' ? 'ViolDomésticaOK' : '',
+      p.tiComprariaRoubado === 'Sim' ? 'CompraProdRoubado' : '',
+      p.tiMenor14SabeOQueFaz === 'Sim' ? 'Menor14OK' : '',
+      p.tiNepotismoConcurso === 'Sim' ? 'NepotismoOK' : '',
+    ].filter(Boolean).join(', ');
+    const tabuStr = tabuItems ? ` | VIESES_OCULTOS: ${tabuItems}` : '';
+
+    // Vivências (lived experiences — all 18, shape perspective and emotional response)
+    const vivItems = [
+      p.viAbusoSexualInfancia === 'Sim' ? 'AbusoSexualInfância' : '',
+      p.viPassouFome === 'Sim' ? 'PassouFome' : '',
+      p.viTrabalhoInfantil === 'Sim' ? 'TrabInfantil' : '',
+      p.viJaFoiAssaltado === 'Sim' ? 'JáAssaltado' : '',
+      p.viPerdeuFamiliarViolencia === 'Sim' ? 'PerdeuFamiliar' : '',
+      p.viDesempregado1Ano === 'Sim' ? 'Desempregado1a' : '',
+      p.viPaiAusente === 'Sim' ? 'PaiAusente' : '',
+      p.viSofreuRacismo === 'Sim' ? 'SofreuRacismo' : '',
+      p.viSofreuAssedioSexual === 'Sim' ? 'SofreuAssédio' : '',
+      p.viDepressaoAnsiedade === 'Sim' ? 'Depressão/Ansiedade' : '',
+      p.viPensouSuicidio === 'Sim' ? 'PensouSuicídio' : '',
+      p.viPresoOuFamiliarPreso === 'Sim' ? 'PresoOuFamiliar' : '',
+      p.viSofreuViolenciaDomestica === 'Sim' ? 'ViolênciaDoméstica' : '',
+      p.viJaDormiuNaRua === 'Sim' ? 'DormiuNaRua' : '',
+      p.viViolenciaPolicial === 'Sim' ? 'ViolênciaPolicial' : '',
+      p.viNaoCompletouEstudo === 'Sim' ? 'NãoCompletouEstudo' : '',
+      p.viEnchenteDesastre === 'Sim' ? 'Enchente/Desastre' : '',
+      p.viDependencia === 'Sim' ? 'Dependência' : '',
+    ].filter(Boolean).join(', ');
+    const vivStr = vivItems ? ` | VIVÊNCIAS: ${vivItems}` : '';
+
+    return `[${i + 1}] ${p.name} | ${p.gender}, ${p.age}a, ${p.ethnicity} | ${p.state} (${p.region}, ${p.areaType}) | ${p.generation} | ESCOLARIDADE: ${p.educationLevel} | Classe ${p.socialClass} | Profissão: ${p.occupation} | ${p.civilStatus} | Político: ${p.politicalLeaning} | Religião: ${p.religion}${ideologyPart}${electoralPart}${themesPart}${extraStr}${questStr}${tabuStr}${vivStr} | Sentimento: ${sentimentLabel}`;
   }).join('\n');
 
   return `TEMA: "${question}"
@@ -471,7 +567,7 @@ NUNCA gere um comentário vazio, genérico ou desconectado do perfil da persona.
 8. PALAVRÕES → Se o perfil indica (jovem, periferia, radical) USE palavrões reais. Brasileiro xinga RINDO.
 9. SENTIMENTO → OBRIGATÓRIO respeitar o sentimento indicado. CONCORDA = apoia (pode com humor). DISCORDA = ataca (pode com deboche). NEUTRO = pondera os dois lados, vê complexidade. NUNCA "sei lá" — neutro é ponderado.
 10. HUMOR BRASILEIRO → ~40-50% dos comentários devem ter humor: ironia, deboche, exagero, piada do cotidiano, "rir pra não chorar". MISTURE opinião com piada naturalmente. Brasileiro quase NUNCA é 100% sério.
-11. LINGUAGEM → INFORMAL SEMPRE. Nada de "eu penso que" ou "na minha opinião". Brasileiro vai direto: "mano isso é uma piada né", "pqp que palhaçada", "kkkk tô rindo de nervoso".
+11. LINGUAGEM → INFORMAL SEMPRE. Nada de "eu penso que" ou "na minha opinião". Brasileiro vai direto: "isso é uma piada né", "pqp que palhaçada", "kkkk tô rindo de nervoso".
 12. QUESTIONÁRIO → Use as respostas do QUESTIONÁRIO pra calibrar: MaiorProblema define prioridade. SitEcon "Piorou" = reclama mais. ConfSTF baixo + ConfExército alto = perfil militarista. FamTradicional "Sim" = conservador em costumes. Impeach "Sim" = anti-Lula ativo.
 13. VARIAÇÃO E UNICIDADE → CADA comentário DEVE ser COMPLETAMENTE DIFERENTE dos outros. NUNCA repita a mesma frase, estrutura ou ideia entre dois comentários. Varie DRASTICAMENTE: tamanho (5 palavras a 40), tom, estilo, tipo de humor, vocabulário, e abordagem ao tema. Se um comentário já disse "concordo", o próximo NÃO pode começar com "concordo". ZERO repetição. Cada persona é uma PESSOA REAL com vivência ÚNICA — o comentário deve refletir SUA vida, SUA perspectiva, SEU jeito de falar.
 

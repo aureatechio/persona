@@ -42,3 +42,9 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# playwright MCP logs
+.playwright-mcp/
+
+# supabase temp/local state
+supabase/.temp/

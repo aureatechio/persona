@@ -27,7 +27,7 @@ from pydantic import BaseModel
 from arena_analysis.config import settings
 from arena_analysis.query_analyzer import QueryAnalyzer
 from arena_analysis.web_researcher import ArenaWebResearcher
-from arena_analysis.context_builder import ContextBuilder
+from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.context_validator import ContextValidator
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
@@ -62,6 +62,7 @@ electoral_engine = ElectoralEngine()
 class AnalyzeRequest(BaseModel):
     question: str
     cluster_filter: Optional[str] = None
+    context_text: Optional[str] = None
 
 
 class ElectoralRequest(BaseModel):
@@ -134,7 +135,25 @@ async def analyze(request: AnalyzeRequest):
         analysis = await query_analyzer.analyze(request.question)
         context = None
 
-        if analysis.needs_research:
+        # Se já temos contexto da mídia (imagem/arquivo analisado), usar diretamente
+        if request.context_text:
+            context = ContextResult(
+                tema="Conteúdo de mídia analisado",
+                contexto=request.context_text,
+            )
+            print(f"[Pipeline] Contexto de mídia recebido ({len(request.context_text)} chars)")
+
+            # Web research complementar se o query analyzer achar necessário
+            if analysis.needs_research:
+                yield sse_event("phase", {
+                    "phase": "web_research",
+                    "message": "Pesquisando contexto complementar na web...",
+                })
+                web_result = await web_researcher.research(request.question)
+                if web_result.combined_context:
+                    context.contexto += f"\n\n--- Contexto web complementar ---\n{web_result.combined_context[:500]}"
+
+        elif analysis.needs_research:
             # ── 1b. Web Research ─────────────────────────────────────
             yield sse_event("phase", {
                 "phase": "web_research",
@@ -161,7 +180,6 @@ async def analyze(request: AnalyzeRequest):
             total_tokens += context.prompt_tokens + context.output_tokens
 
             # ── 1d. Context Validator (skip para velocidade) ─────────
-            # Validação roda mas não bloqueia se contexto já está ok
             validation = await context_validator.validate(
                 question=request.question,
                 context=context,
@@ -213,10 +231,17 @@ async def analyze(request: AnalyzeRequest):
             })
 
         # ── 6. Aggregate Results ──────────────────────────────────────
+        yield sse_event("phase", {
+            "phase": "aggregating",
+            "message": f"Agregando resultados de {total_personas} personas...",
+        })
+
         processing_time = (time.time() - start_time) * 1000
 
         try:
-            final_results = aggregate_results(personas, all_results, request.question)
+            final_results = await asyncio.to_thread(
+                aggregate_results, personas, all_results, request.question
+            )
             final_results["processingTime"] = processing_time
         except Exception as e:
             print(f"[Pipeline] Aggregator error: {e}")

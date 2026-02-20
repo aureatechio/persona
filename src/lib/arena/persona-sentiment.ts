@@ -137,6 +137,38 @@ const QUESTION_FIELD_MAP: FieldMapping[] = [
 
   // ── Mídia e Tecnologia ──
   { keywords: ['whatsapp', 'zap'], fields: ['q_whatsapp_noticias'] },
+
+  // ── Tabu Implícito (hidden biases) ──
+  { keywords: ['racismo', 'negro', 'preto', 'preconceito racial'], fields: ['q_ti_racismo_latente', 'q_ti_nao_contrataria_negro_chefia', 'q_ti_vizinho_negro_incomoda'] },
+  { keywords: ['sonegar', 'sonegacao', 'imposto', 'evasao fiscal'], fields: ['q_ti_sonegaria_imposto'] },
+  { keywords: ['propina', 'suborno', 'corrupcao'], fields: ['q_ti_aceitaria_propina'] },
+  { keywords: ['comprar voto', 'vender voto', 'voto comprado'], fields: ['q_ti_venderia_voto'] },
+  { keywords: ['bater filho', 'palmada', 'educacao crianca', 'castigo fisico'], fields: ['q_ti_bater_filho_normal'] },
+  { keywords: ['estupro', 'assedio', 'culpa vitima', 'roupa provocante'], fields: ['q_ti_mulher_roupa_culpada'] },
+  { keywords: ['homofobia', 'violencia contra gay', 'lgbtfobia'], fields: ['q_ti_homofobia_violenta'] },
+  { keywords: ['linchamento', 'justica propria', 'justiceiro'], fields: ['q_ti_linchamento_apoiaria'] },
+  { keywords: ['tortura', 'torturar preso'], fields: ['q_ti_tortura_preso_ok'] },
+  { keywords: ['trabalho infantil', 'crianca trabalhar'], fields: ['q_ti_trabalho_infantil_ok'] },
+  { keywords: ['jeitinho', 'furar fila', 'jeitinho brasileiro'], fields: ['q_ti_jeitinho_furar_fila'] },
+  { keywords: ['assedio rua', 'cantada', 'assedio sexual rua'], fields: ['q_ti_assediaria_mulher_rua'] },
+  { keywords: ['intolerancia religiosa', 'perseguicao religiosa'], fields: ['q_ti_intolerancia_religiosa'] },
+  { keywords: ['preconceito nordestino', 'xenofobia', 'nordestino'], fields: ['q_ti_preconceito_nordestino'] },
+  { keywords: ['violencia domestica', 'bater mulher', 'agressor'], fields: ['q_ti_violencia_domestica'] },
+  { keywords: ['produto roubado', 'receptacao', 'contrabando'], fields: ['q_ti_compraria_produto_roubado'] },
+  { keywords: ['menor de idade', 'adolescente infrator', 'menor14'], fields: ['q_ti_menor14_sabe_o_que_faz'] },
+  { keywords: ['nepotismo', 'indicacao politica', 'concurso publico'], fields: ['q_ti_nepotismo_concurso'] },
+
+  // ── Vivências e Vulnerabilidades ──
+  { keywords: ['abuso sexual', 'pedofilia', 'abuso infantil'], fields: ['q_vi_abuso_sexual_infancia'] },
+  { keywords: ['fome', 'inseguranca alimentar', 'passar fome'], fields: ['q_vi_passou_fome'] },
+  { keywords: ['assalto', 'roubo', 'furto', 'assaltado'], fields: ['q_vi_ja_foi_assaltado'] },
+  { keywords: ['desemprego', 'desempregado'], fields: ['q_vi_desempregado_1ano'] },
+  { keywords: ['depressao', 'ansiedade', 'saude mental', 'panico'], fields: ['q_vi_depressao_ansiedade'] },
+  { keywords: ['suicidio', 'suicida', 'autolesao'], fields: ['q_vi_pensou_suicidio'] },
+  { keywords: ['preso', 'prisao', 'encarcerado', 'sistema penitenciario'], fields: ['q_vi_preso_ou_familiar_preso'] },
+  { keywords: ['morador de rua', 'sem teto', 'situacao de rua'], fields: ['q_vi_ja_dormiu_na_rua'] },
+  { keywords: ['enchente', 'inundacao', 'desastre natural', 'deslizamento'], fields: ['q_vi_enchente_desastre'] },
+  { keywords: ['dependencia quimica', 'alcoolismo', 'vicio', 'dependente'], fields: ['q_vi_dependencia'] },
 ];
 
 // ── Response Classification ───────────────────────────────────────────────────
@@ -309,12 +341,14 @@ function computeHolisticSentiment(
     'q_pena_morte', 'q_prisao_perpetua', 'q_maioridade_penal_16',
     'q_intervencao_militar', 'q_crack_internar_forcado',
     'q_camera_facial_aceita', 'q_seguranca_prioridade',
+    'q_ti_linchamento_apoiaria', 'q_ti_tortura_preso_ok',
   ];
 
   // Tradition / conservatism dimension
   const tradFields = [
     'q_familia_tradicional', 'q_religiao_politica', 'q_genero_biologico',
     'tema_casamento_gay', 'q_ideologia_genero_escola', 'q_linguagem_neutra',
+    'q_ti_homofobia_violenta', 'q_ti_bater_filho_normal',
   ];
 
   // Economic liberalism dimension

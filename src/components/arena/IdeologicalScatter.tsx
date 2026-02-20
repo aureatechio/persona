@@ -9,7 +9,7 @@ const SENTIMENT_COLORS = {
   neutral: { r: 245, g: 158, b: 11 },     // amber
 };
 
-export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
+export function IdeologicalScatter({ points, compact }: { points: IdeologicalPoint[]; compact?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -23,14 +23,14 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
 
     const dpr = window.devicePixelRatio || 1;
     const w = container.offsetWidth;
-    const h = Math.min(w, 560);
+    const h = compact ? Math.min(w, 320) : Math.min(w, 560);
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     canvas.style.width = `${w}px`;
     canvas.style.height = `${h}px`;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const pad = 60;
+    const pad = compact ? 40 : 60;
     const plotW = w - pad * 2;
     const plotH = h - pad * 2;
 
@@ -74,7 +74,7 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
     ctx.setLineDash([]);
 
     // Axis labels
-    ctx.font = 'bold 13px Manrope, sans-serif';
+    ctx.font = compact ? 'bold 10px Manrope, sans-serif' : 'bold 13px Manrope, sans-serif';
     ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.textAlign = 'center';
     ctx.letterSpacing = '2px';
@@ -93,7 +93,7 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
     ctx.letterSpacing = '0px';
 
     // Quadrant labels
-    ctx.font = 'bold 12px Manrope, sans-serif';
+    ctx.font = compact ? 'bold 9px Manrope, sans-serif' : 'bold 12px Manrope, sans-serif';
     ctx.globalAlpha = 0.45;
     ctx.fillStyle = '#f43f5e';
     ctx.fillText('Esq + Progressista', pad + plotW * 0.25, pad + plotH * 0.92);
@@ -181,10 +181,10 @@ export function IdeologicalScatter({ points }: { points: IdeologicalPoint[] }) {
       ctx.fillText(label, x, y - 14);
     }
 
-  }, [points]);
+  }, [points, compact]);
 
   return (
-    <div className="mb-8">
+    <div className={compact ? '' : 'mb-8'}>
       <div className="flex items-center gap-2.5 mb-4 px-1">
         <div className="w-5 h-5 rounded-lg bg-gradient-to-br from-rose-500/20 to-sky-500/20 flex items-center justify-center">
           <div className="w-2 h-2 rounded-full bg-white/50" />

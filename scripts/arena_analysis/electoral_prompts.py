@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from arena_analysis.context_builder import ContextResult
+from arena_analysis.persona_extras import build_persona_extras
 
 
 # ── System Prompt: Votação Eleitoral ──────────────────────────────────────────
@@ -273,6 +274,7 @@ TÊM probabilidade de MUDAR de voto — mas NEM TODAS mudam:
         cluster_id = p.get("cluster_id", "?")
         cluster_name = p.get("nome_grupo", "?")
 
+        extras = build_persona_extras(p)
         line = (
             f'[{i + 1}] {p.get("name", "?")} | '
             f'{p.get("gender_identity") or p.get("gender", "?")}, '
@@ -287,6 +289,7 @@ TÊM probabilidade de MUDAR de voto — mas NEM TODAS mudam:
             f'Religião: {p.get("macro_religion", "?")} | '
             f'Cluster: {cluster_id}({cluster_name}) | '
             f'ScoreEco: {score_eco:.3f} | ScoreCost: {score_cost:.3f}'
+            + (f' | {extras}' if extras else '')
         )
         persona_lines.append(line)
 

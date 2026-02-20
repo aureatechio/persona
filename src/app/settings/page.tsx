@@ -1,18 +1,18 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/Sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { 
-  User, 
-  Mail, 
-  Lock, 
-  Save, 
+import Link from 'next/link';
+import {
+  User,
+  Mail,
+  Lock,
+  Save,
   Loader2,
   CheckCircle2,
   AlertCircle,
-  Menu
+  ArrowLeft
 } from 'lucide-react';
 
 export default function SettingsPage() {
@@ -22,8 +22,6 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-
   useEffect(() => {
     if (profile) {
       setName(profile.name);
@@ -77,18 +75,16 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden lg:pl-64">
-        <header className="h-20 border-b border-zinc-900 flex items-center px-8 bg-black/50 backdrop-blur-md sticky top-0 z-30">
-          <button 
-            onClick={() => setIsSidebarOpen(true)}
-            className="lg:hidden p-2 text-zinc-400 hover:text-white transition-colors mr-4"
+    <div className="min-h-screen bg-black text-white">
+      <main className="flex-1 flex flex-col min-w-0">
+        <header className="h-16 border-b border-white/[0.04] flex items-center px-6 md:px-8 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-30 gap-4">
+          <Link
+            href="/"
+            className="p-2 text-zinc-400 hover:text-white hover:bg-white/[0.06] rounded-xl transition-all duration-200"
           >
-            <Menu size={24} />
-          </button>
-          <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
+            <ArrowLeft size={20} />
+          </Link>
+          <h1 className="text-xl font-bold tracking-tight">Configuracoes</h1>
         </header>
 
         <div className="p-8 overflow-y-auto max-w-4xl mx-auto w-full">

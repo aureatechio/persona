@@ -235,6 +235,233 @@ body {
 }
 
 /* ============================
+   SPECTACULAR LOADING - MARQUEE
+   ============================ */
+
+/* Horizontal marquee scroll (left) */
+@keyframes marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* Horizontal marquee scroll (right) */
+@keyframes marquee-right {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-marquee-left {
+  animation: marquee-left var(--marquee-speed, 30s) linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-right {
+  animation: marquee-right var(--marquee-speed, 30s) linear infinite;
+  will-change: transform;
+}
+
+/* Gentle bobbing for floating cards */
+@keyframes gentle-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.animate-gentle-bob {
+  animation: gentle-bob 3s ease-in-out infinite;
+}
+
+/* Central counter breathing pulse */
+@keyframes counter-breathe {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.9; }
+}
+
+.animate-counter-breathe {
+  animation: counter-breathe 2s ease-in-out infinite;
+}
+
+/* ============================
+   SPECTACULAR LOADING - TECH EFFECTS
+   ============================ */
+
+/* Scan line sweeping across cards */
+@keyframes scan-line {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-scan-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(139 92 246 / 0.15) 45%, rgba(255 255 255 / 0.1) 50%, rgba(139 92 246 / 0.15) 55%, transparent 100%);
+  animation: scan-line 2.5s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* Holographic shimmer on card borders */
+@keyframes holo-border {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Data stream - numbers flowing vertically */
+@keyframes data-stream-fall {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+/* Neural pulse - expanding ring from node */
+@keyframes neural-pulse {
+  0% { transform: scale(0.5); opacity: 0.8; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+/* Circuit trace - a line that draws itself */
+@keyframes circuit-trace {
+  0% { stroke-dashoffset: 1000; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+/* Glitch micro-shake */
+@keyframes micro-glitch {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-1px, 1px); }
+  40% { transform: translate(1px, -1px); }
+  60% { transform: translate(-1px, 0); }
+  80% { transform: translate(1px, 1px); }
+}
+
+/* Energy wave radiating outward */
+@keyframes energy-wave {
+  0% { transform: scale(0.8); opacity: 0.6; }
+  50% { transform: scale(1.2); opacity: 0.3; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Orbiting particle */
+@keyframes orbit {
+  0% { transform: rotate(0deg) translateX(var(--orbit-radius, 80px)) rotate(0deg); }
+  100% { transform: rotate(360deg) translateX(var(--orbit-radius, 80px)) rotate(-360deg); }
+}
+
+/* Card internal progress bar */
+@keyframes card-progress {
+  0% { width: 0%; }
+  50% { width: 70%; }
+  100% { width: 100%; }
+}
+
+/* Hex rotate for hexagonal elements */
+@keyframes hex-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Data value counter flicker */
+@keyframes value-flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Neural connection line pulse */
+@keyframes line-pulse {
+  0% { stroke-opacity: 0.05; }
+  50% { stroke-opacity: 0.4; }
+  100% { stroke-opacity: 0.05; }
+}
+
+/* Typing text reveal */
+@keyframes typing-reveal {
+  0% { width: 0; }
+  100% { width: 100%; }
+}
+
+/* Vertical data rain */
+@keyframes data-rain {
+  0% { transform: translateY(-20px); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(20px); opacity: 0; }
+}
+
+/* Ring segment rotation */
+@keyframes ring-segment {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Glow intensity oscillation */
+@keyframes glow-oscillate {
+  0%, 100% { filter: brightness(1) drop-shadow(0 0 4px rgba(139 92 246 / 0.3)); }
+  50% { filter: brightness(1.4) drop-shadow(0 0 12px rgba(139 92 246 / 0.6)); }
+}
+
+.animate-glow-oscillate {
+  animation: glow-oscillate 2s ease-in-out infinite;
+}
+
+/* ============================
+   SPECTACULAR - BUBBLE FLOAT
+   ============================ */
+
+/* Bubble rises up, stays visible, fades out */
+@keyframes bubble-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.85);
+  }
+  8% {
+    opacity: 1;
+    transform: translateY(-15%) scale(1);
+  }
+  70% {
+    opacity: 0.9;
+    transform: translateY(-180%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-260%) scale(0.95);
+  }
+}
+
+/* Media scanner - scan line sweep top to bottom */
+@keyframes scanner-sweep {
+  0% {
+    top: -2px;
+    opacity: 0;
+  }
+  5% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+/* Scanner grid fade in */
+@keyframes scanner-grid-pulse {
+  0%, 100% { opacity: 0.03; }
+  50% { opacity: 0.08; }
+}
+
+/* Corner bracket animation */
+@keyframes bracket-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ============================
    CUSTOM SCROLLBAR
    ============================ */
 

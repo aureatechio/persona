@@ -1,19 +1,19 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Sidebar } from '@/components/Sidebar';
 import { useAuth, UserProfile } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { createUserAction, deleteUserAction } from '@/app/actions/userActions';
-import { 
-  UserPlus, 
-  Trash2, 
-  Shield, 
-  User as UserIcon, 
-  Search, 
-  X, 
+import Link from 'next/link';
+import {
+  UserPlus,
+  Trash2,
+  Shield,
+  User as UserIcon,
+  Search,
+  X,
   Loader2,
-  Menu
+  ArrowLeft
 } from 'lucide-react';
 
 export default function UsersPage() {
@@ -22,8 +22,6 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -89,20 +87,18 @@ export default function UsersPage() {
   });
 
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden lg:pl-64">
+    <div className="min-h-screen bg-black text-white">
+      <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-20 border-b border-zinc-900 flex items-center justify-between px-8 bg-black/50 backdrop-blur-md sticky top-0 z-30">
+        <header className="h-16 border-b border-white/[0.04] flex items-center justify-between px-6 md:px-8 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-30">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="lg:hidden p-2 text-zinc-400 hover:text-white transition-colors"
+            <Link
+              href="/"
+              className="p-2 text-zinc-400 hover:text-white hover:bg-white/[0.06] rounded-xl transition-all duration-200"
             >
-              <Menu size={24} />
-            </button>
-            <h1 className="text-2xl font-bold tracking-tight">Gerenciamento de Usuários</h1>
+              <ArrowLeft size={20} />
+            </Link>
+            <h1 className="text-xl font-bold tracking-tight">Gerenciamento de Usuarios</h1>
           </div>
           
           <button

@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import Link from 'next/link';
-import { Sidebar } from '@/components/Sidebar';
-import { 
-  ArrowLeft, 
-  User, 
-  MapPin, 
+import {
+  ArrowLeft,
+  User,
+  MapPin,
   MessageSquare,
   Brain,
   Heart,
@@ -26,7 +25,8 @@ import {
   AlertTriangle,
   Star,
   Compass,
-  Menu
+  EyeOff,
+  Flame,
 } from 'lucide-react';
 
 export default function PersonaProfilePage() {
@@ -34,7 +34,6 @@ export default function PersonaProfilePage() {
   const router = useRouter();
   const [persona, setPersona] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     fetchPersona();
@@ -64,6 +63,8 @@ export default function PersonaProfilePage() {
 
   const tabs = [
     { id: 'overview', label: 'Visão Geral', icon: User },
+    { id: 'tabu', label: 'Tabu Implícito', icon: EyeOff },
+    { id: 'vivencias', label: 'Vivências', icon: Flame },
     { id: 'psychology', label: 'Psicologia', icon: Brain },
     { id: 'beliefs', label: 'Crenças', icon: Shield },
     { id: 'career', label: 'Carreira', icon: Briefcase },
@@ -76,27 +77,18 @@ export default function PersonaProfilePage() {
   const socialClass = persona.social_class || persona.demographic_json?.socioeconomico?.classe_social;
 
   return (
-    <div className="min-h-screen bg-black text-white flex overflow-x-hidden">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      
-      <div className="flex-1 flex flex-col min-w-0 lg:pl-64">
+    <div className="min-h-screen bg-black text-white flex flex-col overflow-x-hidden">
         {/* Header */}
         <header className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-zinc-900">
           <div className="max-w-6xl mx-auto px-4 md:px-8 py-5 flex items-center justify-between">
             <div className="flex items-center gap-4 md:gap-6">
-              <button 
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 bg-zinc-900 border border-zinc-800 rounded-xl hover:bg-zinc-800 transition-colors"
-              >
-                <Menu size={24} />
-              </button>
               <Link href="/" className="text-zinc-500 hover:text-white transition-all p-2 hover:bg-zinc-900 rounded-xl">
                 <ArrowLeft size={20} />
               </Link>
               <h1 className="font-bold text-lg md:text-xl tracking-tight truncate">Perfil da Persona</h1>
             </div>
-            <Link 
-              href={`/chat/${id}`}
+            <Link
+              href="/"
               className="flex items-center gap-2 bg-white text-black px-4 md:px-6 py-2.5 md:py-3 rounded-2xl font-bold hover:bg-zinc-200 transition-all active:scale-95 shadow-lg shadow-white/5 text-sm md:text-base"
             >
               <MessageSquare size={18} />
@@ -174,6 +166,8 @@ export default function PersonaProfilePage() {
         {/* Content */}
         <main className="max-w-6xl mx-auto px-8 py-12 w-full">
           {activeTab === 'overview' && <OverviewTab persona={persona} />}
+          {activeTab === 'tabu' && <TabuImplicitoTab persona={persona} />}
+          {activeTab === 'vivencias' && <VivenciasTab persona={persona} />}
           {activeTab === 'psychology' && <PsychologyTab persona={persona} />}
           {activeTab === 'beliefs' && <BeliefsTab persona={persona} />}
           {activeTab === 'career' && <CareerTab persona={persona} />}
@@ -181,7 +175,6 @@ export default function PersonaProfilePage() {
           {activeTab === 'health' && <HealthTab persona={persona} />}
           {activeTab === 'history' && <HistoryTab persona={persona} />}
         </main>
-      </div>
     </div>
   );
 }
@@ -336,6 +329,261 @@ function OverviewTab({ persona }: { persona: any }) {
                 </div>
               );
             })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Confiança Institucional */}
+      {(persona.q_confianca_stf != null || persona.q_confianca_congresso != null) && (
+        <SectionCard title="Confiança Institucional" icon={Shield} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {[
+              ['STF', persona.q_confianca_stf],
+              ['Congresso', persona.q_confianca_congresso],
+              ['Imprensa', persona.q_confianca_imprensa],
+              ['Polícia', persona.q_confianca_policia],
+              ['Exército', persona.q_confianca_exercito],
+              ['Igreja', persona.q_confianca_igreja],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const v = Number(value);
+              const color = v >= 7 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                : v >= 4 ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                : 'bg-red-500/10 text-red-400 border-red-500/20';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border text-center ${color}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="text-2xl font-bold">{value}<span className="text-xs opacity-60">/10</span></div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Opinião Política */}
+      {(persona.q_maior_problema || persona.q_avaliacao_bolsonaro || persona.q_politico_favorito) && (
+        <SectionCard title="Opinião Política" icon={Target} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Maior Problema', persona.q_maior_problema],
+              ['Aval. Bolsonaro', persona.q_avaliacao_bolsonaro],
+              ['Político Favorito', persona.q_politico_favorito],
+              ['Sit. Econômica', persona.q_situacao_economica],
+              ['Perspectiva Futuro', persona.q_perspectiva_futuro],
+              ['Democracia', persona.q_democracia_importante ? `${persona.q_democracia_importante}/10` : null],
+              ['Reeleição', persona.q_reeleicao],
+              ['Voto Obrigatório', persona.q_voto_obrigatorio],
+              ['Corrupção Problema', persona.q_corrupcao_problema],
+              ['Impeachment Lula', persona.q_impeachment_lula],
+              ['PT Comunista', persona.q_pt_comunista],
+              ['Bolsonaro Ditador', persona.q_bolsonaro_ditador],
+              ['Fake News Problema', persona.q_fake_news_problema],
+              ['Censurar Redes', persona.q_redes_sociais_censuradas],
+              ['Intervenção Militar', persona.q_intervencao_militar],
+              ['Sist. Eleitoral Confiável', persona.q_sistema_eleitoral_confiavel],
+              ['Voto Influenciado Por', persona.q_voto_influenciado_por],
+              ['Muda Voto Fácil', persona.q_muda_voto_facilmente],
+              ['Pesquisa Influencia', persona.q_pesquisa_influencia],
+            ].filter(([, v]) => v != null).map(([label, value]) => (
+              <div key={label as string} className="bg-zinc-900/50 rounded-xl p-3 border border-zinc-800/50">
+                <div className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-1">{label}</div>
+                <div className="text-zinc-300 font-medium">{value}</div>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Economia */}
+      {(persona.q_salario_minimo_aumentar || persona.q_reforma_tributaria) && (
+        <SectionCard title="Questões Econômicas" icon={TrendingUp} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Aumentar Salário Mínimo', persona.q_salario_minimo_aumentar],
+              ['Reforma Tributária', persona.q_reforma_tributaria],
+              ['Imposto p/ Ricos', persona.q_imposto_ricos],
+              ['Tamanho do Estado', persona.q_estado_tamanho],
+              ['Bolsa Família Bom', persona.q_bolsa_familia_bom],
+              ['Auxílio Emergencial Voltar', persona.q_auxilio_emergencial_voltar],
+              ['Desemprego Principal', persona.q_desemprego_principal],
+              ['Inflação Controle', persona.q_inflacao_controle],
+              ['Bitcoin Confiar', persona.q_bitcoin_confiar],
+              ['BC Independente', persona.q_banco_central_independente],
+              ['Teto de Gastos', persona.q_teto_gastos],
+              ['Reforma Previdência', persona.q_previdencia_reforma],
+              ['Manter 13º Salário', persona.q_13_salario_manter],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'Sim': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Não': 'bg-red-500/10 text-red-400 border-red-500/20',
+                'A favor': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Contra': 'bg-red-500/10 text-red-400 border-red-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-900/50 text-zinc-300 border-zinc-800/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="font-medium">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Costumes e Sociedade */}
+      {(persona.q_familia_tradicional || persona.q_feminismo_bom) && (
+        <SectionCard title="Costumes e Sociedade" icon={Users} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Família Tradicional', persona.q_familia_tradicional],
+              ['Feminismo', persona.q_feminismo_bom],
+              ['Racismo Estrutural', persona.q_racismo_estrutural],
+              ['Meritocracia', persona.q_meritocracia],
+              ['Gênero Biológico', persona.q_genero_biologico],
+              ['Linguagem Neutra', persona.q_linguagem_neutra],
+              ['Ideologia de Gênero Escola', persona.q_ideologia_genero_escola],
+              ['Adoção Homoafetiva', persona.q_adocao_homoafetiva],
+              ['Direitos LGBT', persona.q_direitos_lgbt],
+              ['Mulher Presidente', persona.q_mulher_presidente],
+              ['Facilitar Divórcio', persona.q_divorcio_facilitar],
+              ['Religião na Política', persona.q_religiao_politica],
+              ['Aborto em Caso de Estupro', persona.q_aborto_estupro],
+              ['Legalizar Prostituição', persona.q_prostituicao_legalizar],
+              ['Poligamia', persona.q_poligamia],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'Sim': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Não': 'bg-red-500/10 text-red-400 border-red-500/20',
+                'A favor': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Contra': 'bg-red-500/10 text-red-400 border-red-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-900/50 text-zinc-300 border-zinc-800/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="font-medium">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Segurança e Justiça */}
+      {(persona.q_pena_morte || persona.q_policia_violenta) && (
+        <SectionCard title="Segurança e Justiça" icon={Shield} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Pena de Morte', persona.q_pena_morte],
+              ['Prisão Perpétua', persona.q_prisao_perpetua],
+              ['Maioridade Penal 16', persona.q_maioridade_penal_16],
+              ['Polícia Violenta', persona.q_policia_violenta],
+              ['Descriminalizar Drogas', persona.q_drogas_descriminalizar],
+              ['Internar Crack Forçado', persona.q_crack_internar_forcado],
+              ['Segurança Prioridade', persona.q_seguranca_prioridade],
+              ['Câmera Facial Aceita', persona.q_camera_facial_aceita],
+              ['Sofreu Abordagem Policial', persona.q_abordagem_policial_ja_sofreu],
+              ['Justiça Funciona', persona.q_justica_funciona],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'Sim': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Não': 'bg-red-500/10 text-red-400 border-red-500/20',
+                'A favor': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Contra': 'bg-red-500/10 text-red-400 border-red-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-900/50 text-zinc-300 border-zinc-800/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="font-medium">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Meio Ambiente e Ciência */}
+      {(persona.q_mudanca_climatica_real || persona.q_vacinas_confiar) && (
+        <SectionCard title="Meio Ambiente e Ciência" icon={Sparkles} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Mudança Climática Real', persona.q_mudanca_climatica_real],
+              ['Preservar Amazônia', persona.q_amazonia_preservar],
+              ['Agronegócio Desmata', persona.q_agronegocio_desmata],
+              ['Energia Renovável', persona.q_energia_renovavel],
+              ['Confiar em Vacinas', persona.q_vacinas_confiar],
+              ['Ciência Importante', persona.q_ciencia_importante],
+              ['Queimadas Criminosas', persona.q_queimadas_criminosas],
+              ['Terra Plana', persona.q_terra_plana],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'Sim': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Não': 'bg-red-500/10 text-red-400 border-red-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-900/50 text-zinc-300 border-zinc-800/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="font-medium">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Educação e Saúde */}
+      {(persona.q_sus_funciona || persona.q_universidade_publica_gratuita) && (
+        <SectionCard title="Educação e Saúde" icon={Heart} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['SUS Funciona', persona.q_sus_funciona],
+              ['Universidade Pública Gratuita', persona.q_universidade_publica_gratuita],
+              ['Homeschooling', persona.q_homeschooling],
+              ['Ensino a Distância', persona.q_ensino_distancia],
+              ['Escola Particular Melhor', persona.q_escola_particular_melhor],
+              ['Medicina Pública Boa', persona.q_medicina_publica_boa],
+              ['Tem Plano de Saúde', persona.q_plano_saude_tem],
+              ['ENEM Justo', persona.q_enem_justo],
+            ].filter(([, v]) => v != null).map(([label, value]) => {
+              const colorMap: Record<string, string> = {
+                'Sim': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Não': 'bg-red-500/10 text-red-400 border-red-500/20',
+                'Bom': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                'Ruim': 'bg-red-500/10 text-red-400 border-red-500/20',
+              };
+              const colors = colorMap[value as string] || 'bg-zinc-900/50 text-zinc-300 border-zinc-800/50';
+              return (
+                <div key={label as string} className={`rounded-xl p-3 border ${colors}`}>
+                  <div className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">{label}</div>
+                  <div className="font-medium">{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
+      )}
+
+      {/* Questionário — Mídia e Consumo Digital */}
+      {(persona.q_midia_principal || persona.q_whatsapp_noticias) && (
+        <SectionCard title="Mídia e Consumo Digital" icon={Tv} className="md:col-span-2 lg:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 text-sm">
+            {[
+              ['Mídia Principal', persona.q_midia_principal],
+              ['WhatsApp p/ Notícias', persona.q_whatsapp_noticias],
+              ['Usa Instagram', persona.q_instagram_usa],
+              ['Usa TikTok', persona.q_tiktok_usa],
+              ['Assiste YouTube', persona.q_youtube_assiste],
+              ['Ouve Podcast', persona.q_podcast_ouve],
+              ['Assina Streaming', persona.q_streaming_assina],
+            ].filter(([, v]) => v != null).map(([label, value]) => (
+              <div key={label as string} className="bg-zinc-900/50 rounded-xl p-3 border border-zinc-800/50">
+                <div className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-1">{label}</div>
+                <div className="text-zinc-300 font-medium">{value}</div>
+              </div>
+            ))}
           </div>
         </SectionCard>
       )}
@@ -1022,6 +1270,146 @@ function HealthTab({ persona }: { persona: any }) {
           </div>
         </div>
       </SectionCard>
+    </div>
+  );
+}
+
+function TabuImplicitoTab({ persona }: { persona: any }) {
+  const items: [string, string | null][] = [
+    ['Racismo Latente', persona.q_ti_racismo_latente],
+    ['Não Contrataria Negro na Chefia', persona.q_ti_nao_contrataria_negro_chefia],
+    ['Vizinho Negro Incomoda', persona.q_ti_vizinho_negro_incomoda],
+    ['Sonegaria Imposto', persona.q_ti_sonegaria_imposto],
+    ['Aceitaria Propina', persona.q_ti_aceitaria_propina],
+    ['Venderia Voto', persona.q_ti_venderia_voto],
+    ['Bater em Filho é Normal', persona.q_ti_bater_filho_normal],
+    ['Mulher com Roupa Curta é Culpada', persona.q_ti_mulher_roupa_culpada],
+    ['Homofobia Violenta', persona.q_ti_homofobia_violenta],
+    ['Apoiaria Linchamento', persona.q_ti_linchamento_apoiaria],
+    ['Tortura de Preso é OK', persona.q_ti_tortura_preso_ok],
+    ['Trabalho Infantil é OK', persona.q_ti_trabalho_infantil_ok],
+    ['Jeitinho / Furar Fila', persona.q_ti_jeitinho_furar_fila],
+    ['Assediaria Mulher na Rua', persona.q_ti_assediaria_mulher_rua],
+    ['Intolerância Religiosa', persona.q_ti_intolerancia_religiosa],
+    ['Preconceito com Nordestino', persona.q_ti_preconceito_nordestino],
+    ['Violência Doméstica OK', persona.q_ti_violencia_domestica],
+    ['Compraria Produto Roubado', persona.q_ti_compraria_produto_roubado],
+    ['Menor de 14 Sabe o que Faz', persona.q_ti_menor14_sabe_o_que_faz],
+    ['Nepotismo em Concurso', persona.q_ti_nepotismo_concurso],
+  ];
+
+  const hasAny = items.some(([, v]) => v != null);
+
+  if (!hasAny) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <EyeOff size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de tabu implícito não disponíveis para esta persona.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5">
+        <p className="text-xs text-amber-400/80 leading-relaxed">
+          Estes dados representam vieses ocultos da persona — atitudes que geralmente não são expressas publicamente mas influenciam comportamento e opiniões. São fundamentais para a fidelidade da simulação.
+        </p>
+      </div>
+
+      <SectionCard title="Tabu Implícito" icon={EyeOff} className="lg:col-span-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {items.filter(([, v]) => v != null).map(([label, value]) => {
+            const isSim = value === 'Sim';
+            const colors = isSim
+              ? 'bg-red-500/10 text-red-400 border-red-500/20'
+              : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+            return (
+              <div key={label} className={`rounded-xl p-3 border ${colors} flex items-center justify-between`}>
+                <span className="text-xs font-medium">{label}</span>
+                <span className="text-xs font-bold">{value}</span>
+              </div>
+            );
+          })}
+        </div>
+      </SectionCard>
+    </div>
+  );
+}
+
+function VivenciasTab({ persona }: { persona: any }) {
+  const items: [string, string | null][] = [
+    ['Abuso Sexual na Infância', persona.q_vi_abuso_sexual_infancia],
+    ['Passou Fome', persona.q_vi_passou_fome],
+    ['Trabalho Infantil', persona.q_vi_trabalho_infantil],
+    ['Já Foi Assaltado', persona.q_vi_ja_foi_assaltado],
+    ['Perdeu Familiar por Violência', persona.q_vi_perdeu_familiar_violencia],
+    ['Desempregado +1 Ano', persona.q_vi_desempregado_1ano],
+    ['Pai Ausente', persona.q_vi_pai_ausente],
+    ['Sofreu Racismo', persona.q_vi_sofreu_racismo],
+    ['Sofreu Assédio Sexual', persona.q_vi_sofreu_assedio_sexual],
+    ['Depressão / Ansiedade', persona.q_vi_depressao_ansiedade],
+    ['Pensou em Suicídio', persona.q_vi_pensou_suicidio],
+    ['Preso ou Familiar Preso', persona.q_vi_preso_ou_familiar_preso],
+    ['Sofreu Violência Doméstica', persona.q_vi_sofreu_violencia_domestica],
+    ['Já Dormiu na Rua', persona.q_vi_ja_dormiu_na_rua],
+    ['Violência Policial', persona.q_vi_violencia_policial],
+    ['Não Completou Estudo', persona.q_vi_nao_completou_estudo],
+    ['Enchente / Desastre', persona.q_vi_enchente_desastre],
+    ['Dependência Química', persona.q_vi_dependencia],
+  ];
+
+  const hasAny = items.some(([, v]) => v != null);
+
+  if (!hasAny) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <Flame size={32} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Dados de vivências não disponíveis para esta persona.</p>
+      </div>
+    );
+  }
+
+  const simItems = items.filter(([, v]) => v === 'Sim');
+  const naoItems = items.filter(([, v]) => v === 'Não');
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-violet-500/5 border border-violet-500/20 rounded-2xl p-5">
+        <p className="text-xs text-violet-400/80 leading-relaxed">
+          Vivências e vulnerabilidades que moldaram a perspectiva de vida desta persona. Experiências traumáticas e de superação que influenciam profundamente como ela se posiciona em debates.
+        </p>
+      </div>
+
+      {simItems.length > 0 && (
+        <SectionCard title="Experiências Vividas" icon={Flame}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {simItems.map(([label]) => (
+              <div key={label} className="rounded-xl p-3 border bg-red-500/10 text-red-400 border-red-500/20 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                <span className="text-xs font-medium">{label}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
+
+      {naoItems.length > 0 && (
+        <SectionCard title="Não Vivenciou" icon={Shield}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {naoItems.map(([label]) => (
+              <div key={label} className="rounded-xl p-3 border bg-zinc-800/50 text-zinc-500 border-zinc-700/30 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-zinc-600 shrink-0" />
+                <span className="text-xs font-medium">{label}</span>
+              </div>
+            ))}
+          </div>
+        </SectionCard>
+      )}
     </div>
   );
 }

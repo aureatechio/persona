@@ -5,7 +5,7 @@ export async function POST(request: Request) {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
+    const timeout = setTimeout(() => controller.abort(), 60_000);
 
     const upstream = await fetch(`${BACKEND}/api/arena/analyze`, {
       method: 'POST',

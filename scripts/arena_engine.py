@@ -89,10 +89,24 @@ async def generate_ai_comments(
         for i, p in enumerate(persona_contexts):
             sentiment = p.get("sentiment", "neutral")
             label = {"positive": "CONCORDA/APOIA", "negative": "DISCORDA/CRITICA"}.get(sentiment, "INDECISO/NEUTRO")
+            extra_parts = []
+            if p.get("score_economico"):
+                extra_parts.append(f'ScoreEco:{p["score_economico"]:.2f}')
+            if p.get("score_costumes"):
+                extra_parts.append(f'ScoreCost:{p["score_costumes"]:.2f}')
+            if p.get("voto_2022"):
+                extra_parts.append(f'Voto22:{p["voto_2022"]}')
+            if p.get("tabu_flags"):
+                extra_parts.append(f'VIESES[{p["tabu_flags"]}]')
+            if p.get("vivencia_flags"):
+                extra_parts.append(f'VIVENCIAS[{p["vivencia_flags"]}]')
+            extra_str = ", ".join(extra_parts)
             lines.append(
                 f'{i+1}. {p["name"]}, {p["age"]} anos, {p["state"]} ({p["region"]}), '
                 f'{p["generation"]}, educação: {p["education_level"]}, classe {p["social_class"]}, '
-                f'{p["political_leaning"]}, {p["religion"]}, {p["area_type"]} → {label}'
+                f'{p["political_leaning"]}, {p["religion"]}, {p["area_type"]}'
+                + (f', {extra_str}' if extra_str else '')
+                + f' → {label}'
             )
 
         user_prompt = (
@@ -284,7 +298,7 @@ def _load_personas() -> list[dict[str, Any]]:
 
 def _persona_to_context(persona: dict, archetype_id: str) -> dict[str, Any]:
     """Convert a Supabase persona row to a comment_generator PersonaContext."""
-    return {
+    ctx: dict[str, Any] = {
         "region": persona.get("region_br", "Sudeste"),
         "state": persona.get("state", "SP"),
         "generation": persona.get("generation", "Millennial"),
@@ -297,7 +311,33 @@ def _persona_to_context(persona: dict, archetype_id: str) -> dict[str, Any]:
         "area_type": persona.get("area_type", "Urbana/Interior"),
         "archetype_id": archetype_id,
         "name": persona.get("name", "Anônimo"),
+        # Extended fields
+        "cluster_id": persona.get("cluster_id", ""),
+        "nome_grupo": persona.get("nome_grupo", ""),
+        "score_economico": persona.get("score_economico", 0.0),
+        "score_costumes": persona.get("score_costumes", 0.0),
+        "civil_status": persona.get("civil_status", ""),
+        "ethnicity": (persona.get("demographic_json") or {}).get("identidade_basica", {}).get("etnia", ""),
+        "voto_2022": persona.get("voto_2022", ""),
+        "aprovacao_lula": persona.get("aprovacao_lula", ""),
     }
+    # Compact tabu/vivência flags
+    tabu_sim = [d for f, d in [
+        ("q_ti_racismo_latente", "RacismoLat"), ("q_ti_sonegaria_imposto", "Sonegaria"),
+        ("q_ti_homofobia_violenta", "Homofobia"), ("q_ti_linchamento_apoiaria", "Linchamento"),
+        ("q_ti_tortura_preso_ok", "TorturaOk"), ("q_ti_mulher_roupa_culpada", "CulpaMulher"),
+        ("q_ti_venderia_voto", "VendeVoto"), ("q_ti_bater_filho_normal", "BateFilho"),
+        ("q_ti_preconceito_nordestino", "PrecNord"), ("q_ti_intolerancia_religiosa", "IntolRelig"),
+    ] if persona.get(f) == "Sim"]
+    viv_sim = [d for f, d in [
+        ("q_vi_passou_fome", "Fome"), ("q_vi_ja_foi_assaltado", "Assaltado"),
+        ("q_vi_sofreu_racismo", "Racismo"), ("q_vi_depressao_ansiedade", "Depressao"),
+        ("q_vi_violencia_policial", "ViolPolicial"), ("q_vi_perdeu_familiar_violencia", "PerdeuFam"),
+        ("q_vi_sofreu_violencia_domestica", "ViolDomest"), ("q_vi_trabalho_infantil", "TrabInf"),
+    ] if persona.get(f) == "Sim"]
+    ctx["tabu_flags"] = ",".join(tabu_sim) if tabu_sim else ""
+    ctx["vivencia_flags"] = ",".join(viv_sim) if viv_sim else ""
+    return ctx
 
 
 def _make_synthetic_context(archetype: dict) -> dict[str, Any]:
