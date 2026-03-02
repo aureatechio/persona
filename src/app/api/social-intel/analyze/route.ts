@@ -12,6 +12,18 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+  // Diagnostic logs (do not log secrets)
+  try {
+    console.log('social-intel: apify present?', !!apifyToken);
+    console.log('social-intel: actors present?', {
+      instagram: !!process.env.APIFY_INSTAGRAM_ACTOR_ID,
+      twitter: !!process.env.APIFY_TWITTER_ACTOR_ID,
+      tiktok: !!process.env.APIFY_TIKTOK_ACTOR_ID,
+      facebook: !!process.env.APIFY_FACEBOOK_ACTOR_ID,
+    });
+  } catch (e) {
+    // ignore logging errors
+  }
 
   let body: SocialIntelInput;
   try {
