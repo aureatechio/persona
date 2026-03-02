@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Search, Sparkles } from 'lucide-react';
 import type { LabelConfidence, SocialIntelReport, SocialProfileCard } from '@/lib/social-intel/types';
@@ -22,6 +22,8 @@ const INITIAL_FORM: FormState = {
 export default function AnaliseRedesPage() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState('');
   const [report, setReport] = useState<SocialIntelReport | null>(null);
 
@@ -33,6 +35,24 @@ export default function AnaliseRedesPage() {
   const updateField = (key: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingProgress(0);
+      setLoadingStep(0);
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setLoadingProgress((prev) => {
+        const next = prev >= 92 ? 92 : prev + (prev < 40 ? 4 : prev < 70 ? 2 : 1);
+        return next;
+      });
+      setLoadingStep((prev) => (prev + 1) % 4);
+    }, 500);
+
+    return () => clearInterval(timer);
+  }, [loading]);
 
   async function handleAnalyze(event: React.FormEvent) {
     event.preventDefault();
@@ -56,6 +76,7 @@ export default function AnaliseRedesPage() {
       }
 
       setReport(data as SocialIntelReport);
+      setLoadingProgress(100);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Falha ao analisar perfil.';
       setError(message);
@@ -93,7 +114,7 @@ export default function AnaliseRedesPage() {
           </button>
         </form>
 
-        {loading && <LoadingPanel />}
+        {loading && <LoadingPanel progress={loadingProgress} activeStep={loadingStep} />}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4 text-red-300 text-sm">{error}</div>
@@ -282,7 +303,9 @@ function HeroProfile({ report }: { report: SocialIntelReport }) {
 
   const statuses = ['instagram', 'twitter', 'tiktok', 'facebook'].map((platform) => {
     const hasData = report.coverage.platformsAnalyzed.includes(platform as typeof report.coverage.platformsAnalyzed[number]);
-    return { platform, hasData };
+    const breakdown = report.platformBreakdown.find((item) => item.platform === platform);
+    const postsAnalyzed = breakdown?.postsAnalyzed || 0;
+    return { platform, hasData, postsAnalyzed };
   });
 
   return (
@@ -322,6 +345,7 @@ function HeroProfile({ report }: { report: SocialIntelReport }) {
             >
               <p className="uppercase tracking-widest">{status.platform}</p>
               <p className="mt-1">{status.hasData ? 'com dados' : 'sem dados públicos'}</p>
+              <p className="mt-1 text-[11px] opacity-80">{status.postsAnalyzed} posts analisados</p>
             </div>
           ))}
         </div>
@@ -330,7 +354,14 @@ function HeroProfile({ report }: { report: SocialIntelReport }) {
   );
 }
 
-function LoadingPanel() {
+function LoadingPanel({ progress, activeStep }: { progress: number; activeStep: number }) {
+  const steps = [
+    'Instagram: coletando bio, posts e metadados',
+    'Descoberta automática: X, TikTok e Facebook',
+    'IA: inferindo interesses, crenças e eixo político',
+    'Consolidação: painel rápido com evidências',
+  ];
+
   return (
     <div className="bg-zinc-950/80 border border-zinc-800 rounded-3xl p-6 md:p-8 backdrop-blur-xl overflow-hidden relative">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_10%_30%,rgba(34,211,238,0.15),transparent_35%),radial-gradient(circle_at_90%_70%,rgba(16,185,129,0.12),transparent_35%)]" />
@@ -347,12 +378,20 @@ function LoadingPanel() {
           </div>
         </div>
         <div>
-          <p className="text-cyan-300 text-sm font-semibold mb-4">Pipeline IA de extração de perfil</p>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-cyan-300 text-sm font-semibold">Pipeline IA de extração de perfil</p>
+            <p className="text-xs text-zinc-300">{progress}%</p>
+          </div>
+          <div className="h-2 bg-zinc-800 rounded-full overflow-hidden mb-4">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-400 to-emerald-400 transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
           <div className="space-y-3">
-            <FlowStep delay="0ms" label="Instagram: coletando bio, posts e metadados" />
-            <FlowStep delay="150ms" label="Descoberta automática: X, TikTok e Facebook" />
-            <FlowStep delay="300ms" label="IA: inferindo interesses, crenças e eixo político" />
-            <FlowStep delay="450ms" label="Consolidação: painel rápido com evidências" />
+            {steps.map((step, index) => (
+              <FlowStep key={step} label={step} active={activeStep === index} done={activeStep > index || progress > 95} />
+            ))}
           </div>
         </div>
       </div>
@@ -360,14 +399,14 @@ function LoadingPanel() {
   );
 }
 
-function FlowStep({ label, delay }: { label: string; delay: string }) {
+function FlowStep({ label, active, done }: { label: string; active: boolean; done: boolean }) {
   return (
     <div className="flex items-center gap-3">
       <div className="relative">
-        <div className="w-2.5 h-2.5 rounded-full bg-cyan-300 animate-pulse" style={{ animationDelay: delay }} />
-        <div className="absolute inset-0 rounded-full border border-cyan-300/40 animate-[ping_1.8s_ease-in-out_infinite]" style={{ animationDelay: delay }} />
+        <div className={`w-2.5 h-2.5 rounded-full ${done ? 'bg-emerald-300' : active ? 'bg-cyan-300 animate-pulse' : 'bg-zinc-500'}`} />
+        {active && <div className="absolute inset-0 rounded-full border border-cyan-300/40 animate-[ping_1.8s_ease-in-out_infinite]" />}
       </div>
-      <p className="text-sm text-zinc-300">{label}</p>
+      <p className={`text-sm ${done ? 'text-emerald-200' : active ? 'text-cyan-100' : 'text-zinc-400'}`}>{label}</p>
     </div>
   );
 }
