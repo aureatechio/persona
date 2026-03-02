@@ -1,9 +1,10 @@
 'use client';
 
-import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import type { ComponentType } from 'react';
 
 interface SidebarProps {
   view?: 'grid' | 'map';
@@ -12,20 +13,29 @@ interface SidebarProps {
   onClose: () => void;
 }
 
+interface MenuItem {
+  id: string;
+  label: string;
+  icon: ComponentType<{ size?: number }>;
+  active: boolean;
+  href: string;
+}
+
 export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { profile, signOut } = useAuth();
   const isPersonas = pathname === '/personas';
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     { id: 'arena', label: 'Pulse Arena', icon: Activity, active: pathname === '/', href: '/' },
     { id: 'eleitoral', label: 'Arena Eleitoral', icon: Swords, active: pathname === '/arena-eleitoral', href: '/arena-eleitoral' },
+    { id: 'analise-redes', label: 'Análise de Redes', icon: Brain, active: pathname === '/analise-redes', href: '/analise-redes' },
     { id: 'grid', label: 'Lista de Personas', icon: List, active: view === 'grid' && isPersonas, href: '/personas?view=grid' },
     { id: 'map', label: 'Mapa Interativo', icon: MapIcon, active: view === 'map' && isPersonas, href: '/personas?view=map' },
   ];
 
-  const handleNavigation = (item: any) => {
+  const handleNavigation = (item: { id: string; href: string }) => {
     const isHomeView = item.id === 'grid' || item.id === 'map';
     if (isPersonas && setView && isHomeView) {
       setView(item.id as 'grid' | 'map');

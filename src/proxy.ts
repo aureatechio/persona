@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: { headers: request.headers },
   });
 
@@ -39,8 +39,8 @@ export async function proxy(request: NextRequest) {
 
   // Skip auth for API routes and arena pages
   const isApiRoute = pathname.startsWith('/api');
-  const isArenaRoute = pathname === '/' || pathname === '/arena-eleitoral';
-  if (isApiRoute || isArenaRoute) {
+  const isPublicRoute = pathname === '/' || pathname === '/arena-eleitoral' || pathname === '/analise-redes';
+  if (isApiRoute || isPublicRoute) {
     return response;
   }
 

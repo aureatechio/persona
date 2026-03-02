@@ -48,3 +48,6 @@ next-env.d.ts
 
 # supabase temp/local state
 supabase/.temp/
+
+# cursor IDE
+.cursor/
