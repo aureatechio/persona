@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
   ChevronDown,
+  ChevronUp,
   Briefcase,
   Users,
   ImageIcon,
@@ -16,6 +17,7 @@ import {
   MessageCircle,
   X,
   Maximize2,
+  Eye,
 } from 'lucide-react';
 
 export interface AnalyzedFollowerData {
@@ -255,6 +257,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [comVisible, setComVisible] = useState(false);
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
@@ -405,57 +408,75 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
             <p className="text-sm text-zinc-200 leading-relaxed">{analysis.resumo}</p>
           </div>
 
-          {/* ── Como se comunicar + Arte lado a lado ── */}
-          <div className="flex gap-4 items-stretch">
-            {/* Frase */}
-            {analysis.frase_comunicacao && (
-              <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative p-5 flex flex-col justify-center h-full space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-emerald-500/15">
-                      <MessageCircle size={13} className="text-emerald-400" />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
-                      Como se comunicar
-                    </span>
+          {/* ── Como se comunicar — colapsável (surpresa) ── */}
+          {analysis.frase_comunicacao && (
+            <div className="space-y-0">
+              <button
+                type="button"
+                onClick={() => setComVisible(!comVisible)}
+                className={cn(
+                  'w-full flex items-center justify-between gap-3 px-5 py-3.5',
+                  'rounded-2xl border transition-all duration-300 cursor-pointer',
+                  comVisible
+                    ? 'bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent border-emerald-500/20'
+                    : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] hover:border-emerald-500/30',
+                )}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/15">
+                    <MessageCircle size={13} className="text-emerald-400" />
                   </div>
-                  <p className="text-base md:text-lg leading-relaxed text-zinc-100">
-                    <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
-                  </p>
+                  <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                    Como se comunicar
+                  </span>
                 </div>
-              </div>
-            )}
+                <div className={cn(
+                  'p-1 rounded-lg transition-all duration-200',
+                  comVisible ? 'bg-emerald-500/10 text-emerald-400' : 'text-zinc-500',
+                )}>
+                  {comVisible ? <ChevronUp size={14} /> : <Eye size={14} />}
+                </div>
+              </button>
 
-            {/* Arte de campanha com foto do seguidor — clicavel */}
-            <div
-              className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-white/[0.1] cursor-pointer group/art hover:border-white/[0.2] transition-all duration-300 hover:shadow-xl hover:shadow-black/40"
-              onClick={() => setModalOpen(true)}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/templates/campanha-base.jpg"
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover"
-              />
+              {comVisible && (
+                <div className="mt-3 flex gap-4 items-stretch animate-in fade-in slide-in-from-top-2 duration-300">
+                  {/* Frase */}
+                  <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
+                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="relative p-5 flex flex-col justify-center h-full">
+                      <p className="text-base md:text-lg leading-relaxed text-zinc-100">
+                        <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Expand icon overlay on hover */}
-              <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
-                <Maximize2 size={12} className="text-white/80" />
-              </div>
+                  {/* Arte de campanha — clicável */}
+                  <div
+                    className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-white/[0.1] cursor-pointer group/art hover:border-white/[0.2] transition-all duration-300 hover:shadow-xl hover:shadow-black/40"
+                    onClick={() => setModalOpen(true)}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src="/templates/campanha-base.jpg"
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                    <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
+                      <Maximize2 size={12} className="text-white/80" />
+                    </div>
+                    <div className="relative h-full min-h-[140px]" />
+                  </div>
 
-              {/* Spacer to give the image natural height */}
-              <div className="relative h-full min-h-[140px]" />
+                  <CampaignModal
+                    open={modalOpen}
+                    onClose={() => setModalOpen(false)}
+                    frase={analysis.frase_comunicacao || ''}
+                    displayName={data.display_name || data.username}
+                  />
+                </div>
+              )}
             </div>
-
-            {/* Campaign fullscreen modal — Gemini adds phrase text on top of template */}
-            <CampaignModal
-              open={modalOpen}
-              onClose={() => setModalOpen(false)}
-              frase={analysis.frase_comunicacao || ''}
-              displayName={data.display_name || data.username}
-            />
-          </div>
+          )}
 
           {/* Bio */}
           {profile.biography && (
@@ -465,7 +486,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
             </div>
           )}
 
-          {/* Stats bar — mobile visible */}
+          {/* Stats bar */}
           <div className="grid grid-cols-3 gap-2">
             <StatMini
               icon={<Users size={12} />}
@@ -488,7 +509,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
             <DetailChip
               icon={<Briefcase size={12} />}
-              label="Profissao"
+              label="Profissão"
               value={analysis.profissao !== 'indefinido' && analysis.profissao !== 'Indefinido' ? analysis.profissao : '—'}
             />
             <DetailChip
@@ -500,7 +521,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
             />
             <DetailChip
               icon={<Vote size={12} />}
-              label="Engaj. Politico"
+              label="Engaj. Político"
               value={analysis.engajamento_politico !== 'indefinido'
                 ? analysis.engajamento_politico.charAt(0).toUpperCase() + analysis.engajamento_politico.slice(1)
                 : '—'}
