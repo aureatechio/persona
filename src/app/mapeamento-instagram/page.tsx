@@ -9,7 +9,9 @@ import {
   Instagram,
   Loader2,
   Plus,
+  RefreshCw,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import { SearchBar } from '@/components/instagram-mapping/SearchBar';
 import {
@@ -66,6 +68,12 @@ function MapeamentoContent() {
 
   const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS });
   const [error, setError] = useState('');
+
+  // Custom prompt regeneration
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [regenProgress, setRegenProgress] = useState({ current: 0, total: 0 });
+  const [regeneratingUsername, setRegeneratingUsername] = useState<string | null>(null);
 
   // Campaign images by grupo tag (e.g. { ESPORTE: "https://...", FE: "https://..." })
   const [campaignImages, setCampaignImages] = useState<Record<string, string>>({});
@@ -307,6 +315,59 @@ function MapeamentoContent() {
     });
   }, [analyzedFollowers, filters]);
 
+  /* ─── Regenerate phrases with custom prompt ─── */
+
+  const handleRegenerate = useCallback(async () => {
+    if (!customPrompt.trim() || isRegenerating || isAnalyzing) return;
+
+    const targets = filteredFollowers.length > 0 ? filteredFollowers : analyzedFollowers;
+    if (targets.length === 0) return;
+
+    setIsRegenerating(true);
+    setRegenProgress({ current: 0, total: targets.length });
+
+    for (let i = 0; i < targets.length; i++) {
+      const f = targets[i];
+      setRegeneratingUsername(f.username);
+      setRegenProgress({ current: i, total: targets.length });
+
+      try {
+        const res = await fetch('/api/instagram-mapping/regenerate-phrase', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customPrompt: customPrompt.trim(),
+            displayName: f.display_name || f.username,
+            resumo: f.analysis.resumo,
+            fraseOriginal: f.analysis.frase_comunicacao || '',
+            profissao: f.analysis.profissao,
+            grupo: f.analysis.grupo,
+            temas: f.analysis.temas_interesse,
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.frase_comunicacao) {
+          setAnalyzedFollowers((prev) =>
+            prev.map((af) =>
+              af.username === f.username
+                ? { ...af, analysis: { ...af.analysis, frase_comunicacao: data.frase_comunicacao } }
+                : af,
+            ),
+          );
+        }
+      } catch {
+        // Skip failed regeneration silently
+      }
+    }
+
+    setRegenProgress({ current: targets.length, total: targets.length });
+    setRegeneratingUsername(null);
+    setIsRegenerating(false);
+  }, [customPrompt, filteredFollowers, analyzedFollowers, isRegenerating, isAnalyzing]);
+
   /* ─── New search ─── */
 
   const handleNewSearch = useCallback(() => {
@@ -469,6 +530,84 @@ function MapeamentoContent() {
               />
             )}
 
+            {/* ── Custom prompt for phrase regeneration ── */}
+            {analyzedFollowers.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <Sparkles size={14} className="text-violet-400/60" />
+                    </div>
+                    <input
+                      type="text"
+                      value={customPrompt}
+                      onChange={(e) => setCustomPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !isRegenerating) handleRegenerate();
+                      }}
+                      placeholder="Digite um novo comando para regenerar as frases... (ex: fale sobre economia com tom agressivo)"
+                      disabled={isRegenerating}
+                      className={cn(
+                        'w-full pl-10 pr-4 py-3',
+                        'bg-white/[0.04] hover:bg-white/[0.06]',
+                        'border border-white/[0.08] focus:border-violet-500/50',
+                        'rounded-xl text-sm text-white placeholder:text-zinc-600',
+                        'outline-none focus:ring-2 focus:ring-violet-500/20',
+                        'transition-all duration-200',
+                        'disabled:opacity-50',
+                      )}
+                    />
+                  </div>
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={!customPrompt.trim() || isRegenerating || isAnalyzing}
+                    className={cn(
+                      'inline-flex items-center gap-2 px-5 py-3',
+                      'rounded-xl text-sm font-semibold',
+                      'shadow-lg',
+                      'active:scale-[0.97] transition-all duration-200',
+                      'shrink-0',
+                      customPrompt.trim() && !isRegenerating && !isAnalyzing
+                        ? 'bg-violet-500 hover:bg-violet-400 text-white shadow-violet-500/25 hover:shadow-violet-400/30'
+                        : 'bg-white/[0.06] text-zinc-500 border border-white/[0.08] shadow-black/20 cursor-not-allowed',
+                    )}
+                  >
+                    {isRegenerating ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        {regenProgress.current}/{regenProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={14} />
+                        Regenerar
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Regeneration progress bar */}
+                {isRegenerating && (
+                  <div className="space-y-1.5">
+                    <div className="h-1 bg-zinc-900/50 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-violet-400 to-fuchsia-400 rounded-full transition-all duration-500"
+                        style={{
+                          width: `${regenProgress.total > 0 ? (regenProgress.current / regenProgress.total) * 100 : 0}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-zinc-600">
+                      Regenerando frases — {regenProgress.current} de {regenProgress.total}
+                      {regeneratingUsername && (
+                        <span className="text-violet-400/60 ml-1">(@{regeneratingUsername})</span>
+                      )}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Progress bar */}
             {isAnalyzing && (
               <div className="space-y-1.5">
@@ -495,6 +634,7 @@ function MapeamentoContent() {
                     data={follower}
                     index={i}
                     campaignImageUrl={campaignImages[follower.analysis.grupo?.toUpperCase()]}
+                    isRegenerating={regeneratingUsername === follower.username}
                   />
                 ))}
               </div>

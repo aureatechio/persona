@@ -18,6 +18,9 @@ import {
   X,
   Maximize2,
   Eye,
+  Volume2,
+  Loader2,
+  Pause,
 } from 'lucide-react';
 
 export interface AnalyzedFollowerData {
@@ -253,16 +256,86 @@ interface FollowerRowProps {
   data: AnalyzedFollowerData;
   index: number;
   campaignImageUrl?: string;
+  isRegenerating?: boolean;
 }
 
-export function FollowerRow({ data, index, campaignImageUrl }: FollowerRowProps) {
+export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: FollowerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [comVisible, setComVisible] = useState(false);
+
+  // TTS audio state
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioPlaying, setAudioPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioBlobUrlRef = useRef<string | null>(null);
+
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
+
+  const handlePlayAudio = useCallback(async (text: string) => {
+    // If already playing, stop
+    if (audioPlaying && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setAudioPlaying(false);
+      return;
+    }
+
+    setAudioLoading(true);
+    try {
+      const res = await fetch('/api/tts/elevenlabs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(30000),
+      });
+
+      if (!res.ok) throw new Error('TTS failed');
+
+      const blob = await res.blob();
+
+      // Cleanup previous blob URL
+      if (audioBlobUrlRef.current) {
+        URL.revokeObjectURL(audioBlobUrlRef.current);
+      }
+
+      const url = URL.createObjectURL(blob);
+      audioBlobUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setAudioPlaying(false);
+      };
+
+      audio.onpause = () => {
+        setAudioPlaying(false);
+      };
+
+      await audio.play();
+      setAudioPlaying(true);
+    } catch {
+      // Silent fail
+    } finally {
+      setAudioLoading(false);
+    }
+  }, [audioPlaying]);
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (audioBlobUrlRef.current) {
+        URL.revokeObjectURL(audioBlobUrlRef.current);
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    };
+  }, []);
 
   return (
     <div
@@ -442,13 +515,57 @@ export function FollowerRow({ data, index, campaignImageUrl }: FollowerRowProps)
 
               {comVisible && (
                 <div className="mt-3 flex gap-4 items-stretch animate-in fade-in slide-in-from-top-2 duration-300">
-                  {/* Frase */}
+                  {/* Frase + Audio */}
                   <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
                     <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                    <div className="relative p-5 flex flex-col justify-center h-full">
-                      <p className="text-base md:text-lg leading-relaxed text-zinc-100">
-                        <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
-                      </p>
+                    <div className="relative p-5 flex flex-col justify-center h-full gap-3">
+                      {isRegenerating ? (
+                        <div className="flex items-center gap-3">
+                          <Loader2 size={16} className="text-violet-400 animate-spin shrink-0" />
+                          <span className="text-sm text-violet-300 animate-pulse">Regenerando frase...</span>
+                        </div>
+                      ) : (
+                        <p className="text-base md:text-lg leading-relaxed text-zinc-100">
+                          <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
+                        </p>
+                      )}
+
+                      {/* Audio button */}
+                      {analysis.frase_comunicacao && !isRegenerating && (
+                        <button
+                          type="button"
+                          onClick={() => handlePlayAudio(analysis.frase_comunicacao!)}
+                          disabled={audioLoading}
+                          className={cn(
+                            'inline-flex items-center gap-2 px-4 py-2 w-fit',
+                            'rounded-xl text-xs font-medium',
+                            'border transition-all duration-200',
+                            'active:scale-[0.97]',
+                            audioPlaying
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                              : audioLoading
+                                ? 'bg-white/[0.04] text-zinc-500 border-white/[0.08] cursor-wait'
+                                : 'bg-white/[0.05] text-zinc-300 border-white/[0.1] hover:bg-white/[0.1] hover:text-white hover:border-white/[0.2]',
+                          )}
+                        >
+                          {audioLoading ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              Gerando audio...
+                            </>
+                          ) : audioPlaying ? (
+                            <>
+                              <Pause size={13} />
+                              Pausar
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 size={13} />
+                              Ouvir frase
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   </div>
 
