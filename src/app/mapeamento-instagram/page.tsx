@@ -219,24 +219,30 @@ function MapeamentoContent() {
 
   /* ─── Filter logic ─── */
 
+  function stripAccents(s: string): string {
+    return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
   const filteredFollowers = useMemo(() => {
     return analyzedFollowers.filter((f) => {
       const a = f.analysis;
 
-      if (filters.genero.length > 0 && !filters.genero.includes(a.genero)) return false;
+      if (filters.genero.length > 0 && !filters.genero.includes(a.genero.toLowerCase())) return false;
       if (filters.faixa_etaria.length > 0 && !filters.faixa_etaria.includes(a.faixa_etaria)) return false;
-      if (filters.renda.length > 0 && !filters.renda.includes(a.renda_estimada)) return false;
-      if (filters.engajamento.length > 0 && !filters.engajamento.includes(a.engajamento_politico)) return false;
+      if (filters.renda.length > 0 && !filters.renda.includes(a.renda_estimada.toLowerCase())) return false;
+      if (filters.engajamento.length > 0 && !filters.engajamento.includes(a.engajamento_politico.toLowerCase())) return false;
+
+      if (filters.grupo.length > 0 && !filters.grupo.includes(a.grupo.toUpperCase())) return false;
 
       if (filters.temas.length > 0) {
-        const temas = (a.temas_interesse || []).map((t) => t.toLowerCase());
-        const hasMatch = filters.temas.some((ft) => temas.some((t) => t.includes(ft)));
+        const temas = (a.temas_interesse || []).map((t) => stripAccents(t));
+        const hasMatch = filters.temas.some((ft) => temas.some((t) => t.includes(stripAccents(ft))));
         if (!hasMatch) return false;
       }
 
       if (filters.profissao.trim()) {
-        const search = filters.profissao.toLowerCase().trim();
-        if (!a.profissao.toLowerCase().includes(search)) return false;
+        const search = stripAccents(filters.profissao.trim());
+        if (!stripAccents(a.profissao).includes(search)) return false;
       }
 
       return true;

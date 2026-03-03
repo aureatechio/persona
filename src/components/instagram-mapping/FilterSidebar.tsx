@@ -9,6 +9,7 @@ export interface ActiveFilters {
   faixa_etaria: string[];
   renda: string[];
   engajamento: string[];
+  grupo: string[];
   temas: string[];
   profissao: string;
 }
@@ -18,6 +19,7 @@ export const EMPTY_FILTERS: ActiveFilters = {
   faixa_etaria: [],
   renda: [],
   engajamento: [],
+  grupo: [],
   temas: [],
   profissao: '',
 };
@@ -33,6 +35,19 @@ const GENERO_OPTIONS = ['homem', 'mulher'];
 const IDADE_OPTIONS = ['16-24', '25-34', '35-44', '45-59', '60+'];
 const RENDA_OPTIONS = ['baixa', 'media', 'alta'];
 const ENGAJAMENTO_OPTIONS = ['passivo', 'moderado', 'ativo'];
+const GRUPO_OPTIONS = [
+  'FAMILIA', 'EMPREENDEDOR', 'FE', 'ESPORTE', 'EDUCACAO',
+  'SAUDE', 'TECH', 'POLITICA', 'MODA', 'ARTE',
+  'MUSICA', 'GASTRONOMIA', 'AGRO', 'PET', 'VIAGEM',
+  'FITNESS', 'JURIDICO', 'INFLUENCER', 'COMUNIDADE', 'LIFESTYLE',
+];
+const GRUPO_LABELS: Record<string, string> = {
+  FAMILIA: 'Família', EMPREENDEDOR: 'Empreendedor', FE: 'Fé', ESPORTE: 'Esporte',
+  EDUCACAO: 'Educação', SAUDE: 'Saúde', TECH: 'Tech', POLITICA: 'Política',
+  MODA: 'Moda', ARTE: 'Arte', MUSICA: 'Música', GASTRONOMIA: 'Gastronomia',
+  AGRO: 'Agro', PET: 'Pet', VIAGEM: 'Viagem', FITNESS: 'Fitness',
+  JURIDICO: 'Jurídico', INFLUENCER: 'Influencer', COMUNIDADE: 'Comunidade', LIFESTYLE: 'Lifestyle',
+};
 const TEMA_OPTIONS = [
   'economia', 'seguranca', 'saude', 'religiao', 'educacao',
   'politica', 'esporte', 'tecnologia', 'entretenimento', 'moda',
@@ -102,6 +117,7 @@ export function FilterSidebar({
     filters.faixa_etaria.length > 0 ||
     filters.renda.length > 0 ||
     filters.engajamento.length > 0 ||
+    filters.grupo.length > 0 ||
     filters.temas.length > 0 ||
     filters.profissao.trim().length > 0;
 
@@ -110,6 +126,7 @@ export function FilterSidebar({
     filters.faixa_etaria.length +
     filters.renda.length +
     filters.engajamento.length +
+    filters.grupo.length +
     filters.temas.length +
     (filters.profissao.trim() ? 1 : 0);
 
@@ -188,7 +205,7 @@ export function FilterSidebar({
       {panelOpen && (
         <div
           className={cn(
-            'fixed sm:absolute top-auto sm:top-full right-4 sm:right-0 left-4 sm:left-auto mt-2 z-50',
+            'fixed sm:absolute top-auto sm:top-full left-4 sm:left-0 right-4 sm:right-auto mt-2 z-50',
             'sm:w-[420px]',
             'bg-zinc-950/98 backdrop-blur-2xl',
             'border border-white/[0.1]',
@@ -284,6 +301,17 @@ export function FilterSidebar({
                   label={e.charAt(0).toUpperCase() + e.slice(1)}
                   active={filters.engajamento.includes(e)}
                   onClick={() => onChange({ ...filters, engajamento: toggleInArray(filters.engajamento, e) })}
+                />
+              ))}
+            </FilterGroup>
+
+            <FilterGroup label="Grupo">
+              {GRUPO_OPTIONS.map((g) => (
+                <Chip
+                  key={g}
+                  label={GRUPO_LABELS[g] || g}
+                  active={filters.grupo.includes(g)}
+                  onClick={() => onChange({ ...filters, grupo: toggleInArray(filters.grupo, g) })}
                 />
               ))}
             </FilterGroup>
