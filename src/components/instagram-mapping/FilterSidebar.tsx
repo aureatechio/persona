@@ -32,7 +32,7 @@ interface FilterSidebarProps {
 }
 
 const GENERO_OPTIONS = ['homem', 'mulher'];
-const IDADE_OPTIONS = ['16-24', '25-34', '35-44', '45-59', '60+'];
+const IDADE_OPTIONS = ['16-24', '25-34', '35-44', '45-59', '60+', 'indefinido'];
 const RENDA_OPTIONS = ['baixa', 'media', 'alta'];
 const ENGAJAMENTO_OPTIONS = ['passivo', 'moderado', 'ativo'];
 const GRUPO_OPTIONS = [
@@ -276,7 +276,7 @@ export function FilterSidebar({
               {IDADE_OPTIONS.map((age) => (
                 <Chip
                   key={age}
-                  label={age}
+                  label={age === 'indefinido' ? 'Indefinido' : age}
                   active={filters.faixa_etaria.includes(age)}
                   onClick={() => onChange({ ...filters, faixa_etaria: toggleInArray(filters.faixa_etaria, age) })}
                 />
