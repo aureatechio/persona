@@ -236,7 +236,18 @@ function MapeamentoContent() {
 
       if (filters.temas.length > 0) {
         const temas = (a.temas_interesse || []).map((t) => stripAccents(t));
-        const hasMatch = filters.temas.some((ft) => temas.some((t) => t.includes(stripAccents(ft))));
+        const grupoNorm = stripAccents(a.grupo);
+        const resumoNorm = stripAccents(a.resumo || '');
+        const profNorm = stripAccents(a.profissao || '');
+        const hasMatch = filters.temas.some((ft) => {
+          const ftNorm = stripAccents(ft);
+          return (
+            temas.some((t) => t.includes(ftNorm)) ||
+            grupoNorm.includes(ftNorm) ||
+            resumoNorm.includes(ftNorm) ||
+            profNorm.includes(ftNorm)
+          );
+        });
         if (!hasMatch) return false;
       }
 
