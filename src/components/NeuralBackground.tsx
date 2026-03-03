@@ -2,6 +2,12 @@
 
 import { useEffect, useRef } from 'react';
 
+type ColorScheme = 'violet' | 'multi';
+
+interface NeuralBackgroundProps {
+  colorScheme?: ColorScheme;
+}
+
 interface Node {
   x: number;
   y: number;
@@ -11,13 +17,36 @@ interface Node {
   opacity: number;
   pulsePhase: number;
   pulseSpeed: number;
+  colorIndex: number;
 }
 
 const CONNECTION_DISTANCE = 180;
 const NODE_COUNT = 70;
 const SPEED = 0.3;
 
-export function NeuralBackground() {
+// Color palettes: [r, g, b]
+const PALETTES: Record<ColorScheme, { nodes: [number, number, number][]; core: [number, number, number][] }> = {
+  violet: {
+    nodes: [[139, 92, 246]],
+    core: [[200, 180, 255]],
+  },
+  multi: {
+    nodes: [
+      [52, 211, 153],   // emerald-400
+      [244, 114, 182],  // pink-400
+      [139, 92, 246],   // violet-400
+      [34, 211, 238],   // cyan-400
+    ],
+    core: [
+      [167, 243, 208],  // emerald-200
+      [251, 207, 232],  // pink-200
+      [200, 180, 255],  // violet-200
+      [165, 243, 252],  // cyan-200
+    ],
+  },
+};
+
+export function NeuralBackground({ colorScheme = 'violet' }: NeuralBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nodesRef = useRef<Node[]>([]);
   const frameRef = useRef<number>(0);
@@ -30,6 +59,7 @@ export function NeuralBackground() {
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
+    const palette = PALETTES[colorScheme];
     let width = 0;
     let height = 0;
 
@@ -54,7 +84,12 @@ export function NeuralBackground() {
         opacity: Math.random() * 0.5 + 0.15,
         pulsePhase: Math.random() * Math.PI * 2,
         pulseSpeed: Math.random() * 0.01 + 0.005,
+        colorIndex: Math.floor(Math.random() * palette.nodes.length),
       }));
+    }
+
+    function rgba(color: [number, number, number], a: number) {
+      return `rgba(${color[0]}, ${color[1]}, ${color[2]}, ${a})`;
     }
 
     function draw(time: number) {
@@ -101,7 +136,8 @@ export function NeuralBackground() {
 
           if (dist < CONNECTION_DISTANCE) {
             const alpha = (1 - dist / CONNECTION_DISTANCE) * 0.12;
-            ctx!.strokeStyle = `rgba(139, 92, 246, ${alpha})`;
+            const c = palette.nodes[nodes[i].colorIndex];
+            ctx!.strokeStyle = rgba(c, alpha);
             ctx!.lineWidth = 0.5;
             ctx!.beginPath();
             ctx!.moveTo(nodes[i].x, nodes[i].y);
@@ -115,22 +151,24 @@ export function NeuralBackground() {
       for (const node of nodes) {
         const pulse = Math.sin(node.pulsePhase) * 0.3 + 0.7;
         const alpha = node.opacity * pulse;
+        const c = palette.nodes[node.colorIndex];
+        const cc = palette.core[node.colorIndex];
 
         // Glow
         const gradient = ctx!.createRadialGradient(
           node.x, node.y, 0,
           node.x, node.y, node.radius * 6
         );
-        gradient.addColorStop(0, `rgba(139, 92, 246, ${alpha * 0.4})`);
-        gradient.addColorStop(0.4, `rgba(139, 92, 246, ${alpha * 0.1})`);
-        gradient.addColorStop(1, 'rgba(139, 92, 246, 0)');
+        gradient.addColorStop(0, rgba(c, alpha * 0.4));
+        gradient.addColorStop(0.4, rgba(c, alpha * 0.1));
+        gradient.addColorStop(1, rgba(c, 0));
         ctx!.fillStyle = gradient;
         ctx!.beginPath();
         ctx!.arc(node.x, node.y, node.radius * 6, 0, Math.PI * 2);
         ctx!.fill();
 
         // Core
-        ctx!.fillStyle = `rgba(200, 180, 255, ${alpha})`;
+        ctx!.fillStyle = rgba(cc, alpha);
         ctx!.beginPath();
         ctx!.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
         ctx!.fill();
@@ -149,9 +187,10 @@ export function NeuralBackground() {
           const t = (pulseTime / 2);
           const px = a.x + dx * t;
           const py = a.y + dy * t;
+          const pc = palette.core[a.colorIndex];
           const pg = ctx!.createRadialGradient(px, py, 0, px, py, 4);
-          pg.addColorStop(0, 'rgba(167, 139, 250, 0.7)');
-          pg.addColorStop(1, 'rgba(167, 139, 250, 0)');
+          pg.addColorStop(0, rgba(pc, 0.7));
+          pg.addColorStop(1, rgba(pc, 0));
           ctx!.fillStyle = pg;
           ctx!.beginPath();
           ctx!.arc(px, py, 4, 0, Math.PI * 2);
@@ -185,7 +224,7 @@ export function NeuralBackground() {
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseleave', onMouseLeave);
     };
-  }, []);
+  }, [colorScheme]);
 
   return (
     <canvas

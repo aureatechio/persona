@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -21,6 +21,8 @@ import {
   FollowerRow,
   type AnalyzedFollowerData,
 } from '@/components/instagram-mapping/FollowerRow';
+import { NeuralBackground } from '@/components/NeuralBackground';
+import { supabase } from '@/lib/supabase';
 
 /* ─────────────────── Types ─────────────────── */
 
@@ -65,11 +67,57 @@ function MapeamentoContent() {
   const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS });
   const [error, setError] = useState('');
 
+  // Campaign images by grupo tag (e.g. { ESPORTE: "https://...", FE: "https://..." })
+  const [campaignImages, setCampaignImages] = useState<Record<string, string>>({});
+
   // Ref to track completed count across batches
   const batchCompletedRef = useRef(0);
 
   // Cache: username -> raw public followers (avoids re-calling Apify)
   const searchCacheRef = useRef<Map<string, RawFollower[]>>(new Map());
+
+  // Fetch campaign tag images on mount + preload them
+  useEffect(() => {
+    function applyMap(map: Record<string, string>) {
+      setCampaignImages(map);
+      // Preload all images so thumbnails render instantly
+      for (const url of Object.values(map)) {
+        const img = new Image();
+        img.src = url;
+      }
+    }
+
+    supabase
+      .from('campaign_tag_images')
+      .select('grupo, image_url')
+      .then(({ data, error }) => {
+        if (error) console.error('[CampaignImages] error:', error);
+        if (data && data.length > 0) {
+          const map: Record<string, string> = {};
+          for (const row of data) map[row.grupo] = row.image_url;
+          applyMap(map);
+        } else {
+          // Fallback: fetch via REST API directly
+          fetch(
+            'https://sobfplitrzgggzqsycew.supabase.co/rest/v1/campaign_tag_images?select=grupo,image_url',
+            {
+              headers: {
+                apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvYmZwbGl0cnpnZ2d6cXN5Y2V3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgzMTY4NTgsImV4cCI6MjA4Mzg5Mjg1OH0.0UOS6R0j7QwO6N7QIgrksA9iXr_82kL2a1QGjdTlsGA',
+              },
+            },
+          )
+            .then((r) => r.json())
+            .then((rows: { grupo: string; image_url: string }[]) => {
+              if (rows && rows.length > 0) {
+                const map: Record<string, string> = {};
+                for (const row of rows) map[row.grupo] = row.image_url;
+                applyMap(map);
+              }
+            })
+            .catch(() => {});
+        }
+      });
+  }, []);
 
   /* ─── Analyze a batch of followers (parallel, 3 workers) ─── */
 
@@ -289,11 +337,9 @@ function MapeamentoContent() {
       {/* ─── SEARCH STATE — fullscreen, search in lower-center ─── */}
       {pageState === 'search' && (
         <div className="relative flex flex-col items-center justify-center min-h-screen px-6 md:px-8">
-          {/* Animated orbs behind content */}
-          <div className="pointer-events-none absolute inset-0 overflow-hidden">
-            <div className="absolute top-1/3 left-1/4 w-[350px] h-[350px] bg-pink-500/[0.06] rounded-full blur-[100px] animate-orb-drift-1" />
-            <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-emerald-500/[0.06] rounded-full blur-[100px] animate-orb-drift-2" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[250px] bg-violet-500/[0.04] rounded-full blur-[120px] animate-glow-pulse" />
+          {/* Neural network canvas background */}
+          <div className="pointer-events-none absolute inset-0">
+            <NeuralBackground colorScheme="multi" />
           </div>
 
           {/* Error */}
@@ -310,7 +356,7 @@ function MapeamentoContent() {
                 <Instagram size={13} className="text-pink-400" />
                 Mapeamento Instagram
               </div>
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight bg-gradient-to-r from-white via-white to-zinc-300 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(255,255,255,0.08)]">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight bg-gradient-to-r from-white via-white to-zinc-300 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(255,255,255,0.08)] py-2 leading-[1.15]">
                 Analise de Seguidores
               </h1>
               <p className="text-zinc-300 text-base md:text-lg max-w-lg mx-auto leading-relaxed">
@@ -444,7 +490,12 @@ function MapeamentoContent() {
             {filteredFollowers.length > 0 && (
               <div className="space-y-2">
                 {filteredFollowers.map((follower, i) => (
-                  <FollowerRow key={follower.username} data={follower} index={i} />
+                  <FollowerRow
+                    key={follower.username}
+                    data={follower}
+                    index={i}
+                    campaignImageUrl={campaignImages[follower.analysis.grupo?.toUpperCase()]}
+                  />
                 ))}
               </div>
             )}

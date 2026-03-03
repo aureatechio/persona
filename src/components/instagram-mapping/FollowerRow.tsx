@@ -102,10 +102,10 @@ function renderCardCanvas(
 
   if (!frase) return;
 
-  // Text centered in the image
+  // Text centered in the upper area of the image
   const textAreaMaxWidth = w * 0.75;
   const textCenterX = w * 0.5;
-  const textStartY = h * 0.15;
+  const textStartY = h * 0.05;
 
   // Font size
   const fontSize = Math.round(w * 0.035);
@@ -153,9 +153,10 @@ interface CampaignModalProps {
   onClose: () => void;
   frase: string;
   displayName: string;
+  campaignImageUrl?: string;
 }
 
-function CampaignModal({ open, onClose, frase, displayName }: CampaignModalProps) {
+function CampaignModal({ open, onClose, frase, displayName, campaignImageUrl }: CampaignModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const renderCanvas = useCallback(() => {
@@ -167,8 +168,8 @@ function CampaignModal({ open, onClose, frase, displayName }: CampaignModalProps
     img.onload = () => {
       renderCardCanvas(canvas, img, frase);
     };
-    img.src = '/templates/campanha-base.jpg';
-  }, [frase]);
+    img.src = campaignImageUrl || '/templates/campanha-base.jpg';
+  }, [frase, campaignImageUrl]);
 
   // Render every time modal opens (canvas is fresh each mount)
   useEffect(() => {
@@ -251,9 +252,10 @@ function GenderBadge({ genero }: { genero: string }) {
 interface FollowerRowProps {
   data: AnalyzedFollowerData;
   index: number;
+  campaignImageUrl?: string;
 }
 
-export function FollowerRow({ data, index }: FollowerRowProps) {
+export function FollowerRow({ data, index, campaignImageUrl }: FollowerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -457,8 +459,10 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src="/templates/campanha-base.jpg"
+                      src={campaignImageUrl || '/templates/campanha-base.jpg'}
                       alt=""
+                      loading="eager"
+                      decoding="async"
                       className="absolute inset-0 w-full h-full object-cover"
                     />
                     <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
@@ -472,6 +476,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
                     onClose={() => setModalOpen(false)}
                     frase={analysis.frase_comunicacao || ''}
                     displayName={data.display_name || data.username}
+                    campaignImageUrl={campaignImageUrl}
                   />
                 </div>
               )}
