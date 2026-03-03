@@ -35,40 +35,30 @@ const CATEGORY_LABELS: Record<string, string> = {
   educador: 'Educador', saude: 'Saude', juridico: 'Juridico', outro: 'Outro',
 };
 
-/* ─── System Prompt ─── */
+/* ─── System Prompt (concise mode) ─── */
 
-const SYSTEM_PROMPT = `Voce e um analista senior de inteligencia social e comportamento humano, especializado no contexto cultural brasileiro.
-
-Sua tarefa e analisar o perfil de Instagram de uma pessoa e produzir uma analise comportamental profunda e criteriosa baseada EXCLUSIVAMENTE nos dados fornecidos.
-
-DIRETRIZES ABSOLUTAS:
-- Escreva em portugues do Brasil, tom profissional e objetivo.
-- Seja ESPECIFICO: cite trechos dos posts, hashtags, e dados concretos como evidencia.
-- Se nao houver evidencia suficiente para uma categoria, escreva "Sem evidencia suficiente nos dados analisados".
-- NAO invente, NAO presuma, NAO extrapole alem do que os dados mostram.
-- Considere TUDO: biografia, legendas dos posts, hashtags usadas, engajamento, frequencia, tom de linguagem.
-- Para orientacao politica: busque SINAIS CONCRETOS - mencoes a politicos, partidos, hashtags politicas, posicionamentos sobre temas polemicos. Se nao houver sinais claros, classifique como "indefinido" com confianca "baixa".
-- Para time esportivo: busque mencoes a times, escudos, hashtags (#Flamengo, #VaiCorinthians, etc), fotos com camisa de time.
-- Para profissao: analise bio, conteudo dos posts, hashtags profissionais, linguagem tecnica.
-
-Retorne APENAS um JSON valido (sem markdown, sem code blocks, sem texto antes ou depois) com esta estrutura exata:
+const SYSTEM_PROMPT = `Voce e um analista de inteligencia social brasileiro. Analise o perfil de Instagram fornecido e retorne APENAS um JSON valido (sem markdown, sem code blocks) com esta estrutura:
 
 {
-  "resumo_comportamental": "Paragrafo de 4-6 frases descrevendo detalhadamente quem e essa pessoa, o que faz, como se comporta nas redes sociais, e seus interesses. Seja rico em detalhes e especifico.",
-  "personalidade_e_interesses": "Descricao da personalidade percebida (extrovertida/introvertida, seria/descontraida, provocadora/conciliadora) e lista detalhada dos interesses identificados com evidencias dos posts.",
-  "time_esportivo": "Nome do time que torce com evidencia citada, ou 'Sem evidencia suficiente'.",
-  "assuntos_principais": "Os 3-5 temas mais recorrentes nos posts, cada um com exemplo concreto extraido do conteudo.",
-  "profissao_e_industria": "Profissao ou area de atuacao identificada, setor da industria, e nivel de confianca (alta/media/baixa). Se incerto, indique a melhor estimativa.",
-  "orientacao_politica": {
-    "posicao": "esquerda | centro-esquerda | centro | centro-direita | direita | indefinido",
-    "confianca": "alta | media | baixa",
-    "evidencias": "Lista detalhada dos sinais encontrados. Se nenhum, escreva 'Nenhum sinal politico identificado nos dados analisados'."
-  },
-  "religiao_e_crencas": "Religiao ou sistema de crencas identificado com evidencias (versiculos, hashtags religiosas, mencoes a igrejas, etc), ou 'Sem evidencia suficiente'.",
-  "estilo_comunicacao": "Analise de como se comunica: usa humor? sarcasmo? e formal ou informal? usa muitos emojis? linguagem coloquial ou culta? posta com frequencia? conteudo visual ou textual?",
-  "categoria": "UMA das: politico, religioso, empresario, influenciador, jornalista, ativista, celebridade, funcionario_publico, educador, saude, juridico, outro",
-  "categoria_label": "Label legivel da categoria (ex: Politico, Religioso, Empresario, Influenciador, Jornalista, Ativista, Celebridade, Func. Publico, Educador, Saude, Juridico, Outro)"
-}`;
+  "resumo": "2-3 frases diretas e objetivas sobre quem e essa pessoa e o que faz. Sem emojis, sem enrolacao.",
+  "genero": "homem | mulher | indefinido",
+  "faixa_etaria": "16-24 | 25-34 | 35-44 | 45-59 | 60+ | indefinido",
+  "renda_estimada": "baixa | media | alta | indefinido",
+  "profissao": "Profissao curta (ex: Advogada, Empresario, Estudante, Personal Trainer). Se incerto: 'Indefinido'",
+  "grupo": "FUTEBOL | FAMILIA | POLITICA | EMPREENDEDOR | FE | LIFESTYLE | MODA | TECH | SAUDE | EDUCACAO | ENTRETENIMENTO | OUTRO",
+  "engajamento_politico": "passivo | moderado | ativo | indefinido",
+  "temas_interesse": ["lista", "de", "temas", "principais"],
+  "categoria": "politico | religioso | empresario | influenciador | jornalista | ativista | celebridade | funcionario_publico | educador | saude | juridico | outro",
+  "categoria_label": "Label legivel da categoria"
+}
+
+REGRAS:
+- Baseie-se EXCLUSIVAMENTE nos dados fornecidos.
+- Para genero: analise nome, bio, fotos mencionadas e linguagem usada.
+- Para faixa etaria: estime pela linguagem, temas, aparencia descrita, contexto de vida.
+- Para grupo: escolha o que MELHOR representa o perfil geral da pessoa.
+- Para renda: analise profissao, estilo de vida nos posts, viagens, produtos mencionados.
+- Seja direto e preciso. Nao invente dados.`;
 
 /* ─── Apify Instagram Scraper ─── */
 
@@ -122,105 +112,46 @@ function buildUserPrompt(profile: ApifyProfile, username: string): string {
 
   const postTexts = posts
     .filter((p) => p.caption && p.caption.trim().length > 0)
-    .slice(0, 20)
-    .map((p, i) => {
-      const lines = [
-        `Post ${i + 1}:`,
-        `- Legenda: "${p.caption}"`,
-      ];
-      if (p.likesCount !== undefined) lines.push(`- Curtidas: ${p.likesCount}`);
-      if (p.commentsCount !== undefined) lines.push(`- Comentarios: ${p.commentsCount}`);
-      if (p.type) lines.push(`- Tipo: ${p.type}`);
-      return lines.join('\n');
-    })
-    .join('\n\n');
+    .slice(0, 15)
+    .map((p, i) => `Post ${i + 1}: "${p.caption}" (${p.likesCount ?? 0} curtidas)`)
+    .join('\n');
 
-  return `Analise o seguinte perfil de Instagram de forma criteriosa e detalhada:
+  return `Perfil: @${username}
+Nome: ${profile.fullName || 'N/A'}
+Bio: "${profile.biography || 'Sem bio'}"
+Seguidores: ${profile.followersCount ?? 'N/A'} | Seguindo: ${profile.followsCount ?? 'N/A'} | Posts: ${profile.postsCount ?? 'N/A'}
+Link: ${profile.externalUrl || 'Nenhum'}
 
-DADOS DO PERFIL:
-- Username: @${username}
-- Nome completo: ${profile.fullName || 'Nao disponivel'}
-- Biografia: "${profile.biography || 'Sem biografia'}"
-- Seguidores: ${profile.followersCount ?? 'N/A'}
-- Seguindo: ${profile.followsCount ?? 'N/A'}
-- Total de posts: ${profile.postsCount ?? 'N/A'}
-- Link externo: ${profile.externalUrl || 'Nenhum'}
-
-ULTIMOS POSTS ANALISADOS (${posts.filter(p => p.caption).length} posts com legenda):
-${postTexts || 'Nenhum post com legenda encontrado.'}
-
-Com base EXCLUSIVAMENTE nesses dados, faca a analise comportamental completa conforme o formato JSON especificado. Seja criterioso, detalhado e cite evidencias concretas dos posts.`;
+Posts recentes:
+${postTexts || 'Sem posts com legenda.'}`;
 }
 
-/* ─── Parse Claude JSON Response ─── */
+/* ─── Parse JSON ─── */
 
 interface AnalysisResult {
-  resumo_comportamental: string;
-  personalidade_e_interesses: string;
-  time_esportivo: string;
-  assuntos_principais: string;
-  profissao_e_industria: string;
-  orientacao_politica: {
-    posicao: string;
-    confianca: string;
-    evidencias: string;
-  };
-  religiao_e_crencas: string;
-  estilo_comunicacao: string;
+  resumo: string;
+  genero: string;
+  faixa_etaria: string;
+  renda_estimada: string;
+  profissao: string;
+  grupo: string;
+  engajamento_politico: string;
+  temas_interesse: string[];
   categoria: string;
   categoria_label: string;
 }
 
 function tryParseJson(text: string): AnalysisResult | null {
-  // Try raw parse first
   try { return JSON.parse(text); } catch { /* continue */ }
-
-  // Try extracting from code fences
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) {
     try { return JSON.parse(fenceMatch[1].trim()); } catch { /* continue */ }
   }
-
-  // Try extracting first { ... } block
   const braceMatch = text.match(/\{[\s\S]*\}/);
   if (braceMatch) {
     try { return JSON.parse(braceMatch[0]); } catch { /* continue */ }
   }
-
   return null;
-}
-
-function buildAiSummary(analysis: AnalysisResult): string {
-  const sections: string[] = [];
-
-  sections.push(analysis.resumo_comportamental);
-
-  if (analysis.personalidade_e_interesses) {
-    sections.push(`\n🧠 Personalidade e Interesses: ${analysis.personalidade_e_interesses}`);
-  }
-  if (analysis.profissao_e_industria) {
-    sections.push(`\n💼 Profissao: ${analysis.profissao_e_industria}`);
-  }
-  if (analysis.assuntos_principais) {
-    sections.push(`\n💬 Assuntos Principais: ${analysis.assuntos_principais}`);
-  }
-  if (analysis.time_esportivo && analysis.time_esportivo !== 'Sem evidencia suficiente') {
-    sections.push(`\n⚽ Time: ${analysis.time_esportivo}`);
-  }
-  if (analysis.orientacao_politica) {
-    const pol = analysis.orientacao_politica;
-    if (pol.posicao !== 'indefinido') {
-      sections.push(`\n🏛️ Orientacao Politica: ${pol.posicao} (confianca: ${pol.confianca}). ${pol.evidencias}`);
-    }
-  }
-  if (analysis.religiao_e_crencas && analysis.religiao_e_crencas !== 'Sem evidencia suficiente') {
-    sections.push(`\n🙏 Religiao: ${analysis.religiao_e_crencas}`);
-  }
-  if (analysis.estilo_comunicacao) {
-    sections.push(`\n📱 Estilo de Comunicacao: ${analysis.estilo_comunicacao}`);
-  }
-
-  return sections.join('');
 }
 
 /* ─── POST Handler ─── */
@@ -234,12 +165,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ANTHROPIC_API_KEY nao configurado' }, { status: 500 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseKey);
     const body = await request.json();
-    const { followerId, username } = body as { followerId: string; username: string };
+    const { followerId, username, saveToDb = true } = body as {
+      followerId?: string | null;
+      username: string;
+      saveToDb?: boolean;
+    };
 
-    if (!followerId || !username) {
-      return NextResponse.json({ error: 'followerId e username sao obrigatorios' }, { status: 400 });
+    if (!username) {
+      return NextResponse.json({ error: 'username e obrigatorio' }, { status: 400 });
     }
 
     const cleanUsername = username.replace(/^@/, '').trim();
@@ -256,36 +190,17 @@ export async function POST(request: NextRequest) {
     const hasNoUsefulData = !profile || (isPrivate && latestPosts.length === 0 && !biography) || (!isPrivate && postsCount === 0 && latestPosts.length === 0 && !biography);
 
     if (hasNoUsefulData) {
-      // Delete follower - private or no data
-      const { error: delError } = await supabase
-        .from('instagram_followers')
-        .delete()
-        .eq('id', followerId);
-
-      if (delError) {
-        return NextResponse.json({ error: delError.message }, { status: 500 });
+      // In search mode (saveToDb=false), just skip
+      if (!saveToDb || !followerId) {
+        return NextResponse.json({
+          skipped: true,
+          reason: isPrivate ? 'Perfil privado' : 'Sem dados uteis',
+        });
       }
 
-      // Update follower count on account
-      const { data: followerRow } = await supabase
-        .from('instagram_followers')
-        .select('account_id')
-        .eq('id', followerId)
-        .maybeSingle();
-
-      if (followerRow?.account_id) {
-        const { count } = await supabase
-          .from('instagram_followers')
-          .select('*', { count: 'exact', head: true })
-          .eq('account_id', followerRow.account_id);
-
-        if (count !== null) {
-          await supabase
-            .from('instagram_accounts')
-            .update({ follower_count: count, updated_at: new Date().toISOString() })
-            .eq('id', followerRow.account_id);
-        }
-      }
+      // Legacy mode: delete from DB
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      await supabase.from('instagram_followers').delete().eq('id', followerId);
 
       return NextResponse.json({
         deleted: true,
@@ -299,7 +214,7 @@ export async function POST(request: NextRequest) {
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 1024,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -312,22 +227,47 @@ export async function POST(request: NextRequest) {
     // Step 4: Parse JSON response
     const analysis = tryParseJson(responseText);
 
-    let aiSummary: string;
     let category = 'outro';
     let categoryLabel = 'Outro';
 
-    if (analysis) {
-      aiSummary = buildAiSummary(analysis);
-      if (VALID_CATEGORIES.includes(analysis.categoria)) {
-        category = analysis.categoria;
-        categoryLabel = analysis.categoria_label || CATEGORY_LABELS[category] || 'Outro';
-      }
-    } else {
-      // Fallback: use raw text as summary
-      aiSummary = responseText.slice(0, 2000);
+    if (analysis && VALID_CATEGORIES.includes(analysis.categoria)) {
+      category = analysis.categoria;
+      categoryLabel = analysis.categoria_label || CATEGORY_LABELS[category] || 'Outro';
     }
 
-    // Step 5: Update follower in database
+    // Step 5: Return result for search mode (no DB save)
+    if (!saveToDb || !followerId) {
+      return NextResponse.json({
+        analyzed: true,
+        username: cleanUsername,
+        display_name: profile!.fullName || cleanUsername,
+        avatar_url: profile!.profilePicUrlHD || profile!.profilePicUrl || '',
+        analysis: analysis || {
+          resumo: responseText.slice(0, 500),
+          genero: 'indefinido',
+          faixa_etaria: 'indefinido',
+          renda_estimada: 'indefinido',
+          profissao: 'Indefinido',
+          grupo: 'OUTRO',
+          engajamento_politico: 'indefinido',
+          temas_interesse: [],
+          categoria: 'outro',
+          categoria_label: 'Outro',
+        },
+        category,
+        profile: {
+          biography: profile!.biography,
+          followers_count: profile!.followersCount,
+          follows_count: profile!.followsCount,
+          posts_count: profile!.postsCount,
+        },
+      });
+    }
+
+    // Step 6: Save to DB (legacy mode)
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const aiSummary = analysis?.resumo || responseText.slice(0, 500);
+
     const updateData: Record<string, unknown> = {
       ai_summary: aiSummary,
       category,
@@ -350,7 +290,6 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // Update avatar and display name with HD versions if available
     if (profile!.profilePicUrlHD || profile!.profilePicUrl) {
       updateData.avatar_url = profile!.profilePicUrlHD || profile!.profilePicUrl;
     }

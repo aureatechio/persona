@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const body = await request.json();
-    const { accountId, username, maxCount = 50 } = body as {
+    const { accountId, username, maxCount = 5000 } = body as {
       accountId: string;
       username: string;
       maxCount?: number;
@@ -37,19 +37,28 @@ export async function POST(request: NextRequest) {
     }
 
     const cleanUsername = username.replace(/^@/, '').trim();
+    const safeMaxCount = Math.max(50, maxCount);
 
-    // Call Apify actor
+    // Get existing usernames to track truly new imports
+    const { data: existingFollowers } = await supabase
+      .from('instagram_followers')
+      .select('username')
+      .eq('account_id', accountId);
+
+    const existingUsernames = new Set((existingFollowers || []).map((f) => f.username));
+
+    // Call Apify actor - fetch ALL followers (high limit)
     const encodedActor = encodeURIComponent(ACTOR_ID);
-    const apifyUrl = `https://api.apify.com/v2/acts/${encodedActor}/run-sync-get-dataset-items?token=${apifyToken}&timeout=120`;
+    const apifyUrl = `https://api.apify.com/v2/acts/${encodedActor}/run-sync-get-dataset-items?token=${apifyToken}&timeout=300`;
 
     const apifyRes = await fetch(apifyUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         usernames: [cleanUsername],
-        max_count: Math.max(50, maxCount),
+        max_count: safeMaxCount,
       }),
-      signal: AbortSignal.timeout(130000),
+      signal: AbortSignal.timeout(310000),
     });
 
     if (!apifyRes.ok) {
@@ -66,8 +75,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum seguidor encontrado. Verifique se o perfil e publico.', imported: 0 });
     }
 
-    // Insert followers into database (upsert to avoid duplicates)
-    const rows = apifyData.map((f) => ({
+    // Filter only NEW followers (not already in DB)
+    const newFollowers = apifyData.filter((f) => !existingUsernames.has(f.username));
+    const alreadyExisted = apifyData.length - newFollowers.length;
+
+    // Insert only new followers (upsert as safety net)
+    const rows = newFollowers.map((f) => ({
       account_id: accountId,
       username: f.username,
       display_name: f.full_name || null,
@@ -81,54 +94,59 @@ export async function POST(request: NextRequest) {
       },
     }));
 
-    // Insert in batches of 50
     let imported = 0;
-    for (let i = 0; i < rows.length; i += 50) {
-      const batch = rows.slice(i, i + 50);
-      const { data, error } = await supabase
+    if (rows.length > 0) {
+      // Insert in batches of 50
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        const { data, error } = await supabase
+          .from('instagram_followers')
+          .upsert(batch, { onConflict: 'account_id,username', ignoreDuplicates: true })
+          .select('id');
+
+        if (error) {
+          console.error('Batch insert error:', error.message);
+        } else {
+          imported += data?.length || 0;
+        }
+      }
+    }
+
+    // ── Avatar persistence: only for NEW followers ──
+    if (newFollowers.length > 0) {
+      const cdnUrlMap = new Map<string, string>();
+      for (const f of newFollowers) {
+        if (f.profile_pic_url) {
+          cdnUrlMap.set(f.username, f.profile_pic_url);
+        }
+      }
+
+      const { data: dbFollowers } = await supabase
         .from('instagram_followers')
-        .upsert(batch, { onConflict: 'account_id,username', ignoreDuplicates: true })
-        .select('id');
+        .select('id, username')
+        .eq('account_id', accountId)
+        .in('username', newFollowers.map((f) => f.username));
 
-      if (error) {
-        console.error('Batch insert error:', error.message);
-      } else {
-        imported += data?.length || 0;
-      }
-    }
+      if (dbFollowers && dbFollowers.length > 0) {
+        const AVATAR_BATCH = 10;
+        const withCdn = dbFollowers.filter((f) => cdnUrlMap.has(f.username));
 
-    // ── Avatar persistence: download from CDN and upload to Supabase Storage ──
-    const cdnUrlMap = new Map<string, string>();
-    for (const f of apifyData) {
-      if (f.profile_pic_url) {
-        cdnUrlMap.set(f.username, f.profile_pic_url);
-      }
-    }
-
-    const { data: dbFollowers } = await supabase
-      .from('instagram_followers')
-      .select('id, username')
-      .eq('account_id', accountId);
-
-    if (dbFollowers && dbFollowers.length > 0) {
-      const AVATAR_BATCH = 10;
-      const withCdn = dbFollowers.filter((f) => cdnUrlMap.has(f.username));
-
-      for (let i = 0; i < withCdn.length; i += AVATAR_BATCH) {
-        const batch = withCdn.slice(i, i + AVATAR_BATCH);
-        await Promise.allSettled(
-          batch.map(async (follower) => {
-            const cdnUrl = cdnUrlMap.get(follower.username);
-            if (!cdnUrl) return;
-            const permanentUrl = await persistAvatarToStorage(cdnUrl, follower.id);
-            if (permanentUrl) {
-              await supabase
-                .from('instagram_followers')
-                .update({ avatar_url: permanentUrl, updated_at: new Date().toISOString() })
-                .eq('id', follower.id);
-            }
-          }),
-        );
+        for (let i = 0; i < withCdn.length; i += AVATAR_BATCH) {
+          const batch = withCdn.slice(i, i + AVATAR_BATCH);
+          await Promise.allSettled(
+            batch.map(async (follower) => {
+              const cdnUrl = cdnUrlMap.get(follower.username);
+              if (!cdnUrl) return;
+              const permanentUrl = await persistAvatarToStorage(cdnUrl, follower.id);
+              if (permanentUrl) {
+                await supabase
+                  .from('instagram_followers')
+                  .update({ avatar_url: permanentUrl, updated_at: new Date().toISOString() })
+                  .eq('id', follower.id);
+              }
+            }),
+          );
+        }
       }
     }
 
@@ -145,10 +163,21 @@ export async function POST(request: NextRequest) {
         .eq('id', accountId);
     }
 
+    // Build response message
+    let message = '';
+    if (imported > 0 && alreadyExisted > 0) {
+      message = `${imported} novos seguidores importados (${alreadyExisted} ja existiam)`;
+    } else if (imported > 0) {
+      message = `${imported} seguidores importados com sucesso`;
+    } else {
+      message = `Nenhum novo seguidor encontrado (${alreadyExisted} ja importados)`;
+    }
+
     return NextResponse.json({
       imported,
       total: apifyData.length,
-      message: `${imported} seguidores importados com sucesso`,
+      alreadyExisted,
+      message,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro interno';

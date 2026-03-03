@@ -36,19 +36,16 @@ interface SourceBundle {
 interface AnalysisDeps {
   apifyToken: string;
   openAiKey?: string;
-  actorIds?: Partial<Record<SocialPlatform, string>>;
+  actorIds?: Partial<Record<SocialPlatform, string[]>>;
 }
 
-interface InstagramCollectionResult {
-  source: SourceBundle | null;
-  discovered: Partial<SocialIntelInput>;
-}
+// InstagramCollectionResult is now unified as CollectionResult (defined near collectTwitter)
 
-const DEFAULT_ACTORS: Record<SocialPlatform, string> = {
-  instagram: 'apify/instagram-profile-scraper',
-  twitter: 'apidojo/tweet-scraper',
-  tiktok: 'clockworks/tiktok-scraper',
-  facebook: 'apify/facebook-posts-scraper',
+const DEFAULT_ACTORS: Record<SocialPlatform, string[]> = {
+  instagram: ['apify/instagram-profile-scraper'],
+  twitter: ['apidojo/tweet-scraper'],
+  tiktok: ['clockworks/tiktok-scraper'],
+  facebook: ['apify/facebook-posts-scraper'],
 };
 
 const STOPWORDS = new Set([
@@ -159,7 +156,11 @@ function normalizeHandle(value?: string): string {
     .replace(/^facebook\.com\//i, '');
 
   const raw = withoutDomain.split('/').filter(Boolean)[0] || '';
-  return raw.replace(/^@/, '').replace(/\?.*$/, '').trim();
+  return raw
+    .replace(/^@/, '')
+    .replace(/\?.*$/, '')
+    .replace(/\s+/g, '')
+    .trim();
 }
 
 function discoverHandlesFromText(text: string): Partial<SocialIntelInput> {
@@ -195,37 +196,52 @@ async function runApifyActor(
   token: string,
   actorId: string,
   input: Record<string, unknown>,
+  timeoutMs = 70000,
 ): Promise<unknown[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const encodedActor = encodeActorId(actorId);
   const url = `https://api.apify.com/v2/acts/${encodedActor}/run-sync-get-dataset-items?token=${token}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Apify actor falhou (${actorId}): ${response.status} ${detail}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Apify actor falhou (${actorId}): ${response.status} ${detail}`);
+    }
+
+    const data: unknown = await response.json();
+    return Array.isArray(data) ? data : [];
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Apify actor timeout (${actorId}) apos ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  const data: unknown = await response.json();
-  return Array.isArray(data) ? data : [];
 }
 
 async function runActorWithFallbackInputs(
   token: string,
-  actorId: string,
+  actorIds: string[],
   inputCandidates: Record<string, unknown>[],
 ): Promise<unknown[]> {
   const errors: string[] = [];
-  for (const input of inputCandidates) {
-    try {
-      const items = await runApifyActor(token, actorId, input);
-      if (items.length > 0) return items;
-    } catch (error: unknown) {
-      errors.push(getErrorMessage(error));
+  for (const actorId of actorIds) {
+    for (const input of inputCandidates) {
+      try {
+        const items = await runApifyActor(token, actorId, input);
+        if (items.length > 0) return items;
+      } catch (error: unknown) {
+        errors.push(`${actorId}: ${getErrorMessage(error)}`);
+      }
     }
   }
   if (errors.length > 0) throw new Error(errors[errors.length - 1]);
@@ -279,6 +295,19 @@ function normalizeGenericPosts(platform: SocialPlatform, items: unknown[]): Norm
   }
 
   return posts;
+}
+
+function extractProfileFallbackText(items: unknown[]): string {
+  if (!items.length) return '';
+  const first = items[0];
+  if (!first || typeof first !== 'object') return '';
+  const item = first as Record<string, unknown>;
+  const parts = [
+    pickString(item, ['fullName', 'name', 'userName', 'username']),
+    pickString(item, ['biography', 'bio', 'description', 'about']),
+    pickString(item, ['category', 'pageCategory']),
+  ].filter(Boolean);
+  return parts.join(' | ').slice(0, 1200);
 }
 
 function scoreFromKeywords(texts: string[], positive: string[], negative: string[], scale: number): number {
@@ -494,12 +523,13 @@ function buildBeliefProfile(indicators: SocialIntelIndicators, topTopics: LabelC
 
 async function collectInstagram(
   token: string,
-  actorId: string,
+  actorIds: string[],
   handle: string,
-): Promise<InstagramCollectionResult> {
-  const dataset = await runActorWithFallbackInputs(token, actorId, [
+): Promise<CollectionResult> {
+  const dataset = await runActorWithFallbackInputs(token, actorIds, [
     { usernames: [handle] },
     { usernames: [`@${handle}`] },
+    { usernames: [handle], resultsLimit: 30 },
   ]);
   if (!dataset.length) return { source: null, discovered: {} };
 
@@ -558,63 +588,144 @@ async function collectInstagram(
   };
 }
 
-async function collectTwitter(token: string, actorId: string, handle: string): Promise<SourceBundle | null> {
-  const dataset = await runActorWithFallbackInputs(token, actorId, [
+interface CollectionResult {
+  source: SourceBundle | null;
+  discovered: Partial<SocialIntelInput>;
+}
+
+async function collectTwitter(
+  token: string,
+  actorIds: string[],
+  handle: string,
+  profileUrl?: string,
+): Promise<CollectionResult> {
+  const url = profileUrl || `https://x.com/${handle}`;
+  const dataset = await runActorWithFallbackInputs(token, actorIds, [
     { searchTerms: [`from:${handle}`], maxItems: 120, sort: 'Latest' },
     { handles: [handle], maxItems: 120 },
     { usernames: [handle], maxItems: 120 },
+    { startUrls: [{ url }], maxItems: 120 },
   ]);
 
-  if (!dataset.length) return null;
+  if (!dataset.length) return { source: null, discovered: {} };
   const posts = normalizeGenericPosts('twitter', dataset);
+  if (!posts.length) {
+    const fallback = extractProfileFallbackText(dataset);
+    if (fallback) posts.push({ platform: 'twitter', text: fallback });
+  }
+
+  const first = dataset[0] as Record<string, unknown>;
+  const avatarUrl = pickString(first, ['profileImageUrl', 'profileImageUrlHttps', 'avatar', 'userProfileImageUrl', 'profilePicUrl']);
+  const displayName = pickString(first, ['name', 'fullName', 'userName', 'username']) || `@${handle}`;
+  const followers = pickNumeric(first, ['followersCount', 'followers', 'followersNum', 'userFollowersCount']);
+  const bio = pickString(first, ['description', 'bio', 'biography', 'userDescription']);
+
+  const discovered = discoverHandlesFromText(bio);
 
   return {
-    platform: 'twitter',
-    handle,
-    profileSummary: `X/Twitter: @${handle} | itens coletados: ${dataset.length}`,
-    posts,
-    displayName: `@${handle}`,
-    profileUrl: `https://x.com/${handle}`,
+    source: {
+      platform: 'twitter',
+      handle,
+      profileSummary: `X/Twitter: @${handle} | itens coletados: ${dataset.length}`,
+      posts,
+      displayName,
+      ...(avatarUrl ? { avatarUrl } : {}),
+      profileUrl: `https://x.com/${handle}`,
+      ...(followers !== undefined ? { followers } : {}),
+    },
+    discovered,
   };
 }
 
-async function collectTikTok(token: string, actorId: string, handle: string): Promise<SourceBundle | null> {
-  const dataset = await runActorWithFallbackInputs(token, actorId, [
+async function collectTikTok(
+  token: string,
+  actorIds: string[],
+  handle: string,
+  profileUrl?: string,
+): Promise<CollectionResult> {
+  const url = profileUrl || `https://www.tiktok.com/@${handle}`;
+  const dataset = await runActorWithFallbackInputs(token, actorIds, [
     { profiles: [handle], resultsPerPage: 100, shouldDownloadVideos: false },
     { usernames: [handle], resultsPerPage: 100 },
     { profileNames: [handle], maxItems: 100 },
+    { startUrls: [{ url }], maxItems: 100 },
   ]);
 
-  if (!dataset.length) return null;
+  if (!dataset.length) return { source: null, discovered: {} };
   const posts = normalizeGenericPosts('tiktok', dataset);
+  if (!posts.length) {
+    const fallback = extractProfileFallbackText(dataset);
+    if (fallback) posts.push({ platform: 'tiktok', text: fallback });
+  }
+
+  const first = dataset[0] as Record<string, unknown>;
+  const authorMeta = (first.authorMeta && typeof first.authorMeta === 'object' ? first.authorMeta : {}) as Record<string, unknown>;
+  const avatarUrl = pickString(first, ['avatarUrl', 'avatar', 'profilePicUrl']) || pickString(authorMeta, ['avatar', 'avatarLarger', 'avatarMedium']);
+  const displayName = pickString(first, ['nickname', 'name', 'authorName']) || pickString(authorMeta, ['nickName', 'name']) || `@${handle}`;
+  const followers = pickNumeric(first, ['fans', 'followersCount', 'followers']) ?? pickNumeric(authorMeta, ['fans', 'followers']);
+  const bio = pickString(first, ['signature', 'bio', 'description']) || pickString(authorMeta, ['signature']);
+
+  const discovered = discoverHandlesFromText(bio);
 
   return {
-    platform: 'tiktok',
-    handle,
-    profileSummary: `TikTok: @${handle} | itens coletados: ${dataset.length}`,
-    posts,
-    displayName: `@${handle}`,
-    profileUrl: `https://www.tiktok.com/@${handle}`,
+    source: {
+      platform: 'tiktok',
+      handle,
+      profileSummary: `TikTok: @${handle} | itens coletados: ${dataset.length}`,
+      posts,
+      displayName,
+      ...(avatarUrl ? { avatarUrl } : {}),
+      profileUrl: `https://www.tiktok.com/@${handle}`,
+      ...(followers !== undefined ? { followers } : {}),
+    },
+    discovered,
   };
 }
 
-async function collectFacebook(token: string, actorId: string, handle: string): Promise<SourceBundle | null> {
-  const dataset = await runActorWithFallbackInputs(token, actorId, [
-    { startUrls: [{ url: `https://www.facebook.com/${handle}` }], resultsLimit: 80 },
+async function collectFacebook(
+  token: string,
+  actorIds: string[],
+  handle: string,
+  profileUrl?: string,
+): Promise<CollectionResult> {
+  const url = profileUrl || `https://www.facebook.com/${handle}`;
+  const dataset = await runActorWithFallbackInputs(token, actorIds, [
+    { startUrls: [{ url }], resultsLimit: 80 },
+    { startUrls: [url], resultsLimit: 80 },
+    { urls: [url], resultsLimit: 80 },
+    { pages: [url], resultsLimit: 80 },
     { pages: [handle], resultsLimit: 80 },
     { profiles: [handle], maxItems: 80 },
+    { usernames: [handle], maxItems: 80 },
   ]);
 
-  if (!dataset.length) return null;
+  if (!dataset.length) return { source: null, discovered: {} };
   const posts = normalizeGenericPosts('facebook', dataset);
+  if (!posts.length) {
+    const fallback = extractProfileFallbackText(dataset);
+    if (fallback) posts.push({ platform: 'facebook', text: fallback });
+  }
+
+  const first = dataset[0] as Record<string, unknown>;
+  const avatarUrl = pickString(first, ['profilePicUrl', 'profilePic', 'avatar', 'pageLogo', 'profileImage']);
+  const displayName = pickString(first, ['pageName', 'name', 'fullName', 'userName']) || handle;
+  const followers = pickNumeric(first, ['likes', 'followersCount', 'followers', 'pageLikes']);
+  const about = pickString(first, ['about', 'description', 'bio', 'pageAbout', 'info']);
+
+  const discovered = discoverHandlesFromText(about);
 
   return {
-    platform: 'facebook',
-    handle,
-    profileSummary: `Facebook: ${handle} | itens coletados: ${dataset.length}`,
-    posts,
-    displayName: handle,
-    profileUrl: `https://www.facebook.com/${handle}`,
+    source: {
+      platform: 'facebook',
+      handle,
+      profileSummary: `Facebook: ${handle} | itens coletados: ${dataset.length}`,
+      posts,
+      displayName,
+      ...(avatarUrl ? { avatarUrl } : {}),
+      profileUrl: `https://www.facebook.com/${handle}`,
+      ...(followers !== undefined ? { followers } : {}),
+    },
+    discovered,
   };
 }
 
@@ -775,6 +886,88 @@ function tryParseJson<T>(content: string): T | null {
   }
 }
 
+function buildEmptyReport(handles: SocialIntelInput, warnings: string[]): SocialIntelReport {
+  const normalizedWarnings = Array.from(new Set(warnings));
+  const platforms: SocialPlatform[] = ['instagram', 'twitter', 'tiktok', 'facebook'];
+  const platformBreakdown: PlatformBreakdown[] = platforms.map((platform) => ({
+    platform,
+    postsAnalyzed: 0,
+    topTopics: [],
+    politicalScore: 0,
+    religiosityScore: 0,
+    polarizationScore: 0,
+  }));
+
+  const profiles: SocialProfileCard[] = platforms
+    .filter((platform) => Boolean(handles[platform]))
+    .map((platform) => ({
+      platform,
+      handle: handles[platform] as string,
+      displayName: handles[platform] as string,
+    }));
+
+  return {
+    quickSummary: [
+      'Nenhum conteúdo público textual foi retornado pelos scrapers para os handles informados.',
+      'Revise se os perfis estão públicos e com publicações visíveis sem login.',
+      'Tente também informar manualmente os handles de Twitter, TikTok e Facebook.',
+    ],
+    executiveSummary:
+      'A análise não conseguiu montar evidências porque os coletores retornaram vazio nas plataformas consultadas.',
+    detailed: {
+      identity: 'Sem dados suficientes para inferir identidade digital.',
+      politicalPanorama: 'Sem evidências para estimar orientação política.',
+      beliefs: 'Sem evidências para inferir crenças ou religião.',
+      interests: 'Sem evidências para mapear interesses.',
+      communicationStyle: 'Sem conteúdo textual para avaliar estilo de comunicação.',
+    },
+    indicators: {
+      politicalOrientationScore: 0,
+      customsScore: 0,
+      economicScore: 0,
+      religiosityScore: 0,
+      polarizationScore: 0,
+      consistencyScore: 0,
+      likelyPoliticalSide: [{ label: 'Indefinido', confidence: 0 }],
+      likelyReligions: [{ label: 'Indefinido', confidence: 0 }],
+      likelyTeams: [{ label: 'Indefinido', confidence: 0 }],
+      confidence: 0,
+    },
+    topInterests: [],
+    topTopics: [],
+    evidence: [],
+    profiles,
+    platformBreakdown,
+    politicalProfile: {
+      primarySide: 'Indefinido',
+      sideConfidence: 0,
+      economicAxis: 'Indefinido',
+      customsAxis: 'Indefinido',
+      summary: 'Sem dados para classificação política.',
+      keySignals: [],
+    },
+    beliefProfile: {
+      religion: 'Indefinido',
+      favoriteTeam: 'Indefinido',
+      coreValues: [],
+      ideologicalBeliefs: [],
+    },
+    contradictions: [],
+    recommendations: [
+      'Confirme se o perfil está público.',
+      'Informe os handles exatos de cada rede.',
+      'Teste novamente em alguns minutos (limite/instabilidade do provider pode causar retorno vazio).',
+    ],
+    coverage: {
+      profilesAnalyzed: 0,
+      platformsAnalyzed: [],
+      totalPostsAnalyzed: 0,
+      totalTextsAnalyzed: 0,
+    },
+    warnings: normalizedWarnings,
+  };
+}
+
 async function enrichWithOpenAI(base: SocialIntelReport, apiKey: string): Promise<SocialIntelReport> {
   const client = new OpenAI({ apiKey });
   const prompt = `
@@ -832,53 +1025,129 @@ export async function runSocialIntelligenceAnalysis(
 
   const actorIds = { ...DEFAULT_ACTORS, ...(deps.actorIds || {}) };
   const sources: SourceBundle[] = [];
-  const discoveredHandles: Partial<SocialIntelInput> = {};
+  const allDiscovered: Partial<SocialIntelInput> = {};
+  const explicitUrls: Partial<Record<SocialPlatform, string>> = {
+    instagram: input.instagram?.startsWith('http') ? input.instagram.trim() : undefined,
+    twitter: input.twitter?.startsWith('http') ? input.twitter.trim() : undefined,
+    tiktok: input.tiktok?.startsWith('http') ? input.tiktok.trim() : undefined,
+    facebook: input.facebook?.startsWith('http') ? input.facebook.trim() : undefined,
+  };
+
+  // ---------- FASE 1: coletar todas as plataformas com handle informado em PARALELO ----------
+  const phase1Tasks: Array<{
+    platform: SocialPlatform;
+    promise: Promise<CollectionResult>;
+  }> = [];
 
   if (handles.instagram) {
-    try {
-      const result = await collectInstagram(deps.apifyToken, actorIds.instagram, handles.instagram);
-      if (result.source && result.source.posts.length) sources.push(result.source);
-      else warnings.push('Instagram: sem conteudo textual suficiente para analise.');
-      Object.assign(discoveredHandles, result.discovered);
-    } catch (error: unknown) {
-      warnings.push(`Instagram: ${getErrorMessage(error)}`);
+    phase1Tasks.push({
+      platform: 'instagram',
+      promise: collectInstagram(deps.apifyToken, actorIds.instagram, handles.instagram),
+    });
+  }
+  if (handles.twitter) {
+    phase1Tasks.push({
+      platform: 'twitter',
+      promise: collectTwitter(deps.apifyToken, actorIds.twitter, handles.twitter, explicitUrls.twitter),
+    });
+  }
+  if (handles.tiktok) {
+    phase1Tasks.push({
+      platform: 'tiktok',
+      promise: collectTikTok(deps.apifyToken, actorIds.tiktok, handles.tiktok, explicitUrls.tiktok),
+    });
+  }
+  if (handles.facebook) {
+    phase1Tasks.push({
+      platform: 'facebook',
+      promise: collectFacebook(deps.apifyToken, actorIds.facebook, handles.facebook, explicitUrls.facebook),
+    });
+  }
+
+  const phase1Results = await Promise.allSettled(phase1Tasks.map((t) => t.promise));
+
+  for (let i = 0; i < phase1Tasks.length; i++) {
+    const { platform } = phase1Tasks[i];
+    const result = phase1Results[i];
+
+    if (result.status === 'rejected') {
+      warnings.push(`${platform}: ${getErrorMessage(result.reason)}`);
+      continue;
+    }
+
+    const { source, discovered } = result.value;
+    if (source && source.posts.length) {
+      sources.push(source);
+    } else {
+      const hint = platform === 'facebook'
+        ? 'facebook: sem dados retornados. Perfis pessoais do Facebook sao protegidos - use a URL de uma pagina publica.'
+        : `${platform}: sem conteudo textual suficiente para analise.`;
+      warnings.push(hint);
+    }
+    if (discovered) {
+      for (const [key, val] of Object.entries(discovered)) {
+        if (val && !allDiscovered[key as SocialPlatform]) {
+          allDiscovered[key as SocialPlatform] = val;
+        }
+      }
     }
   }
 
-  const optionalCollectors: Array<{
-    platform: Exclude<SocialPlatform, 'instagram'>;
-    handle?: string;
-    collector: (token: string, actorId: string, handle: string) => Promise<SourceBundle | null>;
-  }> = [
-    { platform: 'twitter', handle: handles.twitter, collector: collectTwitter },
-    { platform: 'tiktok', handle: handles.tiktok, collector: collectTikTok },
-    { platform: 'facebook', handle: handles.facebook, collector: collectFacebook },
-  ];
+  // ---------- FASE 2: tentar plataformas descobertas via bio (que nao tinham handle) ----------
+  const phase2Tasks: Array<{
+    platform: SocialPlatform;
+    promise: Promise<CollectionResult>;
+  }> = [];
 
-  await Promise.all(
-    optionalCollectors.map(async ({ platform, handle, collector }) => {
-      let resolvedHandle = handle;
-      if (!resolvedHandle && discoveredHandles[platform]) {
-        resolvedHandle = discoveredHandles[platform];
-      }
-      if (!resolvedHandle && handles.instagram) {
-        resolvedHandle = handles.instagram;
-      }
-      if (!resolvedHandle) return;
-      const actorId = actorIds[platform];
+  const platformsCollected = new Set(sources.map((s) => s.platform));
 
-      try {
-        const source = await collector(deps.apifyToken, actorId, resolvedHandle);
-        if (source && source.posts.length) sources.push(source);
-        else warnings.push(`${platform}: sem conteudo textual suficiente para analise.`);
-      } catch (error: unknown) {
-        warnings.push(`${platform}: ${getErrorMessage(error)}`);
+  if (!handles.twitter && !platformsCollected.has('twitter') && allDiscovered.twitter) {
+    phase2Tasks.push({
+      platform: 'twitter',
+      promise: collectTwitter(deps.apifyToken, actorIds.twitter, allDiscovered.twitter),
+    });
+  }
+  if (!handles.tiktok && !platformsCollected.has('tiktok') && allDiscovered.tiktok) {
+    phase2Tasks.push({
+      platform: 'tiktok',
+      promise: collectTikTok(deps.apifyToken, actorIds.tiktok, allDiscovered.tiktok),
+    });
+  }
+  if (!handles.facebook && !platformsCollected.has('facebook') && allDiscovered.facebook) {
+    phase2Tasks.push({
+      platform: 'facebook',
+      promise: collectFacebook(deps.apifyToken, actorIds.facebook, allDiscovered.facebook),
+    });
+  }
+  if (!handles.instagram && !platformsCollected.has('instagram') && allDiscovered.instagram) {
+    phase2Tasks.push({
+      platform: 'instagram',
+      promise: collectInstagram(deps.apifyToken, actorIds.instagram, allDiscovered.instagram),
+    });
+  }
+
+  if (phase2Tasks.length) {
+    const phase2Results = await Promise.allSettled(phase2Tasks.map((t) => t.promise));
+
+    for (let i = 0; i < phase2Tasks.length; i++) {
+      const { platform } = phase2Tasks[i];
+      const result = phase2Results[i];
+
+      if (result.status === 'rejected') {
+        warnings.push(`${platform} (descoberto): ${getErrorMessage(result.reason)}`);
+        continue;
       }
-    }),
-  );
+
+      const { source } = result.value;
+      if (source && source.posts.length) {
+        sources.push(source);
+      }
+    }
+  }
 
   if (!sources.length) {
-    throw new Error('Nenhum dado pode ser coletado. Verifique os handles informados.');
+    warnings.push('Nenhum dado pode ser coletado. Verifique os handles informados.');
+    return buildEmptyReport(handles, warnings);
   }
 
   const baseReport = buildHeuristicReport(sources, warnings);

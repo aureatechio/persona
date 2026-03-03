@@ -2,6 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { runSocialIntelligenceAnalysis } from '@/lib/social-intel/analyze';
 import type { SocialIntelInput } from '@/lib/social-intel/types';
 
+function parseActorList(value: string | undefined, fallback: string): string[] {
+  const raw = (value || fallback).trim();
+  if (!raw) return [fallback];
+  const list = raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return list.length ? list : [fallback];
+}
+
 export async function POST(request: NextRequest) {
   const apifyToken = process.env.APIFY_API_TOKEN;
   const openAiKey = process.env.OPENAI_API_KEY;
@@ -21,7 +31,7 @@ export async function POST(request: NextRequest) {
       tiktok: !!process.env.APIFY_TIKTOK_ACTOR_ID,
       facebook: !!process.env.APIFY_FACEBOOK_ACTOR_ID,
     });
-  } catch (e) {
+  } catch {
     // ignore logging errors
   }
 
@@ -45,10 +55,10 @@ export async function POST(request: NextRequest) {
       apifyToken,
       openAiKey,
       actorIds: {
-        instagram: process.env.APIFY_INSTAGRAM_ACTOR_ID,
-        twitter: process.env.APIFY_TWITTER_ACTOR_ID,
-        tiktok: process.env.APIFY_TIKTOK_ACTOR_ID,
-        facebook: process.env.APIFY_FACEBOOK_ACTOR_ID,
+        instagram: parseActorList(process.env.APIFY_INSTAGRAM_ACTOR_IDS || process.env.APIFY_INSTAGRAM_ACTOR_ID, 'apify/instagram-profile-scraper'),
+        twitter: parseActorList(process.env.APIFY_TWITTER_ACTOR_IDS || process.env.APIFY_TWITTER_ACTOR_ID, 'apidojo/tweet-scraper'),
+        tiktok: parseActorList(process.env.APIFY_TIKTOK_ACTOR_IDS || process.env.APIFY_TIKTOK_ACTOR_ID, 'clockworks/tiktok-scraper'),
+        facebook: parseActorList(process.env.APIFY_FACEBOOK_ACTOR_IDS || process.env.APIFY_FACEBOOK_ACTOR_ID, 'apify/facebook-posts-scraper'),
       },
     });
 

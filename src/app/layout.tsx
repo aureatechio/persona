@@ -22,6 +22,7 @@ export default function RootLayout({
     <html lang="pt-br">
       <body
         className={`${manrope.variable} font-sans antialiased`}
+        suppressHydrationWarning
       >
         <AuthProvider>
           {children}
