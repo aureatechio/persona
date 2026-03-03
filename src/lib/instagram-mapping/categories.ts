@@ -1,0 +1,103 @@
+import type { FollowerCategory, CategoryMeta } from './types';
+
+export const CATEGORY_MAP: Record<FollowerCategory, CategoryMeta> = {
+  politico: {
+    label: 'Politico',
+    color: 'text-red-400',
+    bgColor: 'bg-red-500/10',
+    borderColor: 'border-red-500/20',
+    icon: 'Scale',
+  },
+  religioso: {
+    label: 'Religioso',
+    color: 'text-amber-400',
+    bgColor: 'bg-amber-500/10',
+    borderColor: 'border-amber-500/20',
+    icon: 'BookOpen',
+  },
+  empresario: {
+    label: 'Empresario',
+    color: 'text-emerald-400',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/20',
+    icon: 'Briefcase',
+  },
+  influenciador: {
+    label: 'Influenciador',
+    color: 'text-pink-400',
+    bgColor: 'bg-pink-500/10',
+    borderColor: 'border-pink-500/20',
+    icon: 'Star',
+  },
+  jornalista: {
+    label: 'Jornalista',
+    color: 'text-sky-400',
+    bgColor: 'bg-sky-500/10',
+    borderColor: 'border-sky-500/20',
+    icon: 'Newspaper',
+  },
+  ativista: {
+    label: 'Ativista',
+    color: 'text-orange-400',
+    bgColor: 'bg-orange-500/10',
+    borderColor: 'border-orange-500/20',
+    icon: 'Megaphone',
+  },
+  celebridade: {
+    label: 'Celebridade',
+    color: 'text-violet-400',
+    bgColor: 'bg-violet-500/10',
+    borderColor: 'border-violet-500/20',
+    icon: 'Sparkles',
+  },
+  funcionario_publico: {
+    label: 'Func. Publico',
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/20',
+    icon: 'Building2',
+  },
+  educador: {
+    label: 'Educador',
+    color: 'text-teal-400',
+    bgColor: 'bg-teal-500/10',
+    borderColor: 'border-teal-500/20',
+    icon: 'GraduationCap',
+  },
+  saude: {
+    label: 'Saude',
+    color: 'text-rose-400',
+    bgColor: 'bg-rose-500/10',
+    borderColor: 'border-rose-500/20',
+    icon: 'Heart',
+  },
+  juridico: {
+    label: 'Juridico',
+    color: 'text-indigo-400',
+    bgColor: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/20',
+    icon: 'Gavel',
+  },
+  outro: {
+    label: 'Outro',
+    color: 'text-zinc-400',
+    bgColor: 'bg-zinc-500/10',
+    borderColor: 'border-zinc-500/20',
+    icon: 'User',
+  },
+};
+
+export const ALL_CATEGORIES: FollowerCategory[] = [
+  'politico',
+  'religioso',
+  'empresario',
+  'influenciador',
+  'jornalista',
+  'ativista',
+  'celebridade',
+  'funcionario_publico',
+  'educador',
+  'saude',
+  'juridico',
+  'outro',
+];
