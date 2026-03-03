@@ -1,11 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
   ChevronDown,
   Briefcase,
-  TrendingUp,
   Users,
   ImageIcon,
   ExternalLink,
@@ -13,6 +13,9 @@ import {
   DollarSign,
   Vote,
   Tag,
+  MessageCircle,
+  X,
+  Maximize2,
 } from 'lucide-react';
 
 export interface AnalyzedFollowerData {
@@ -30,6 +33,7 @@ export interface AnalyzedFollowerData {
     temas_interesse: string[];
     categoria: string;
     categoria_label: string;
+    frase_comunicacao?: string;
   };
   category: string;
   profile: {
@@ -40,19 +44,30 @@ export interface AnalyzedFollowerData {
   };
 }
 
+/* ─── 20 Tags — Colors ─── */
+
 const GROUP_COLORS: Record<string, { bg: string; text: string; border: string; glow: string }> = {
-  FUTEBOL:        { bg: 'bg-emerald-500/15', text: 'text-emerald-300', border: 'border-emerald-500/30', glow: 'shadow-emerald-500/10' },
-  FAMILIA:        { bg: 'bg-amber-500/15',   text: 'text-amber-300',   border: 'border-amber-500/30',   glow: 'shadow-amber-500/10' },
-  POLITICA:       { bg: 'bg-red-500/15',     text: 'text-red-300',     border: 'border-red-500/30',     glow: 'shadow-red-500/10' },
-  EMPREENDEDOR:   { bg: 'bg-violet-500/15',  text: 'text-violet-300',  border: 'border-violet-500/30',  glow: 'shadow-violet-500/10' },
-  FE:             { bg: 'bg-orange-500/15',   text: 'text-orange-300',  border: 'border-orange-500/30',  glow: 'shadow-orange-500/10' },
-  LIFESTYLE:      { bg: 'bg-pink-500/15',    text: 'text-pink-300',    border: 'border-pink-500/30',    glow: 'shadow-pink-500/10' },
-  MODA:           { bg: 'bg-fuchsia-500/15', text: 'text-fuchsia-300', border: 'border-fuchsia-500/30', glow: 'shadow-fuchsia-500/10' },
-  TECH:           { bg: 'bg-cyan-500/15',    text: 'text-cyan-300',    border: 'border-cyan-500/30',    glow: 'shadow-cyan-500/10' },
-  SAUDE:          { bg: 'bg-rose-500/15',    text: 'text-rose-300',    border: 'border-rose-500/30',    glow: 'shadow-rose-500/10' },
-  EDUCACAO:       { bg: 'bg-teal-500/15',    text: 'text-teal-300',    border: 'border-teal-500/30',    glow: 'shadow-teal-500/10' },
-  ENTRETENIMENTO: { bg: 'bg-indigo-500/15',  text: 'text-indigo-300',  border: 'border-indigo-500/30',  glow: 'shadow-indigo-500/10' },
-  OUTRO:          { bg: 'bg-zinc-500/15',    text: 'text-zinc-300',    border: 'border-zinc-500/30',    glow: 'shadow-zinc-500/10' },
+  FAMILIA:      { bg: 'bg-amber-500/15',    text: 'text-amber-300',    border: 'border-amber-500/30',    glow: 'shadow-amber-500/10' },
+  EMPREENDEDOR: { bg: 'bg-violet-500/15',   text: 'text-violet-300',   border: 'border-violet-500/30',   glow: 'shadow-violet-500/10' },
+  FE:           { bg: 'bg-orange-500/15',    text: 'text-orange-300',   border: 'border-orange-500/30',   glow: 'shadow-orange-500/10' },
+  ESPORTE:      { bg: 'bg-emerald-500/15',   text: 'text-emerald-300',  border: 'border-emerald-500/30',  glow: 'shadow-emerald-500/10' },
+  EDUCACAO:     { bg: 'bg-teal-500/15',      text: 'text-teal-300',     border: 'border-teal-500/30',     glow: 'shadow-teal-500/10' },
+  SAUDE:        { bg: 'bg-rose-500/15',      text: 'text-rose-300',     border: 'border-rose-500/30',     glow: 'shadow-rose-500/10' },
+  TECH:         { bg: 'bg-cyan-500/15',      text: 'text-cyan-300',     border: 'border-cyan-500/30',     glow: 'shadow-cyan-500/10' },
+  POLITICA:     { bg: 'bg-red-500/15',       text: 'text-red-300',      border: 'border-red-500/30',      glow: 'shadow-red-500/10' },
+  MODA:         { bg: 'bg-fuchsia-500/15',   text: 'text-fuchsia-300',  border: 'border-fuchsia-500/30',  glow: 'shadow-fuchsia-500/10' },
+  ARTE:         { bg: 'bg-purple-500/15',    text: 'text-purple-300',   border: 'border-purple-500/30',   glow: 'shadow-purple-500/10' },
+  MUSICA:       { bg: 'bg-indigo-500/15',    text: 'text-indigo-300',   border: 'border-indigo-500/30',   glow: 'shadow-indigo-500/10' },
+  GASTRONOMIA:  { bg: 'bg-yellow-500/15',    text: 'text-yellow-300',   border: 'border-yellow-500/30',   glow: 'shadow-yellow-500/10' },
+  AGRO:         { bg: 'bg-lime-500/15',      text: 'text-lime-300',     border: 'border-lime-500/30',     glow: 'shadow-lime-500/10' },
+  PET:          { bg: 'bg-amber-400/15',     text: 'text-amber-200',    border: 'border-amber-400/30',    glow: 'shadow-amber-400/10' },
+  VIAGEM:       { bg: 'bg-sky-500/15',       text: 'text-sky-300',      border: 'border-sky-500/30',      glow: 'shadow-sky-500/10' },
+  FITNESS:      { bg: 'bg-green-500/15',     text: 'text-green-300',    border: 'border-green-500/30',    glow: 'shadow-green-500/10' },
+  JURIDICO:     { bg: 'bg-slate-400/15',     text: 'text-slate-300',    border: 'border-slate-400/30',    glow: 'shadow-slate-400/10' },
+  INFLUENCER:   { bg: 'bg-pink-500/15',      text: 'text-pink-300',     border: 'border-pink-500/30',     glow: 'shadow-pink-500/10' },
+  COMUNIDADE:   { bg: 'bg-blue-500/15',      text: 'text-blue-300',     border: 'border-blue-500/30',     glow: 'shadow-blue-500/10' },
+  LIFESTYLE:    { bg: 'bg-pink-400/15',      text: 'text-pink-200',     border: 'border-pink-400/30',     glow: 'shadow-pink-400/10' },
+  OUTRO:        { bg: 'bg-zinc-500/15',      text: 'text-zinc-300',     border: 'border-zinc-500/30',     glow: 'shadow-zinc-500/10' },
 };
 
 function getGroupColor(grupo: string) {
@@ -63,6 +78,152 @@ function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+/* ─── Canvas: render phrase text on top of template image ─── */
+
+function renderCardCanvas(
+  canvas: HTMLCanvasElement,
+  templateImg: HTMLImageElement,
+  frase: string,
+) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const w = templateImg.naturalWidth;
+  const h = templateImg.naturalHeight;
+  canvas.width = w;
+  canvas.height = h;
+
+  // Draw original template — untouched
+  ctx.drawImage(templateImg, 0, 0, w, h);
+
+  if (!frase) return;
+
+  // Text centered in the image
+  const textAreaMaxWidth = w * 0.75;
+  const textCenterX = w * 0.5;
+  const textStartY = h * 0.15;
+
+  // Font size
+  const fontSize = Math.round(w * 0.035);
+  ctx.font = `600 ${fontSize}px "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+
+  // Word wrap
+  const words = frase.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine ? `${currentLine} ${word}` : word;
+    const metrics = ctx.measureText(testLine);
+    if (metrics.width > textAreaMaxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) lines.push(currentLine);
+
+  const lineHeight = fontSize * 1.6;
+
+  // White text with clean drop shadow
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+  ctx.shadowBlur = fontSize * 0.4;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = fontSize * 0.1;
+
+  lines.forEach((line, i) => {
+    ctx.fillText(line, textCenterX, textStartY + i * lineHeight);
+  });
+
+  ctx.shadowColor = 'transparent';
+}
+
+/* ─── Fullscreen Campaign Modal (Canvas-rendered text) ─── */
+
+interface CampaignModalProps {
+  open: boolean;
+  onClose: () => void;
+  frase: string;
+  displayName: string;
+}
+
+function CampaignModal({ open, onClose, frase, displayName }: CampaignModalProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const renderCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !frase) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      renderCardCanvas(canvas, img, frase);
+    };
+    img.src = '/templates/campanha-base.jpg';
+  }, [frase]);
+
+  // Render every time modal opens (canvas is fresh each mount)
+  useEffect(() => {
+    if (open) {
+      requestAnimationFrame(() => renderCanvas());
+    }
+  }, [open, renderCanvas]);
+
+  // Escape key + body scroll lock
+  useEffect(() => {
+    if (!open) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKey);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKey);
+      document.body.style.overflow = '';
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-xl" />
+
+      {/* Close button */}
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute top-6 right-6 z-10 p-2.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.1] text-zinc-300 hover:text-white transition-all duration-200 active:scale-[0.95]"
+      >
+        <X size={20} />
+      </button>
+
+      {/* Modal content */}
+      <div
+        className="relative w-[90vw] max-w-[520px] animate-in fade-in zoom-in-95 duration-300"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="relative w-full overflow-hidden rounded-2xl border border-white/[0.12] shadow-2xl shadow-black/60">
+          <canvas
+            ref={canvasRef}
+            className="w-full h-auto block"
+            aria-label={`Card de campanha - ${displayName}`}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 function GenderBadge({ genero }: { genero: string }) {
@@ -93,6 +254,7 @@ interface FollowerRowProps {
 export function FollowerRow({ data, index }: FollowerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
@@ -172,7 +334,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-[11px] text-zinc-500 truncate">@{data.username}</p>
-            {analysis.profissao && analysis.profissao !== 'indefinido' && (
+            {analysis.profissao && analysis.profissao !== 'indefinido' && analysis.profissao !== 'Indefinido' && (
               <>
                 <span className="text-zinc-700">·</span>
                 <p className="text-[11px] text-zinc-400 truncate hidden sm:block">
@@ -243,6 +405,58 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
             <p className="text-sm text-zinc-200 leading-relaxed">{analysis.resumo}</p>
           </div>
 
+          {/* ── Como se comunicar + Arte lado a lado ── */}
+          <div className="flex gap-4 items-stretch">
+            {/* Frase */}
+            {analysis.frase_comunicacao && (
+              <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
+                <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative p-5 flex flex-col justify-center h-full space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/15">
+                      <MessageCircle size={13} className="text-emerald-400" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                      Como se comunicar
+                    </span>
+                  </div>
+                  <p className="text-base md:text-lg leading-relaxed text-zinc-100">
+                    <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Arte de campanha com foto do seguidor — clicavel */}
+            <div
+              className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-white/[0.1] cursor-pointer group/art hover:border-white/[0.2] transition-all duration-300 hover:shadow-xl hover:shadow-black/40"
+              onClick={() => setModalOpen(true)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/templates/campanha-base.jpg"
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+
+              {/* Expand icon overlay on hover */}
+              <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
+                <Maximize2 size={12} className="text-white/80" />
+              </div>
+
+              {/* Spacer to give the image natural height */}
+              <div className="relative h-full min-h-[140px]" />
+            </div>
+
+            {/* Campaign fullscreen modal — Gemini adds phrase text on top of template */}
+            <CampaignModal
+              open={modalOpen}
+              onClose={() => setModalOpen(false)}
+              frase={analysis.frase_comunicacao || ''}
+              displayName={data.display_name || data.username}
+            />
+          </div>
+
           {/* Bio */}
           {profile.biography && (
             <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3">
@@ -275,7 +489,7 @@ export function FollowerRow({ data, index }: FollowerRowProps) {
             <DetailChip
               icon={<Briefcase size={12} />}
               label="Profissao"
-              value={analysis.profissao !== 'indefinido' ? analysis.profissao : '—'}
+              value={analysis.profissao !== 'indefinido' && analysis.profissao !== 'Indefinido' ? analysis.profissao : '—'}
             />
             <DetailChip
               icon={<DollarSign size={12} />}

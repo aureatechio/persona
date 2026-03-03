@@ -45,19 +45,34 @@ const SYSTEM_PROMPT = `Voce e um analista de inteligencia social brasileiro. Ana
   "faixa_etaria": "16-24 | 25-34 | 35-44 | 45-59 | 60+ | indefinido",
   "renda_estimada": "baixa | media | alta | indefinido",
   "profissao": "Profissao curta (ex: Advogada, Empresario, Estudante, Personal Trainer). Se incerto: 'Indefinido'",
-  "grupo": "FUTEBOL | FAMILIA | POLITICA | EMPREENDEDOR | FE | LIFESTYLE | MODA | TECH | SAUDE | EDUCACAO | ENTRETENIMENTO | OUTRO",
+  "grupo": "FAMILIA | EMPREENDEDOR | FE | ESPORTE | EDUCACAO | SAUDE | TECH | POLITICA | MODA | ARTE | MUSICA | GASTRONOMIA | AGRO | PET | VIAGEM | FITNESS | JURIDICO | INFLUENCER | COMUNIDADE | LIFESTYLE",
   "engajamento_politico": "passivo | moderado | ativo | indefinido",
   "temas_interesse": ["lista", "de", "temas", "principais"],
   "categoria": "politico | religioso | empresario | influenciador | jornalista | ativista | celebridade | funcionario_publico | educador | saude | juridico | outro",
-  "categoria_label": "Label legivel da categoria"
+  "categoria_label": "Label legivel da categoria",
+  "frase_comunicacao": "Frase personalizada de abordagem para essa pessoa (veja regras abaixo)"
 }
 
 REGRAS:
 - Baseie-se EXCLUSIVAMENTE nos dados fornecidos.
 - Para genero: analise nome, bio, fotos mencionadas e linguagem usada.
 - Para faixa etaria: estime pela linguagem, temas, aparencia descrita, contexto de vida.
-- Para grupo: escolha o que MELHOR representa o perfil geral da pessoa.
+- Para grupo: escolha a tag que MELHOR representa o perfil geral da pessoa entre as 20 opcoes.
 - Para renda: analise profissao, estilo de vida nos posts, viagens, produtos mencionados.
+- Para frase_comunicacao: crie uma mensagem UNICA e personalizada para abordar essa pessoa.
+  REGRAS DA FRASE:
+  - Comece com "Oi, [PRIMEIRO NOME]," (use o primeiro nome real, nao o @username)
+  - O restante da frase deve ser 100% personalizado com base no RESUMO e nos POSTS da pessoa
+  - Mencione algo ESPECIFICO da vida dela (profissao, hobby, causa, conquista, conteudo que posta)
+  - Seja criativo, humano e genuino. Nao use formulas repetitivas.
+  - Maximo 2 frases curtas. Tom acolhedor e proximo.
+  - NUNCA repita estruturas como "X e tudo pra gente, ne?" ou "Conte comigo sempre!" — varie o tom.
+  Exemplos de BOAS frases (cada uma totalmente diferente):
+  - "Oi, Rose, vi que voce ama cozinhar em familia — que delicia essas receitas! Quero muito te conhecer melhor."
+  - "Oi, Marcos, parabens pelo crescimento da sua empresa, inspirador demais! Bora trocar uma ideia?"
+  - "Oi, Ana, suas trilhas sao incriveis, da vontade de ir junto! Conta comigo no que precisar."
+  - "Oi, Pedro, que trabalho lindo com resgate de animais. O mundo precisa de mais gente como voce."
+  - "Oi, Julia, seu conteudo sobre educacao infantil e muito necessario. Admiro muito seu trabalho!"
 - Seja direto e preciso. Nao invente dados.`;
 
 /* ─── Apify Instagram Scraper ─── */
@@ -139,6 +154,7 @@ interface AnalysisResult {
   temas_interesse: string[];
   categoria: string;
   categoria_label: string;
+  frase_comunicacao: string;
 }
 
 function tryParseJson(text: string): AnalysisResult | null {
@@ -248,11 +264,12 @@ export async function POST(request: NextRequest) {
           faixa_etaria: 'indefinido',
           renda_estimada: 'indefinido',
           profissao: 'Indefinido',
-          grupo: 'OUTRO',
+          grupo: 'LIFESTYLE',
           engajamento_politico: 'indefinido',
           temas_interesse: [],
           categoria: 'outro',
           categoria_label: 'Outro',
+          frase_comunicacao: '',
         },
         category,
         profile: {

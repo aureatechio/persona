@@ -1,12 +1,14 @@
 'use client';
 
-import { Suspense, useCallback, useMemo, useState } from 'react';
+import { Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
   Brain,
+  ChevronDown,
   Instagram,
   Loader2,
+  Plus,
   Search,
 } from 'lucide-react';
 import { SearchBar } from '@/components/instagram-mapping/SearchBar';
@@ -49,88 +51,37 @@ function MapeamentoContent() {
   const [pageState, setPageState] = useState<PageState>('search');
   const [targetUsername, setTargetUsername] = useState('');
 
+  // All public followers returned by Apify
   const [rawFollowers, setRawFollowers] = useState<RawFollower[]>([]);
+  // How many raw followers have been sent for analysis so far
+  const [analyzedCursor, setAnalyzedCursor] = useState(0);
+  // Analyzed results
   const [analyzedFollowers, setAnalyzedFollowers] = useState<AnalyzedFollowerData[]>([]);
 
   const [searchLoading, setSearchLoading] = useState(false);
   const [analyzeProgress, setAnalyzeProgress] = useState({ current: 0, total: 0 });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const [visibleCount, setVisibleCount] = useState(10);
-
   const [filters, setFilters] = useState<ActiveFilters>({ ...EMPTY_FILTERS });
-
   const [error, setError] = useState('');
 
-  /* ─── Search handler ─── */
+  // Ref to track completed count across batches
+  const batchCompletedRef = useRef(0);
 
-  const handleSearch = useCallback(async (username: string, maxCount: number) => {
-    setSearchLoading(true);
-    setError('');
-    setTargetUsername(username);
-    setPageState('loading');
-    setRawFollowers([]);
-    setAnalyzedFollowers([]);
-    setVisibleCount(10);
-    setFilters({ ...EMPTY_FILTERS });
+  // Cache: username -> raw public followers (avoids re-calling Apify)
+  const searchCacheRef = useRef<Map<string, RawFollower[]>>(new Map());
 
-    try {
-      const res = await fetch('/api/instagram-mapping/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, maxCount }),
-        signal: AbortSignal.timeout(320000),
-      });
+  /* ─── Analyze a batch of followers (parallel, 3 workers) ─── */
 
-      const data = await res.json();
+  const analyzeBatch = useCallback(async (followers: RawFollower[]) => {
+    if (followers.length === 0) return;
 
-      if (!res.ok) {
-        throw new Error(data.error || 'Falha ao buscar seguidores');
-      }
-
-      if (!data.followers || data.followers.length === 0) {
-        setError('Nenhum seguidor encontrado. Verifique se o perfil e publico.');
-        setPageState('search');
-        setSearchLoading(false);
-        return;
-      }
-
-      const publicFollowers: RawFollower[] = data.followers.filter(
-        (f: RawFollower) => !f.is_private,
-      );
-
-      if (publicFollowers.length === 0) {
-        setError('Todos os seguidores encontrados sao privados.');
-        setPageState('search');
-        setSearchLoading(false);
-        return;
-      }
-
-      // Apify has a min of 50 — slice to user's requested amount
-      const limitedFollowers = publicFollowers.slice(0, maxCount);
-
-      setRawFollowers(limitedFollowers);
-      setSearchLoading(false);
-      setPageState('results');
-
-      analyzeFollowers(limitedFollowers);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao buscar seguidores';
-      setError(msg);
-      setPageState('search');
-      setSearchLoading(false);
-    }
-  }, []);
-
-  /* ─── Analyze followers (parallel, 3 workers) ─── */
-
-  const analyzeFollowers = useCallback(async (followers: RawFollower[]) => {
     setIsAnalyzing(true);
+    batchCompletedRef.current = 0;
     setAnalyzeProgress({ current: 0, total: followers.length });
 
     const CONCURRENCY = 3;
     const queue = [...followers];
-    let completed = 0;
 
     async function analyzeOne(f: RawFollower) {
       try {
@@ -163,8 +114,8 @@ function MapeamentoContent() {
         // Skip failed analyses silently
       }
 
-      completed++;
-      setAnalyzeProgress({ current: completed, total: followers.length });
+      batchCompletedRef.current++;
+      setAnalyzeProgress({ current: batchCompletedRef.current, total: followers.length });
     }
 
     async function runWorker() {
@@ -180,6 +131,91 @@ function MapeamentoContent() {
 
     setIsAnalyzing(false);
   }, []);
+
+  /* ─── Search handler ─── */
+
+  const handleSearch = useCallback(async (username: string, maxCount: number) => {
+    setSearchLoading(true);
+    setError('');
+    setTargetUsername(username);
+    setPageState('loading');
+    setRawFollowers([]);
+    setAnalyzedFollowers([]);
+    setAnalyzedCursor(0);
+    setFilters({ ...EMPTY_FILTERS });
+
+    try {
+      const cached = searchCacheRef.current.get(username);
+      let publicFollowers: RawFollower[];
+
+      if (cached) {
+        // Simulate brief loading for UX consistency
+        await new Promise((r) => setTimeout(r, 800));
+        publicFollowers = cached;
+      } else {
+        const res = await fetch('/api/instagram-mapping/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, maxCount: Math.max(50, maxCount) }),
+          signal: AbortSignal.timeout(320000),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Falha ao buscar seguidores');
+        }
+
+        if (!data.followers || data.followers.length === 0) {
+          setError('Nenhum seguidor encontrado. Verifique se o perfil e publico.');
+          setPageState('search');
+          setSearchLoading(false);
+          return;
+        }
+
+        publicFollowers = (data.followers as RawFollower[]).filter(
+          (f) => !f.is_private,
+        );
+
+        if (publicFollowers.length === 0) {
+          setError('Todos os seguidores encontrados sao privados.');
+          setPageState('search');
+          setSearchLoading(false);
+          return;
+        }
+
+        // Cache for future searches
+        searchCacheRef.current.set(username, publicFollowers);
+      }
+
+      // Store ALL public followers — analyze only the first batch
+      setRawFollowers(publicFollowers);
+      const firstBatch = publicFollowers.slice(0, maxCount);
+      setAnalyzedCursor(firstBatch.length);
+
+      setSearchLoading(false);
+      setPageState('results');
+
+      analyzeBatch(firstBatch);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao buscar seguidores';
+      setError(msg);
+      setPageState('search');
+      setSearchLoading(false);
+    }
+  }, [analyzeBatch]);
+
+  /* ─── Load more — analyze next 10 raw followers ─── */
+
+  const handleLoadMore = useCallback(() => {
+    if (isAnalyzing) return;
+    const nextBatch = rawFollowers.slice(analyzedCursor, analyzedCursor + 10);
+    if (nextBatch.length === 0) return;
+    setAnalyzedCursor((prev) => prev + nextBatch.length);
+    analyzeBatch(nextBatch);
+  }, [rawFollowers, analyzedCursor, isAnalyzing, analyzeBatch]);
+
+  const hasMoreRaw = analyzedCursor < rawFollowers.length;
 
   /* ─── Filter logic ─── */
 
@@ -207,18 +243,15 @@ function MapeamentoContent() {
     });
   }, [analyzedFollowers, filters]);
 
-  const visibleFollowers = filteredFollowers.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredFollowers.length;
-
   /* ─── New search ─── */
 
   const handleNewSearch = useCallback(() => {
     setPageState('search');
     setRawFollowers([]);
     setAnalyzedFollowers([]);
+    setAnalyzedCursor(0);
     setTargetUsername('');
     setError('');
-    setVisibleCount(10);
     setFilters({ ...EMPTY_FILTERS });
   }, []);
 
@@ -392,9 +425,9 @@ function MapeamentoContent() {
             )}
 
             {/* Results list */}
-            {visibleFollowers.length > 0 && (
+            {filteredFollowers.length > 0 && (
               <div className="space-y-2">
-                {visibleFollowers.map((follower, i) => (
+                {filteredFollowers.map((follower, i) => (
                   <FollowerRow key={follower.username} data={follower} index={i} />
                 ))}
               </div>
@@ -425,27 +458,45 @@ function MapeamentoContent() {
               </div>
             )}
 
-            {/* Load more */}
-            {hasMore && (
-              <div className="flex justify-center pt-2">
-                <button
-                  onClick={() => setVisibleCount((prev) => prev + 10)}
-                  className={cn(
-                    'inline-flex items-center gap-2 px-6 py-2.5',
-                    'bg-white/[0.04] hover:bg-white/[0.08]',
-                    'text-zinc-400 hover:text-zinc-200',
-                    'border border-white/[0.06] hover:border-white/[0.12]',
-                    'rounded-xl text-sm font-medium',
-                    'active:scale-[0.97] transition-all duration-200',
-                  )}
-                >
-                  Carregar mais 10
-                  <span className="text-xs text-zinc-600">
-                    ({filteredFollowers.length - visibleCount} restantes)
-                  </span>
-                </button>
-              </div>
-            )}
+            {/* ── LOAD MORE BUTTON — always visible ── */}
+            <div className="flex flex-col items-center gap-3 pt-4 pb-8">
+              {/* Info line */}
+              <span className="text-[11px] text-zinc-500">
+                {analyzedFollowers.length} analisados de {rawFollowers.length} disponiveis
+              </span>
+
+              {/* Button — always present */}
+              <button
+                onClick={handleLoadMore}
+                disabled={isAnalyzing || !hasMoreRaw}
+                className={cn(
+                  'inline-flex items-center gap-2.5 px-7 py-3',
+                  'rounded-xl text-sm font-semibold',
+                  'shadow-lg',
+                  'active:scale-[0.97] transition-all duration-200',
+                  hasMoreRaw && !isAnalyzing
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 hover:shadow-emerald-400/30'
+                    : 'bg-white/[0.06] text-zinc-500 border border-white/[0.08] shadow-black/20 cursor-not-allowed',
+                )}
+              >
+                {isAnalyzing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Analisando...
+                  </>
+                ) : hasMoreRaw ? (
+                  <>
+                    <Plus size={14} />
+                    Carregar mais 10
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={14} />
+                    Todos analisados
+                  </>
+                )}
+              </button>
+            </div>
           </main>
         </>
       )}
