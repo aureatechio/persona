@@ -142,7 +142,6 @@ function MapeamentoContent() {
     setRawFollowers([]);
     setAnalyzedFollowers([]);
     setAnalyzedCursor(0);
-    setFilters({ ...EMPTY_FILTERS });
 
     try {
       const cached = searchCacheRef.current.get(username);
