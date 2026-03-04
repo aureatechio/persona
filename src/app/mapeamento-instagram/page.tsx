@@ -78,6 +78,9 @@ function MapeamentoContent() {
   // Campaign images by grupo tag (e.g. { ESPORTE: "https://...", FE: "https://..." })
   const [campaignImages, setCampaignImages] = useState<Record<string, string>>({});
 
+  // Supabase account ID for saving followers
+  const [accountId, setAccountId] = useState<string | null>(null);
+
   // Ref to track completed count across batches
   const batchCompletedRef = useRef(0);
 
@@ -127,7 +130,39 @@ function MapeamentoContent() {
       });
   }, []);
 
+  /* ─── Persist a single analyzed follower to Supabase (fire-and-forget) ─── */
+
+  const persistFollower = useCallback((data: AnalyzedFollowerData, acctId: string | null) => {
+    if (!acctId) return;
+    fetch('/api/instagram-mapping/followers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        account_id: acctId,
+        username: data.username,
+        display_name: data.display_name,
+        avatar_url: data.avatar_url,
+        ai_summary: data.analysis?.resumo || '',
+        category: data.category || data.analysis?.categoria || 'outro',
+        category_label: data.analysis?.categoria_label || null,
+        metadata_json: {
+          analysis_raw: data.analysis,
+          biography: data.profile?.biography,
+          followers_count: data.profile?.followers_count,
+          follows_count: data.profile?.follows_count,
+          posts_count: data.profile?.posts_count,
+          scraped_at: new Date().toISOString(),
+        },
+      }),
+    }).catch(() => {}); // fire-and-forget
+  }, []);
+
   /* ─── Analyze a batch of followers (parallel, 3 workers) ─── */
+
+  const accountIdRef = useRef<string | null>(null);
+
+  // Keep ref in sync with state so analyzeBatch closure always has latest value
+  useEffect(() => { accountIdRef.current = accountId; }, [accountId]);
 
   const analyzeBatch = useCallback(async (followers: RawFollower[]) => {
     if (followers.length === 0) return;
@@ -165,6 +200,9 @@ function MapeamentoContent() {
           };
 
           setAnalyzedFollowers((prev) => [...prev, followerData]);
+
+          // Persist to Supabase (fire-and-forget)
+          persistFollower(followerData, accountIdRef.current);
         }
       } catch {
         // Skip failed analyses silently
@@ -186,7 +224,7 @@ function MapeamentoContent() {
     );
 
     setIsAnalyzing(false);
-  }, []);
+  }, [persistFollower]);
 
   /* ─── Search handler ─── */
 
@@ -198,50 +236,76 @@ function MapeamentoContent() {
     setRawFollowers([]);
     setAnalyzedFollowers([]);
     setAnalyzedCursor(0);
+    setAccountId(null);
+    accountIdRef.current = null;
 
     try {
-      const cached = searchCacheRef.current.get(username);
-      let publicFollowers: RawFollower[];
+      // Always call the API — it checks DB cache internally
+      const res = await fetch('/api/instagram-mapping/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, maxCount: Math.max(50, maxCount) }),
+        signal: AbortSignal.timeout(320000),
+      });
 
-      if (cached) {
-        // Simulate brief loading for UX consistency
-        await new Promise((r) => setTimeout(r, 800));
-        publicFollowers = cached;
-      } else {
-        const res = await fetch('/api/instagram-mapping/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, maxCount: Math.max(50, maxCount) }),
-          signal: AbortSignal.timeout(320000),
-        });
+      const data = await res.json();
 
-        const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao buscar seguidores');
+      }
 
-        if (!res.ok) {
-          throw new Error(data.error || 'Falha ao buscar seguidores');
-        }
+      /* ─── CACHED PATH: results loaded from Supabase ─── */
+      if (data.cached && data.analyzedFollowers) {
+        setAccountId(data.account_id || null);
+        accountIdRef.current = data.account_id || null;
 
-        if (!data.followers || data.followers.length === 0) {
-          setError('Nenhum seguidor encontrado. Verifique se o perfil e publico.');
-          setPageState('search');
-          setSearchLoading(false);
-          return;
-        }
-
-        publicFollowers = (data.followers as RawFollower[]).filter(
-          (f) => !f.is_private,
+        const cachedAnalyzed: AnalyzedFollowerData[] = data.analyzedFollowers.map(
+          (f: { username: string; display_name: string; avatar_url: string; analysis: AnalyzedFollowerData['analysis']; category: string; profile: AnalyzedFollowerData['profile'] }) => ({
+            username: f.username,
+            display_name: f.display_name,
+            avatar_url: f.avatar_url,
+            analysis: f.analysis,
+            category: f.category,
+            profile: f.profile,
+          }),
         );
 
-        if (publicFollowers.length === 0) {
-          setError('Todos os seguidores encontrados sao privados.');
-          setPageState('search');
-          setSearchLoading(false);
-          return;
-        }
+        setAnalyzedFollowers(cachedAnalyzed);
+        // No raw followers to load more from cache — cursor = 0, rawFollowers empty
+        setRawFollowers([]);
+        setAnalyzedCursor(0);
 
-        // Cache for future searches
-        searchCacheRef.current.set(username, publicFollowers);
+        setSearchLoading(false);
+        setPageState('results');
+        return;
       }
+
+      /* ─── FRESH PATH: results from Apify ─── */
+      if (data.account_id) {
+        setAccountId(data.account_id);
+        accountIdRef.current = data.account_id; // Set ref immediately so analyzeBatch can use it
+      }
+
+      if (!data.followers || data.followers.length === 0) {
+        setError('Nenhum seguidor encontrado. Verifique se o perfil é público.');
+        setPageState('search');
+        setSearchLoading(false);
+        return;
+      }
+
+      const publicFollowers = (data.followers as RawFollower[]).filter(
+        (f) => !f.is_private,
+      );
+
+      if (publicFollowers.length === 0) {
+        setError('Todos os seguidores encontrados são privados.');
+        setPageState('search');
+        setSearchLoading(false);
+        return;
+      }
+
+      // Cache for future in-session searches
+      searchCacheRef.current.set(username, publicFollowers);
 
       // Store ALL public followers — analyze only the first batch
       setRawFollowers(publicFollowers);
@@ -291,17 +355,9 @@ function MapeamentoContent() {
 
       if (filters.temas.length > 0) {
         const temas = (a.temas_interesse || []).map((t) => stripAccents(t));
-        const grupoNorm = stripAccents(a.grupo);
-        const resumoNorm = stripAccents(a.resumo || '');
-        const profNorm = stripAccents(a.profissao || '');
         const hasMatch = filters.temas.some((ft) => {
           const ftNorm = stripAccents(ft);
-          return (
-            temas.some((t) => t.includes(ftNorm)) ||
-            grupoNorm.includes(ftNorm) ||
-            resumoNorm.includes(ftNorm) ||
-            profNorm.includes(ftNorm)
-          );
+          return temas.some((t) => t.includes(ftNorm));
         });
         if (!hasMatch) return false;
       }
@@ -358,8 +414,8 @@ function MapeamentoContent() {
             ),
           );
         }
-      } catch {
-        // Skip failed regeneration silently
+      } catch (err) {
+        console.error('[Regenerate] failed for', f.username, err);
       }
     }
 
@@ -376,6 +432,8 @@ function MapeamentoContent() {
     setAnalyzedFollowers([]);
     setAnalyzedCursor(0);
     setTargetUsername('');
+    setAccountId(null);
+    accountIdRef.current = null;
     setError('');
     setFilters({ ...EMPTY_FILTERS });
   }, []);
@@ -418,11 +476,11 @@ function MapeamentoContent() {
                 Mapeamento Instagram
               </div>
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight bg-gradient-to-r from-white via-white to-zinc-300 bg-clip-text text-transparent drop-shadow-[0_0_30px_rgba(255,255,255,0.08)] py-2 leading-[1.15]">
-                Analise de Seguidores
+                Análise de Seguidores
               </h1>
               <p className="text-zinc-300 text-base md:text-lg max-w-lg mx-auto leading-relaxed">
-                Descubra quem sao os seguidores de qualquer perfil publico
-                <span className="text-emerald-400/90 font-medium"> com inteligencia artificial</span>
+                Descubra quem são os seguidores de qualquer perfil público
+                <span className="text-emerald-400/90 font-medium"> com inteligência artificial</span>
               </p>
             </div>
 
@@ -499,7 +557,9 @@ function MapeamentoContent() {
                 @{targetUsername}
               </span>
               <span className="text-[11px] text-zinc-600 shrink-0">
-                {rawFollowers.length} publicos
+                {rawFollowers.length > 0
+                  ? `${rawFollowers.length} públicos`
+                  : `${analyzedFollowers.length} salvos`}
               </span>
             </div>
 
@@ -620,7 +680,7 @@ function MapeamentoContent() {
                   />
                 </div>
                 <p className="text-[10px] text-zinc-600">
-                  Scraping perfis + Analise por IA — {analyzeProgress.current} de {analyzeProgress.total}
+                  Scraping perfis + Análise por IA — {analyzeProgress.current} de {analyzeProgress.total}
                 </p>
               </div>
             )}
@@ -650,7 +710,7 @@ function MapeamentoContent() {
                   />
                 ))}
                 <p className="text-center text-xs text-zinc-600">
-                  Analisando perfis... Os resultados aparecerao conforme ficam prontos
+                  Analisando perfis... Os resultados aparecerão conforme ficam prontos
                 </p>
               </div>
             )}
@@ -665,44 +725,51 @@ function MapeamentoContent() {
               </div>
             )}
 
-            {/* ── LOAD MORE BUTTON — always visible ── */}
+            {/* ── LOAD MORE BUTTON ── */}
             <div className="flex flex-col items-center gap-3 pt-4 pb-8">
               {/* Info line */}
               <span className="text-[11px] text-zinc-500">
-                {analyzedFollowers.length} analisados de {rawFollowers.length} disponiveis
+                {analyzedFollowers.length} analisados
+                {rawFollowers.length > 0 && (
+                  <>
+                    {' '}de {rawFollowers.length} disponíveis
+                    {!isAnalyzing && analyzedCursor > 0 && analyzedCursor - analyzedFollowers.length > 0 && (
+                      <span className="text-zinc-600">
+                        {' '}({analyzedCursor - analyzedFollowers.length} pulados — perfis privados/sem dados)
+                      </span>
+                    )}
+                  </>
+                )}
               </span>
 
-              {/* Button — always present */}
-              <button
-                onClick={handleLoadMore}
-                disabled={isAnalyzing || !hasMoreRaw}
-                className={cn(
-                  'inline-flex items-center gap-2.5 px-7 py-3',
-                  'rounded-xl text-sm font-semibold',
-                  'shadow-lg',
-                  'active:scale-[0.97] transition-all duration-200',
-                  hasMoreRaw && !isAnalyzing
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 hover:shadow-emerald-400/30'
-                    : 'bg-white/[0.06] text-zinc-500 border border-white/[0.08] shadow-black/20 cursor-not-allowed',
-                )}
-              >
-                {isAnalyzing ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Analisando...
-                  </>
-                ) : hasMoreRaw ? (
-                  <>
-                    <Plus size={14} />
-                    Carregar mais 10
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown size={14} />
-                    Todos analisados
-                  </>
-                )}
-              </button>
+              {/* Button — only show if there are more to load */}
+              {hasMoreRaw && (
+                <button
+                  onClick={handleLoadMore}
+                  disabled={isAnalyzing}
+                  className={cn(
+                    'inline-flex items-center gap-2.5 px-7 py-3',
+                    'rounded-xl text-sm font-semibold',
+                    'shadow-lg',
+                    'active:scale-[0.97] transition-all duration-200',
+                    !isAnalyzing
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 hover:shadow-emerald-400/30'
+                      : 'bg-white/[0.06] text-zinc-500 border border-white/[0.08] shadow-black/20 cursor-not-allowed',
+                  )}
+                >
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Analisando...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={14} />
+                      Carregar mais 10
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </main>
         </>

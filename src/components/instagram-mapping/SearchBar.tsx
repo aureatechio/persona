@@ -19,7 +19,7 @@ const QUANTITY_OPTIONS = [
 
 export function SearchBar({ onSearch, loading, filterSlot }: SearchBarProps) {
   const [username, setUsername] = useState('');
-  const [maxCount, setMaxCount] = useState(10);
+  const [maxCount, setMaxCount] = useState(100);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

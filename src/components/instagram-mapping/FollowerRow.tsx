@@ -312,15 +312,12 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
         setAudioPlaying(false);
       };
 
-      audio.onpause = () => {
-        setAudioPlaying(false);
-      };
-
-      await audio.play();
       setAudioPlaying(true);
-    } catch {
-      // Silent fail
-    } finally {
+      setAudioLoading(false);
+      await audio.play();
+    } catch (err) {
+      console.error('[TTS] playback error:', err);
+      setAudioPlaying(false);
       setAudioLoading(false);
     }
   }, [audioPlaying]);
@@ -551,7 +548,7 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
                           {audioLoading ? (
                             <>
                               <Loader2 size={13} className="animate-spin" />
-                              Gerando audio...
+                              Gerando áudio...
                             </>
                           ) : audioPlaying ? (
                             <>
@@ -571,16 +568,20 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
 
                   {/* Arte de campanha — clicável */}
                   <div
-                    className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-white/[0.1] cursor-pointer group/art hover:border-white/[0.2] transition-all duration-300 hover:shadow-xl hover:shadow-black/40"
+                    className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-emerald-500/20 cursor-pointer group/art hover:border-emerald-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/10 hover:scale-[1.03]"
                     onClick={() => setModalOpen(true)}
                   >
+                    {/* Vibrant glow overlay */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-emerald-500/10 z-[1] pointer-events-none" />
+                    <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-emerald-500/20 rounded-full blur-2xl pointer-events-none z-[1]" />
+                    <div className="absolute -top-4 -left-4 w-20 h-20 bg-violet-500/15 rounded-full blur-2xl pointer-events-none z-[1]" />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={campaignImageUrl || '/templates/campanha-base.jpg'}
                       alt=""
                       loading="eager"
                       decoding="async"
-                      className="absolute inset-0 w-full h-full object-cover"
+                      className="absolute inset-0 w-full h-full object-cover brightness-110 contrast-105 saturate-[1.2] group-hover/art:scale-110 transition-transform duration-500"
                     />
                     <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
                       <Maximize2 size={12} className="text-white/80" />
@@ -632,19 +633,19 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
             <DetailChip
               icon={<Briefcase size={12} />}
               label="Profissão"
-              value={analysis.profissao !== 'indefinido' && analysis.profissao !== 'Indefinido' ? analysis.profissao : '—'}
+              value={analysis.profissao && analysis.profissao !== 'indefinido' && analysis.profissao !== 'Indefinido' ? analysis.profissao : '—'}
             />
             <DetailChip
               icon={<DollarSign size={12} />}
               label="Renda"
-              value={analysis.renda_estimada !== 'indefinido'
+              value={analysis.renda_estimada && analysis.renda_estimada !== 'indefinido'
                 ? analysis.renda_estimada.charAt(0).toUpperCase() + analysis.renda_estimada.slice(1)
                 : '—'}
             />
             <DetailChip
               icon={<Vote size={12} />}
               label="Engaj. Político"
-              value={analysis.engajamento_politico !== 'indefinido'
+              value={analysis.engajamento_politico && analysis.engajamento_politico !== 'indefinido'
                 ? analysis.engajamento_politico.charAt(0).toUpperCase() + analysis.engajamento_politico.slice(1)
                 : '—'}
             />

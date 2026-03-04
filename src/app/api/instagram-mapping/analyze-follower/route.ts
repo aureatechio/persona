@@ -29,10 +29,10 @@ const VALID_CATEGORIES = [
 ];
 
 const CATEGORY_LABELS: Record<string, string> = {
-  politico: 'Politico', religioso: 'Religioso', empresario: 'Empresario',
+  politico: 'Político', religioso: 'Religioso', empresario: 'Empresário',
   influenciador: 'Influenciador', jornalista: 'Jornalista', ativista: 'Ativista',
-  celebridade: 'Celebridade', funcionario_publico: 'Func. Publico',
-  educador: 'Educador', saude: 'Saude', juridico: 'Juridico', outro: 'Outro',
+  celebridade: 'Celebridade', funcionario_publico: 'Func. Público',
+  educador: 'Educador', saude: 'Saúde', juridico: 'Jurídico', outro: 'Outro',
 };
 
 /* ─── System Prompt (concise mode) ─── */
@@ -70,12 +70,19 @@ REGRAS GERAIS:
   - Máximo 2 frases curtas. Tom acolhedor e próximo. Não aumente o tamanho além de 2 frases.
   - NUNCA repita estruturas iguais entre diferentes perfis — varie o tom e a forma de dizer "conte comigo".
   - OBRIGATÓRIO: use acentuação correta em TODA a frase (você, parabéns, família, incrível, etc.)
+  - IMPORTANTÍSSIMO — PONTUAÇÃO PARA LEITURA EM VOZ ALTA:
+    - Use vírgulas para criar pausas naturais na fala.
+    - Use travessão (—) para pausas dramáticas ou ênfase.
+    - Use ponto de exclamação com moderação, apenas quando a emoção for genuína.
+    - Use reticências (...) se quiser criar suspense ou reflexão.
+    - Escreva como se fosse um DISCURSO falado por um político caloroso — com ritmo, cadência e emoção.
+    - A frase deve soar NATURAL quando lida em voz alta, com respirações e pausas nos lugares certos.
   Exemplos de BOAS frases (cada uma totalmente diferente):
-  - "Oi, Rose, vi que você ama cozinhar em família — que delícia essas receitas! Conte comigo para valorizar essa tradição."
-  - "Oi, Marcos, parabéns pelo crescimento da sua empresa, inspirador demais! Conte comigo nessa jornada."
-  - "Oi, Ana, suas trilhas são incríveis, dá vontade de ir junto! Conte comigo no que precisar."
-  - "Oi, Pedro, que trabalho lindo com resgate de animais. Conte comigo para apoiar essa causa."
-  - "Oi, Júlia, seu conteúdo sobre educação infantil é muito necessário. Conte comigo para fortalecer esse trabalho!"
+  - "Oi, Rose, vi que você ama cozinhar em família — que delícia essas receitas! Conte comigo, para valorizar essa tradição tão bonita."
+  - "Oi, Marcos, parabéns pelo crescimento da sua empresa — inspirador demais! Conte comigo, nessa jornada."
+  - "Oi, Ana, suas trilhas são incríveis — dá vontade de ir junto! Conte comigo, no que precisar."
+  - "Oi, Pedro, que trabalho lindo com resgate de animais — emocionante. Conte comigo, para apoiar essa causa."
+  - "Oi, Júlia, seu conteúdo sobre educação infantil é muito necessário — de verdade. Conte comigo, para fortalecer esse trabalho!"
 - Seja direto e preciso. Não invente dados.`;
 
 /* ─── Apify Instagram Scraper ─── */
@@ -178,10 +185,10 @@ function tryParseJson(text: string): AnalysisResult | null {
 export async function POST(request: NextRequest) {
   try {
     if (!apifyToken) {
-      return NextResponse.json({ error: 'APIFY_API_TOKEN nao configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'APIFY_API_TOKEN não configurado' }, { status: 500 });
     }
     if (ANTHROPIC_KEYS.length === 0) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY nao configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurado' }, { status: 500 });
     }
 
     const body = await request.json();
@@ -192,7 +199,7 @@ export async function POST(request: NextRequest) {
     };
 
     if (!username) {
-      return NextResponse.json({ error: 'username e obrigatorio' }, { status: 400 });
+      return NextResponse.json({ error: 'username é obrigatório' }, { status: 400 });
     }
 
     const cleanUsername = username.replace(/^@/, '').trim();
@@ -213,7 +220,7 @@ export async function POST(request: NextRequest) {
       if (!saveToDb || !followerId) {
         return NextResponse.json({
           skipped: true,
-          reason: isPrivate ? 'Perfil privado' : 'Sem dados uteis',
+          reason: isPrivate ? 'Perfil privado' : 'Sem dados úteis',
         });
       }
 
@@ -223,20 +230,34 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         deleted: true,
-        reason: isPrivate ? 'Perfil privado sem dados acessiveis' : 'Perfil sem dados uteis',
+        reason: isPrivate ? 'Perfil privado sem dados acessíveis' : 'Perfil sem dados úteis',
       });
     }
 
-    // Step 3: Build prompt and call Claude
+    // Step 3: Build prompt and call Claude (retry with next key if one fails)
     const userPrompt = buildUserPrompt(profile!, cleanUsername);
-    const client = getAnthropicClient();
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-    });
+    let message: Anthropic.Message | null = null;
+    for (let attempt = 0; attempt < ANTHROPIC_KEYS.length; attempt++) {
+      try {
+        const client = getAnthropicClient();
+        message = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          system: SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
+        });
+        break;
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.warn(`[analyze-follower] key ${attempt + 1} failed: ${errMsg.slice(0, 100)}`);
+        if (attempt === ANTHROPIC_KEYS.length - 1) throw e;
+      }
+    }
+
+    if (!message) {
+      return NextResponse.json({ error: 'Todas as API keys falharam' }, { status: 500 });
+    }
 
     const responseText = message.content
       .filter((b) => b.type === 'text')

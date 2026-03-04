@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 
-// Default voice: "Rachel" — multilingual, works well with Portuguese
-const DEFAULT_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+// Default voice: "Waldemar" — Brazilian male, tom humano e expressivo
+const DEFAULT_VOICE_ID = 'DVdr1unwF4OS3bcbxy9C';
 
 export async function POST(request: NextRequest) {
   try {
     if (!ELEVENLABS_API_KEY) {
-      return NextResponse.json({ error: 'ELEVENLABS_API_KEY nao configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'ELEVENLABS_API_KEY não configurado' }, { status: 500 });
     }
 
     const body = await request.json();
     const { text, voice_id } = body as { text: string; voice_id?: string };
 
     if (!text || text.trim().length === 0) {
-      return NextResponse.json({ error: 'text e obrigatorio' }, { status: 400 });
+      return NextResponse.json({ error: 'text é obrigatório' }, { status: 400 });
     }
 
     const voiceId = voice_id || DEFAULT_VOICE_ID;
@@ -32,8 +32,10 @@ export async function POST(request: NextRequest) {
           text: text.trim(),
           model_id: 'eleven_multilingual_v2',
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+            stability: 0.15,
+            similarity_boost: 0.9,
+            style: 1.0,
+            use_speaker_boost: true,
           },
         }),
         signal: AbortSignal.timeout(30000),

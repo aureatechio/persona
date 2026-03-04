@@ -150,7 +150,7 @@ export function AddFollowerModal({ open, onClose, accountId, onAdded }: AddFollo
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Nome de exibicao"
+            placeholder="Nome de exibição"
             className={inputClass}
           />
         </div>
@@ -183,7 +183,7 @@ export function AddFollowerModal({ open, onClose, accountId, onAdded }: AddFollo
           <textarea
             value={aiSummary}
             onChange={(e) => setAiSummary(e.target.value)}
-            placeholder="Analise do perfil: interesses, comportamento, posicionamentos..."
+            placeholder="Análise do perfil: interesses, comportamento, posicionamentos..."
             rows={4}
             className={cn(inputClass, 'resize-none')}
           />

@@ -11,7 +11,7 @@ export async function DELETE(request: NextRequest) {
     const id = searchParams.get('id');
 
     if (!id) {
-      return NextResponse.json({ error: 'id e obrigatorio' }, { status: 400 });
+      return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
     }
 
     // Get account_id before deleting for count update
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const body = await request.json();
-    const { account_id, username, display_name, avatar_url, ai_summary, category, category_label } = body as {
+    const { account_id, username, display_name, avatar_url, ai_summary, category, category_label, metadata_json } = body as {
       account_id: string;
       username: string;
       display_name?: string;
@@ -66,23 +66,29 @@ export async function POST(request: NextRequest) {
       ai_summary?: string;
       category?: string;
       category_label?: string;
+      metadata_json?: Record<string, unknown>;
     };
 
     if (!account_id || !username) {
-      return NextResponse.json({ error: 'account_id e username sao obrigatorios' }, { status: 400 });
+      return NextResponse.json({ error: 'account_id e username são obrigatórios' }, { status: 400 });
     }
 
+    const row = {
+      account_id,
+      username,
+      display_name: display_name || null,
+      avatar_url: avatar_url || null,
+      ai_summary: ai_summary || null,
+      category: category || 'outro',
+      category_label: category_label || null,
+      metadata_json: metadata_json || {},
+      updated_at: new Date().toISOString(),
+    };
+
+    // Upsert: insert or update if (account_id, username) already exists
     const { data, error } = await supabase
       .from('instagram_followers')
-      .insert({
-        account_id,
-        username,
-        display_name: display_name || null,
-        avatar_url: avatar_url || null,
-        ai_summary: ai_summary || null,
-        category: category || 'outro',
-        category_label: category_label || null,
-      })
+      .upsert(row, { onConflict: 'account_id,username' })
       .select()
       .single();
 

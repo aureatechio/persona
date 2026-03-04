@@ -22,7 +22,7 @@ function getAnthropicClient() {
 export async function POST(request: NextRequest) {
   try {
     if (ANTHROPIC_KEYS.length === 0) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY nao configurado' }, { status: 500 });
+      return NextResponse.json({ error: 'ANTHROPIC_API_KEY não configurado' }, { status: 500 });
     }
 
     const body = await request.json();
@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
     };
 
     if (!customPrompt) {
-      return NextResponse.json({ error: 'customPrompt e obrigatorio' }, { status: 400 });
+      return NextResponse.json({ error: 'customPrompt é obrigatório' }, { status: 400 });
     }
 
     const systemPrompt = `Você é um especialista em comunicação política e marketing personalizado brasileiro.
@@ -71,14 +71,28 @@ REGRAS:
 - Use português do Brasil com acentuação PERFEITA (é, ê, á, ã, ç, ó, ô, í, ú).
 - Seja criativo e varie a estrutura entre diferentes perfis.`;
 
-    const client = getAnthropicClient();
+    // Try each key until one works (handles keys with no balance)
+    let message: Anthropic.Message | null = null;
+    for (let attempt = 0; attempt < ANTHROPIC_KEYS.length; attempt++) {
+      try {
+        const client = getAnthropicClient();
+        message = await client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 512,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: 'Gere a frase agora.' }],
+        });
+        break;
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        console.warn(`[regenerate-phrase] key ${attempt + 1} failed: ${errMsg.slice(0, 100)}`);
+        if (attempt === ANTHROPIC_KEYS.length - 1) throw e;
+      }
+    }
 
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 512,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: 'Gere a frase agora.' }],
-    });
+    if (!message) {
+      return NextResponse.json({ error: 'Todas as API keys falharam' }, { status: 500 });
+    }
 
     const responseText = message.content
       .filter((b) => b.type === 'text')

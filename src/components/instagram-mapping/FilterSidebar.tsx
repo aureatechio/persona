@@ -261,7 +261,7 @@ export function FilterSidebar({
 
           {/* Filter groups — all visible, scrollable */}
           <div className="px-5 py-4 space-y-4 max-h-[55vh] overflow-y-auto">
-            <FilterGroup label="Genero">
+            <FilterGroup label="Gênero">
               {GENERO_OPTIONS.map((g) => (
                 <Chip
                   key={g}
@@ -272,7 +272,7 @@ export function FilterSidebar({
               ))}
             </FilterGroup>
 
-            <FilterGroup label="Faixa Etaria">
+            <FilterGroup label="Faixa Etária">
               {IDADE_OPTIONS.map((age) => (
                 <Chip
                   key={age}
@@ -329,13 +329,13 @@ export function FilterSidebar({
 
             <div className="space-y-2">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500 px-1">
-                Profissao
+                Profissão
               </span>
               <input
                 type="text"
                 value={filters.profissao}
                 onChange={(e) => onChange({ ...filters, profissao: e.target.value })}
-                placeholder="Digite uma profissao..."
+                placeholder="Digite uma profissão..."
                 className={cn(
                   'w-full px-4 py-2.5',
                   'bg-white/[0.04] hover:bg-white/[0.06]',
