@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 
-// Default voice: "Waldemar" — Brazilian male, tom humano e expressivo
-const DEFAULT_VOICE_ID = 'DVdr1unwF4OS3bcbxy9C';
+// Default voice: "Enzo - Professional and Warm" — Young Brazilian male, tom caloroso e profissional
+const DEFAULT_VOICE_ID = 'b95tap8KE0pQivmClQRQ';
 
 export async function POST(request: NextRequest) {
   try {

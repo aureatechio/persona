@@ -12,6 +12,8 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Users,
+  Tag,
 } from 'lucide-react';
 import { SearchBar } from '@/components/instagram-mapping/SearchBar';
 import {
@@ -182,6 +184,8 @@ function MapeamentoContent() {
           body: JSON.stringify({
             followerId: null,
             username: f.username,
+            full_name: f.full_name,
+            profile_pic_url: f.profile_pic_url,
             saveToDb: false,
           }),
           signal: AbortSignal.timeout(120000),
@@ -293,23 +297,21 @@ function MapeamentoContent() {
         return;
       }
 
-      const publicFollowers = (data.followers as RawFollower[]).filter(
-        (f) => !f.is_private,
-      );
+      const allFollowers = data.followers as RawFollower[];
 
-      if (publicFollowers.length === 0) {
-        setError('Todos os seguidores encontrados são privados.');
+      if (allFollowers.length === 0) {
+        setError('Nenhum seguidor encontrado.');
         setPageState('search');
         setSearchLoading(false);
         return;
       }
 
       // Cache for future in-session searches
-      searchCacheRef.current.set(username, publicFollowers);
+      searchCacheRef.current.set(username, allFollowers);
 
-      // Store ALL public followers — analyze only the first batch
-      setRawFollowers(publicFollowers);
-      const firstBatch = publicFollowers.slice(0, maxCount);
+      // Store all followers — analyze only the first batch
+      setRawFollowers(allFollowers);
+      const firstBatch = allFollowers.slice(0, maxCount);
       setAnalyzedCursor(firstBatch.length);
 
       setSearchLoading(false);
@@ -558,7 +560,7 @@ function MapeamentoContent() {
               </span>
               <span className="text-[11px] text-zinc-600 shrink-0">
                 {rawFollowers.length > 0
-                  ? `${rawFollowers.length} públicos`
+                  ? `${rawFollowers.length} disponíveis`
                   : `${analyzedFollowers.length} salvos`}
               </span>
             </div>
@@ -685,9 +687,14 @@ function MapeamentoContent() {
               </div>
             )}
 
+            {/* ── Summary Dashboard ── */}
+            {filteredFollowers.length > 0 && (
+              <FollowersDashboard followers={filteredFollowers} />
+            )}
+
             {/* Results list */}
             {filteredFollowers.length > 0 && (
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {filteredFollowers.map((follower, i) => (
                   <FollowerRow
                     key={follower.username}
@@ -774,6 +781,172 @@ function MapeamentoContent() {
           </main>
         </>
       )}
+    </div>
+  );
+}
+
+/* ─────────────────── Summary Dashboard ─────────────────── */
+
+const DASH_GROUP_COLORS: Record<string, { bg: string; text: string; border: string; bar: string }> = {
+  FAMILIA:      { bg: 'bg-amber-500/10',    text: 'text-amber-300',    border: 'border-amber-500/20',    bar: 'bg-amber-400' },
+  EMPREENDEDOR: { bg: 'bg-violet-500/10',   text: 'text-violet-300',   border: 'border-violet-500/20',   bar: 'bg-violet-400' },
+  FE:           { bg: 'bg-orange-500/10',    text: 'text-orange-300',   border: 'border-orange-500/20',   bar: 'bg-orange-400' },
+  ESPORTE:      { bg: 'bg-emerald-500/10',   text: 'text-emerald-300',  border: 'border-emerald-500/20',  bar: 'bg-emerald-400' },
+  EDUCACAO:     { bg: 'bg-teal-500/10',      text: 'text-teal-300',     border: 'border-teal-500/20',     bar: 'bg-teal-400' },
+  SAUDE:        { bg: 'bg-rose-500/10',      text: 'text-rose-300',     border: 'border-rose-500/20',     bar: 'bg-rose-400' },
+  TECH:         { bg: 'bg-cyan-500/10',      text: 'text-cyan-300',     border: 'border-cyan-500/20',     bar: 'bg-cyan-400' },
+  POLITICA:     { bg: 'bg-red-500/10',       text: 'text-red-300',      border: 'border-red-500/20',      bar: 'bg-red-400' },
+  MODA:         { bg: 'bg-fuchsia-500/10',   text: 'text-fuchsia-300',  border: 'border-fuchsia-500/20',  bar: 'bg-fuchsia-400' },
+  ARTE:         { bg: 'bg-purple-500/10',    text: 'text-purple-300',   border: 'border-purple-500/20',   bar: 'bg-purple-400' },
+  MUSICA:       { bg: 'bg-indigo-500/10',    text: 'text-indigo-300',   border: 'border-indigo-500/20',   bar: 'bg-indigo-400' },
+  GASTRONOMIA:  { bg: 'bg-yellow-500/10',    text: 'text-yellow-300',   border: 'border-yellow-500/20',   bar: 'bg-yellow-400' },
+  AGRO:         { bg: 'bg-lime-500/10',      text: 'text-lime-300',     border: 'border-lime-500/20',     bar: 'bg-lime-400' },
+  PET:          { bg: 'bg-amber-400/10',     text: 'text-amber-200',    border: 'border-amber-400/20',    bar: 'bg-amber-300' },
+  VIAGEM:       { bg: 'bg-sky-500/10',       text: 'text-sky-300',      border: 'border-sky-500/20',      bar: 'bg-sky-400' },
+  FITNESS:      { bg: 'bg-green-500/10',     text: 'text-green-300',    border: 'border-green-500/20',    bar: 'bg-green-400' },
+  JURIDICO:     { bg: 'bg-slate-400/10',     text: 'text-slate-300',    border: 'border-slate-400/20',    bar: 'bg-slate-400' },
+  INFLUENCER:   { bg: 'bg-pink-500/10',      text: 'text-pink-300',     border: 'border-pink-500/20',     bar: 'bg-pink-400' },
+  COMUNIDADE:   { bg: 'bg-blue-500/10',      text: 'text-blue-300',     border: 'border-blue-500/20',     bar: 'bg-blue-400' },
+  LIFESTYLE:    { bg: 'bg-pink-400/10',      text: 'text-pink-200',     border: 'border-pink-400/20',     bar: 'bg-pink-300' },
+  OUTRO:        { bg: 'bg-zinc-500/10',      text: 'text-zinc-300',     border: 'border-zinc-500/20',     bar: 'bg-zinc-400' },
+};
+
+function FollowersDashboard({ followers }: { followers: AnalyzedFollowerData[] }) {
+  const stats = useMemo(() => {
+    let homens = 0;
+    let mulheres = 0;
+    let indefinido = 0;
+    const tagCounts: Record<string, number> = {};
+
+    for (const f of followers) {
+      const g = f.analysis.genero?.toLowerCase();
+      if (g === 'homem') homens++;
+      else if (g === 'mulher') mulheres++;
+      else indefinido++;
+
+      const grupo = (f.analysis.grupo || 'OUTRO').toUpperCase();
+      tagCounts[grupo] = (tagCounts[grupo] || 0) + 1;
+    }
+
+    const sortedTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+    const maxTagCount = sortedTags.length > 0 ? sortedTags[0][1] : 1;
+
+    return { homens, mulheres, indefinido, sortedTags, maxTagCount, total: followers.length };
+  }, [followers]);
+
+  const homensPct = stats.total > 0 ? Math.round((stats.homens / stats.total) * 100) : 0;
+  const mulheresPct = stats.total > 0 ? Math.round((stats.mulheres / stats.total) * 100) : 0;
+
+  return (
+    <div className="space-y-4">
+      {/* ── Top metric cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Total */}
+        <div className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-xl">
+          <div className="absolute -top-6 -right-6 w-16 h-16 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-2 mb-2">
+            <div className="p-1.5 rounded-lg bg-emerald-500/10">
+              <Users size={13} className="text-emerald-400" />
+            </div>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Total</span>
+          </div>
+          <p className="text-2xl font-bold text-white tabular-nums">{stats.total}</p>
+          <p className="text-[10px] text-zinc-500 mt-0.5">seguidores analisados</p>
+        </div>
+
+        {/* Homens */}
+        <div className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-xl">
+          <div className="absolute -top-6 -right-6 w-16 h-16 bg-sky-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-sm shadow-sky-400/50" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Homens</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold text-sky-300 tabular-nums">{stats.homens}</p>
+            <span className="text-xs text-sky-400/50 font-medium tabular-nums">{homensPct}%</span>
+          </div>
+          <div className="mt-2 h-1 rounded-full bg-zinc-800/60 overflow-hidden">
+            <div className="h-full bg-sky-400/60 rounded-full transition-all duration-700" style={{ width: `${homensPct}%` }} />
+          </div>
+        </div>
+
+        {/* Mulheres */}
+        <div className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-xl">
+          <div className="absolute -top-6 -right-6 w-16 h-16 bg-pink-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-pink-400 shadow-sm shadow-pink-400/50" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Mulheres</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold text-pink-300 tabular-nums">{stats.mulheres}</p>
+            <span className="text-xs text-pink-400/50 font-medium tabular-nums">{mulheresPct}%</span>
+          </div>
+          <div className="mt-2 h-1 rounded-full bg-zinc-800/60 overflow-hidden">
+            <div className="h-full bg-pink-400/60 rounded-full transition-all duration-700" style={{ width: `${mulheresPct}%` }} />
+          </div>
+        </div>
+
+        {/* Indefinido / Gênero */}
+        <div className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 backdrop-blur-xl">
+          <div className="absolute -top-6 -right-6 w-16 h-16 bg-zinc-500/10 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-zinc-500" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Indefinido</span>
+          </div>
+          <p className="text-2xl font-bold text-zinc-400 tabular-nums">{stats.indefinido}</p>
+          {/* Mini stacked bar */}
+          <div className="mt-2 h-1.5 rounded-full bg-zinc-800/60 overflow-hidden flex">
+            <div className="h-full bg-sky-400/70 transition-all duration-700" style={{ width: `${homensPct}%` }} />
+            <div className="h-full bg-pink-400/70 transition-all duration-700" style={{ width: `${mulheresPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Grupos/Tags breakdown ── */}
+      <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 backdrop-blur-xl">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="p-1.5 rounded-lg bg-violet-500/10">
+            <Tag size={13} className="text-violet-400" />
+          </div>
+          <span className="text-xs font-semibold text-zinc-300">Distribuição por Grupo</span>
+          <span className="text-[10px] text-zinc-600 ml-auto">{stats.sortedTags.length} grupos</span>
+        </div>
+
+        <div className="space-y-2">
+          {stats.sortedTags.map(([tag, count]) => {
+            const colors = DASH_GROUP_COLORS[tag] || DASH_GROUP_COLORS.OUTRO;
+            const pct = Math.round((count / stats.total) * 100);
+            const barWidth = Math.round((count / stats.maxTagCount) * 100);
+            return (
+              <div key={tag} className="group/tag flex items-center gap-3">
+                <span className={cn(
+                  'w-24 shrink-0 text-[11px] font-bold uppercase tracking-wide text-right',
+                  colors.text,
+                )}>
+                  {tag}
+                </span>
+                <div className="flex-1 h-6 rounded-lg bg-zinc-900/60 overflow-hidden relative">
+                  <div
+                    className={cn(
+                      'h-full rounded-lg transition-all duration-700 ease-out opacity-70 group-hover/tag:opacity-100',
+                      colors.bar,
+                    )}
+                    style={{ width: `${barWidth}%` }}
+                  />
+                  <div className="absolute inset-0 flex items-center px-2.5">
+                    <span className="text-[10px] font-bold text-white/90 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                      {count}
+                    </span>
+                    <span className="text-[10px] text-white/40 ml-1 tabular-nums">
+                      ({pct}%)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

@@ -151,6 +151,29 @@ Posts recentes:
 ${postTexts || 'Sem posts com legenda.'}`;
 }
 
+/* ─── Minimal prompt for private/limited profiles ─── */
+
+function buildMinimalPrompt(
+  username: string,
+  fullName: string,
+  followersCount?: number,
+  followsCount?: number,
+  biography?: string,
+): string {
+  return `Perfil: @${username}
+Nome: ${fullName || 'N/A'}
+Bio: "${biography || 'Sem bio'}"
+${followersCount ? `Seguidores: ${followersCount}` : ''}${followsCount ? ` | Seguindo: ${followsCount}` : ''}
+
+ATENÇÃO: Este perfil é privado ou possui dados muito limitados.
+Analise com base apenas nos dados disponíveis acima.
+- Use o nome para inferir gênero quando possível.
+- Retorne "indefinido" para campos que não podem ser determinados com confiança.
+- Crie a frase_comunicacao usando apenas o primeiro nome da pessoa.
+
+Sem posts disponíveis para análise.`;
+}
+
 /* ─── Parse JSON ─── */
 
 interface AnalysisResult {
@@ -192,9 +215,11 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { followerId, username, saveToDb = true } = body as {
+    const { followerId, username, full_name: passedFullName, profile_pic_url: passedAvatarUrl, saveToDb = true } = body as {
       followerId?: string | null;
       username: string;
+      full_name?: string;
+      profile_pic_url?: string;
       saveToDb?: boolean;
     };
 
@@ -216,26 +241,29 @@ export async function POST(request: NextRequest) {
     const hasNoUsefulData = !profile || (isPrivate && latestPosts.length === 0 && !biography) || (!isPrivate && postsCount === 0 && latestPosts.length === 0 && !biography);
 
     if (hasNoUsefulData) {
-      // In search mode (saveToDb=false), just skip
-      if (!saveToDb || !followerId) {
+      // Legacy mode (DB): delete truly empty profiles
+      if (saveToDb && followerId) {
+        const supabase = createClient(supabaseUrl, supabaseKey);
+        await supabase.from('instagram_followers').delete().eq('id', followerId);
         return NextResponse.json({
-          skipped: true,
-          reason: isPrivate ? 'Perfil privado' : 'Sem dados úteis',
+          deleted: true,
+          reason: isPrivate ? 'Perfil privado sem dados acessíveis' : 'Perfil sem dados úteis',
         });
       }
 
-      // Legacy mode: delete from DB
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      await supabase.from('instagram_followers').delete().eq('id', followerId);
-
-      return NextResponse.json({
-        deleted: true,
-        reason: isPrivate ? 'Perfil privado sem dados acessíveis' : 'Perfil sem dados úteis',
-      });
+      // Search mode: try minimal analysis with whatever data we have
+      const fallbackName = profile?.fullName || passedFullName || '';
+      if (!fallbackName && !biography) {
+        // Truly zero data — skip
+        return NextResponse.json({ skipped: true, reason: 'Sem dados úteis' });
+      }
     }
 
     // Step 3: Build prompt and call Claude (retry with next key if one fails)
-    const userPrompt = buildUserPrompt(profile!, cleanUsername);
+    const fallbackName = profile?.fullName || passedFullName || cleanUsername;
+    const userPrompt = hasNoUsefulData
+      ? buildMinimalPrompt(cleanUsername, fallbackName, profile?.followersCount, profile?.followsCount, biography)
+      : buildUserPrompt(profile!, cleanUsername);
 
     let message: Anthropic.Message | null = null;
     for (let attempt = 0; attempt < ANTHROPIC_KEYS.length; attempt++) {
@@ -280,8 +308,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         analyzed: true,
         username: cleanUsername,
-        display_name: profile!.fullName || cleanUsername,
-        avatar_url: profile!.profilePicUrlHD || profile!.profilePicUrl || '',
+        display_name: profile?.fullName || passedFullName || cleanUsername,
+        avatar_url: profile?.profilePicUrlHD || profile?.profilePicUrl || passedAvatarUrl || '',
         analysis: analysis || {
           resumo: responseText.slice(0, 500),
           genero: 'indefinido',
@@ -297,10 +325,10 @@ export async function POST(request: NextRequest) {
         },
         category,
         profile: {
-          biography: profile!.biography,
-          followers_count: profile!.followersCount,
-          follows_count: profile!.followsCount,
-          posts_count: profile!.postsCount,
+          biography: profile?.biography || '',
+          followers_count: profile?.followersCount || 0,
+          follows_count: profile?.followsCount || 0,
+          posts_count: profile?.postsCount || 0,
         },
       });
     }

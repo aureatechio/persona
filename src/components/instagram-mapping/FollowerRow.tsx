@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
@@ -18,7 +18,7 @@ import {
   X,
   Maximize2,
   Eye,
-  Volume2,
+  Play,
   Loader2,
   Pause,
 } from 'lucide-react';
@@ -85,6 +85,28 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
+/* ─── Audio Helpers ─── */
+
+function formatAudioTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function generateWaveform(seed: string, count: number): number[] {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = ((h << 5) - h) + seed.charCodeAt(i);
+    h |= 0;
+  }
+  return Array.from({ length: count }, (_, i) => {
+    h = ((h * 1103515245 + 12345) & 0x7fffffff);
+    const base = 0.25 + Math.sin(i * 0.4 + (h % 7)) * 0.15;
+    const noise = (h % 100) / 100;
+    return Math.min(1, Math.max(0.08, base + noise * 0.6));
+  });
+}
+
 /* ─── Canvas: render phrase text on top of template image ─── */
 
 function renderCardCanvas(
@@ -105,6 +127,9 @@ function renderCardCanvas(
 
   if (!frase) return;
 
+  // Convert text to uppercase
+  const upperFrase = frase.toUpperCase();
+
   // Text centered in the upper area of the image
   const textAreaMaxWidth = w * 0.75;
   const textCenterX = w * 0.5;
@@ -112,12 +137,12 @@ function renderCardCanvas(
 
   // Font size
   const fontSize = Math.round(w * 0.035);
-  ctx.font = `600 ${fontSize}px "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
+  ctx.font = `700 ${fontSize}px "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
   // Word wrap
-  const words = frase.split(' ');
+  const words = upperFrase.split(' ');
   const lines: string[] = [];
   let currentLine = '';
 
@@ -137,10 +162,10 @@ function renderCardCanvas(
 
   // White text with clean drop shadow
   ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
-  ctx.shadowBlur = fontSize * 0.4;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  ctx.shadowBlur = fontSize * 0.3;
   ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = fontSize * 0.1;
+  ctx.shadowOffsetY = fontSize * 0.08;
 
   lines.forEach((line, i) => {
     ctx.fillText(line, textCenterX, textStartY + i * lineHeight);
@@ -252,6 +277,213 @@ function GenderBadge({ genero }: { genero: string }) {
   return null;
 }
 
+/* ─── WhatsApp-style Audio Player ─── */
+
+function WhatsAppPlayer({ text }: { text: string }) {
+  const [loading, setLoading] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [speed, setSpeed] = useState(1);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
+  const rafRef = useRef<number>(0);
+
+  const BAR_COUNT = 45;
+  const waveform = useMemo(() => generateWaveform(text, BAR_COUNT), [text]);
+
+  // Reset when text changes (e.g. phrase regenerated)
+  useEffect(() => {
+    setReady(false);
+    setPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+  }, [text]);
+
+  // Animation loop for progress
+  const tick = useCallback(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      setCurrentTime(audio.currentTime);
+      if (!isNaN(audio.duration)) setDuration(audio.duration);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  useEffect(() => {
+    if (playing) rafRef.current = requestAnimationFrame(tick);
+    else cancelAnimationFrame(rafRef.current);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [playing, tick]);
+
+  const handlePlayPause = useCallback(async () => {
+    // Already loaded — toggle
+    if (ready && audioRef.current) {
+      if (playing) {
+        audioRef.current.pause();
+        setPlaying(false);
+      } else {
+        setPlaying(true);
+        await audioRef.current.play();
+      }
+      return;
+    }
+
+    // First time — generate via TTS
+    setLoading(true);
+    try {
+      const res = await fetch('/api/tts/elevenlabs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) throw new Error('TTS failed');
+
+      const blob = await res.blob();
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+
+      const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
+
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.playbackRate = speed;
+
+      audio.onloadedmetadata = () => setDuration(audio.duration);
+      audio.onended = () => {
+        setPlaying(false);
+        setCurrentTime(0);
+      };
+
+      setReady(true);
+      setPlaying(true);
+      setLoading(false);
+      await audio.play();
+    } catch (err) {
+      console.error('[TTS] error:', err);
+      setLoading(false);
+    }
+  }, [ready, playing, text, speed]);
+
+  const handleSpeed = useCallback(() => {
+    const speeds = [1, 1.5, 2];
+    const next = speeds[(speeds.indexOf(speed) + 1) % speeds.length];
+    setSpeed(next);
+    if (audioRef.current) audioRef.current.playbackRate = next;
+  }, [speed]);
+
+  const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    audioRef.current.currentTime = pct * duration;
+    setCurrentTime(pct * duration);
+  }, [duration]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+      if (audioRef.current) audioRef.current.pause();
+      cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
+
+  const progress = duration > 0 ? currentTime / duration : 0;
+
+  return (
+    <div className="flex items-center gap-3 pl-2 pr-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-2xl transition-all duration-200">
+      {/* Play / Pause */}
+      <button
+        type="button"
+        onClick={handlePlayPause}
+        disabled={loading}
+        className={cn(
+          'shrink-0 w-10 h-10 rounded-full grid place-content-center',
+          'transition-all duration-200 active:scale-[0.93]',
+          loading
+            ? 'bg-white/[0.06] text-zinc-500 cursor-wait'
+            : playing
+              ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+              : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.14] hover:text-white',
+        )}
+      >
+        {loading ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : playing ? (
+          <Pause size={18} fill="currentColor" />
+        ) : (
+          <Play size={18} fill="currentColor" className="ml-0.5" />
+        )}
+      </button>
+
+      {/* Waveform + times */}
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <div
+          className="relative flex items-center gap-[2px] h-8 cursor-pointer"
+          onClick={handleSeek}
+        >
+          {waveform.map((h, i) => {
+            const played = i / BAR_COUNT <= progress;
+            return (
+              <div
+                key={i}
+                className={cn(
+                  'flex-1 rounded-full min-w-[2px] transition-colors duration-100',
+                  played ? 'bg-emerald-400' : 'bg-zinc-600/50',
+                )}
+                style={{ height: `${h * 100}%` }}
+              />
+            );
+          })}
+          {ready && (
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-emerald-400 rounded-full shadow-lg shadow-emerald-500/40 border-2 border-zinc-900 pointer-events-none"
+              style={{ left: `calc(${progress * 100}% - 6px)` }}
+            />
+          )}
+        </div>
+
+        {/* Times */}
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-zinc-500 tabular-nums font-mono">
+            {ready ? formatAudioTime(currentTime) : '0:00'}
+          </span>
+          <span className="text-[10px] text-zinc-500 tabular-nums font-mono">
+            {duration > 0 ? formatAudioTime(duration) : '\u2014:\u2014\u2014'}
+          </span>
+        </div>
+      </div>
+
+      {/* Speed toggle */}
+      <button
+        type="button"
+        onClick={handleSpeed}
+        className={cn(
+          'shrink-0 px-2.5 py-1.5 rounded-full',
+          'text-[11px] font-bold tabular-nums',
+          'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.14] hover:text-white',
+          'border border-white/[0.06]',
+          'transition-all duration-200 active:scale-[0.95]',
+        )}
+      >
+        {speed}x
+      </button>
+    </div>
+  );
+}
+
 interface FollowerRowProps {
   data: AnalyzedFollowerData;
   index: number;
@@ -265,74 +497,9 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
   const [modalOpen, setModalOpen] = useState(false);
   const [comVisible, setComVisible] = useState(false);
 
-  // TTS audio state
-  const [audioLoading, setAudioLoading] = useState(false);
-  const [audioPlaying, setAudioPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioBlobUrlRef = useRef<string | null>(null);
-
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
-
-  const handlePlayAudio = useCallback(async (text: string) => {
-    // If already playing, stop
-    if (audioPlaying && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setAudioPlaying(false);
-      return;
-    }
-
-    setAudioLoading(true);
-    try {
-      const res = await fetch('/api/tts/elevenlabs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(30000),
-      });
-
-      if (!res.ok) throw new Error('TTS failed');
-
-      const blob = await res.blob();
-
-      // Cleanup previous blob URL
-      if (audioBlobUrlRef.current) {
-        URL.revokeObjectURL(audioBlobUrlRef.current);
-      }
-
-      const url = URL.createObjectURL(blob);
-      audioBlobUrlRef.current = url;
-
-      const audio = new Audio(url);
-      audioRef.current = audio;
-
-      audio.onended = () => {
-        setAudioPlaying(false);
-      };
-
-      setAudioPlaying(true);
-      setAudioLoading(false);
-      await audio.play();
-    } catch (err) {
-      console.error('[TTS] playback error:', err);
-      setAudioPlaying(false);
-      setAudioLoading(false);
-    }
-  }, [audioPlaying]);
-
-  // Cleanup blob URL on unmount
-  useEffect(() => {
-    return () => {
-      if (audioBlobUrlRef.current) {
-        URL.revokeObjectURL(audioBlobUrlRef.current);
-      }
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-    };
-  }, []);
 
   return (
     <div
@@ -340,10 +507,10 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
         'group relative',
         'bg-zinc-900/60 hover:bg-zinc-900/80',
         'border border-white/[0.08] hover:border-white/[0.16]',
-        'rounded-2xl overflow-hidden',
-        'shadow-lg shadow-black/20 hover:shadow-xl hover:shadow-black/30',
-        'transition-all duration-300 ease-out',
-        expanded && 'border-white/[0.12] shadow-xl',
+        'rounded-xl overflow-hidden',
+        'shadow-sm shadow-black/10 hover:shadow-md hover:shadow-black/20',
+        'transition-all duration-200 ease-out',
+        expanded && 'border-white/[0.12] shadow-md',
       )}
       style={{ animationDelay: `${index * 60}ms` }}
     >
@@ -369,7 +536,7 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-4 px-5 py-4 text-left cursor-pointer"
+        className="w-full flex items-center gap-3 px-4 py-1.5 text-left cursor-pointer"
       >
         {/* Avatar */}
         <div className="shrink-0 relative">
@@ -380,10 +547,10 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
               alt={data.username}
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
-              className="w-11 h-11 rounded-full object-cover border-2 border-white/[0.12] shadow-md shadow-black/30"
+              className="w-9 h-9 rounded-full object-cover border-2 border-white/[0.12] shadow-md shadow-black/30"
             />
           ) : (
-            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 border-2 border-white/[0.1] grid place-content-center text-xs font-bold text-zinc-300 shadow-md shadow-black/30">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-zinc-700 to-zinc-800 border-2 border-white/[0.1] grid place-content-center text-[10px] font-bold text-zinc-300 shadow-md shadow-black/30">
               {initials}
             </div>
           )}
@@ -527,41 +694,9 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
                         </p>
                       )}
 
-                      {/* Audio button */}
+                      {/* WhatsApp-style audio player */}
                       {analysis.frase_comunicacao && !isRegenerating && (
-                        <button
-                          type="button"
-                          onClick={() => handlePlayAudio(analysis.frase_comunicacao!)}
-                          disabled={audioLoading}
-                          className={cn(
-                            'inline-flex items-center gap-2 px-4 py-2 w-fit',
-                            'rounded-xl text-xs font-medium',
-                            'border transition-all duration-200',
-                            'active:scale-[0.97]',
-                            audioPlaying
-                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
-                              : audioLoading
-                                ? 'bg-white/[0.04] text-zinc-500 border-white/[0.08] cursor-wait'
-                                : 'bg-white/[0.05] text-zinc-300 border-white/[0.1] hover:bg-white/[0.1] hover:text-white hover:border-white/[0.2]',
-                          )}
-                        >
-                          {audioLoading ? (
-                            <>
-                              <Loader2 size={13} className="animate-spin" />
-                              Gerando áudio...
-                            </>
-                          ) : audioPlaying ? (
-                            <>
-                              <Pause size={13} />
-                              Pausar
-                            </>
-                          ) : (
-                            <>
-                              <Volume2 size={13} />
-                              Ouvir frase
-                            </>
-                          )}
-                        </button>
+                        <WhatsAppPlayer text={analysis.frase_comunicacao} />
                       )}
                     </div>
                   </div>
