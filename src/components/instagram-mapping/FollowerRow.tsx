@@ -605,25 +605,21 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
 
         {/* Stats pills */}
         <div className="hidden lg:flex items-center gap-3 shrink-0">
-          {profile.followers_count > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-              <Users size={11} className="text-zinc-500" />
-              <span className="font-medium tabular-nums">{formatNumber(profile.followers_count)}</span>
-            </div>
-          )}
-          {profile.posts_count > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
-              <ImageIcon size={11} className="text-zinc-500" />
-              <span className="font-medium tabular-nums">{formatNumber(profile.posts_count)}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-1 text-[11px] text-zinc-400">
+            <Users size={11} className="text-zinc-500 shrink-0" />
+            <span className="font-medium tabular-nums w-[32px] text-right">{formatNumber(profile.followers_count || 0)}</span>
+          </div>
+          <div className="flex items-center gap-1 text-[11px] text-zinc-400">
+            <ImageIcon size={11} className="text-zinc-500 shrink-0" />
+            <span className="font-medium tabular-nums w-[32px] text-right">{formatNumber(profile.posts_count || 0)}</span>
+          </div>
         </div>
 
         {/* Group tag */}
         <div className="shrink-0">
           <span
             className={cn(
-              'inline-flex items-center px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border',
+              'inline-flex items-center justify-center min-w-[120px] px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wide border',
               'shadow-sm',
               groupColor.bg,
               groupColor.text,

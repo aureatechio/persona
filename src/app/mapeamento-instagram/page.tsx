@@ -810,7 +810,7 @@ function MapeamentoContent() {
 
             {/* ── Summary Dashboard ── */}
             {filteredFollowers.length > 0 && (
-              <FollowersDashboard followers={filteredFollowers} />
+              <FollowersDashboard followers={filteredFollowers} regenProgress={isRegenerating ? regenProgress : null} />
             )}
 
             {/* Results list */}
@@ -953,7 +953,7 @@ const DASH_GROUP_COLORS: Record<string, { bg: string; text: string; border: stri
   OUTRO:        { bg: 'bg-zinc-500/10',      text: 'text-zinc-300',     border: 'border-zinc-500/20',     bar: 'bg-zinc-400' },
 };
 
-function FollowersDashboard({ followers }: { followers: AnalyzedFollowerData[] }) {
+function FollowersDashboard({ followers, regenProgress }: { followers: AnalyzedFollowerData[]; regenProgress?: { current: number; total: number } | null }) {
   const [groupsOpen, setGroupsOpen] = useState(true);
   const stats = useMemo(() => {
     let homens = 0;
@@ -993,8 +993,22 @@ function FollowersDashboard({ followers }: { followers: AnalyzedFollowerData[] }
             </div>
             <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">Total</span>
           </div>
-          <p className="text-2xl font-bold text-white tabular-nums">{stats.total}</p>
-          <p className="text-[10px] text-zinc-500 mt-0.5">seguidores analisados</p>
+          <p className="text-2xl font-bold text-white tabular-nums">{regenProgress ? regenProgress.current : stats.total}</p>
+          {regenProgress ? (
+            <>
+              <p className="text-[10px] text-violet-400 mt-0.5 tabular-nums">
+                Regenerando {regenProgress.current}/{regenProgress.total}
+              </p>
+              <div className="mt-1.5 h-1 rounded-full bg-zinc-800/60 overflow-hidden">
+                <div
+                  className="h-full bg-violet-500/60 rounded-full transition-all duration-500"
+                  style={{ width: `${regenProgress.total > 0 ? (regenProgress.current / regenProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-[10px] text-zinc-500 mt-0.5">seguidores analisados</p>
+          )}
         </div>
 
         {/* Homens */}
