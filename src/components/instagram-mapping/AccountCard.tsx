@@ -42,7 +42,7 @@ export function AccountCard({ account, onClick }: AccountCardProps) {
             {account.avatar_url && !imgError ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={account.avatar_url}
+                src={`/api/image-proxy?url=${encodeURIComponent(account.avatar_url)}`}
                 alt={account.username}
                 referrerPolicy="no-referrer"
                 onError={handleImgError}

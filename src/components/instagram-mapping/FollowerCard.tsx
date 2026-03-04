@@ -172,7 +172,7 @@ export function FollowerCard({ follower, post, showPost = false, index = 0, isAd
                 {follower.avatar_url && !imgError ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={follower.avatar_url}
+                    src={`/api/image-proxy?url=${encodeURIComponent(follower.avatar_url)}`}
                     alt={follower.username}
                     referrerPolicy="no-referrer"
                     onError={handleImgError}

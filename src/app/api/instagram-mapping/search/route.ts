@@ -78,8 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     /* ─── No cache — call Apify ─── */
-    // Overshoot: request 50% more to compensate for private/no-data profiles
-    const safeMaxCount = Math.max(50, Math.ceil(maxCount * 1.5));
+    const safeMaxCount = Math.max(50, maxCount);
 
     const encodedActor = encodeURIComponent(ACTOR_ID);
     const apifyUrl = `https://api.apify.com/v2/acts/${encodedActor}/run-sync-get-dataset-items?token=${apifyToken}&timeout=300`;

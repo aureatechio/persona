@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
   ChevronDown,
-  ChevronUp,
   Briefcase,
   Users,
   ImageIcon,
@@ -17,10 +16,11 @@ import {
   MessageCircle,
   X,
   Maximize2,
-  Eye,
   Play,
   Loader2,
   Pause,
+  UserPlus,
+  Send,
 } from 'lucide-react';
 
 export interface AnalyzedFollowerData {
@@ -73,6 +73,15 @@ const GROUP_COLORS: Record<string, { bg: string; text: string; border: string; g
   COMUNIDADE:   { bg: 'bg-blue-500/15',      text: 'text-blue-300',     border: 'border-blue-500/30',     glow: 'shadow-blue-500/10' },
   LIFESTYLE:    { bg: 'bg-pink-400/15',      text: 'text-pink-200',     border: 'border-pink-400/30',     glow: 'shadow-pink-400/10' },
   OUTRO:        { bg: 'bg-zinc-500/15',      text: 'text-zinc-300',     border: 'border-zinc-500/30',     glow: 'shadow-zinc-500/10' },
+};
+
+const GROUP_LABELS: Record<string, string> = {
+  FAMILIA: 'Família', EMPREENDEDOR: 'Empreendedor', FE: 'Fé', ESPORTE: 'Esporte',
+  EDUCACAO: 'Educação', SAUDE: 'Saúde', TECH: 'Tech', POLITICA: 'Política',
+  MODA: 'Moda', ARTE: 'Arte', MUSICA: 'Música', GASTRONOMIA: 'Gastronomia',
+  AGRO: 'Agro', PET: 'Pet', VIAGEM: 'Viagem', FITNESS: 'Fitness',
+  JURIDICO: 'Jurídico', INFLUENCER: 'Influencer', COMUNIDADE: 'Comunidade', LIFESTYLE: 'Lifestyle',
+  OUTRO: 'Outro',
 };
 
 function getGroupColor(grupo: string) {
@@ -133,10 +142,15 @@ function renderCardCanvas(
   // Text centered in the upper area of the image
   const textAreaMaxWidth = w * 0.75;
   const textCenterX = w * 0.5;
-  const textStartY = h * 0.05;
+  const textStartY = h * 0.08;
 
-  // Font size
-  const fontSize = Math.round(w * 0.035);
+  // Only reduce font size for very long texts (180+ chars)
+  const charCount = upperFrase.length;
+  let fontScale = 0.035;
+  if (charCount > 220) fontScale = 0.028;
+  else if (charCount > 180) fontScale = 0.031;
+
+  const fontSize = Math.round(w * fontScale);
   ctx.font = `700 ${fontSize}px "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
@@ -291,7 +305,7 @@ function WhatsAppPlayer({ text }: { text: string }) {
   const blobUrlRef = useRef<string | null>(null);
   const rafRef = useRef<number>(0);
 
-  const BAR_COUNT = 45;
+  const BAR_COUNT = 63;
   const waveform = useMemo(() => generateWaveform(text, BAR_COUNT), [text]);
 
   // Reset when text changes (e.g. phrase regenerated)
@@ -403,35 +417,40 @@ function WhatsAppPlayer({ text }: { text: string }) {
   const progress = duration > 0 ? currentTime / duration : 0;
 
   return (
-    <div className="flex items-center gap-3 pl-2 pr-3 py-2 bg-white/[0.04] border border-white/[0.08] rounded-2xl transition-all duration-200">
-      {/* Play / Pause */}
-      <button
-        type="button"
-        onClick={handlePlayPause}
-        disabled={loading}
-        className={cn(
-          'shrink-0 w-10 h-10 rounded-full grid place-content-center',
-          'transition-all duration-200 active:scale-[0.93]',
-          loading
-            ? 'bg-white/[0.06] text-zinc-500 cursor-wait'
-            : playing
-              ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-              : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.14] hover:text-white',
-        )}
-      >
-        {loading ? (
-          <Loader2 size={18} className="animate-spin" />
-        ) : playing ? (
-          <Pause size={18} fill="currentColor" />
-        ) : (
-          <Play size={18} fill="currentColor" className="ml-0.5" />
-        )}
-      </button>
+    <div className="bg-[#025144] rounded-lg px-2 py-2 transition-all duration-200">
+      {/* Top row: icon + play + waveform + speed — all on same baseline */}
+      <div className="flex items-center gap-1.5">
+        {/* WhatsApp icon */}
+        <div className="shrink-0 w-[40px] h-[40px] grid place-content-center">
+          <svg viewBox="0 0 32 32" className="w-[36px] h-[36px]" fill="none">
+            <path d="M16 3C8.82 3 3 8.82 3 16c0 2.29.6 4.44 1.64 6.32L3 29l6.88-1.6A12.94 12.94 0 0016 29c7.18 0 13-5.82 13-13S23.18 3 16 3z" fill="#00a884"/>
+            <path d="M22.36 19.18c-.35-.17-2.05-1.01-2.37-1.13-.32-.11-.55-.17-.78.17-.23.35-.9 1.13-1.1 1.36-.2.23-.41.26-.76.09-.35-.17-1.47-.54-2.8-1.73-1.04-.92-1.73-2.06-1.94-2.41-.2-.35-.02-.54.15-.71.16-.16.35-.41.52-.61.18-.21.23-.35.35-.59.12-.23.06-.44-.03-.61-.09-.17-.78-1.88-1.07-2.58-.28-.68-.57-.59-.78-.6h-.67c-.23 0-.61.09-.93.44-.32.35-1.22 1.19-1.22 2.9s1.25 3.37 1.42 3.6c.18.23 2.46 3.75 5.95 5.26.83.36 1.48.57 1.99.73.84.27 1.6.23 2.2.14.67-.1 2.05-.84 2.34-1.65.29-.81.29-1.5.2-1.65-.09-.14-.32-.23-.67-.4z" fill="#fff"/>
+          </svg>
+        </div>
 
-      {/* Waveform + times */}
-      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        {/* Play / Pause */}
+        <button
+          type="button"
+          onClick={handlePlayPause}
+          disabled={loading}
+          className={cn(
+            'shrink-0 w-8 h-8 grid place-content-center',
+            'transition-all duration-150 active:scale-[0.9]',
+            loading ? 'text-[#8aaea7] cursor-wait' : 'text-[#8aaea7] hover:text-[#a8cec7]',
+          )}
+        >
+          {loading ? (
+            <Loader2 size={22} className="animate-spin" />
+          ) : playing ? (
+            <Pause size={22} fill="currentColor" />
+          ) : (
+            <Play size={22} fill="currentColor" className="ml-0.5" />
+          )}
+        </button>
+
+        {/* Waveform */}
         <div
-          className="relative flex items-center gap-[2px] h-8 cursor-pointer"
+          className="relative flex-1 flex items-center gap-[1.5px] h-[28px] cursor-pointer min-w-0"
           onClick={handleSeek}
         >
           {waveform.map((h, i) => {
@@ -439,47 +458,46 @@ function WhatsAppPlayer({ text }: { text: string }) {
             return (
               <div
                 key={i}
-                className={cn(
-                  'flex-1 rounded-full min-w-[2px] transition-colors duration-100',
-                  played ? 'bg-emerald-400' : 'bg-zinc-600/50',
-                )}
-                style={{ height: `${h * 100}%` }}
-              />
+                className="flex-1 flex items-center justify-center"
+                style={{ height: '100%' }}
+              >
+                <div
+                  className={cn(
+                    'w-[2.5px] rounded-full transition-colors duration-75',
+                    played ? 'bg-[#b5d4cd]' : 'bg-[#57877e]',
+                  )}
+                  style={{ height: `${Math.max(8, h * 100)}%` }}
+                />
+              </div>
             );
           })}
-          {ready && (
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-emerald-400 rounded-full shadow-lg shadow-emerald-500/40 border-2 border-zinc-900 pointer-events-none"
-              style={{ left: `calc(${progress * 100}% - 6px)` }}
-            />
-          )}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-[11px] h-[11px] bg-[#d9ece8] rounded-full shadow-sm pointer-events-none z-10"
+            style={{ left: `calc(${progress * 100}% - 5px)` }}
+          />
         </div>
 
-        {/* Times */}
-        <div className="flex items-center justify-between">
-          <span className="text-[10px] text-zinc-500 tabular-nums font-mono">
-            {ready ? formatAudioTime(currentTime) : '0:00'}
-          </span>
-          <span className="text-[10px] text-zinc-500 tabular-nums font-mono">
-            {duration > 0 ? formatAudioTime(duration) : '\u2014:\u2014\u2014'}
-          </span>
-        </div>
+        {/* Speed */}
+        <button
+          type="button"
+          onClick={handleSpeed}
+          className={cn(
+            'shrink-0 w-[30px] h-[22px] rounded-full grid place-content-center',
+            'text-[10px] font-bold tabular-nums',
+            'bg-[#16655a] text-[#8aaea7] hover:bg-[#1d7a6d] hover:text-[#a8cec7]',
+            'transition-all duration-150 active:scale-[0.95]',
+          )}
+        >
+          {speed}x
+        </button>
       </div>
 
-      {/* Speed toggle */}
-      <button
-        type="button"
-        onClick={handleSpeed}
-        className={cn(
-          'shrink-0 px-2.5 py-1.5 rounded-full',
-          'text-[11px] font-bold tabular-nums',
-          'bg-white/[0.08] text-zinc-300 hover:bg-white/[0.14] hover:text-white',
-          'border border-white/[0.06]',
-          'transition-all duration-200 active:scale-[0.95]',
-        )}
-      >
-        {speed}x
-      </button>
+      {/* Bottom row: time under waveform area */}
+      <div className="ml-[88px] mr-[38px]">
+        <span className="text-[11px] text-[#6ba69d] tabular-nums leading-none">
+          {ready ? formatAudioTime(currentTime) : '0:00'}
+        </span>
+      </div>
     </div>
   );
 }
@@ -495,8 +513,6 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [comVisible, setComVisible] = useState(false);
-
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
@@ -543,7 +559,7 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
           {data.avatar_url && !imgError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={data.avatar_url}
+              src={`/api/image-proxy?url=${encodeURIComponent(data.avatar_url)}`}
               alt={data.username}
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
@@ -615,7 +631,7 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
               groupColor.glow,
             )}
           >
-            {analysis.grupo}
+            {GROUP_LABELS[analysis.grupo] || analysis.grupo}
           </span>
         </div>
 
@@ -647,42 +663,23 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
             <p className="text-sm text-zinc-200 leading-relaxed">{analysis.resumo}</p>
           </div>
 
-          {/* ── Como se comunicar — colapsável (surpresa) ── */}
+          {/* ── Como se comunicar — sempre visível ── */}
           {analysis.frase_comunicacao && (
-            <div className="space-y-0">
-              <button
-                type="button"
-                onClick={() => setComVisible(!comVisible)}
-                className={cn(
-                  'w-full flex items-center justify-between gap-3 px-5 py-3.5',
-                  'rounded-2xl border transition-all duration-300 cursor-pointer',
-                  comVisible
-                    ? 'bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent border-emerald-500/20'
-                    : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/[0.08] hover:border-emerald-500/30',
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="p-1.5 rounded-lg bg-emerald-500/15">
-                    <MessageCircle size={13} className="text-emerald-400" />
-                  </div>
-                  <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
-                    Como se comunicar
-                  </span>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2.5 px-1">
+                <div className="p-1.5 rounded-lg bg-emerald-500/15">
+                  <MessageCircle size={13} className="text-emerald-400" />
                 </div>
-                <div className={cn(
-                  'p-1 rounded-lg transition-all duration-200',
-                  comVisible ? 'bg-emerald-500/10 text-emerald-400' : 'text-zinc-500',
-                )}>
-                  {comVisible ? <ChevronUp size={14} /> : <Eye size={14} />}
-                </div>
-              </button>
+                <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
+                  Como se comunicar
+                </span>
+              </div>
 
-              {comVisible && (
-                <div className="mt-3 flex gap-4 items-stretch animate-in fade-in slide-in-from-top-2 duration-300">
+              <div className="flex gap-4 items-stretch">
                   {/* Frase + Audio */}
                   <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
                     <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                    <div className="relative p-5 flex flex-col justify-center h-full gap-3">
+                    <div className="relative p-5 flex flex-col justify-center h-full gap-5">
                       {isRegenerating ? (
                         <div className="flex items-center gap-3">
                           <Loader2 size={16} className="text-violet-400 animate-spin shrink-0" />
@@ -732,7 +729,6 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
                     campaignImageUrl={campaignImageUrl}
                   />
                 </div>
-              )}
             </div>
           )}
 
@@ -820,22 +816,56 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
             </div>
           )}
 
-          {/* Instagram link */}
-          <a
-            href={`https://instagram.com/${data.username}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={cn(
-              'inline-flex items-center gap-2 px-4 py-2',
-              'bg-gradient-to-r from-pink-500/10 to-violet-500/10',
-              'border border-pink-500/20 hover:border-pink-500/40',
-              'rounded-xl text-xs font-medium text-pink-300 hover:text-pink-200',
-              'transition-all duration-200 hover:shadow-lg hover:shadow-pink-500/10',
-            )}
-          >
-            <ExternalLink size={12} />
-            Ver perfil no Instagram
-          </a>
+          {/* Action buttons */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <a
+              href={`https://instagram.com/${data.username}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2',
+                'bg-gradient-to-r from-pink-500/10 to-violet-500/10',
+                'border border-pink-500/20 hover:border-pink-500/40',
+                'rounded-xl text-xs font-medium text-pink-300 hover:text-pink-200',
+                'transition-all duration-200 hover:shadow-lg hover:shadow-pink-500/10',
+              )}
+            >
+              <ExternalLink size={12} />
+              Ver perfil no Instagram
+            </a>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2',
+                  'bg-white/[0.06] border border-white/[0.1]',
+                  'rounded-xl text-xs font-medium text-zinc-300',
+                  'cursor-not-allowed',
+                  'hover:bg-white/[0.1] hover:border-white/[0.18] hover:text-zinc-200',
+                  'transition-all duration-200',
+                )}
+              >
+                <UserPlus size={12} />
+                Seguir
+              </button>
+              <button
+                type="button"
+                disabled
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2',
+                  'bg-white/[0.06] border border-white/[0.1]',
+                  'rounded-xl text-xs font-medium text-zinc-300',
+                  'cursor-not-allowed',
+                  'hover:bg-white/[0.1] hover:border-white/[0.18] hover:text-zinc-200',
+                  'transition-all duration-200',
+                )}
+              >
+                <Send size={12} />
+                Mensagem
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

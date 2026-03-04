@@ -2,7 +2,7 @@ import type { FollowerCategory, CategoryMeta } from './types';
 
 export const CATEGORY_MAP: Record<FollowerCategory, CategoryMeta> = {
   politico: {
-    label: 'Politico',
+    label: 'Político',
     color: 'text-red-400',
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/20',
@@ -16,7 +16,7 @@ export const CATEGORY_MAP: Record<FollowerCategory, CategoryMeta> = {
     icon: 'BookOpen',
   },
   empresario: {
-    label: 'Empresario',
+    label: 'Empresário',
     color: 'text-emerald-400',
     bgColor: 'bg-emerald-500/10',
     borderColor: 'border-emerald-500/20',
@@ -51,7 +51,7 @@ export const CATEGORY_MAP: Record<FollowerCategory, CategoryMeta> = {
     icon: 'Sparkles',
   },
   funcionario_publico: {
-    label: 'Func. Publico',
+    label: 'Func. Público',
     color: 'text-cyan-400',
     bgColor: 'bg-cyan-500/10',
     borderColor: 'border-cyan-500/20',
@@ -65,14 +65,14 @@ export const CATEGORY_MAP: Record<FollowerCategory, CategoryMeta> = {
     icon: 'GraduationCap',
   },
   saude: {
-    label: 'Saude',
+    label: 'Saúde',
     color: 'text-rose-400',
     bgColor: 'bg-rose-500/10',
     borderColor: 'border-rose-500/20',
     icon: 'Heart',
   },
   juridico: {
-    label: 'Juridico',
+    label: 'Jurídico',
     color: 'text-indigo-400',
     bgColor: 'bg-indigo-500/10',
     borderColor: 'border-indigo-500/20',

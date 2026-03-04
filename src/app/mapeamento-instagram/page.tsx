@@ -6,7 +6,10 @@ import {
   ArrowLeft,
   Brain,
   ChevronDown,
+  ChevronUp,
   Instagram,
+  Send,
+  UserPlus,
   Loader2,
   Plus,
   RefreshCw,
@@ -83,6 +86,10 @@ function MapeamentoContent() {
   // Supabase account ID for saving followers
   const [accountId, setAccountId] = useState<string | null>(null);
 
+  // Load more from Apify (incremental fetch)
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [noMoreFollowers, setNoMoreFollowers] = useState(false);
+
   // Ref to track completed count across batches
   const batchCompletedRef = useRef(0);
 
@@ -106,8 +113,9 @@ function MapeamentoContent() {
       .then(({ data, error }) => {
         if (error) console.error('[CampaignImages] error:', error);
         if (data && data.length > 0) {
+          const bust = `?t=${Date.now()}`;
           const map: Record<string, string> = {};
-          for (const row of data) map[row.grupo] = row.image_url;
+          for (const row of data) map[row.grupo] = row.image_url + bust;
           applyMap(map);
         } else {
           // Fallback: fetch via REST API directly
@@ -122,8 +130,9 @@ function MapeamentoContent() {
             .then((r) => r.json())
             .then((rows: { grupo: string; image_url: string }[]) => {
               if (rows && rows.length > 0) {
+                const bustFb = `?t=${Date.now()}`;
                 const map: Record<string, string> = {};
-                for (const row of rows) map[row.grupo] = row.image_url;
+                for (const row of rows) map[row.grupo] = row.image_url + bustFb;
                 applyMap(map);
               }
             })
@@ -242,6 +251,8 @@ function MapeamentoContent() {
     setAnalyzedCursor(0);
     setAccountId(null);
     accountIdRef.current = null;
+    setNoMoreFollowers(false);
+    setIsFetchingMore(false);
 
     try {
       // Always call the API — it checks DB cache internally
@@ -328,15 +339,82 @@ function MapeamentoContent() {
 
   /* ─── Load more — analyze next 10 raw followers ─── */
 
-  const handleLoadMore = useCallback(() => {
-    if (isAnalyzing) return;
-    const nextBatch = rawFollowers.slice(analyzedCursor, analyzedCursor + 10);
-    if (nextBatch.length === 0) return;
-    setAnalyzedCursor((prev) => prev + nextBatch.length);
-    analyzeBatch(nextBatch);
-  }, [rawFollowers, analyzedCursor, isAnalyzing, analyzeBatch]);
+  const handleLoadMore = useCallback(async () => {
+    if (isAnalyzing || isFetchingMore) return;
 
-  const hasMoreRaw = analyzedCursor < rawFollowers.length;
+    // Path A: still have raw followers in the local buffer
+    if (analyzedCursor < rawFollowers.length) {
+      const nextBatch = rawFollowers.slice(analyzedCursor, analyzedCursor + 10);
+      if (nextBatch.length === 0) return;
+      setAnalyzedCursor((prev) => prev + nextBatch.length);
+      analyzeBatch(nextBatch);
+      return;
+    }
+
+    // Path B: buffer exhausted — fetch more from Apify
+    setIsFetchingMore(true);
+
+    try {
+      // Build dedupe set: all usernames we already have (raw + analyzed)
+      const knownUsernames = new Set<string>();
+      for (const f of rawFollowers) knownUsernames.add(f.username.toLowerCase());
+      for (const f of analyzedFollowers) knownUsernames.add(f.username.toLowerCase());
+
+      const res = await fetch('/api/instagram-mapping/search-more', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: targetUsername,
+          existingCount: knownUsernames.size,
+          batchSize: 10,
+          excludeUsernames: Array.from(knownUsernames),
+        }),
+        signal: AbortSignal.timeout(320000),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Falha ao buscar mais seguidores');
+      }
+
+      const newFollowers = (data.newFollowers || []) as RawFollower[];
+
+      if (newFollowers.length === 0) {
+        setNoMoreFollowers(true);
+        setIsFetchingMore(false);
+        return;
+      }
+
+      // Client-side dedup (extra safety)
+      const dedupedNew = newFollowers.filter(
+        (f) => !knownUsernames.has(f.username.toLowerCase()),
+      );
+
+      if (dedupedNew.length === 0) {
+        setNoMoreFollowers(true);
+        setIsFetchingMore(false);
+        return;
+      }
+
+      // Append to rawFollowers and update cursor
+      setRawFollowers((prev) => [...prev, ...dedupedNew]);
+      setAnalyzedCursor((prev) => prev + dedupedNew.length);
+
+      setIsFetchingMore(false);
+
+      // Analyze the new batch
+      analyzeBatch(dedupedNew);
+
+      // Update hasMore hint
+      if (!data.hasMore) setNoMoreFollowers(true);
+    } catch (err) {
+      console.error('[LoadMore] failed:', err);
+      setIsFetchingMore(false);
+    }
+  }, [rawFollowers, analyzedCursor, analyzedFollowers, isAnalyzing, isFetchingMore, targetUsername, analyzeBatch]);
+
+  const hasMoreRaw = !noMoreFollowers;
 
   /* ─── Filter logic ─── */
 
@@ -375,6 +453,8 @@ function MapeamentoContent() {
 
   /* ─── Regenerate phrases with custom prompt ─── */
 
+  const regenCompletedRef = useRef(0);
+
   const handleRegenerate = useCallback(async () => {
     if (!customPrompt.trim() || isRegenerating || isAnalyzing) return;
 
@@ -382,13 +462,13 @@ function MapeamentoContent() {
     if (targets.length === 0) return;
 
     setIsRegenerating(true);
+    regenCompletedRef.current = 0;
     setRegenProgress({ current: 0, total: targets.length });
 
-    for (let i = 0; i < targets.length; i++) {
-      const f = targets[i];
-      setRegeneratingUsername(f.username);
-      setRegenProgress({ current: i, total: targets.length });
+    const REGEN_CONCURRENCY = 3;
+    const queue = [...targets];
 
+    async function regenerateOne(f: AnalyzedFollowerData) {
       try {
         const res = await fetch('/api/instagram-mapping/regenerate-phrase', {
           method: 'POST',
@@ -419,7 +499,20 @@ function MapeamentoContent() {
       } catch (err) {
         console.error('[Regenerate] failed for', f.username, err);
       }
+
+      regenCompletedRef.current++;
+      setRegenProgress({ current: regenCompletedRef.current, total: targets.length });
+      setRegeneratingUsername(f.username);
     }
+
+    async function runWorker() {
+      while (queue.length > 0) {
+        const next = queue.shift();
+        if (next) await regenerateOne(next);
+      }
+    }
+
+    await Promise.all(Array.from({ length: REGEN_CONCURRENCY }, () => runWorker()));
 
     setRegenProgress({ current: targets.length, total: targets.length });
     setRegeneratingUsername(null);
@@ -438,6 +531,8 @@ function MapeamentoContent() {
     accountIdRef.current = null;
     setError('');
     setFilters({ ...EMPTY_FILTERS });
+    setNoMoreFollowers(false);
+    setIsFetchingMore(false);
   }, []);
 
   /* ─── Render ─── */
@@ -646,6 +741,32 @@ function MapeamentoContent() {
                       </>
                     )}
                   </button>
+                  <button
+                    type="button"
+                    disabled
+                    className={cn(
+                      'inline-flex items-center gap-2 px-4 py-3',
+                      'bg-white/[0.06] border border-white/[0.1]',
+                      'rounded-xl text-xs font-medium text-zinc-300',
+                      'opacity-60 cursor-not-allowed shrink-0',
+                    )}
+                  >
+                    <UserPlus size={14} />
+                    Seguir Todos
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    className={cn(
+                      'inline-flex items-center gap-2 px-4 py-3',
+                      'bg-white/[0.06] border border-white/[0.1]',
+                      'rounded-xl text-xs font-medium text-zinc-300',
+                      'opacity-60 cursor-not-allowed shrink-0',
+                    )}
+                  >
+                    <Send size={14} />
+                    Mensagem Todos
+                  </button>
                 </div>
 
                 {/* Regeneration progress bar */}
@@ -742,7 +863,7 @@ function MapeamentoContent() {
                     {' '}de {rawFollowers.length} disponíveis
                     {!isAnalyzing && analyzedCursor > 0 && analyzedCursor - analyzedFollowers.length > 0 && (
                       <span className="text-zinc-600">
-                        {' '}({analyzedCursor - analyzedFollowers.length} pulados — perfis privados/sem dados)
+                        {' '}({analyzedCursor - analyzedFollowers.length} com falha na analise)
                       </span>
                     )}
                   </>
@@ -753,18 +874,23 @@ function MapeamentoContent() {
               {hasMoreRaw && (
                 <button
                   onClick={handleLoadMore}
-                  disabled={isAnalyzing}
+                  disabled={isAnalyzing || isFetchingMore}
                   className={cn(
                     'inline-flex items-center gap-2.5 px-7 py-3',
                     'rounded-xl text-sm font-semibold',
                     'shadow-lg',
                     'active:scale-[0.97] transition-all duration-200',
-                    !isAnalyzing
+                    !(isAnalyzing || isFetchingMore)
                       ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 hover:shadow-emerald-400/30'
                       : 'bg-white/[0.06] text-zinc-500 border border-white/[0.08] shadow-black/20 cursor-not-allowed',
                   )}
                 >
-                  {isAnalyzing ? (
+                  {isFetchingMore ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Buscando novos seguidores...
+                    </>
+                  ) : isAnalyzing ? (
                     <>
                       <Loader2 size={14} className="animate-spin" />
                       Analisando...
@@ -777,6 +903,13 @@ function MapeamentoContent() {
                   )}
                 </button>
               )}
+
+              {/* Message when no more followers available */}
+              {noMoreFollowers && !isAnalyzing && (
+                <p className="text-[11px] text-zinc-600">
+                  Todos os seguidores disponíveis foram carregados
+                </p>
+              )}
             </div>
           </main>
         </>
@@ -786,6 +919,15 @@ function MapeamentoContent() {
 }
 
 /* ─────────────────── Summary Dashboard ─────────────────── */
+
+const DASH_GROUP_LABELS: Record<string, string> = {
+  FAMILIA: 'Família', EMPREENDEDOR: 'Empreendedor', FE: 'Fé', ESPORTE: 'Esporte',
+  EDUCACAO: 'Educação', SAUDE: 'Saúde', TECH: 'Tech', POLITICA: 'Política',
+  MODA: 'Moda', ARTE: 'Arte', MUSICA: 'Música', GASTRONOMIA: 'Gastronomia',
+  AGRO: 'Agro', PET: 'Pet', VIAGEM: 'Viagem', FITNESS: 'Fitness',
+  JURIDICO: 'Jurídico', INFLUENCER: 'Influencer', COMUNIDADE: 'Comunidade', LIFESTYLE: 'Lifestyle',
+  OUTRO: 'Outro',
+};
 
 const DASH_GROUP_COLORS: Record<string, { bg: string; text: string; border: string; bar: string }> = {
   FAMILIA:      { bg: 'bg-amber-500/10',    text: 'text-amber-300',    border: 'border-amber-500/20',    bar: 'bg-amber-400' },
@@ -812,6 +954,7 @@ const DASH_GROUP_COLORS: Record<string, { bg: string; text: string; border: stri
 };
 
 function FollowersDashboard({ followers }: { followers: AnalyzedFollowerData[] }) {
+  const [groupsOpen, setGroupsOpen] = useState(true);
   const stats = useMemo(() => {
     let homens = 0;
     let mulheres = 0;
@@ -904,48 +1047,59 @@ function FollowersDashboard({ followers }: { followers: AnalyzedFollowerData[] }
 
       {/* ── Grupos/Tags breakdown ── */}
       <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 backdrop-blur-xl">
-        <div className="flex items-center gap-2 mb-4">
+        <button
+          type="button"
+          onClick={() => setGroupsOpen(!groupsOpen)}
+          className="w-full flex items-center gap-2 cursor-pointer group/gh"
+        >
           <div className="p-1.5 rounded-lg bg-violet-500/10">
             <Tag size={13} className="text-violet-400" />
           </div>
           <span className="text-xs font-semibold text-zinc-300">Distribuição por Grupo</span>
           <span className="text-[10px] text-zinc-600 ml-auto">{stats.sortedTags.length} grupos</span>
-        </div>
+          <div className={cn(
+            'p-1 rounded-lg transition-all duration-200 text-zinc-500 group-hover/gh:text-zinc-300',
+          )}>
+            {groupsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </div>
+        </button>
 
-        <div className="space-y-2">
-          {stats.sortedTags.map(([tag, count]) => {
-            const colors = DASH_GROUP_COLORS[tag] || DASH_GROUP_COLORS.OUTRO;
-            const pct = Math.round((count / stats.total) * 100);
-            const barWidth = Math.round((count / stats.maxTagCount) * 100);
-            return (
-              <div key={tag} className="group/tag flex items-center gap-3">
-                <span className={cn(
-                  'w-24 shrink-0 text-[11px] font-bold uppercase tracking-wide text-right',
-                  colors.text,
-                )}>
-                  {tag}
-                </span>
-                <div className="flex-1 h-6 rounded-lg bg-zinc-900/60 overflow-hidden relative">
-                  <div
-                    className={cn(
-                      'h-full rounded-lg transition-all duration-700 ease-out opacity-70 group-hover/tag:opacity-100',
-                      colors.bar,
-                    )}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center px-2.5">
-                    <span className="text-[10px] font-bold text-white/90 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
-                      {count}
-                    </span>
-                    <span className="text-[10px] text-white/40 ml-1 tabular-nums">
-                      ({pct}%)
-                    </span>
+        {groupsOpen && (
+          <div className="space-y-2 mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            {stats.sortedTags.map(([tag, count]) => {
+              const colors = DASH_GROUP_COLORS[tag] || DASH_GROUP_COLORS.OUTRO;
+              const pct = Math.round((count / stats.total) * 100);
+              const barWidth = Math.round((count / stats.maxTagCount) * 100);
+              return (
+                <div key={tag} className="group/tag flex items-center gap-3">
+                  <span className={cn(
+                    'w-24 shrink-0 text-[11px] font-bold uppercase tracking-wide text-right',
+                    colors.text,
+                  )}>
+                    {DASH_GROUP_LABELS[tag] || tag}
+                  </span>
+                  <div className="flex-1 h-6 rounded-lg bg-zinc-900/60 overflow-hidden relative">
+                    <div
+                      className={cn(
+                        'h-full rounded-lg transition-all duration-700 ease-out opacity-70 group-hover/tag:opacity-100',
+                        colors.bar,
+                      )}
+                      style={{ width: `${barWidth}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center px-2.5">
+                      <span className="text-[10px] font-bold text-white/90 tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">
+                        {count}
+                      </span>
+                      <span className="text-[10px] text-white/40 ml-1 tabular-nums">
+                        ({pct}%)
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

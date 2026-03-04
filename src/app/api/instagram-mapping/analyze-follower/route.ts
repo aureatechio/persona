@@ -251,12 +251,8 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Search mode: try minimal analysis with whatever data we have
-      const fallbackName = profile?.fullName || passedFullName || '';
-      if (!fallbackName && !biography) {
-        // Truly zero data — skip
-        return NextResponse.json({ skipped: true, reason: 'Sem dados úteis' });
-      }
+      // Search mode: always proceed with minimal analysis — even username alone
+      // is enough for Claude to infer gender from name and create a communication phrase
     }
 
     // Step 3: Build prompt and call Claude (retry with next key if one fails)
