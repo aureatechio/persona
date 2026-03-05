@@ -151,11 +151,11 @@ export async function POST(request: NextRequest) {
           language_code: 'pt',
           apply_text_normalization: 'auto',
           voice_settings: {
-            stability: 0.4,
+            stability: 0.5,
             similarity_boost: 0.85,
-            style: 0.6,
+            style: 0.5,
             use_speaker_boost: true,
-            speed: 1.15,
+            speed: 1.0,
           },
         }),
         signal: AbortSignal.timeout(30000),
@@ -179,15 +179,13 @@ export async function POST(request: NextRequest) {
       const outPath = join(tmpdir(), `tts_outdoor_${ts}.mp3`);
       await writeFile(rawPath, rawAudioBuffer);
 
-      // aecho: subtle outdoor reverb (delay 60+80ms, decay 0.3+0.2)
-      // Traffic ambience: pink noise (road hum) + brown noise (engine rumble), band-passed to sound like distant traffic
+      // Reverb (aecho) + pink noise low-passed to simulate traffic hum
       await execFileAsync('ffmpeg', [
         '-i', rawPath,
         '-filter_complex',
-        '[0:a]aecho=0.8:0.7:60|80:0.3|0.2[reverbed];' +
-        'anoisesrc=c=pink:a=0.006[pink];anoisesrc=c=brown:a=0.003[brown];' +
-        '[pink][brown]amix=inputs=2:weights=1 0.6[traffic_raw];' +
-        '[traffic_raw]bandpass=f=800:width_type=o:w=2,tremolo=f=0.3:d=0.4[traffic];' +
+        '[0:a]aecho=0.8:0.7:60|80:0.15|0.1[reverbed];' +
+        'anoisesrc=c=pink:a=0.006[noise];' +
+        '[noise]lowpass=f=900[traffic];' +
         '[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.08[out]',
         '-map', '[out]',
         '-c:a', 'libmp3lame', '-b:a', '192k',

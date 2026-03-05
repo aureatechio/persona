@@ -33,10 +33,10 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
         # Reverb (aecho) + pink noise low-passed to simulate traffic hum
         # Uses only basic filters guaranteed in Debian/Ubuntu FFmpeg
         filter_complex = (
-            "[0:a]aecho=0.8:0.7:60|80:0.3|0.2[reverbed];"
-            "anoisesrc=c=pink:a=0.008[noise];"
+            "[0:a]aecho=0.8:0.7:60|80:0.15|0.1[reverbed];"
+            "anoisesrc=c=pink:a=0.006[noise];"
             "[noise]lowpass=f=900[traffic];"
-            "[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.1[out]"
+            "[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.08[out]"
         )
 
         result = subprocess.run(
@@ -102,11 +102,11 @@ def generate_tts(text: str, voice_id: str) -> bytes:
             "language_code": "pt",
             "apply_text_normalization": "auto",
             "voice_settings": {
-                "stability": 0.4,
+                "stability": 0.5,
                 "similarity_boost": 0.85,
-                "style": 0.6,
+                "style": 0.5,
                 "use_speaker_boost": True,
-                "speed": 1.15,
+                "speed": 1.0,
             },
         },
         timeout=TTS_TIMEOUT,
