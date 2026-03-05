@@ -153,8 +153,11 @@ export default function SelfieVideoPage() {
   }
 
   // ===== UPLOAD =====
+  const [sending, setSending] = useState(false);
+
   async function handleEnviar() {
-    if (!recordedBlob) return;
+    if (!recordedBlob || sending) return;
+    setSending(true);
 
     setStep('enviando');
     setError(null);
@@ -193,6 +196,7 @@ export default function SelfieVideoPage() {
       const msg = err instanceof Error ? err.message : 'Erro ao enviar';
       setError(msg);
       setStep('preview');
+      setSending(false);
     }
   }
 
@@ -206,6 +210,7 @@ export default function SelfieVideoPage() {
     setPreviewUrl(null);
     setError(null);
     setRecordingTime(0);
+    setSending(false);
   }
 
   // ===== RENDER =====
