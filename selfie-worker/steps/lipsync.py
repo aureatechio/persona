@@ -14,8 +14,9 @@ MAX_POLL_TIME = 1800  # 30 minutes max wait
 
 # ============ SYNC LABS ============
 
-def _sync_submit(video_url: str, audio_url: str) -> str:
-    if not SYNC_API_KEY:
+def _sync_submit(video_url: str, audio_url: str, api_key: str = "") -> str:
+    key = api_key or SYNC_API_KEY
+    if not key:
         raise RuntimeError("SYNC_API_KEY not configured")
 
     logger.info("Submitting lip-sync job to Sync Labs...")
@@ -24,7 +25,7 @@ def _sync_submit(video_url: str, audio_url: str) -> str:
         "https://api.sync.so/v2/generate",
         headers={
             "Content-Type": "application/json",
-            "x-api-key": SYNC_API_KEY,
+            "x-api-key": key,
         },
         json={
             "model": "lipsync-2-pro",
@@ -46,7 +47,8 @@ def _sync_submit(video_url: str, audio_url: str) -> str:
     return job_id
 
 
-def _sync_poll(job_id: str) -> str:
+def _sync_poll(job_id: str, api_key: str = "") -> str:
+    key = api_key or SYNC_API_KEY
     logger.info("Polling Sync Labs job '%s'...", job_id)
     start = time.time()
 
@@ -57,7 +59,7 @@ def _sync_poll(job_id: str) -> str:
 
         response = requests.get(
             f"https://api.sync.so/v2/generate/{job_id}",
-            headers={"x-api-key": SYNC_API_KEY},
+            headers={"x-api-key": key},
             timeout=15,
         )
         response.raise_for_status()
@@ -189,15 +191,16 @@ def _kling_poll(job_id: str, access_key: str, secret_key: str) -> str:
 
 # ============ PUBLIC API ============
 
-def run_lipsync(video_url: str, audio_url: str, kling_access_key: str = "", kling_secret_key: str = "") -> str:
+def run_lipsync(video_url: str, audio_url: str, api_key: str = "", kling_secret_key: str = "") -> str:
     """Submit and poll lip-sync. Returns output video URL.
-    For Kling provider, credentials must be passed (from DB key pool)."""
+    api_key: Sync Labs API key or Kling access key (from DB key pool).
+    kling_secret_key: Kling secret key (only for Kling provider)."""
     provider = LIPSYNC_PROVIDER
     logger.info("Lip-sync provider: %s", provider)
 
     if provider == "sync":
-        job_id = _sync_submit(video_url, audio_url)
-        return _sync_poll(job_id)
+        job_id = _sync_submit(video_url, audio_url, api_key=api_key)
+        return _sync_poll(job_id, api_key=api_key)
 
-    job_id = _kling_submit(video_url, audio_url, kling_access_key, kling_secret_key)
-    return _kling_poll(job_id, kling_access_key, kling_secret_key)
+    job_id = _kling_submit(video_url, audio_url, api_key, kling_secret_key)
+    return _kling_poll(job_id, api_key, kling_secret_key)

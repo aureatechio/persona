@@ -183,8 +183,8 @@ def process_selfie(selfie: dict):
 
                 lipsync_url = run_lipsync(
                     video_signed, audio_signed,
-                    kling_access_key=key_data["access_key"],
-                    kling_secret_key=key_data["secret_key"],
+                    api_key=key_data["access_key"],
+                    kling_secret_key=key_data.get("secret_key", ""),
                 )
                 db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
                 selfie["lipsync_video_url"] = lipsync_url
