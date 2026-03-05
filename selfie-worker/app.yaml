@@ -50,3 +50,6 @@ workers:
       - key: WHISPER_MODEL
         scope: RUN_AND_BUILD_TIME
         value: "base"
+      - key: LIPSYNC_PROVIDER
+        scope: RUN_AND_BUILD_TIME
+        value: "kling"
