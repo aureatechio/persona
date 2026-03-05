@@ -1,12 +1,10 @@
-"""Step 4: Submit and poll lip-sync job via Kling AI."""
+"""Step 4: Submit and poll lip-sync job (Sync Labs or Kling AI)."""
 
 import time
 import logging
-import jwt
-import math
 import requests
 
-from config import KLING_ACCESS_KEY, KLING_SECRET_KEY, KLING_API_BASE
+from config import LIPSYNC_PROVIDER, SYNC_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, KLING_API_BASE
 
 logger = logging.getLogger("worker.lipsync")
 
@@ -14,29 +12,96 @@ POLL_INTERVAL = 5  # seconds
 MAX_POLL_TIME = 1800  # 30 minutes max wait
 
 
-def _generate_token() -> str:
-    """Generate a JWT token for Kling AI API authentication."""
+# ============ SYNC LABS ============
+
+def _sync_submit(video_url: str, audio_url: str) -> str:
+    if not SYNC_API_KEY:
+        raise RuntimeError("SYNC_API_KEY not configured")
+
+    logger.info("Submitting lip-sync job to Sync Labs...")
+
+    response = requests.post(
+        "https://api.sync.so/v2/generate",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": SYNC_API_KEY,
+        },
+        json={
+            "model": "lipsync-2-pro",
+            "input": [
+                {"type": "video", "url": video_url},
+                {"type": "audio", "url": audio_url},
+            ],
+            "options": {"sync_mode": "cut_off"},
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
+    data = response.json()
+    job_id = data.get("id")
+    if not job_id:
+        raise RuntimeError(f"Sync Labs submit: no id in response: {data}")
+
+    logger.info("Sync Labs job submitted: %s", job_id)
+    return job_id
+
+
+def _sync_poll(job_id: str) -> str:
+    logger.info("Polling Sync Labs job '%s'...", job_id)
+    start = time.time()
+
+    while True:
+        elapsed = time.time() - start
+        if elapsed > MAX_POLL_TIME:
+            raise RuntimeError(f"Sync Labs job {job_id} timed out after {MAX_POLL_TIME}s")
+
+        response = requests.get(
+            f"https://api.sync.so/v2/generate/{job_id}",
+            headers={"x-api-key": SYNC_API_KEY},
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        status = data.get("status", "")
+        logger.info("Sync Labs status: %s (%.0fs elapsed)", status, elapsed)
+
+        if status == "COMPLETED":
+            video_url = data.get("outputUrl") or data.get("output_url", "")
+            if video_url:
+                logger.info("Sync Labs complete: %s", video_url[:80])
+                return video_url
+            raise RuntimeError("Sync Labs completed but no outputUrl in response")
+
+        if status in ("FAILED", "REJECTED"):
+            err_msg = data.get("error") or f"Sync Labs job {status}"
+            raise RuntimeError(f"Sync Labs failed: {err_msg}")
+
+        time.sleep(POLL_INTERVAL)
+
+
+# ============ KLING AI ============
+
+def _kling_generate_token() -> str:
+    import jwt
+    import math
     now = math.floor(time.time())
     payload = {
         "iss": KLING_ACCESS_KEY,
-        "exp": now + 1800,  # 30 min
+        "exp": now + 1800,
         "nbf": now - 5,
         "iat": now,
     }
     return jwt.encode(payload, KLING_SECRET_KEY, algorithm="HS256")
 
 
-def submit_lipsync(video_url: str, audio_url: str) -> str:
-    """
-    Submit a lip-sync job to Kling AI.
-    Returns the task ID. Retries on 429 with exponential backoff.
-    """
+def _kling_submit(video_url: str, audio_url: str) -> str:
     if not KLING_ACCESS_KEY or not KLING_SECRET_KEY:
         raise RuntimeError("KLING_ACCESS_KEY ou KLING_SECRET_KEY nao configurados")
 
     max_attempts = 5
     for attempt in range(max_attempts):
-        token = _generate_token()
+        token = _kling_generate_token()
         logger.info("Submitting lip-sync job to Kling AI... (attempt %d/%d)", attempt + 1, max_attempts)
 
         response = requests.post(
@@ -57,7 +122,7 @@ def submit_lipsync(video_url: str, audio_url: str) -> str:
         )
 
         if response.status_code == 429:
-            wait = min(30 * (2 ** attempt), 300)  # 30s, 60s, 120s, 240s, 300s
+            wait = min(30 * (2 ** attempt), 300)
             logger.warning("Kling 429 rate limit — waiting %ds before retry...", wait)
             time.sleep(wait)
             continue
@@ -65,10 +130,9 @@ def submit_lipsync(video_url: str, audio_url: str) -> str:
         response.raise_for_status()
         break
     else:
-        raise RuntimeError("Kling AI rate limit (429) after 5 attempts (~12 min of waiting)")
+        raise RuntimeError("Kling AI rate limit (429) after 5 attempts")
 
     data = response.json()
-
     if data.get("code") != 0:
         raise RuntimeError(f"Kling submit error: {data.get('message', data)}")
 
@@ -80,12 +144,7 @@ def submit_lipsync(video_url: str, audio_url: str) -> str:
     return task_id
 
 
-def poll_lipsync(job_id: str) -> str:
-    """
-    Poll Kling AI until the job is complete.
-    Returns the output video URL.
-    Raises RuntimeError on failure or timeout.
-    """
+def _kling_poll(job_id: str) -> str:
     logger.info("Polling Kling lip-sync job '%s'...", job_id)
     start = time.time()
 
@@ -94,7 +153,7 @@ def poll_lipsync(job_id: str) -> str:
         if elapsed > MAX_POLL_TIME:
             raise RuntimeError(f"Kling lip-sync job {job_id} timed out after {MAX_POLL_TIME}s")
 
-        token = _generate_token()
+        token = _kling_generate_token()
         response = requests.get(
             f"{KLING_API_BASE}/v1/videos/lip-sync/{job_id}",
             headers={"Authorization": f"Bearer {token}"},
@@ -125,11 +184,19 @@ def poll_lipsync(job_id: str) -> str:
             err_msg = data.get("data", {}).get("task_status_msg", "Kling job failed")
             raise RuntimeError(f"Kling lip-sync failed: {err_msg}")
 
-        # submitted, processing, etc.
         time.sleep(POLL_INTERVAL)
 
 
+# ============ PUBLIC API ============
+
 def run_lipsync(video_url: str, audio_url: str) -> str:
-    """Submit and poll Kling lip-sync. Returns output video URL."""
-    job_id = submit_lipsync(video_url, audio_url)
-    return poll_lipsync(job_id)
+    """Submit and poll lip-sync. Returns output video URL."""
+    provider = LIPSYNC_PROVIDER
+    logger.info("Lip-sync provider: %s", provider)
+
+    if provider == "sync":
+        job_id = _sync_submit(video_url, audio_url)
+        return _sync_poll(job_id)
+
+    job_id = _kling_submit(video_url, audio_url)
+    return _kling_poll(job_id)
