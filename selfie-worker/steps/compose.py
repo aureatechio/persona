@@ -70,14 +70,17 @@ def compose_videos(selfie_bytes: bytes, selfie_ext: str, lipsync_url: str) -> by
             "-movflags", "+faststart", "-y", lipsync_norm,
         ])
 
-        # 5. Concat
+        # 5. Concat (re-encode to ensure perfect audio/video sync)
         logger.info("Concatenating...")
         with open(concat_list, "w") as f:
             f.write(f"file '{selfie_norm}'\nfile '{lipsync_norm}'\n")
 
         _run_ffmpeg([
             "-f", "concat", "-safe", "0", "-i", concat_list,
-            "-c", "copy", "-movflags", "+faststart",
+            "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+            "-r", "30",
+            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+            "-movflags", "+faststart",
             "-y", output_path,
         ])
 

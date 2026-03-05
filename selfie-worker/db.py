@@ -66,6 +66,18 @@ def update_status(selfie_id: str, status: str, **extra):
     client.table("video_selfies").update(data).eq("id", selfie_id).execute()
 
 
+def get_selfie(selfie_id: str):
+    """Fetch a single selfie by ID. Returns dict or None."""
+    res = (
+        client.table("video_selfies")
+        .select("*")
+        .eq("id", selfie_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 def get_active_base_model():
     """Get the active base model with voice_models joined."""
     res = (

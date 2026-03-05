@@ -179,9 +179,10 @@ def process_selfie(selfie: dict):
 
     # ─── Step 6: WhatsApp ───
     if _should_run_step(status, "sending"):
-        # Guard: never re-send if already sent
-        if selfie.get("whatsapp_sent"):
-            logger.info("Step 6/6: WhatsApp already sent, skipping to completed...")
+        # Re-fetch from DB to check if another instance already sent
+        fresh = db.get_selfie(sid)
+        if fresh and fresh.get("whatsapp_sent"):
+            logger.info("Step 6/6: WhatsApp already sent (confirmed from DB), skipping...")
         else:
             if selfie.get("status") != "sending":
                 db.update_status(sid, "sending")
