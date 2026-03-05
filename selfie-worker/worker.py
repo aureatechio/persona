@@ -179,12 +179,16 @@ def process_selfie(selfie: dict):
 
     # ─── Step 6: WhatsApp ───
     if _should_run_step(status, "sending"):
-        if selfie.get("status") != "sending":
-            db.update_status(sid, "sending")
-        logger.info("Step 6/6: Sending via WhatsApp...")
+        # Guard: never re-send if already sent
+        if selfie.get("whatsapp_sent"):
+            logger.info("Step 6/6: WhatsApp already sent, skipping to completed...")
+        else:
+            if selfie.get("status") != "sending":
+                db.update_status(sid, "sending")
+            logger.info("Step 6/6: Sending via WhatsApp...")
 
-        video_signed = db.create_signed_url(final_path)
-        send_whatsapp(selfie["phone"], selfie["name"], video_signed)
+            video_signed = db.create_signed_url(final_path)
+            send_whatsapp(selfie["phone"], selfie["name"], video_signed)
 
         from datetime import datetime, timezone
 
@@ -231,10 +235,10 @@ def main():
 
     while not _shutdown:
         try:
-            # Priority 1: queued items
-            selfie = db.fetch_queued()
+            # Priority 1: atomically claim queued items
+            selfie = db.claim_queued()
 
-            # Priority 2: stuck/resumable items (crash recovery)
+            # Priority 2: stuck/resumable items (crash recovery, 5min grace)
             if not selfie:
                 selfie = db.fetch_resumable()
 

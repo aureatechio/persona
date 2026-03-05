@@ -4,21 +4,37 @@ from config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STORAGE_BUCKET, SIGN
 client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
-def fetch_queued():
-    """Fetch the oldest queued selfie. Returns dict or None."""
-    res = (
-        client.table("video_selfies")
-        .select("*")
-        .eq("status", "queued")
-        .order("created_at")
-        .limit(1)
-        .execute()
-    )
-    return res.data[0] if res.data else None
+def claim_queued():
+    """Atomically claim the oldest queued selfie (set status to 'transcribing').
+    Returns dict or None. Uses RPC for atomic UPDATE ... RETURNING."""
+    try:
+        res = client.rpc("claim_next_selfie", {}).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0]
+    except Exception:
+        # Fallback: non-atomic fetch (for when RPC doesn't exist yet)
+        res = (
+            client.table("video_selfies")
+            .select("*")
+            .eq("status", "queued")
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        if res.data:
+            item = res.data[0]
+            # Try to claim it by updating status
+            client.table("video_selfies").update(
+                {"status": "transcribing"}
+            ).eq("id", item["id"]).eq("status", "queued").execute()
+            item["status"] = "transcribing"
+            return item
+    return None
 
 
 def fetch_resumable():
-    """Fetch selfies stuck in intermediate states (crash recovery)."""
+    """Fetch selfies stuck in intermediate states (crash recovery).
+    Only picks up items older than 5 minutes to avoid race conditions."""
     stuck_statuses = [
         "transcribing",
         "generating_text",
@@ -27,10 +43,14 @@ def fetch_resumable():
         "composing",
         "sending",
     ]
+    from datetime import datetime, timezone, timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+
     res = (
         client.table("video_selfies")
         .select("*")
         .in_("status", stuck_statuses)
+        .lt("updated_at", cutoff)
         .order("created_at")
         .limit(1)
         .execute()

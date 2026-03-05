@@ -30,12 +30,13 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
         with open(raw_path, "wb") as f:
             f.write(raw_audio)
 
+        # Reverb (aecho) + pink noise low-passed to simulate traffic hum
+        # Uses only basic filters guaranteed in Debian/Ubuntu FFmpeg
         filter_complex = (
             "[0:a]aecho=0.8:0.7:60|80:0.3|0.2[reverbed];"
-            "anoisesrc=c=pink:a=0.006[pink];anoisesrc=c=brown:a=0.003[brown];"
-            "[pink][brown]amix=inputs=2:weights=1 0.6[traffic_raw];"
-            "[traffic_raw]bandpass=f=800:width_type=o:w=2,tremolo=f=0.3:d=0.4[traffic];"
-            "[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.08[out]"
+            "anoisesrc=c=pink:a=0.008[noise];"
+            "[noise]lowpass=f=900[traffic];"
+            "[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.1[out]"
         )
 
         result = subprocess.run(
@@ -51,7 +52,11 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
         )
 
         if result.returncode != 0:
-            logger.warning("Audio FX ffmpeg failed (rc=%d), using raw", result.returncode)
+            logger.warning(
+                "Audio FX ffmpeg failed (rc=%d): %s",
+                result.returncode,
+                result.stderr.decode(errors="replace")[:500],
+            )
             return raw_audio
 
         with open(out_path, "rb") as f:

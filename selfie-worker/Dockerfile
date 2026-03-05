@@ -8,6 +8,10 @@ RUN apt-get update && \
 WORKDIR /app
 
 COPY requirements.txt .
+
+# Install PyTorch CPU-only first (avoids pulling ~5GB of CUDA libraries)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
