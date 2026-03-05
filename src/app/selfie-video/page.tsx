@@ -256,7 +256,7 @@ export default function SelfieVideoPage() {
                       'w-full pl-11 pr-4 py-3',
                       'bg-white/[0.04] hover:bg-white/[0.06]',
                       'border border-white/[0.08] focus:border-emerald-500/50',
-                      'rounded-xl text-sm text-white placeholder:text-zinc-600',
+                      'rounded-xl text-base text-white placeholder:text-zinc-600',
                       'outline-none focus:ring-2 focus:ring-emerald-500/20',
                       'transition-all duration-200',
                     )}
@@ -280,7 +280,7 @@ export default function SelfieVideoPage() {
                       'w-full pl-11 pr-4 py-3',
                       'bg-white/[0.04] hover:bg-white/[0.06]',
                       'border border-white/[0.08] focus:border-emerald-500/50',
-                      'rounded-xl text-sm text-white placeholder:text-zinc-600',
+                      'rounded-xl text-base text-white placeholder:text-zinc-600',
                       'outline-none focus:ring-2 focus:ring-emerald-500/20',
                       'transition-all duration-200',
                     )}
