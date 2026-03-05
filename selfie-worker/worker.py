@@ -197,12 +197,15 @@ def process_selfie(selfie: dict):
         claimed = db.claim_whatsapp_send(sid)
         if not claimed:
             logger.info("Step 6/6: WhatsApp already claimed by another instance, skipping...")
-        else:
-            db.update_status(sid, "sending")
-            logger.info("Step 6/6: Sending via WhatsApp...")
+            db.update_status(sid, "completed")
+            logger.info("═══ Selfie %s marked completed (WhatsApp sent by other worker) ═══", sid)
+            return
 
-            video_signed = db.create_signed_url(final_path)
-            send_whatsapp(selfie["phone"], selfie["name"], video_signed)
+        db.update_status(sid, "sending")
+        logger.info("Step 6/6: Sending via WhatsApp...")
+
+        video_signed = db.create_signed_url(final_path)
+        send_whatsapp(selfie["phone"], selfie["name"], video_signed)
 
         db.update_status(sid, "completed")
 
@@ -236,6 +239,7 @@ def main():
         logger.error("Missing environment variables: %s", ", ".join(missing))
         sys.exit(1)
 
+    logger.info("Worker ID: %s", db.WORKER_ID)
     logger.info("Config OK. Polling every %ds. Max retries: %d", POLL_INTERVAL, MAX_RETRIES)
 
     consecutive_errors = 0

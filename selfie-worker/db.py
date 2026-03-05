@@ -1,69 +1,44 @@
+import uuid as _uuid
+
 from supabase import create_client
 from config import SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, STORAGE_BUCKET, SIGNED_URL_EXPIRY
 
 client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+# Unique ID for this worker instance — used for distributed locking
+WORKER_ID = str(_uuid.uuid4())
 
 
 def claim_queued():
     """Atomically claim the oldest queued selfie (set status to 'transcribing').
     Returns dict or None. Uses RPC for atomic UPDATE ... RETURNING."""
     try:
-        res = client.rpc("claim_next_selfie", {}).execute()
+        res = client.rpc("claim_next_selfie", {"worker_id": WORKER_ID}).execute()
         if res.data and len(res.data) > 0:
             return res.data[0]
     except Exception:
-        # Fallback: non-atomic fetch (for when RPC doesn't exist yet)
-        res = (
-            client.table("video_selfies")
-            .select("*")
-            .eq("status", "queued")
-            .order("created_at")
-            .limit(1)
-            .execute()
-        )
-        if res.data:
-            item = res.data[0]
-            # Try to claim it by updating status
-            client.table("video_selfies").update(
-                {"status": "transcribing"}
-            ).eq("id", item["id"]).eq("status", "queued").execute()
-            item["status"] = "transcribing"
-            return item
+        pass
     return None
 
 
 def fetch_resumable():
-    """Fetch selfies stuck in intermediate states (crash recovery).
-    Only picks up items older than 5 minutes AND not already sent via WhatsApp."""
-    stuck_statuses = [
-        "transcribing",
-        "generating_text",
-        "generating_tts",
-        "generating_lipsync",
-        "composing",
-        "sending",
-    ]
-    from datetime import datetime, timezone, timedelta
-    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
-
-    res = (
-        client.table("video_selfies")
-        .select("*")
-        .in_("status", stuck_statuses)
-        .neq("whatsapp_sent", True)
-        .lt("updated_at", cutoff)
-        .order("created_at")
-        .limit(1)
-        .execute()
-    )
-    return res.data[0] if res.data else None
+    """Atomically claim a selfie stuck in an intermediate state (crash recovery).
+    Only picks up items whose lock expired (>10 min) via RPC with FOR UPDATE SKIP LOCKED."""
+    try:
+        res = client.rpc("claim_stuck_selfie", {"worker_id": WORKER_ID}).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0]
+    except Exception:
+        pass
+    return None
 
 
 def update_status(selfie_id: str, status: str, **extra):
-    """Update selfie status and optional extra fields."""
+    """Update selfie status, renew lock, and set optional extra fields."""
     from datetime import datetime, timezone
 
-    data = {"status": status, "updated_at": datetime.now(timezone.utc).isoformat(), **extra}
+    now = datetime.now(timezone.utc).isoformat()
+    data = {"status": status, "updated_at": now, "locked_at": now, **extra}
     client.table("video_selfies").update(data).eq("id", selfie_id).execute()
 
 
@@ -81,42 +56,20 @@ def get_selfie(selfie_id: str):
 
 def claim_whatsapp_send(selfie_id: str) -> bool:
     """Atomically claim the WhatsApp send for a selfie.
-    Uses conditional UPDATE: only succeeds if whatsapp_sent is not already true.
-    Returns True if this caller should send, False if already sent."""
+    Uses PostgreSQL RPC — only succeeds if whatsapp_sent is not already true.
+    Returns True if this caller should send, False if already sent.
+    NO FALLBACK: if the RPC fails, we refuse to send (safe default)."""
     import logging
     logger = logging.getLogger("worker.db")
 
-    # Method 1: Try RPC (atomic in Postgres)
     try:
         res = client.rpc("claim_whatsapp_send", {"selfie_id": selfie_id}).execute()
         result = bool(res.data)
-        logger.info("claim_whatsapp_send RPC for %s returned: %s (raw: %r)", selfie_id, result, res.data)
+        logger.info("claim_whatsapp_send RPC for %s returned: %s", selfie_id, result)
         return result
     except Exception as e:
-        logger.warning("claim_whatsapp_send RPC failed: %s, using fallback", e)
-
-    # Method 2: Fallback — conditional update
-    try:
-        from datetime import datetime, timezone
-        res = (
-            client.table("video_selfies")
-            .update({"whatsapp_sent": True, "updated_at": datetime.now(timezone.utc).isoformat()})
-            .eq("id", selfie_id)
-            .neq("whatsapp_sent", True)
-            .execute()
-        )
-        # If update returned data, we claimed it
-        claimed = bool(res.data and len(res.data) > 0)
-        logger.info("claim_whatsapp_send fallback for %s: claimed=%s", selfie_id, claimed)
-        return claimed
-    except Exception as e2:
-        logger.error("claim_whatsapp_send fallback also failed: %s", e2)
-
-    # Method 3: Last resort — just check
-    selfie = get_selfie(selfie_id)
-    already_sent = selfie and selfie.get("whatsapp_sent")
-    logger.info("claim_whatsapp_send last-resort for %s: already_sent=%s", selfie_id, already_sent)
-    return not already_sent
+        logger.error("claim_whatsapp_send RPC failed for %s: %s — refusing to send (safe default)", selfie_id, e)
+        return False
 
 
 def get_active_base_model():
