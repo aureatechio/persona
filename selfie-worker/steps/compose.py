@@ -9,7 +9,7 @@ import requests
 
 logger = logging.getLogger("worker.compose")
 
-FFMPEG_TIMEOUT = 120  # seconds
+FFMPEG_TIMEOUT = 600  # seconds (10 min — large videos on small instances need time)
 
 
 def _run_ffmpeg(args: list[str]):
