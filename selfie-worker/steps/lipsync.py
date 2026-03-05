@@ -29,32 +29,44 @@ def _generate_token() -> str:
 def submit_lipsync(video_url: str, audio_url: str) -> str:
     """
     Submit a lip-sync job to Kling AI.
-    Returns the task ID.
+    Returns the task ID. Retries on 429 with exponential backoff.
     """
     if not KLING_ACCESS_KEY or not KLING_SECRET_KEY:
         raise RuntimeError("KLING_ACCESS_KEY ou KLING_SECRET_KEY nao configurados")
 
-    token = _generate_token()
-    logger.info("Submitting lip-sync job to Kling AI...")
+    max_attempts = 5
+    for attempt in range(max_attempts):
+        token = _generate_token()
+        logger.info("Submitting lip-sync job to Kling AI... (attempt %d/%d)", attempt + 1, max_attempts)
 
-    response = requests.post(
-        f"{KLING_API_BASE}/v1/videos/lip-sync",
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}",
-        },
-        json={
-            "input": {
-                "mode": "audio2video",
-                "video_url": video_url,
-                "audio_type": "url",
-                "audio_url": audio_url,
+        response = requests.post(
+            f"{KLING_API_BASE}/v1/videos/lip-sync",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
             },
-        },
-        timeout=30,
-    )
+            json={
+                "input": {
+                    "mode": "audio2video",
+                    "video_url": video_url,
+                    "audio_type": "url",
+                    "audio_url": audio_url,
+                },
+            },
+            timeout=30,
+        )
 
-    response.raise_for_status()
+        if response.status_code == 429:
+            wait = min(30 * (2 ** attempt), 300)  # 30s, 60s, 120s, 240s, 300s
+            logger.warning("Kling 429 rate limit — waiting %ds before retry...", wait)
+            time.sleep(wait)
+            continue
+
+        response.raise_for_status()
+        break
+    else:
+        raise RuntimeError("Kling AI rate limit (429) after 5 attempts (~12 min of waiting)")
+
     data = response.json()
 
     if data.get("code") != 0:
