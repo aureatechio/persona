@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid as _uuid
 
 from supabase import create_client
@@ -70,6 +72,42 @@ def claim_whatsapp_send(selfie_id: str) -> bool:
     except Exception as e:
         logger.error("claim_whatsapp_send RPC failed for %s: %s — refusing to send (safe default)", selfie_id, e)
         return False
+
+
+def claim_kling_slot(selfie_id: str) -> str | None:
+    """Atomically claim a Kling slot (least-loaded key).
+    Returns kling_key_id (UUID string) or None if all keys are full."""
+    import logging
+    logger = logging.getLogger("worker.db")
+    try:
+        res = client.rpc("claim_kling_slot", {"p_selfie_id": selfie_id}).execute()
+        key_id = res.data if res.data else None
+        if key_id:
+            logger.info("Kling slot claimed for %s on key %s", selfie_id, str(key_id)[:8])
+        return key_id
+    except Exception as e:
+        logger.error("claim_kling_slot failed for %s: %s", selfie_id, e)
+        return None
+
+
+def release_kling_slot(selfie_id: str):
+    """Release the Kling slot (called in finally block)."""
+    import logging
+    logger = logging.getLogger("worker.db")
+    try:
+        client.rpc("release_kling_slot", {"p_selfie_id": selfie_id}).execute()
+        logger.info("Kling slot released for %s", selfie_id)
+    except Exception as e:
+        logger.warning("release_kling_slot failed for %s: %s (will auto-expire in 40min)", selfie_id, e)
+
+
+def get_kling_key(key_id: str) -> dict | None:
+    """Fetch access_key and secret_key for a Kling key."""
+    try:
+        res = client.rpc("get_kling_key", {"p_key_id": key_id}).execute()
+        return res.data[0] if res.data else None
+    except Exception:
+        return None
 
 
 def get_active_base_model():

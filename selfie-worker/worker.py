@@ -151,24 +151,46 @@ def process_selfie(selfie: dict):
     else:
         tts_path = selfie.get("tts_audio_path", f"tts/selfie_{sid}.mp3")
 
-    # ─── Step 4: Lip-sync ───
+    # ─── Step 4: Lip-sync (with Kling key pool — max 3 per key) ───
     if _should_run_step(status, "generating_lipsync"):
-        # Check if we already have a lipsync URL (from a previous partial run)
         if selfie.get("lipsync_video_url"):
             logger.info("Step 4/6: Lip-sync already complete, skipping...")
             lipsync_url = selfie["lipsync_video_url"]
         else:
-            if selfie.get("status") != "generating_lipsync":
+            # Wait for an available Kling slot (max 3 concurrent per key)
+            kling_key_id = None
+            while not _shutdown:
+                kling_key_id = db.claim_kling_slot(sid)
+                if kling_key_id:
+                    break
+                logger.info("Step 4/6: All Kling slots full (9/9), waiting 15s...")
+                time.sleep(15)
+
+            if _shutdown:
+                return
+
+            try:
+                # Fetch credentials for the assigned key
+                key_data = db.get_kling_key(kling_key_id)
+                if not key_data:
+                    raise RuntimeError(f"Kling key {kling_key_id} not found in database")
+
                 db.update_status(sid, "generating_lipsync")
-            logger.info("Step 4/6: Generating lip-sync...")
+                logger.info("Step 4/6: Generating lip-sync (key: %s)...", str(kling_key_id)[:8])
 
-            # Create signed URLs for Sync Labs
-            video_signed = db.create_signed_url(base_model["video_storage_path"])
-            audio_signed = db.create_signed_url(tts_path)
+                video_signed = db.create_signed_url(base_model["video_storage_path"])
+                audio_signed = db.create_signed_url(tts_path)
 
-            lipsync_url = run_lipsync(video_signed, audio_signed)
-            db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
-            selfie["lipsync_video_url"] = lipsync_url
+                lipsync_url = run_lipsync(
+                    video_signed, audio_signed,
+                    kling_access_key=key_data["access_key"],
+                    kling_secret_key=key_data["secret_key"],
+                )
+                db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
+                selfie["lipsync_video_url"] = lipsync_url
+            finally:
+                # ALWAYS release the slot, even on error
+                db.release_kling_slot(sid)
     else:
         lipsync_url = selfie.get("lipsync_video_url", "")
 
@@ -219,7 +241,7 @@ def main():
     logger.info("╚══════════════════════════════════════════╝")
 
     # Validate config
-    from config import SUPABASE_URL, OPENAI_API_KEY, ELEVENLABS_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, UAZAPI_TOKEN
+    from config import SUPABASE_URL, OPENAI_API_KEY, ELEVENLABS_API_KEY, UAZAPI_TOKEN
 
     missing = []
     if not SUPABASE_URL:
@@ -228,10 +250,6 @@ def main():
         missing.append("OPENAI_API_KEY")
     if not ELEVENLABS_API_KEY:
         missing.append("ELEVENLABS_API_KEY")
-    if not KLING_ACCESS_KEY:
-        missing.append("KLING_ACCESS_KEY")
-    if not KLING_SECRET_KEY:
-        missing.append("KLING_SECRET_KEY")
     if not UAZAPI_TOKEN:
         missing.append("UAZAPI_TOKEN")
 

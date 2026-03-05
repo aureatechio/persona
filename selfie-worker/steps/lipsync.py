@@ -4,7 +4,7 @@ import time
 import logging
 import requests
 
-from config import LIPSYNC_PROVIDER, SYNC_API_KEY, KLING_ACCESS_KEY, KLING_SECRET_KEY, KLING_API_BASE
+from config import LIPSYNC_PROVIDER, SYNC_API_KEY, KLING_API_BASE
 
 logger = logging.getLogger("worker.lipsync")
 
@@ -82,26 +82,26 @@ def _sync_poll(job_id: str) -> str:
 
 # ============ KLING AI ============
 
-def _kling_generate_token() -> str:
+def _kling_generate_token(access_key: str, secret_key: str) -> str:
     import jwt
     import math
     now = math.floor(time.time())
     payload = {
-        "iss": KLING_ACCESS_KEY,
+        "iss": access_key,
         "exp": now + 1800,
         "nbf": now - 5,
         "iat": now,
     }
-    return jwt.encode(payload, KLING_SECRET_KEY, algorithm="HS256")
+    return jwt.encode(payload, secret_key, algorithm="HS256")
 
 
-def _kling_submit(video_url: str, audio_url: str) -> str:
-    if not KLING_ACCESS_KEY or not KLING_SECRET_KEY:
-        raise RuntimeError("KLING_ACCESS_KEY ou KLING_SECRET_KEY nao configurados")
+def _kling_submit(video_url: str, audio_url: str, access_key: str, secret_key: str) -> str:
+    if not access_key or not secret_key:
+        raise RuntimeError("Kling credentials not provided")
 
     max_attempts = 5
     for attempt in range(max_attempts):
-        token = _kling_generate_token()
+        token = _kling_generate_token(access_key, secret_key)
         logger.info("Submitting lip-sync job to Kling AI... (attempt %d/%d)", attempt + 1, max_attempts)
 
         response = requests.post(
@@ -144,7 +144,7 @@ def _kling_submit(video_url: str, audio_url: str) -> str:
     return task_id
 
 
-def _kling_poll(job_id: str) -> str:
+def _kling_poll(job_id: str, access_key: str, secret_key: str) -> str:
     logger.info("Polling Kling lip-sync job '%s'...", job_id)
     start = time.time()
 
@@ -153,7 +153,7 @@ def _kling_poll(job_id: str) -> str:
         if elapsed > MAX_POLL_TIME:
             raise RuntimeError(f"Kling lip-sync job {job_id} timed out after {MAX_POLL_TIME}s")
 
-        token = _kling_generate_token()
+        token = _kling_generate_token(access_key, secret_key)
         response = requests.get(
             f"{KLING_API_BASE}/v1/videos/lip-sync/{job_id}",
             headers={"Authorization": f"Bearer {token}"},
@@ -189,8 +189,9 @@ def _kling_poll(job_id: str) -> str:
 
 # ============ PUBLIC API ============
 
-def run_lipsync(video_url: str, audio_url: str) -> str:
-    """Submit and poll lip-sync. Returns output video URL."""
+def run_lipsync(video_url: str, audio_url: str, kling_access_key: str = "", kling_secret_key: str = "") -> str:
+    """Submit and poll lip-sync. Returns output video URL.
+    For Kling provider, credentials must be passed (from DB key pool)."""
     provider = LIPSYNC_PROVIDER
     logger.info("Lip-sync provider: %s", provider)
 
@@ -198,5 +199,5 @@ def run_lipsync(video_url: str, audio_url: str) -> str:
         job_id = _sync_submit(video_url, audio_url)
         return _sync_poll(job_id)
 
-    job_id = _kling_submit(video_url, audio_url)
-    return _kling_poll(job_id)
+    job_id = _kling_submit(video_url, audio_url, kling_access_key, kling_secret_key)
+    return _kling_poll(job_id, kling_access_key, kling_secret_key)
