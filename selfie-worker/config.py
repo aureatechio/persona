@@ -15,7 +15,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # Lip-sync provider: "sync" (Sync Labs) or "kling" (Kling AI)
-LIPSYNC_PROVIDER = os.getenv("LIPSYNC_PROVIDER", "sync")
+LIPSYNC_PROVIDER = os.getenv("LIPSYNC_PROVIDER", "kling")
 
 # Sync Labs
 SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
