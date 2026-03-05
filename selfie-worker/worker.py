@@ -263,18 +263,20 @@ def main():
                     logger.error("Pipeline error for %s: %s", sid, error_msg)
                     logger.error(traceback.format_exc())
 
-                    # Count retries via error_message prefix
-                    current_error = selfie.get("error_message") or ""
+                    # Fetch current state from DB (not the stale selfie dict)
+                    current = db.get_selfie(sid)
+                    current_error = (current or selfie).get("error_message") or ""
+                    current_status = (current or selfie).get("status", "failed")
                     retry_count = current_error.count("[RETRY]")
 
                     if retry_count < MAX_RETRIES - 1:
-                        # Mark for retry — keep current status so worker picks it up again
+                        # Keep CURRENT status (not original) so retry resumes from where it failed
                         db.update_status(
                             sid,
-                            selfie["status"],
+                            current_status,
                             error_message=f"[RETRY] {error_msg}",
                         )
-                        logger.info("Will retry %s (attempt %d/%d)", sid, retry_count + 2, MAX_RETRIES)
+                        logger.info("Will retry %s from status '%s' (attempt %d/%d)", sid, current_status, retry_count + 2, MAX_RETRIES)
                     else:
                         # Max retries exceeded
                         db.update_status(sid, "failed", error_message=f"Max retries exceeded: {error_msg}")
