@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # FFmpeg is required for Whisper + video compose
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get install -y ffmpeg libavcodec-extra && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
