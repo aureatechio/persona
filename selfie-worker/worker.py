@@ -97,7 +97,21 @@ def process_selfie(selfie: dict):
         db.update_status(sid, "transcribing")
         logger.info("Step 1/6: Transcribing...")
 
-        video_bytes = db.download_file(selfie["selfie_video_path"])
+        # Wait for browser upload to complete (file might not exist yet)
+        video_bytes = None
+        for attempt in range(5):
+            try:
+                video_bytes = db.download_file(selfie["selfie_video_path"])
+                break
+            except Exception:
+                if attempt < 4:
+                    logger.info("File not ready yet, waiting 3s... (attempt %d/5)", attempt + 1)
+                    time.sleep(3)
+                else:
+                    raise
+
+        if not video_bytes:
+            raise RuntimeError("Failed to download selfie video after 5 attempts")
         ext = "webm" if selfie["selfie_video_path"].endswith(".webm") else "mp4"
         transcription = transcribe(video_bytes, ext)
 

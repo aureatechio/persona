@@ -34,7 +34,7 @@ def claim_queued():
 
 def fetch_resumable():
     """Fetch selfies stuck in intermediate states (crash recovery).
-    Only picks up items older than 5 minutes to avoid race conditions."""
+    Only picks up items older than 5 minutes AND not already sent via WhatsApp."""
     stuck_statuses = [
         "transcribing",
         "generating_text",
@@ -50,6 +50,7 @@ def fetch_resumable():
         client.table("video_selfies")
         .select("*")
         .in_("status", stuck_statuses)
+        .neq("whatsapp_sent", True)
         .lt("updated_at", cutoff)
         .order("created_at")
         .limit(1)
@@ -80,14 +81,42 @@ def get_selfie(selfie_id: str):
 
 def claim_whatsapp_send(selfie_id: str) -> bool:
     """Atomically claim the WhatsApp send for a selfie.
-    Returns True if this caller won the claim (should send), False if already sent."""
+    Uses conditional UPDATE: only succeeds if whatsapp_sent is not already true.
+    Returns True if this caller should send, False if already sent."""
+    import logging
+    logger = logging.getLogger("worker.db")
+
+    # Method 1: Try RPC (atomic in Postgres)
     try:
         res = client.rpc("claim_whatsapp_send", {"selfie_id": selfie_id}).execute()
-        return res.data is True
-    except Exception:
-        # Fallback: check directly
-        selfie = get_selfie(selfie_id)
-        return selfie is not None and not selfie.get("whatsapp_sent")
+        result = bool(res.data)
+        logger.info("claim_whatsapp_send RPC for %s returned: %s (raw: %r)", selfie_id, result, res.data)
+        return result
+    except Exception as e:
+        logger.warning("claim_whatsapp_send RPC failed: %s, using fallback", e)
+
+    # Method 2: Fallback — conditional update
+    try:
+        from datetime import datetime, timezone
+        res = (
+            client.table("video_selfies")
+            .update({"whatsapp_sent": True, "updated_at": datetime.now(timezone.utc).isoformat()})
+            .eq("id", selfie_id)
+            .neq("whatsapp_sent", True)
+            .execute()
+        )
+        # If update returned data, we claimed it
+        claimed = bool(res.data and len(res.data) > 0)
+        logger.info("claim_whatsapp_send fallback for %s: claimed=%s", selfie_id, claimed)
+        return claimed
+    except Exception as e2:
+        logger.error("claim_whatsapp_send fallback also failed: %s", e2)
+
+    # Method 3: Last resort — just check
+    selfie = get_selfie(selfie_id)
+    already_sent = selfie and selfie.get("whatsapp_sent")
+    logger.info("claim_whatsapp_send last-resort for %s: already_sent=%s", selfie_id, already_sent)
+    return not already_sent
 
 
 def get_active_base_model():
