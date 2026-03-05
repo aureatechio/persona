@@ -503,7 +503,7 @@ export default function SelfieVideoPage() {
                   Obrigado pelo seu depoimento!
                 </h2>
                 <p className="text-zinc-400 text-sm leading-relaxed">
-                  <span className="text-white font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. Obrigado por compartilhar esse momento com a gente!
+                  <span className="text-white font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 5 minutos.
                 </p>
               </div>
 
