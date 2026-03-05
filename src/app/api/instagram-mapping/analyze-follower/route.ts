@@ -70,13 +70,16 @@ REGRAS GERAIS:
   - Máximo 2 frases curtas. Tom acolhedor e próximo. Não aumente o tamanho além de 2 frases.
   - NUNCA repita estruturas iguais entre diferentes perfis — varie o tom e a forma de dizer "conte comigo".
   - OBRIGATÓRIO: use acentuação correta em TODA a frase (você, parabéns, família, incrível, etc.)
-  - IMPORTANTÍSSIMO — PONTUAÇÃO PARA LEITURA EM VOZ ALTA:
+  - IMPORTANTÍSSIMO — ESCREVA COMO FALA HUMANA REAL (será convertido em áudio por TTS):
+    - Escreva EXATAMENTE como alguém falaria num áudio de WhatsApp — informal, caloroso, próximo.
     - Use vírgulas para criar pausas naturais na fala.
     - Use travessão (—) para pausas dramáticas ou ênfase.
     - Use ponto de exclamação com moderação, apenas quando a emoção for genuína.
-    - Use reticências (...) se quiser criar suspense ou reflexão.
-    - Escreva como se fosse um DISCURSO falado por um político caloroso — com ritmo, cadência e emoção.
-    - A frase deve soar NATURAL quando lida em voz alta, com respirações e pausas nos lugares certos.
+    - Use reticências (...) para criar suspense, reflexão ou hesitação natural.
+    - EVITE frases muito polidas ou formais — ninguém fala assim num áudio.
+    - Prefira contrações e formas coloquiais naturais do português brasileiro (tá, né, pra, pro, num).
+    - A frase deve soar como se a pessoa estivesse REALMENTE falando — com respirações, ritmo e emoção genuína.
+    - NÃO soe como um robô lendo um script. Soe como um AMIGO mandando áudio.
   Exemplos de BOAS frases (cada uma totalmente diferente):
   - "Oi, Rose, vi que você ama cozinhar em família — que delícia essas receitas! Conte comigo, para valorizar essa tradição tão bonita."
   - "Oi, Marcos, parabéns pelo crescimento da sua empresa — inspirador demais! Conte comigo, nessa jornada."

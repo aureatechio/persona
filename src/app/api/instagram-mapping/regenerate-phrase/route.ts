@@ -69,7 +69,12 @@ REGRAS:
 - Use o PRIMEIRO NOME do seguidor na frase (extraído do campo Nome).
 - Máximo 2-3 frases curtas.
 - Use português do Brasil com acentuação PERFEITA (é, ê, á, ã, ç, ó, ô, í, ú).
-- Seja criativo e varie a estrutura entre diferentes perfis.`;
+- Seja criativo e varie a estrutura entre diferentes perfis.
+- IMPORTANTÍSSIMO: Esta frase será convertida em ÁUDIO por TTS. Escreva como FALA HUMANA REAL:
+  - Soe como alguém mandando um áudio de WhatsApp — caloroso, próximo, informal.
+  - Use contrações naturais do português brasileiro (tá, né, pra, pro).
+  - Use vírgulas e travessões para criar pausas e ritmo na fala.
+  - NÃO soe como um robô lendo script. Soe como um AMIGO falando.`;
 
     // Try each key until one works (handles keys with no balance)
     let message: Anthropic.Message | null = null;

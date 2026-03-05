@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import {
+  Check,
   ChevronDown,
   Briefcase,
   Users,
@@ -21,7 +22,9 @@ import {
   Pause,
   UserPlus,
   Send,
+  AlertCircle,
 } from 'lucide-react';
+import type { VoiceModelState } from './VoiceModelModal';
 
 export interface AnalyzedFollowerData {
   username: string;
@@ -49,44 +52,9 @@ export interface AnalyzedFollowerData {
   };
 }
 
-/* ─── 20 Tags — Colors ─── */
+/* ─── 20 Tags — Colors (shared) ─── */
 
-const GROUP_COLORS: Record<string, { bg: string; text: string; border: string; glow: string }> = {
-  FAMILIA:      { bg: 'bg-amber-500/15',    text: 'text-amber-300',    border: 'border-amber-500/30',    glow: 'shadow-amber-500/10' },
-  EMPREENDEDOR: { bg: 'bg-violet-500/15',   text: 'text-violet-300',   border: 'border-violet-500/30',   glow: 'shadow-violet-500/10' },
-  FE:           { bg: 'bg-orange-500/15',    text: 'text-orange-300',   border: 'border-orange-500/30',   glow: 'shadow-orange-500/10' },
-  ESPORTE:      { bg: 'bg-emerald-500/15',   text: 'text-emerald-300',  border: 'border-emerald-500/30',  glow: 'shadow-emerald-500/10' },
-  EDUCACAO:     { bg: 'bg-teal-500/15',      text: 'text-teal-300',     border: 'border-teal-500/30',     glow: 'shadow-teal-500/10' },
-  SAUDE:        { bg: 'bg-rose-500/15',      text: 'text-rose-300',     border: 'border-rose-500/30',     glow: 'shadow-rose-500/10' },
-  TECH:         { bg: 'bg-cyan-500/15',      text: 'text-cyan-300',     border: 'border-cyan-500/30',     glow: 'shadow-cyan-500/10' },
-  POLITICA:     { bg: 'bg-red-500/15',       text: 'text-red-300',      border: 'border-red-500/30',      glow: 'shadow-red-500/10' },
-  MODA:         { bg: 'bg-fuchsia-500/15',   text: 'text-fuchsia-300',  border: 'border-fuchsia-500/30',  glow: 'shadow-fuchsia-500/10' },
-  ARTE:         { bg: 'bg-purple-500/15',    text: 'text-purple-300',   border: 'border-purple-500/30',   glow: 'shadow-purple-500/10' },
-  MUSICA:       { bg: 'bg-indigo-500/15',    text: 'text-indigo-300',   border: 'border-indigo-500/30',   glow: 'shadow-indigo-500/10' },
-  GASTRONOMIA:  { bg: 'bg-yellow-500/15',    text: 'text-yellow-300',   border: 'border-yellow-500/30',   glow: 'shadow-yellow-500/10' },
-  AGRO:         { bg: 'bg-lime-500/15',      text: 'text-lime-300',     border: 'border-lime-500/30',     glow: 'shadow-lime-500/10' },
-  PET:          { bg: 'bg-amber-400/15',     text: 'text-amber-200',    border: 'border-amber-400/30',    glow: 'shadow-amber-400/10' },
-  VIAGEM:       { bg: 'bg-sky-500/15',       text: 'text-sky-300',      border: 'border-sky-500/30',      glow: 'shadow-sky-500/10' },
-  FITNESS:      { bg: 'bg-green-500/15',     text: 'text-green-300',    border: 'border-green-500/30',    glow: 'shadow-green-500/10' },
-  JURIDICO:     { bg: 'bg-slate-400/15',     text: 'text-slate-300',    border: 'border-slate-400/30',    glow: 'shadow-slate-400/10' },
-  INFLUENCER:   { bg: 'bg-pink-500/15',      text: 'text-pink-300',     border: 'border-pink-500/30',     glow: 'shadow-pink-500/10' },
-  COMUNIDADE:   { bg: 'bg-blue-500/15',      text: 'text-blue-300',     border: 'border-blue-500/30',     glow: 'shadow-blue-500/10' },
-  LIFESTYLE:    { bg: 'bg-pink-400/15',      text: 'text-pink-200',     border: 'border-pink-400/30',     glow: 'shadow-pink-400/10' },
-  OUTRO:        { bg: 'bg-zinc-500/15',      text: 'text-zinc-300',     border: 'border-zinc-500/30',     glow: 'shadow-zinc-500/10' },
-};
-
-const GROUP_LABELS: Record<string, string> = {
-  FAMILIA: 'Família', EMPREENDEDOR: 'Empreendedor', FE: 'Fé', ESPORTE: 'Esporte',
-  EDUCACAO: 'Educação', SAUDE: 'Saúde', TECH: 'Tech', POLITICA: 'Política',
-  MODA: 'Moda', ARTE: 'Arte', MUSICA: 'Música', GASTRONOMIA: 'Gastronomia',
-  AGRO: 'Agro', PET: 'Pet', VIAGEM: 'Viagem', FITNESS: 'Fitness',
-  JURIDICO: 'Jurídico', INFLUENCER: 'Influencer', COMUNIDADE: 'Comunidade', LIFESTYLE: 'Lifestyle',
-  OUTRO: 'Outro',
-};
-
-function getGroupColor(grupo: string) {
-  return GROUP_COLORS[grupo] || GROUP_COLORS.OUTRO;
-}
+import { GROUP_COLORS, GROUP_LABELS, getGroupColor } from '@/lib/instagram-groups';
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -136,27 +104,24 @@ function renderCardCanvas(
 
   if (!frase) return;
 
-  // Convert text to uppercase
-  const upperFrase = frase.toUpperCase();
-
   // Text centered in the upper area of the image
   const textAreaMaxWidth = w * 0.75;
   const textCenterX = w * 0.5;
   const textStartY = h * 0.08;
 
   // Only reduce font size for very long texts (180+ chars)
-  const charCount = upperFrase.length;
+  const charCount = frase.length;
   let fontScale = 0.035;
   if (charCount > 220) fontScale = 0.028;
   else if (charCount > 180) fontScale = 0.031;
 
   const fontSize = Math.round(w * fontScale);
-  ctx.font = `700 ${fontSize}px "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
+  ctx.font = `600 ${fontSize}px "Raleway", "Manrope", "Inter", "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
 
   // Word wrap
-  const words = upperFrase.split(' ');
+  const words = frase.split(' ');
   const lines: string[] = [];
   let currentLine = '';
 
@@ -207,7 +172,9 @@ function CampaignModal({ open, onClose, frase, displayName, campaignImageUrl }: 
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = () => {
+    img.onload = async () => {
+      // Wait for Raleway font to be available for canvas rendering
+      await document.fonts.ready;
       renderCardCanvas(canvas, img, frase);
     };
     img.src = campaignImageUrl || '/templates/campanha-base.jpg';
@@ -506,13 +473,23 @@ interface FollowerRowProps {
   data: AnalyzedFollowerData;
   index: number;
   campaignImageUrl?: string;
+  voiceModel?: VoiceModelState;
   isRegenerating?: boolean;
+  hasSession?: boolean;
+  isFollowed?: boolean;
+  isMessaged?: boolean;
+  isSelected?: boolean;
+  onFollow?: (username: string) => void;
+  onMessage?: (username: string, displayName: string, defaultMessage: string) => void;
+  onSelect?: (username: string, selected: boolean) => void;
 }
 
-export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: FollowerRowProps) {
+export function FollowerRow({ data, index, campaignImageUrl, voiceModel, isRegenerating, hasSession, isFollowed, isMessaged, isSelected, onFollow, onMessage, onSelect }: FollowerRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [localFollowed, setLocalFollowed] = useState(false);
   const { analysis, profile } = data;
   const groupColor = getGroupColor(analysis.grupo);
   const initials = (data.display_name || data.username).slice(0, 2).toUpperCase();
@@ -549,10 +526,35 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
       />
 
       {/* Main row */}
+      <div className="w-full flex items-center gap-3 px-4 py-1.5 text-left">
+        {/* Selection checkbox */}
+        {onSelect && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelect(data.username, !isSelected);
+            }}
+            className="shrink-0 group/check"
+          >
+            <div
+              className={cn(
+                'w-5 h-5 rounded-lg flex items-center justify-center transition-all duration-300',
+                isSelected
+                  ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30 scale-100'
+                  : 'bg-white/[0.04] border border-white/[0.1] hover:border-emerald-500/40 hover:bg-emerald-500/10 scale-100 group-hover/check:scale-110',
+              )}
+            >
+              {isSelected && (
+                <Check size={12} strokeWidth={3} className="text-black animate-in zoom-in-50 duration-200" />
+              )}
+            </div>
+          </button>
+        )}
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-3 px-4 py-1.5 text-left cursor-pointer"
+        className="flex-1 flex items-center gap-3 text-left cursor-pointer"
       >
         {/* Avatar */}
         <div className="shrink-0 relative">
@@ -645,6 +647,7 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
           />
         </div>
       </button>
+      </div>
 
       {/* Expanded content */}
       {expanded && (
@@ -694,36 +697,46 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
                     </div>
                   </div>
 
-                  {/* Arte de campanha — clicável */}
-                  <div
-                    className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-emerald-500/20 cursor-pointer group/art hover:border-emerald-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/10 hover:scale-[1.03]"
-                    onClick={() => setModalOpen(true)}
-                  >
-                    {/* Vibrant glow overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-emerald-500/10 z-[1] pointer-events-none" />
-                    <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-emerald-500/20 rounded-full blur-2xl pointer-events-none z-[1]" />
-                    <div className="absolute -top-4 -left-4 w-20 h-20 bg-violet-500/15 rounded-full blur-2xl pointer-events-none z-[1]" />
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={campaignImageUrl || '/templates/campanha-base.jpg'}
-                      alt=""
-                      loading="eager"
-                      decoding="async"
-                      className="absolute inset-0 w-full h-full object-cover brightness-110 contrast-105 saturate-[1.2] group-hover/art:scale-110 transition-transform duration-500"
+                  {/* Arte de campanha OU Video lip-sync */}
+                  {voiceModel && analysis.frase_comunicacao ? (
+                    <LipSyncVideoPlayer
+                      voiceModelId={voiceModel.id}
+                      username={data.username}
+                      phrase={analysis.frase_comunicacao}
                     />
-                    <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
-                      <Maximize2 size={12} className="text-white/80" />
-                    </div>
-                    <div className="relative h-full min-h-[140px]" />
-                  </div>
+                  ) : (
+                    <>
+                      <div
+                        className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-emerald-500/20 cursor-pointer group/art hover:border-emerald-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/10 hover:scale-[1.03]"
+                        onClick={() => setModalOpen(true)}
+                      >
+                        {/* Vibrant glow overlay */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-emerald-500/10 z-[1] pointer-events-none" />
+                        <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-emerald-500/20 rounded-full blur-2xl pointer-events-none z-[1]" />
+                        <div className="absolute -top-4 -left-4 w-20 h-20 bg-violet-500/15 rounded-full blur-2xl pointer-events-none z-[1]" />
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={campaignImageUrl || '/templates/campanha-base.jpg'}
+                          alt=""
+                          loading="eager"
+                          decoding="async"
+                          className="absolute inset-0 w-full h-full object-cover brightness-110 contrast-105 saturate-[1.2] group-hover/art:scale-110 transition-transform duration-500"
+                        />
+                        <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
+                          <Maximize2 size={12} className="text-white/80" />
+                        </div>
+                        <div className="relative h-full min-h-[140px]" />
+                      </div>
 
-                  <CampaignModal
-                    open={modalOpen}
-                    onClose={() => setModalOpen(false)}
-                    frase={analysis.frase_comunicacao || ''}
-                    displayName={data.display_name || data.username}
-                    campaignImageUrl={campaignImageUrl}
-                  />
+                      <CampaignModal
+                        open={modalOpen}
+                        onClose={() => setModalOpen(false)}
+                        frase={analysis.frase_comunicacao || ''}
+                        displayName={data.display_name || data.username}
+                        campaignImageUrl={campaignImageUrl}
+                      />
+                    </>
+                  )}
                 </div>
             </div>
           )}
@@ -832,33 +845,63 @@ export function FollowerRow({ data, index, campaignImageUrl, isRegenerating }: F
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled
+                disabled={isFollowed || localFollowed || followLoading || !hasSession}
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!hasSession) { onFollow?.(data.username); return; }
+                  setFollowLoading(true);
+                  try {
+                    const res = await fetch('/api/instagram-mapping/follow', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ targetUsername: data.username }),
+                    });
+                    if (res.ok) {
+                      setLocalFollowed(true);
+                      onFollow?.(data.username);
+                    }
+                  } finally {
+                    setFollowLoading(false);
+                  }
+                }}
                 className={cn(
                   'inline-flex items-center gap-2 px-4 py-2',
-                  'bg-white/[0.06] border border-white/[0.1]',
-                  'rounded-xl text-xs font-medium text-zinc-300',
-                  'cursor-not-allowed',
-                  'hover:bg-white/[0.1] hover:border-white/[0.18] hover:text-zinc-200',
+                  'rounded-xl text-xs font-medium',
                   'transition-all duration-200',
+                  (isFollowed || localFollowed)
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 cursor-default'
+                    : hasSession
+                      ? 'bg-white/[0.06] border border-white/[0.1] text-zinc-300 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:text-emerald-300 active:scale-[0.97]'
+                      : 'bg-white/[0.04] border border-white/[0.06] text-zinc-600 cursor-not-allowed',
                 )}
               >
-                <UserPlus size={12} />
-                Seguir
+                {followLoading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <UserPlus size={12} />
+                )}
+                {(isFollowed || localFollowed) ? 'Seguindo' : 'Seguir'}
               </button>
               <button
                 type="button"
-                disabled
+                disabled={!hasSession}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMessage?.(data.username, data.display_name, analysis.frase_comunicacao || '');
+                }}
                 className={cn(
                   'inline-flex items-center gap-2 px-4 py-2',
-                  'bg-white/[0.06] border border-white/[0.1]',
-                  'rounded-xl text-xs font-medium text-zinc-300',
-                  'cursor-not-allowed',
-                  'hover:bg-white/[0.1] hover:border-white/[0.18] hover:text-zinc-200',
+                  'rounded-xl text-xs font-medium',
                   'transition-all duration-200',
+                  isMessaged
+                    ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 cursor-default'
+                    : hasSession
+                      ? 'bg-white/[0.06] border border-white/[0.1] text-zinc-300 hover:bg-emerald-500/15 hover:border-emerald-500/30 hover:text-emerald-300 active:scale-[0.97]'
+                      : 'bg-white/[0.04] border border-white/[0.06] text-zinc-600 cursor-not-allowed',
                 )}
               >
                 <Send size={12} />
-                Mensagem
+                {isMessaged ? 'Enviada' : 'Mensagem'}
               </button>
             </div>
           </div>
@@ -898,6 +941,181 @@ function DetailChip({
         </span>
       </div>
       <p className="text-xs text-white font-medium truncate">{value}</p>
+    </div>
+  );
+}
+
+/* ─── Simple Hash ─── */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/* ─── LipSync Video Player ─── */
+function LipSyncVideoPlayer({ voiceModelId, username, phrase }: {
+  voiceModelId: string;
+  username: string;
+  phrase: string;
+}) {
+  const [status, setStatus] = useState<'idle' | 'generating' | 'completed' | 'failed'>('idle');
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const phraseHash = useMemo(() => simpleHash(phrase), [phrase]);
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function check() {
+      try {
+        const res = await fetch(
+          `/api/voice-model/poll-status?username=${encodeURIComponent(username)}&voice_model_id=${voiceModelId}&phrase_hash=${phraseHash}`,
+        );
+        const data = await res.json();
+        if (cancelled) return;
+
+        if (data.status === 'completed' && data.video_url) {
+          setVideoUrl(data.video_url);
+          setStatus('completed');
+        } else if (data.status === 'generating_lipsync' || data.status === 'generating_tts') {
+          setStatus('generating');
+          startPolling();
+        } else if (data.status === 'failed') {
+          setStatus('failed');
+        }
+      } catch {
+        // No record yet — stay idle
+      }
+    }
+
+    check();
+    return () => {
+      cancelled = true;
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [voiceModelId, username, phraseHash]);
+
+  function startPolling() {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/voice-model/poll-status?username=${encodeURIComponent(username)}&voice_model_id=${voiceModelId}&phrase_hash=${phraseHash}`,
+        );
+        const data = await res.json();
+        if (data.status === 'completed' && data.video_url) {
+          setVideoUrl(data.video_url);
+          setStatus('completed');
+          clearInterval(pollRef.current);
+        } else if (data.status === 'failed') {
+          setStatus('failed');
+          clearInterval(pollRef.current);
+        }
+      } catch {
+        // Retry on next interval
+      }
+    }, 10000);
+  }
+
+  async function triggerGeneration() {
+    setStatus('generating');
+    try {
+      await fetch('/api/voice-model/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voice_model_id: voiceModelId,
+          username,
+          phrase,
+          phrase_hash: phraseHash,
+        }),
+      });
+      startPolling();
+    } catch {
+      setStatus('failed');
+    }
+  }
+
+  if (status === 'idle') {
+    return (
+      <div
+        className={cn(
+          'shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl',
+          'border border-violet-500/20 cursor-pointer group/art',
+          'hover:border-violet-500/40 transition-all duration-300',
+          'hover:shadow-xl hover:shadow-violet-500/10',
+          'flex items-center justify-center bg-zinc-900/60 min-h-[140px]',
+        )}
+        onClick={triggerGeneration}
+      >
+        <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-violet-500/15 rounded-full blur-2xl pointer-events-none" />
+        <div className="flex flex-col items-center gap-2 p-4 text-center">
+          <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 group-hover/art:bg-violet-500/20 transition-colors duration-200">
+            <Play size={20} className="text-violet-400" />
+          </div>
+          <span className="text-xs text-zinc-400 group-hover/art:text-zinc-300 transition-colors duration-200">
+            Gerar video personalizado
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'generating') {
+    return (
+      <div className={cn(
+        'shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl',
+        'border border-violet-500/20',
+        'flex items-center justify-center bg-zinc-900/60 min-h-[140px]',
+      )}>
+        <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-violet-500/10 rounded-full blur-2xl pointer-events-none animate-pulse" />
+        <div className="flex flex-col items-center gap-2 p-4 text-center">
+          <Loader2 size={24} className="text-violet-400 animate-spin" />
+          <span className="text-xs text-zinc-400 animate-pulse">Gerando video...</span>
+          <span className="text-[10px] text-zinc-600">Pode levar 1-2 min</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'failed') {
+    return (
+      <div
+        className={cn(
+          'shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl',
+          'border border-red-500/20 cursor-pointer',
+          'flex items-center justify-center bg-zinc-900/60 min-h-[140px]',
+          'hover:border-red-500/30 transition-all duration-200',
+        )}
+        onClick={triggerGeneration}
+      >
+        <div className="flex flex-col items-center gap-2 p-4 text-center">
+          <AlertCircle size={24} className="text-red-400" />
+          <span className="text-xs text-red-300">Falha ao gerar</span>
+          <span className="text-[10px] text-zinc-500">Clique para tentar novamente</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Completed: show video player
+  return (
+    <div className={cn(
+      'shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl',
+      'border border-emerald-500/20 bg-black min-h-[140px]',
+      'shadow-xl shadow-emerald-500/5',
+    )}>
+      <video
+        src={videoUrl!}
+        controls
+        playsInline
+        className="w-full h-full object-cover rounded-2xl"
+        preload="metadata"
+      />
     </div>
   );
 }

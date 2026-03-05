@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       // Fetch all cached followers for this account
       const { data: cachedFollowers } = await supabase
         .from('instagram_followers')
-        .select('username, display_name, avatar_url, ai_summary, category, category_label, metadata_json')
+        .select('username, display_name, avatar_url, ai_summary, category, category_label, metadata_json, followed, messaged')
         .eq('account_id', account.id)
         .order('created_at', { ascending: true });
 
@@ -64,6 +64,8 @@ export async function POST(request: NextRequest) {
               follows_count: f.metadata_json.follows_count,
               posts_count: f.metadata_json.posts_count,
             },
+            followed: !!f.followed,
+            messaged: !!f.messaged,
           }));
 
         if (analyzedFromDb.length > 0) {

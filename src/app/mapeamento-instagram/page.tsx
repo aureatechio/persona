@@ -17,6 +17,10 @@ import {
   Sparkles,
   Users,
   Tag,
+  Link2,
+  CheckCircle2,
+  Unplug,
+  Video,
 } from 'lucide-react';
 import { SearchBar } from '@/components/instagram-mapping/SearchBar';
 import {
@@ -29,6 +33,11 @@ import {
   type AnalyzedFollowerData,
 } from '@/components/instagram-mapping/FollowerRow';
 import { NeuralBackground } from '@/components/NeuralBackground';
+import { ConnectInstagramModal } from '@/components/instagram-mapping/ConnectInstagramModal';
+import { MessageModal } from '@/components/instagram-mapping/MessageModal';
+import { ConfirmModal } from '@/components/instagram-mapping/ConfirmModal';
+import { BulkActionBar } from '@/components/instagram-mapping/BulkActionBar';
+import { VoiceModelModal, type VoiceModelState } from '@/components/instagram-mapping/VoiceModelModal';
 import { supabase } from '@/lib/supabase';
 
 /* ─────────────────── Types ─────────────────── */
@@ -90,6 +99,28 @@ function MapeamentoContent() {
   const [isFetchingMore, setIsFetchingMore] = useState(false);
   const [noMoreFollowers, setNoMoreFollowers] = useState(false);
 
+  // Instagram session (for follow/DM actions)
+  const [igSession, setIgSession] = useState<{ id: string; ig_username: string } | null>(null);
+  const [connectModalOpen, setConnectModalOpen] = useState(false);
+
+  // Message modal
+  const [messageTarget, setMessageTarget] = useState<{ username: string; displayName: string; defaultMessage: string } | null>(null);
+
+  // Follow confirm modal
+  const [followConfirm, setFollowConfirm] = useState<{ username: string } | null>(null);
+  const [followLoading, setFollowLoading] = useState(false);
+
+  // Track followed/messaged usernames
+  const [followedUsers, setFollowedUsers] = useState<Set<string>>(new Set());
+  const [messagedUsers, setMessagedUsers] = useState<Set<string>>(new Set());
+
+  // Bulk selection
+  const [selectedUsernames, setSelectedUsernames] = useState<Set<string>>(new Set());
+
+  // Voice model (clone voz + lip-sync video)
+  const [voiceModel, setVoiceModel] = useState<VoiceModelState | null>(null);
+  const [voiceModelModalOpen, setVoiceModelModalOpen] = useState(false);
+
   // Ref to track completed count across batches
   const batchCompletedRef = useRef(0);
 
@@ -139,6 +170,26 @@ function MapeamentoContent() {
             .catch(() => {});
         }
       });
+  }, []);
+
+  // Check for active Instagram session on mount
+  useEffect(() => {
+    fetch('/api/instagram-mapping/session')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.session) setIgSession(data.session);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Load voice model on mount
+  useEffect(() => {
+    fetch('/api/voice-model/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.model) setVoiceModel(data.model);
+      })
+      .catch(() => {});
   }, []);
 
   /* ─── Persist a single analyzed follower to Supabase (fire-and-forget) ─── */
@@ -274,18 +325,27 @@ function MapeamentoContent() {
         setAccountId(data.account_id || null);
         accountIdRef.current = data.account_id || null;
 
+        const followedSet = new Set<string>();
+        const messagedSet = new Set<string>();
+
         const cachedAnalyzed: AnalyzedFollowerData[] = data.analyzedFollowers.map(
-          (f: { username: string; display_name: string; avatar_url: string; analysis: AnalyzedFollowerData['analysis']; category: string; profile: AnalyzedFollowerData['profile'] }) => ({
-            username: f.username,
-            display_name: f.display_name,
-            avatar_url: f.avatar_url,
-            analysis: f.analysis,
-            category: f.category,
-            profile: f.profile,
-          }),
+          (f: { username: string; display_name: string; avatar_url: string; analysis: AnalyzedFollowerData['analysis']; category: string; profile: AnalyzedFollowerData['profile']; followed?: boolean; messaged?: boolean }) => {
+            if (f.followed) followedSet.add(f.username);
+            if (f.messaged) messagedSet.add(f.username);
+            return {
+              username: f.username,
+              display_name: f.display_name,
+              avatar_url: f.avatar_url,
+              analysis: f.analysis,
+              category: f.category,
+              profile: f.profile,
+            };
+          },
         );
 
         setAnalyzedFollowers(cachedAnalyzed);
+        setFollowedUsers(followedSet);
+        setMessagedUsers(messagedSet);
         // No raw followers to load more from cache — cursor = 0, rawFollowers empty
         setRawFollowers([]);
         setAnalyzedCursor(0);
@@ -660,6 +720,25 @@ function MapeamentoContent() {
               </span>
             </div>
 
+            {/* Instagram connection button */}
+            {igSession ? (
+              <button
+                onClick={() => setConnectModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full hover:bg-emerald-500/15 transition-all duration-200"
+              >
+                <CheckCircle2 size={12} className="text-emerald-400" />
+                <span className="text-[11px] text-emerald-400 font-medium">@{igSession.ig_username}</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setConnectModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-pink-500/10 border border-pink-500/20 rounded-full hover:bg-pink-500/15 transition-all duration-200"
+              >
+                <Link2 size={12} className="text-pink-400" />
+                <span className="text-[11px] text-pink-400 font-medium">Conectar Instagram</span>
+              </button>
+            )}
+
             {/* Analyze status pill */}
             {isAnalyzing ? (
               <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
@@ -674,6 +753,7 @@ function MapeamentoContent() {
                 {analyzedFollowers.length} analisados
               </span>
             ) : null}
+
           </header>
 
           <main className="relative max-w-5xl mx-auto p-6 md:p-8 lg:p-10 space-y-6 animate-in fade-in duration-500">
@@ -741,31 +821,27 @@ function MapeamentoContent() {
                       </>
                     )}
                   </button>
+
+                  {/* Voice Model button */}
                   <button
-                    type="button"
-                    disabled
+                    onClick={() => setVoiceModelModalOpen(true)}
                     className={cn(
-                      'inline-flex items-center gap-2 px-4 py-3',
-                      'bg-white/[0.06] border border-white/[0.1]',
-                      'rounded-xl text-xs font-medium text-zinc-300',
-                      'opacity-60 cursor-not-allowed shrink-0',
+                      'inline-flex items-center gap-2 px-5 py-3',
+                      'rounded-xl text-sm font-semibold shrink-0',
+                      'shadow-lg active:scale-[0.97] transition-all duration-200',
+                      voiceModel?.status === 'approved'
+                        ? 'bg-fuchsia-500 hover:bg-fuchsia-400 text-white shadow-fuchsia-500/25'
+                        : voiceModel?.status === 'ready'
+                          ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 shadow-emerald-500/10'
+                          : 'bg-white/[0.06] hover:bg-white/[0.1] text-zinc-300 hover:text-white border border-white/[0.08] shadow-black/20',
                     )}
                   >
-                    <UserPlus size={14} />
-                    Seguir Todos
-                  </button>
-                  <button
-                    type="button"
-                    disabled
-                    className={cn(
-                      'inline-flex items-center gap-2 px-4 py-3',
-                      'bg-white/[0.06] border border-white/[0.1]',
-                      'rounded-xl text-xs font-medium text-zinc-300',
-                      'opacity-60 cursor-not-allowed shrink-0',
-                    )}
-                  >
-                    <Send size={14} />
-                    Mensagem Todos
+                    <Video size={14} />
+                    {voiceModel?.status === 'approved'
+                      ? 'Modelo Ativo'
+                      : voiceModel?.status === 'ready'
+                        ? 'Aprovar Modelo'
+                        : 'Carregar Modelo'}
                   </button>
                 </div>
 
@@ -816,13 +892,71 @@ function MapeamentoContent() {
             {/* Results list */}
             {filteredFollowers.length > 0 && (
               <div className="space-y-1.5">
+                {/* Select all toggle */}
+                <div className="flex items-center justify-end pb-1">
+                  {(() => {
+                    const allSelected = filteredFollowers.length > 0 && filteredFollowers.every((f) => selectedUsernames.has(f.username));
+                    return (
+                      <button
+                        onClick={() => {
+                          if (allSelected) {
+                            setSelectedUsernames(new Set());
+                          } else {
+                            setSelectedUsernames(new Set(filteredFollowers.map((f) => f.username)));
+                          }
+                        }}
+                        className="group/selall inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-medium transition-all duration-200 hover:bg-white/[0.04]"
+                      >
+                        <div
+                          className={cn(
+                            'w-5 h-5 rounded-lg flex items-center justify-center transition-all duration-300',
+                            allSelected
+                              ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30'
+                              : 'bg-white/[0.04] border border-white/[0.1] group-hover/selall:border-emerald-500/40 group-hover/selall:bg-emerald-500/10',
+                          )}
+                        >
+                          {allSelected && (
+                            <CheckCircle2 size={12} strokeWidth={3} className="text-black" />
+                          )}
+                        </div>
+                        <span className={cn(
+                          'transition-colors duration-200',
+                          allSelected ? 'text-emerald-400' : 'text-zinc-500 group-hover/selall:text-zinc-300',
+                        )}>
+                          {allSelected ? 'Desmarcar todos' : `Selecionar todos (${filteredFollowers.length})`}
+                        </span>
+                      </button>
+                    );
+                  })()}
+                </div>
                 {filteredFollowers.map((follower, i) => (
                   <FollowerRow
                     key={follower.username}
                     data={follower}
                     index={i}
                     campaignImageUrl={campaignImages[follower.analysis.grupo?.toUpperCase()]}
+                    voiceModel={voiceModel?.status === 'approved' ? voiceModel : undefined}
                     isRegenerating={regeneratingUsername === follower.username}
+                    hasSession={!!igSession}
+                    isFollowed={followedUsers.has(follower.username)}
+                    isMessaged={messagedUsers.has(follower.username)}
+                    isSelected={selectedUsernames.has(follower.username)}
+                    onFollow={(username) => {
+                      if (!igSession) { setConnectModalOpen(true); return; }
+                      setFollowConfirm({ username });
+                    }}
+                    onMessage={(username, displayName, defaultMessage) => {
+                      if (!igSession) { setConnectModalOpen(true); return; }
+                      setMessageTarget({ username, displayName, defaultMessage });
+                    }}
+                    onSelect={(username, selected) => {
+                      setSelectedUsernames((prev) => {
+                        const next = new Set(prev);
+                        if (selected) next.add(username);
+                        else next.delete(username);
+                        return next;
+                      });
+                    }}
                   />
                 ))}
               </div>
@@ -913,6 +1047,89 @@ function MapeamentoContent() {
             </div>
           </main>
         </>
+      )}
+      {/* ─── Modals ─── */}
+      <VoiceModelModal
+        open={voiceModelModalOpen}
+        onClose={() => setVoiceModelModalOpen(false)}
+        voiceModel={voiceModel}
+        onModelChange={setVoiceModel}
+      />
+      <ConnectInstagramModal
+        open={connectModalOpen}
+        onClose={() => setConnectModalOpen(false)}
+        onConnected={(session) => setIgSession(session)}
+      />
+
+      {messageTarget && (
+        <MessageModal
+          open={!!messageTarget}
+          onClose={() => setMessageTarget(null)}
+          targetUsername={messageTarget.username}
+          targetDisplayName={messageTarget.displayName}
+          defaultMessage={messageTarget.defaultMessage}
+          onSent={(username) => {
+            setMessagedUsers((prev) => new Set(prev).add(username));
+          }}
+        />
+      )}
+
+      {followConfirm && (
+        <ConfirmModal
+          open={!!followConfirm}
+          onClose={() => setFollowConfirm(null)}
+          onConfirm={async () => {
+            const username = followConfirm.username;
+            setFollowConfirm(null);
+            setFollowLoading(true);
+            try {
+              const res = await fetch('/api/instagram-mapping/follow', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ targetUsername: username }),
+              });
+              if (res.ok) {
+                setFollowedUsers((prev) => new Set(prev).add(username));
+              }
+            } finally {
+              setFollowLoading(false);
+            }
+          }}
+          title={`Seguir @${followConfirm.username}?`}
+          description="Essa ação será executada na sua conta do Instagram conectada."
+          confirmLabel="Seguir"
+          confirmIcon={<UserPlus size={14} />}
+          loading={followLoading}
+        />
+      )}
+
+      {/* Bulk action bar */}
+      {pageState === 'results' && selectedUsernames.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedUsernames.size}
+          targets={Array.from(selectedUsernames).map((username) => {
+            const follower = analyzedFollowers.find((f) => f.username === username);
+            return {
+              username,
+              displayName: follower?.display_name || username,
+              message: follower?.analysis.frase_comunicacao || '',
+            };
+          })}
+          onClearSelection={() => setSelectedUsernames(new Set())}
+          hasSession={!!igSession}
+          onNoSession={() => setConnectModalOpen(true)}
+          onActionComplete={(action, results) => {
+            for (const r of results) {
+              if (r.success) {
+                if (action === 'follow') {
+                  setFollowedUsers((prev) => new Set(prev).add(r.username));
+                } else {
+                  setMessagedUsers((prev) => new Set(prev).add(r.username));
+                }
+              }
+            }
+          }}
+        />
       )}
     </div>
   );

@@ -35,19 +35,7 @@ const GENERO_OPTIONS = ['homem', 'mulher'];
 const IDADE_OPTIONS = ['16-24', '25-34', '35-44', '45-59', '60+', 'indefinido'];
 const RENDA_OPTIONS = ['baixa', 'media', 'alta'];
 const ENGAJAMENTO_OPTIONS = ['passivo', 'moderado', 'ativo'];
-const GRUPO_OPTIONS = [
-  'FAMILIA', 'EMPREENDEDOR', 'FE', 'ESPORTE', 'EDUCACAO',
-  'SAUDE', 'TECH', 'POLITICA', 'MODA', 'ARTE',
-  'MUSICA', 'GASTRONOMIA', 'AGRO', 'PET', 'VIAGEM',
-  'FITNESS', 'JURIDICO', 'INFLUENCER', 'COMUNIDADE', 'LIFESTYLE',
-];
-const GRUPO_LABELS: Record<string, string> = {
-  FAMILIA: 'Família', EMPREENDEDOR: 'Empreendedor', FE: 'Fé', ESPORTE: 'Esporte',
-  EDUCACAO: 'Educação', SAUDE: 'Saúde', TECH: 'Tech', POLITICA: 'Política',
-  MODA: 'Moda', ARTE: 'Arte', MUSICA: 'Música', GASTRONOMIA: 'Gastronomia',
-  AGRO: 'Agro', PET: 'Pet', VIAGEM: 'Viagem', FITNESS: 'Fitness',
-  JURIDICO: 'Jurídico', INFLUENCER: 'Influencer', COMUNIDADE: 'Comunidade', LIFESTYLE: 'Lifestyle',
-};
+import { GRUPO_OPTIONS, GROUP_LABELS as GRUPO_LABELS } from '@/lib/instagram-groups';
 const TEMA_OPTIONS = [
   'economia', 'seguranca', 'saude', 'religiao', 'educacao',
   'politica', 'esporte', 'tecnologia', 'entretenimento', 'moda',
