@@ -79,13 +79,38 @@ export default function SelfieVideoPage() {
     chunksRef.current = [];
     setRecordingTime(0);
 
-    const mimeType = MediaRecorder.isTypeSupported('video/mp4')
-      ? 'video/mp4'
-      : MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : 'video/webm';
+    // Safari iOS supports video/mp4, Chrome supports webm
+    // Some browsers throw on unsupported mimeType, so we try/catch
+    const mimeTypes = [
+      'video/mp4',
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+    ];
 
-    const recorder = new MediaRecorder(streamRef.current, { mimeType });
+    let mimeType = '';
+    for (const mt of mimeTypes) {
+      try {
+        if (MediaRecorder.isTypeSupported(mt)) {
+          mimeType = mt;
+          break;
+        }
+      } catch {
+        // Some browsers throw instead of returning false
+      }
+    }
+
+    let recorder: MediaRecorder;
+    try {
+      recorder = mimeType
+        ? new MediaRecorder(streamRef.current, { mimeType })
+        : new MediaRecorder(streamRef.current);
+    } catch {
+      // Fallback: let browser choose codec
+      recorder = new MediaRecorder(streamRef.current);
+    }
+    // Use whatever the browser actually picked
+    mimeType = recorder.mimeType || 'video/webm';
     mediaRecorderRef.current = recorder;
 
     recorder.ondataavailable = (e) => {
