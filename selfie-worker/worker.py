@@ -179,26 +179,18 @@ def process_selfie(selfie: dict):
 
     # ─── Step 6: WhatsApp ───
     if _should_run_step(status, "sending"):
-        # Re-fetch from DB to check if another instance already sent
-        fresh = db.get_selfie(sid)
-        if fresh and fresh.get("whatsapp_sent"):
-            logger.info("Step 6/6: WhatsApp already sent (confirmed from DB), skipping...")
+        # Atomic claim: only one worker instance can send WhatsApp
+        claimed = db.claim_whatsapp_send(sid)
+        if not claimed:
+            logger.info("Step 6/6: WhatsApp already claimed by another instance, skipping...")
         else:
-            if selfie.get("status") != "sending":
-                db.update_status(sid, "sending")
+            db.update_status(sid, "sending")
             logger.info("Step 6/6: Sending via WhatsApp...")
 
             video_signed = db.create_signed_url(final_path)
             send_whatsapp(selfie["phone"], selfie["name"], video_signed)
 
-        from datetime import datetime, timezone
-
-        db.update_status(
-            sid,
-            "completed",
-            whatsapp_sent=True,
-            whatsapp_sent_at=datetime.now(timezone.utc).isoformat(),
-        )
+        db.update_status(sid, "completed")
 
     logger.info("═══ Selfie %s completed successfully ═══", sid)
 

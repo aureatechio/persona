@@ -1,11 +1,11 @@
-name: selfie-worker
+name: video-duda
 region: nyc
 workers:
-  - name: selfie-pipeline
+  - name: video-duda-pipeline
     github:
       repo: aureatechio/persona
       branch: main
-      deploy_on_push: true
+      deploy_on_push: false
     dockerfile_path: selfie-worker/Dockerfile
     source_dir: selfie-worker
     instance_count: 1

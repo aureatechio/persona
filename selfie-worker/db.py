@@ -78,6 +78,18 @@ def get_selfie(selfie_id: str):
     return res.data[0] if res.data else None
 
 
+def claim_whatsapp_send(selfie_id: str) -> bool:
+    """Atomically claim the WhatsApp send for a selfie.
+    Returns True if this caller won the claim (should send), False if already sent."""
+    try:
+        res = client.rpc("claim_whatsapp_send", {"selfie_id": selfie_id}).execute()
+        return res.data is True
+    except Exception:
+        # Fallback: check directly
+        selfie = get_selfie(selfie_id)
+        return selfie is not None and not selfie.get("whatsapp_sent")
+
+
 def get_active_base_model():
     """Get the active base model with voice_models joined."""
     res = (
