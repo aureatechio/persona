@@ -47,7 +47,10 @@ export default function SelfieVideoPage() {
   // ===== CAMERA =====
   async function startCamera() {
     try {
-      // Use minimal constraints for max iOS/Android compatibility
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Seu navegador não suporta acesso à câmera. Use Chrome ou Safari.');
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
         audio: true,
@@ -59,7 +62,8 @@ export default function SelfieVideoPage() {
       }
     } catch (err) {
       console.error('Camera error:', err);
-      setError('Não foi possível acessar a câmera. Verifique as permissões.');
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Erro ao acessar câmera: ${msg}`);
     }
   }
 
@@ -80,9 +84,16 @@ export default function SelfieVideoPage() {
     chunksRef.current = [];
     setRecordingTime(0);
 
-    // Let the browser choose the best codec — avoids Safari "pattern" errors
-    const recorder = new MediaRecorder(streamRef.current);
-    const mimeType = recorder.mimeType || 'video/mp4';
+    let recorder: MediaRecorder;
+    let mimeType: string;
+    try {
+      recorder = new MediaRecorder(streamRef.current);
+      mimeType = recorder.mimeType || 'video/mp4';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Erro ao iniciar gravação: ${msg}`);
+      return;
+    }
     mediaRecorderRef.current = recorder;
 
     recorder.ondataavailable = (e) => {
@@ -150,15 +161,30 @@ export default function SelfieVideoPage() {
 
     try {
       const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
-      const formData = new FormData();
-      formData.append('file', recordedBlob, `selfie.${ext}`);
-      formData.append('name', name.trim());
-      formData.append('phone', phone.replace(/\D/g, ''));
 
-      const res = await fetch('/api/selfie-video/process', { method: 'POST', body: formData });
+      // 1. Create DB record and get signed upload URL
+      const res = await fetch('/api/selfie-video/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: phone.replace(/\D/g, ''),
+          ext,
+        }),
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar registro');
 
-      if (!res.ok) throw new Error(data.error || 'Erro no upload');
+      // 2. Upload video directly to Supabase Storage (bypasses Vercel 4.5MB limit)
+      const uploadRes = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': ext === 'mp4' ? 'video/mp4' : 'video/webm',
+        },
+        body: recordedBlob,
+      });
+
+      if (!uploadRes.ok) throw new Error('Falha no upload do vídeo');
 
       // Upload OK — show thank you page immediately
       // Worker Python processes everything in the background

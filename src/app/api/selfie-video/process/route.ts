@@ -1,64 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { writeFile, unlink, readFile } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 
-const execFileAsync = promisify(execFile);
-
-async function tryConvertToMp4(inputBuffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
-  const id = Date.now();
-  const inputPath = join(tmpdir(), `selfie_input_${id}.webm`);
-  const outputPath = join(tmpdir(), `selfie_output_${id}.mp4`);
-
-  try {
-    await writeFile(inputPath, inputBuffer);
-    await execFileAsync('ffmpeg', [
-      '-i', inputPath,
-      '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-      '-c:a', 'aac', '-b:a', '128k',
-      '-movflags', '+faststart', '-y', outputPath,
-    ], { timeout: 120000 });
-
-    const mp4Buffer = await readFile(outputPath);
-    return { buffer: mp4Buffer, contentType: 'video/mp4', ext: 'mp4' };
-  } catch {
-    return { buffer: inputBuffer, contentType: 'video/webm', ext: 'webm' };
-  } finally {
-    await unlink(inputPath).catch(() => {});
-    await unlink(outputPath).catch(() => {});
-  }
-}
-
+/**
+ * Creates a DB record and returns a signed upload URL.
+ * The browser uploads the video directly to Supabase Storage,
+ * bypassing Vercel's 4.5MB body limit.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('file') as File;
-    const name = (formData.get('name') as string) || '';
-    const phone = (formData.get('phone') as string) || '';
+    const body = await request.json();
+    const name = (body.name as string) || '';
+    const phone = (body.phone as string) || '';
+    const ext = (body.ext as string) || 'webm';
 
-    if (!file || !name || !phone) {
-      return NextResponse.json({ error: 'file, name e phone são obrigatórios' }, { status: 400 });
-    }
-
-    const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const isAlreadyMp4 = file.type === 'video/mp4' || file.name?.endsWith('.mp4');
-
-    let videoBuffer: Buffer;
-    let videoContentType: string;
-    let videoExt: string;
-
-    if (isAlreadyMp4) {
-      videoBuffer = fileBuffer;
-      videoContentType = 'video/mp4';
-      videoExt = 'mp4';
-    } else {
-      const result = await tryConvertToMp4(fileBuffer);
-      videoBuffer = result.buffer;
-      videoContentType = result.contentType;
-      videoExt = result.ext;
+    if (!name || !phone) {
+      return NextResponse.json({ error: 'name e phone são obrigatórios' }, { status: 400 });
     }
 
     // 1. Create DB record
@@ -77,29 +33,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Falha ao criar registro' }, { status: 500 });
     }
 
-    // 2. Upload selfie video to Supabase Storage
-    const videoPath = `selfies/${record.id}.${videoExt}`;
-    const { error: uploadError } = await supabaseAdmin
+    // 2. Generate signed upload URL for browser to upload directly
+    const videoPath = `selfies/${record.id}.${ext}`;
+    const { data: uploadData, error: uploadError } = await supabaseAdmin
       .storage.from('voice-models')
-      .upload(videoPath, videoBuffer, {
-        contentType: videoContentType,
-        upsert: false,
-      });
+      .createSignedUploadUrl(videoPath);
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      await supabaseAdmin.from('video_selfies').update({ status: 'failed', error_message: 'Upload failed' }).eq('id', record.id);
-      return NextResponse.json({ error: 'Falha no upload do vídeo' }, { status: 500 });
+    if (uploadError || !uploadData) {
+      console.error('Signed URL error:', uploadError);
+      await supabaseAdmin.from('video_selfies').update({ status: 'failed', error_message: 'Failed to create upload URL' }).eq('id', record.id);
+      return NextResponse.json({ error: 'Falha ao gerar URL de upload' }, { status: 500 });
     }
 
-    // 3. Update record with video path
+    // 3. Pre-set the video path on the record
     await supabaseAdmin
       .from('video_selfies')
       .update({ selfie_video_path: videoPath, updated_at: new Date().toISOString() })
       .eq('id', record.id);
 
-    // 4. Worker Python picks up 'queued' items automatically
-    return NextResponse.json({ id: record.id, status: 'queued' });
+    return NextResponse.json({
+      id: record.id,
+      uploadUrl: uploadData.signedUrl,
+      token: uploadData.token,
+      path: videoPath,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro interno';
     console.error('selfie-video/process error:', msg);
