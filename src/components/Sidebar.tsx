@@ -1,6 +1,6 @@
 'use client';
 
-import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -32,6 +32,7 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
     { id: 'eleitoral', label: 'Arena Eleitoral', icon: Swords, active: pathname === '/arena-eleitoral', href: '/arena-eleitoral' },
     { id: 'analise-redes', label: 'Análise de Redes', icon: Brain, active: pathname === '/analise-redes', href: '/analise-redes' },
     { id: 'central', label: 'Central de Mensagens', icon: Send, active: pathname === '/central-mensagens', href: '/central-mensagens' },
+    { id: 'selfie-video', label: 'Selfie Vídeo', icon: Video, active: pathname === '/selfie-video', href: '/selfie-video' },
     { id: 'grid', label: 'Lista de Personas', icon: List, active: view === 'grid' && isPersonas, href: '/personas?view=grid' },
     { id: 'map', label: 'Mapa Interativo', icon: MapIcon, active: view === 'map' && isPersonas, href: '/personas?view=map' },
   ];
@@ -90,17 +91,30 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
             ))}
 
             {profile?.user_type === 'admin' && (
-              <button
-                onClick={() => handleNavigation({ id: 'users', href: '/users' })}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
-                  pathname === '/users'
-                    ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
-                    : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
-                }`}
-              >
-                <Users size={20} />
-                <span className="text-sm">Usuários</span>
-              </button>
+              <>
+                <button
+                  onClick={() => handleNavigation({ id: 'users', href: '/users' })}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
+                    pathname === '/users'
+                      ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  <Users size={20} />
+                  <span className="text-sm">Usuários</span>
+                </button>
+                <button
+                  onClick={() => handleNavigation({ id: 'video-modelo', href: '/admin/video-modelo' })}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
+                    pathname === '/admin/video-modelo'
+                      ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  <Clapperboard size={20} />
+                  <span className="text-sm">Modelo Vídeo</span>
+                </button>
+              </>
             )}
           </nav>
         </div>

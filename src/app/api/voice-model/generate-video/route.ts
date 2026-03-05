@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { submitLipsyncJob } from '@/lib/lipsync';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
-const SYNC_API_KEY = process.env.SYNC_API_KEY || '';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!ELEVENLABS_API_KEY || !SYNC_API_KEY) {
+    if (!ELEVENLABS_API_KEY) {
       return NextResponse.json({ error: 'API keys não configuradas' }, { status: 500 });
     }
 
@@ -115,17 +115,17 @@ export async function POST(request: NextRequest) {
       upsert: true,
     });
 
-    // 6. Get public URLs
-    const { data: videoUrlData } = supabaseAdmin
+    // 6. Get signed URLs (1h) — bucket may not be public
+    const { data: videoSignedUrl } = await supabaseAdmin
       .storage.from('voice-models')
-      .getPublicUrl(voiceModel.video_storage_path);
+      .createSignedUrl(voiceModel.video_storage_path, 3600);
 
-    const { data: audioUrlData } = supabaseAdmin
+    const { data: audioSignedUrl } = await supabaseAdmin
       .storage.from('voice-models')
-      .getPublicUrl(ttsPath);
+      .createSignedUrl(ttsPath, 3600);
 
-    const videoPublicUrl = videoUrlData.publicUrl;
-    const audioPublicUrl = audioUrlData.publicUrl;
+    const videoPublicUrl = videoSignedUrl?.signedUrl || '';
+    const audioPublicUrl = audioSignedUrl?.signedUrl || '';
 
     // 7. Update status
     await supabaseAdmin
@@ -137,44 +137,14 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', lipsyncRecord!.id);
 
-    // 8. Submit to Sync Labs
-    const syncRes = await fetch('https://api.sync.so/v2/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': SYNC_API_KEY,
-      },
-      body: JSON.stringify({
-        model: 'lipsync-2-pro',
-        input: [
-          { type: 'video', url: videoPublicUrl },
-          { type: 'audio', url: audioPublicUrl },
-        ],
-        options: {
-          sync_mode: 'cut_off',
-        },
-      }),
-    });
+    // 8. Submit to lip-sync provider (Kling AI or Sync Labs)
+    const { jobId } = await submitLipsyncJob(videoPublicUrl, audioPublicUrl);
 
-    if (!syncRes.ok) {
-      const errText = await syncRes.text();
-      console.error('Sync Labs error:', syncRes.status, errText);
-
-      await supabaseAdmin
-        .from('lipsync_videos')
-        .update({ status: 'failed', error_message: `Sync Labs failed: ${syncRes.status} - ${errText}` })
-        .eq('id', lipsyncRecord!.id);
-
-      return NextResponse.json({ error: 'Falha ao submeter lip-sync' }, { status: 500 });
-    }
-
-    const syncData = await syncRes.json();
-
-    // 9. Save sync job ID
+    // 9. Save job ID
     await supabaseAdmin
       .from('lipsync_videos')
       .update({
-        sync_job_id: syncData.id,
+        sync_job_id: jobId,
         updated_at: new Date().toISOString(),
       })
       .eq('id', lipsyncRecord!.id);
@@ -182,7 +152,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       lipsync: {
         id: lipsyncRecord!.id,
-        sync_job_id: syncData.id,
+        sync_job_id: jobId,
         status: 'generating_lipsync',
       },
     });

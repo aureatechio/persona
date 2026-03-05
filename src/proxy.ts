@@ -39,7 +39,7 @@ export async function proxy(request: NextRequest) {
 
   // Skip auth for API routes and arena pages
   const isApiRoute = pathname.startsWith('/api');
-  const isPublicRoute = pathname === '/' || pathname === '/arena-eleitoral' || pathname === '/analise-redes' || pathname === '/mapeamento-instagram';
+  const isPublicRoute = pathname === '/' || pathname === '/arena-eleitoral' || pathname === '/analise-redes' || pathname === '/mapeamento-instagram' || pathname === '/selfie-video' || pathname.startsWith('/admin/video-modelo');
   if (isApiRoute || isPublicRoute) {
     return response;
   }

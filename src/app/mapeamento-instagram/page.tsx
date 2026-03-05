@@ -822,8 +822,8 @@ function MapeamentoContent() {
                     )}
                   </button>
 
-                  {/* Voice Model button */}
-                  <button
+                  {/* Voice Model button - hidden for now */}
+                  {false && <button
                     onClick={() => setVoiceModelModalOpen(true)}
                     className={cn(
                       'inline-flex items-center gap-2 px-5 py-3',
@@ -842,7 +842,7 @@ function MapeamentoContent() {
                       : voiceModel?.status === 'ready'
                         ? 'Aprovar Modelo'
                         : 'Carregar Modelo'}
-                  </button>
+                  </button>}
                 </div>
 
                 {/* Regeneration progress bar */}

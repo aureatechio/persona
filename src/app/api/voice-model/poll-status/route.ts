@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-
-const SYNC_API_KEY = process.env.SYNC_API_KEY || '';
+import { pollLipsyncJob } from '@/lib/lipsync';
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,48 +38,42 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 3. If generating_lipsync, poll Sync Labs
-    if (record.status === 'generating_lipsync' && record.sync_job_id && SYNC_API_KEY) {
-      const syncRes = await fetch(`https://api.sync.so/v2/generate/${record.sync_job_id}`, {
-        headers: { 'x-api-key': SYNC_API_KEY },
-      });
+    // 3. If generating_lipsync, poll via lib/lipsync (Kling or Sync Labs)
+    if (record.status === 'generating_lipsync' && record.sync_job_id) {
+      const result = await pollLipsyncJob(record.sync_job_id);
 
-      if (syncRes.ok) {
-        const syncData = await syncRes.json();
-
-        if (syncData.status === 'COMPLETED' && syncData.outputUrl) {
-          await supabaseAdmin
-            .from('lipsync_videos')
-            .update({
-              status: 'completed',
-              video_url: syncData.outputUrl,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', record.id);
-
-          return NextResponse.json({
+      if (result.status === 'completed' && result.outputUrl) {
+        await supabaseAdmin
+          .from('lipsync_videos')
+          .update({
             status: 'completed',
-            video_url: syncData.outputUrl,
-          });
-        }
+            video_url: result.outputUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', record.id);
 
-        if (syncData.status === 'FAILED' || syncData.status === 'REJECTED') {
-          const errorMsg = syncData.error || 'Sync Labs generation failed';
-          await supabaseAdmin
-            .from('lipsync_videos')
-            .update({
-              status: 'failed',
-              error_message: errorMsg,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', record.id);
+        return NextResponse.json({
+          status: 'completed',
+          video_url: result.outputUrl,
+        });
+      }
 
-          return NextResponse.json({
+      if (result.status === 'failed') {
+        const errorMsg = result.error || 'Lip-sync generation failed';
+        await supabaseAdmin
+          .from('lipsync_videos')
+          .update({
             status: 'failed',
-            video_url: null,
             error_message: errorMsg,
-          });
-        }
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', record.id);
+
+        return NextResponse.json({
+          status: 'failed',
+          video_url: null,
+          error_message: errorMsg,
+        });
       }
     }
 

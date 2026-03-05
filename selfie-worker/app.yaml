@@ -1,0 +1,52 @@
+name: selfie-worker
+region: nyc
+workers:
+  - name: selfie-pipeline
+    github:
+      repo: aureatechio/persona
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: selfie-worker/Dockerfile
+    source_dir: selfie-worker
+    instance_count: 1
+    instance_size_slug: professional-xs
+    envs:
+      - key: SUPABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://sobfplitrzgggzqsycew.supabase.co"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvYmZwbGl0cnpnZ2d6cXN5Y2V3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODMxNjg1OCwiZXhwIjoyMDgzODkyODU4fQ.MLZa1crIU7Uid70GFsRPPkoWZ1TgzDDSej99eYD3ctg"
+      - key: OPENAI_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "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"
+      - key: ELEVENLABS_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "sk_091b13672a574b1527f48d046256e220a27bc8fa19519137"
+      - key: KLING_ACCESS_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "A4YfYL33gK9RHnLNKhPtE3LPDkDFb3CN"
+      - key: KLING_SECRET_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "QMhHJYFMdDRbKGKaRpCrhPJf83FBGTGt"
+      - key: UAZAPI_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://aureatech.uazapi.com"
+      - key: UAZAPI_TOKEN
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "0abdc72b-f461-40e8-865a-25ef59ccbe5d"
+      - key: WORKER_POLL_INTERVAL
+        scope: RUN_AND_BUILD_TIME
+        value: "3"
+      - key: WORKER_MAX_RETRIES
+        scope: RUN_AND_BUILD_TIME
+        value: "3"
+      - key: WHISPER_MODEL
+        scope: RUN_AND_BUILD_TIME
+        value: "base"
