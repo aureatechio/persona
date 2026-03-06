@@ -13,6 +13,7 @@ WORKER_ID = str(_uuid.uuid4())
 
 def claim_queued():
     """Atomically claim the oldest queued selfie (set status to 'transcribing').
+    Now also sets locked_by and locked_at atomically.
     Returns dict or None. Uses RPC for atomic UPDATE ... RETURNING."""
     try:
         res = client.rpc("claim_next_selfie", {"worker_id": WORKER_ID}).execute()
@@ -63,6 +64,19 @@ def get_selfie(selfie_id: str):
         .execute()
     )
     return res.data[0] if res.data else None
+
+
+def heartbeat(selfie_id: str):
+    """Renew locked_at to prevent claim_stuck_selfie from reclaiming this item.
+    Called during long-running steps like lip-sync polling."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        client.table("video_selfies").update(
+            {"locked_at": now, "updated_at": now}
+        ).eq("id", selfie_id).execute()
+    except Exception:
+        pass  # Non-critical — worst case the lock expires and gets reclaimed
 
 
 def claim_whatsapp_send(selfie_id: str) -> bool:

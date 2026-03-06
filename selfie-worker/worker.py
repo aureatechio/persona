@@ -23,7 +23,7 @@ import db
 from steps.transcribe import transcribe
 from steps.generate import generate_text
 from steps.tts import generate_tts
-from steps.lipsync import run_lipsync
+from steps.lipsync import run_lipsync, SyncLabsJobFailed
 from steps.compose import compose_videos
 from steps.whatsapp import send_whatsapp
 
@@ -177,12 +177,26 @@ def process_selfie(selfie: dict):
                 db.update_status(sid, "generating_lipsync")
                 logger.info("Step 4/6: Generating lip-sync (key: %s)...", str(slot_key_id)[:8])
 
+                # Generate signed URLs AFTER claiming slot (fresh expiry)
                 video_signed = db.create_signed_url(base_model["video_storage_path"])
                 audio_signed = db.create_signed_url(tts_path)
 
-                lipsync_url = run_lipsync(video_signed, audio_signed, api_key=key_data["access_key"])
+                # Heartbeat keeps locked_at fresh during long Sync Labs polling
+                def _heartbeat():
+                    db.heartbeat(sid)
+
+                lipsync_url = run_lipsync(
+                    video_signed, audio_signed,
+                    api_key=key_data["access_key"],
+                    heartbeat_fn=_heartbeat,
+                )
                 db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
                 selfie["lipsync_video_url"] = lipsync_url
+            except SyncLabsJobFailed:
+                # Sync Labs returned FAILED/REJECTED for this key.
+                # Clear lipsync state so retry can try a different key.
+                db.update_status(sid, "generating_lipsync", lipsync_video_url=None)
+                raise
             finally:
                 db.release_kling_slot(sid)
     else:

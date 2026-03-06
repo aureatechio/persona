@@ -11,6 +11,7 @@ logger = logging.getLogger("worker.lipsync")
 POLL_INTERVAL = 5  # seconds
 MAX_POLL_TIME = 1800  # 30 minutes max wait
 SUBMIT_MAX_ATTEMPTS = 5
+TRANSIENT_POLL_ERRORS = 3  # max transient errors before giving up
 
 
 def _submit(video_url: str, audio_url: str, api_key: str = "") -> str:
@@ -58,24 +59,70 @@ def _submit(video_url: str, audio_url: str, api_key: str = "") -> str:
     return job_id
 
 
-def _poll(job_id: str, api_key: str = "") -> str:
+def _poll(job_id: str, api_key: str = "", heartbeat_fn=None) -> str:
+    """Poll Sync Labs job until completion.
+    heartbeat_fn: optional callable to renew DB lock during long waits."""
     key = api_key or SYNC_API_KEY
     logger.info("Polling Sync Labs job '%s'...", job_id)
     start = time.time()
+    transient_errors = 0
+    last_heartbeat = time.time()
 
     while True:
         elapsed = time.time() - start
         if elapsed > MAX_POLL_TIME:
             raise RuntimeError(f"Sync Labs job {job_id} timed out after {MAX_POLL_TIME}s")
 
-        response = requests.get(
-            f"https://api.sync.so/v2/generate/{job_id}",
-            headers={"x-api-key": key},
-            timeout=15,
-        )
-        response.raise_for_status()
-        data = response.json()
+        # Send heartbeat every ~60s to keep the DB lock alive
+        if heartbeat_fn and (time.time() - last_heartbeat) >= 60:
+            try:
+                heartbeat_fn()
+            except Exception:
+                pass
+            last_heartbeat = time.time()
 
+        try:
+            response = requests.get(
+                f"https://api.sync.so/v2/generate/{job_id}",
+                headers={"x-api-key": key},
+                timeout=15,
+            )
+
+            # Tolerate transient HTTP errors (500, 502, 503, 504)
+            if response.status_code in (500, 502, 503, 504):
+                transient_errors += 1
+                if transient_errors > TRANSIENT_POLL_ERRORS:
+                    raise RuntimeError(
+                        f"Sync Labs polling failed: {transient_errors} consecutive "
+                        f"server errors (last: {response.status_code})"
+                    )
+                logger.warning(
+                    "Sync Labs transient %d (attempt %d/%d), retrying in %ds...",
+                    response.status_code, transient_errors, TRANSIENT_POLL_ERRORS,
+                    POLL_INTERVAL * 2,
+                )
+                time.sleep(POLL_INTERVAL * 2)
+                continue
+
+            response.raise_for_status()
+            transient_errors = 0  # Reset on success
+
+        except requests.exceptions.ConnectionError as e:
+            transient_errors += 1
+            if transient_errors > TRANSIENT_POLL_ERRORS:
+                raise RuntimeError(f"Sync Labs polling: {transient_errors} connection errors: {e}")
+            logger.warning("Sync Labs connection error (%d/%d): %s", transient_errors, TRANSIENT_POLL_ERRORS, e)
+            time.sleep(POLL_INTERVAL * 2)
+            continue
+        except requests.exceptions.Timeout:
+            transient_errors += 1
+            if transient_errors > TRANSIENT_POLL_ERRORS:
+                raise RuntimeError(f"Sync Labs polling: {transient_errors} timeouts")
+            logger.warning("Sync Labs poll timeout (%d/%d)", transient_errors, TRANSIENT_POLL_ERRORS)
+            time.sleep(POLL_INTERVAL * 2)
+            continue
+
+        data = response.json()
         status = data.get("status", "")
         logger.info("Sync Labs status: %s (%.0fs elapsed)", status, elapsed)
 
@@ -88,12 +135,19 @@ def _poll(job_id: str, api_key: str = "") -> str:
 
         if status in ("FAILED", "REJECTED"):
             err_msg = data.get("error") or f"Sync Labs job {status}"
-            raise RuntimeError(f"Sync Labs failed: {err_msg}")
+            raise SyncLabsJobFailed(f"Sync Labs failed: {err_msg}")
 
         time.sleep(POLL_INTERVAL)
 
 
-def run_lipsync(video_url: str, audio_url: str, api_key: str = "") -> str:
-    """Submit and poll Sync Labs lip-sync. Returns output video URL."""
+class SyncLabsJobFailed(RuntimeError):
+    """Raised when a Sync Labs job fails/rejects — distinct from transient errors.
+    Used by the worker to know it should try a different key on retry."""
+    pass
+
+
+def run_lipsync(video_url: str, audio_url: str, api_key: str = "", heartbeat_fn=None) -> str:
+    """Submit and poll Sync Labs lip-sync. Returns output video URL.
+    heartbeat_fn: optional callable to renew DB lock during polling."""
     job_id = _submit(video_url, audio_url, api_key=api_key)
-    return _poll(job_id, api_key=api_key)
+    return _poll(job_id, api_key=api_key, heartbeat_fn=heartbeat_fn)
