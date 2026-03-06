@@ -184,11 +184,11 @@ function SelfieCard({ selfie, onPlay }: { selfie: Selfie; onPlay: (s: Selfie) =>
   const [elapsed, setElapsed] = useState(formatElapsed(selfie.created_at));
   const isFailed = selfie.status === 'failed';
   const isCompleted = selfie.status === 'completed' || selfie.whatsapp_sent;
-  const stepConfig = getStepConfig(selfie.status);
+  const stepConfig = isCompleted ? getStepConfig('completed') : getStepConfig(selfie.status);
   const color = isFailed ? 'red' : (stepConfig?.color ?? 'zinc');
   const c = colorMap[color];
   const Icon = isFailed ? AlertCircle : (stepConfig?.icon ?? Clock);
-  const label = isFailed ? 'Falhou' : (stepConfig?.label ?? selfie.status);
+  const label = isFailed ? 'Falhou' : isCompleted ? 'Concluido' : (stepConfig?.label ?? selfie.status);
 
   // Live elapsed timer
   useEffect(() => {
