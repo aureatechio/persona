@@ -40,7 +40,7 @@ workers:
         value: "EAAWTeQZBHbxcBPyNC2opZBaA5y5IwgUivZAfoy8mqlVZAubmUjjIwULVYr2oJ98lZBjouOO6KmEcB6bRF9s7FBJAD0GI1oRXYv7L4VNqzY2sQ5lzF0kBRt6N1hZCP7igKiabWghtzVZByZA0K0LEz6SM8W3eKmLwvnFXWMMzZBwZARpBbZC90vPIduyZA9mX6fZApipOUWQZDZD"
       - key: META_PHONE_NUMBER_ID
         scope: RUN_AND_BUILD_TIME
-        value: "859990870526143"
+        value: "777213165485256"
       - key: WORKER_POLL_INTERVAL
         scope: RUN_AND_BUILD_TIME
         value: "3"

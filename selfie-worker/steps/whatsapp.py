@@ -31,7 +31,7 @@ def send_whatsapp(phone: str, name: str, video_url: str):
             "to": phone,
             "type": "template",
             "template": {
-                "name": "videoduda2",
+                "name": "videdudanovo",
                 "language": {"code": "pt_BR"},
                 "components": [
                     {
