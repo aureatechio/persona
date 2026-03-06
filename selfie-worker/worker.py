@@ -278,12 +278,11 @@ def main():
                 consecutive_errors = 0
 
                 # Guard: if item already exceeded max retries, mark failed immediately
-                current_error = selfie.get("error_message") or ""
-                retry_count = current_error.count("[RETRY]")
-                if retry_count >= MAX_RETRIES - 1:
+                retry_count = int(selfie.get("retry_count") or 0)
+                if retry_count >= MAX_RETRIES:
                     sid = selfie["id"]
                     logger.warning("Selfie %s already has %d retries — marking as failed", sid, retry_count)
-                    db.update_status(sid, "failed", error_message=f"Max retries exceeded: {current_error}")
+                    db.update_status(sid, "failed", error_message=f"Max retries ({MAX_RETRIES}) exceeded")
                     continue
 
                 try:
@@ -296,21 +295,21 @@ def main():
 
                     # Fetch current state from DB (not the stale selfie dict)
                     current = db.get_selfie(sid)
-                    current_error = (current or selfie).get("error_message") or ""
                     current_status = (current or selfie).get("status", "failed")
-                    retry_count = current_error.count("[RETRY]")
+                    new_retry = retry_count + 1
 
-                    if retry_count < MAX_RETRIES - 1:
-                        # Keep CURRENT status (not original) so retry resumes from where it failed
+                    if new_retry < MAX_RETRIES:
+                        # Keep CURRENT status so retry resumes from where it failed
                         db.update_status(
                             sid,
                             current_status,
-                            error_message=f"[RETRY] {error_msg}",
+                            error_message=error_msg,
+                            retry_count=new_retry,
                         )
-                        logger.info("Will retry %s from status '%s' (attempt %d/%d)", sid, current_status, retry_count + 2, MAX_RETRIES)
+                        logger.info("Will retry %s from status '%s' (attempt %d/%d)", sid, current_status, new_retry + 1, MAX_RETRIES)
                     else:
                         # Max retries exceeded
-                        db.update_status(sid, "failed", error_message=f"Max retries exceeded: {error_msg}")
+                        db.update_status(sid, "failed", error_message=f"Max retries exceeded: {error_msg}", retry_count=new_retry)
                         logger.error("Selfie %s failed permanently after %d retries", sid, MAX_RETRIES)
             else:
                 # Nothing to process
