@@ -14,16 +14,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # ElevenLabs TTS
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
-# Lip-sync provider: "sync" (Sync Labs) or "kling" (Kling AI)
-LIPSYNC_PROVIDER = os.getenv("LIPSYNC_PROVIDER", "kling")
-
-# Sync Labs
+# Sync Labs (lip-sync)
 SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
-
-# Kling AI (backup)
-KLING_ACCESS_KEY = os.getenv("KLING_ACCESS_KEY", "")
-KLING_SECRET_KEY = os.getenv("KLING_SECRET_KEY", "")
-KLING_API_BASE = "https://api.klingai.com"
 
 # UAZAPI (WhatsApp)
 UAZAPI_URL = os.getenv("UAZAPI_URL", "https://aureatech.uazapi.com")

@@ -151,46 +151,21 @@ def process_selfie(selfie: dict):
     else:
         tts_path = selfie.get("tts_audio_path", f"tts/selfie_{sid}.mp3")
 
-    # ─── Step 4: Lip-sync (with Kling key pool — max 3 per key) ───
+    # ─── Step 4: Lip-sync (Sync Labs) ───
     if _should_run_step(status, "generating_lipsync"):
         if selfie.get("lipsync_video_url"):
             logger.info("Step 4/6: Lip-sync already complete, skipping...")
             lipsync_url = selfie["lipsync_video_url"]
         else:
-            # Wait for an available Kling slot (max 3 concurrent per key)
-            kling_key_id = None
-            while not _shutdown:
-                kling_key_id = db.claim_kling_slot(sid)
-                if kling_key_id:
-                    break
-                logger.info("Step 4/6: All Kling slots full (9/9), waiting 15s...")
-                time.sleep(15)
+            db.update_status(sid, "generating_lipsync")
+            logger.info("Step 4/6: Generating lip-sync (Sync Labs)...")
 
-            if _shutdown:
-                return
+            video_signed = db.create_signed_url(base_model["video_storage_path"])
+            audio_signed = db.create_signed_url(tts_path)
 
-            try:
-                # Fetch credentials for the assigned key
-                key_data = db.get_kling_key(kling_key_id)
-                if not key_data:
-                    raise RuntimeError(f"Kling key {kling_key_id} not found in database")
-
-                db.update_status(sid, "generating_lipsync")
-                logger.info("Step 4/6: Generating lip-sync (key: %s)...", str(kling_key_id)[:8])
-
-                video_signed = db.create_signed_url(base_model["video_storage_path"])
-                audio_signed = db.create_signed_url(tts_path)
-
-                lipsync_url = run_lipsync(
-                    video_signed, audio_signed,
-                    api_key=key_data["access_key"],
-                    kling_secret_key=key_data.get("secret_key", ""),
-                )
-                db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
-                selfie["lipsync_video_url"] = lipsync_url
-            finally:
-                # ALWAYS release the slot, even on error
-                db.release_kling_slot(sid)
+            lipsync_url = run_lipsync(video_signed, audio_signed)
+            db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
+            selfie["lipsync_video_url"] = lipsync_url
     else:
         lipsync_url = selfie.get("lipsync_video_url", "")
 
