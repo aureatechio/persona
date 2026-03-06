@@ -134,7 +134,7 @@ def generate_tts(text: str, voice_id: str) -> bytes:
         json={
             "text": processed_text,
             "model_id": "eleven_v3",
-            "language_code": "pt-BR",
+            "language_code": "pt",
             "apply_text_normalization": "on",
             "voice_settings": {
                 "stability": 0.5,
