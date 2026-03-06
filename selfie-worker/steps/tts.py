@@ -137,9 +137,9 @@ def generate_tts(text: str, voice_id: str) -> bytes:
             "language_code": "pt",
             "apply_text_normalization": "on",
             "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.85,
-                "style": 0.5,
+                "stability": 0.6,
+                "similarity_boost": 1.0,
+                "style": 0.0,
                 "use_speaker_boost": True,
                 "speed": 1.0,
             },
