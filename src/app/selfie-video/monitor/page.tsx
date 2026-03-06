@@ -332,9 +332,9 @@ export default function SelfieMonitorPage() {
     };
   }, [fetchData]);
 
-  const inProgress = selfies.filter((s) => s.status !== 'completed' && s.status !== 'failed' && !s.whatsapp_sent);
+  const failed = selfies.filter((s) => s.status === 'failed' && !s.whatsapp_sent);
   const completed = selfies.filter((s) => s.status === 'completed' || s.whatsapp_sent);
-  const failed = selfies.filter((s) => s.status === 'failed');
+  const inProgress = selfies.filter((s) => !completed.includes(s) && !failed.includes(s));
 
   return (
     <div className="min-h-screen bg-black">

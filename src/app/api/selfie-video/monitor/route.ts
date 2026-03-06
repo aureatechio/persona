@@ -25,7 +25,16 @@ export async function GET() {
       .order('created_at', { ascending: false });
 
     const error = errProgress || errFinished;
-    const data = [...(inProgress || []), ...(finished || [])];
+
+    // Deduplicate by id (an item could match both queries)
+    const seen = new Set<string>();
+    const data: typeof inProgress = [];
+    for (const row of [...(inProgress || []), ...(finished || [])]) {
+      if (!seen.has(row.id)) {
+        seen.add(row.id);
+        data.push(row);
+      }
+    }
 
     if (error) {
       console.error('Monitor fetch error:', error);

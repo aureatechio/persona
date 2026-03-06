@@ -261,9 +261,18 @@ def main():
     logger.info("Config OK. Polling every %ds. Max retries: %d", POLL_INTERVAL, MAX_RETRIES)
 
     consecutive_errors = 0
+    watchdog_counter = 0
 
     while not _shutdown:
         try:
+            # Run watchdog every ~60 polls (~3min) to auto-fail items stuck >30min
+            watchdog_counter += 1
+            if watchdog_counter >= 60:
+                watchdog_counter = 0
+                failed_count = db.run_watchdog()
+                if failed_count:
+                    logger.warning("Watchdog: marked %d stuck selfies as failed", failed_count)
+
             # Priority 1: atomically claim queued items
             selfie = db.claim_queued()
 
@@ -273,6 +282,16 @@ def main():
 
             if selfie:
                 consecutive_errors = 0
+
+                # Guard: if item already exceeded max retries, mark failed immediately
+                current_error = selfie.get("error_message") or ""
+                retry_count = current_error.count("[RETRY]")
+                if retry_count >= MAX_RETRIES - 1:
+                    sid = selfie["id"]
+                    logger.warning("Selfie %s already has %d retries — marking as failed", sid, retry_count)
+                    db.update_status(sid, "failed", error_message=f"Max retries exceeded: {current_error}")
+                    continue
+
                 try:
                     process_selfie(selfie)
                 except Exception as e:

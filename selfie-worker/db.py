@@ -35,6 +35,15 @@ def fetch_resumable():
     return None
 
 
+def run_watchdog() -> int:
+    """Auto-fail selfies stuck for >30 minutes. Returns count of affected rows."""
+    try:
+        res = client.rpc("watchdog_stuck_selfies", {}).execute()
+        return int(res.data) if res.data else 0
+    except Exception:
+        return 0
+
+
 def update_status(selfie_id: str, status: str, **extra):
     """Update selfie status, renew lock, and set optional extra fields."""
     from datetime import datetime, timezone

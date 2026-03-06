@@ -25,6 +25,7 @@ export default function SelfieVideoPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -161,11 +162,13 @@ export default function SelfieVideoPage() {
 
     setStep('enviando');
     setError(null);
+    setUploadProgress(0);
 
     try {
       const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
 
       // 1. Create DB record and get signed upload URL
+      setUploadProgress(5);
       const res = await fetch('/api/selfie-video/process', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -178,19 +181,39 @@ export default function SelfieVideoPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao criar registro');
 
-      // 2. Upload video directly to Supabase Storage (bypasses Vercel 4.5MB limit)
-      const uploadRes = await fetch(data.uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': ext === 'mp4' ? 'video/mp4' : 'video/webm',
-        },
-        body: recordedBlob,
+      setUploadProgress(10);
+
+      // 2. Upload video with progress tracking via XMLHttpRequest
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', data.uploadUrl);
+        xhr.setRequestHeader('Content-Type', ext === 'mp4' ? 'video/mp4' : 'video/webm');
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            // Map upload progress to 10-95% range
+            const pct = Math.round(10 + (e.loaded / e.total) * 85);
+            setUploadProgress(pct);
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setUploadProgress(100);
+            resolve();
+          } else {
+            reject(new Error('Falha no upload do video'));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error('Erro de conexao durante upload'));
+        xhr.ontimeout = () => reject(new Error('Upload demorou demais'));
+        xhr.timeout = 120000; // 2 min timeout
+
+        xhr.send(recordedBlob);
       });
 
-      if (!uploadRes.ok) throw new Error('Falha no upload do vídeo');
-
-      // Upload OK — show thank you page immediately
-      // Worker Python processes everything in the background
+      // Upload confirmed — show thank you
       setStep('obrigado');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao enviar';
@@ -474,15 +497,39 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: ENVIANDO (upload em andamento) ===== */}
         {step === 'enviando' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-            <div className="relative w-16 h-16 mb-6">
-              <div className="absolute inset-0 rounded-full border-2 border-zinc-800/50" />
-              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-emerald-500 animate-spin" />
+            <div className="relative w-20 h-20 mb-6">
+              {/* Circular progress background */}
+              <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
+                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+                <circle
+                  cx="40" cy="40" r="34" fill="none"
+                  stroke="rgb(52, 211, 153)"
+                  strokeWidth="4"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 34}`}
+                  strokeDashoffset={`${2 * Math.PI * 34 * (1 - uploadProgress / 100)}`}
+                  className="transition-all duration-500 ease-out"
+                />
+              </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 size={24} className="text-emerald-400 animate-spin" />
+                <span className="text-lg font-bold tabular-nums text-white">{uploadProgress}%</span>
               </div>
             </div>
-            <p className="text-white font-medium">Enviando seu vídeo...</p>
-            <p className="text-zinc-500 text-sm mt-2">Aguarde um momento</p>
+
+            <p className="text-white font-medium">
+              {uploadProgress < 10 ? 'Preparando...' : uploadProgress < 95 ? 'Enviando seu video...' : 'Finalizando...'}
+            </p>
+            <p className="text-zinc-500 text-sm mt-2">Nao feche esta tela</p>
+
+            {/* Linear progress bar */}
+            <div className="w-full max-w-xs mt-6">
+              <div className="h-1.5 bg-zinc-800/50 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
           </div>
         )}
 

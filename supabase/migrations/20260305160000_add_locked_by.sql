@@ -40,7 +40,7 @@ AS $$
     SELECT id FROM video_selfies
     WHERE status IN ('transcribing','generating_text','generating_tts','generating_lipsync','composing','sending')
       AND whatsapp_sent IS NOT TRUE
-      AND (locked_at IS NULL OR locked_at < now() - interval '10 minutes')
+      AND (locked_at IS NULL OR locked_at < now() - interval '30 seconds')
     ORDER BY created_at ASC
     LIMIT 1
     FOR UPDATE SKIP LOCKED
