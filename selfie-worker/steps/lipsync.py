@@ -93,7 +93,7 @@ def _poll(job_id: str, api_key: str = "") -> str:
         time.sleep(POLL_INTERVAL)
 
 
-def run_lipsync(video_url: str, audio_url: str) -> str:
+def run_lipsync(video_url: str, audio_url: str, api_key: str = "") -> str:
     """Submit and poll Sync Labs lip-sync. Returns output video URL."""
-    job_id = _submit(video_url, audio_url)
-    return _poll(job_id)
+    job_id = _submit(video_url, audio_url, api_key=api_key)
+    return _poll(job_id, api_key=api_key)

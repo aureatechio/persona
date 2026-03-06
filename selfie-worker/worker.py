@@ -151,21 +151,40 @@ def process_selfie(selfie: dict):
     else:
         tts_path = selfie.get("tts_audio_path", f"tts/selfie_{sid}.mp3")
 
-    # ─── Step 4: Lip-sync (Sync Labs) ───
+    # ─── Step 4: Lip-sync (Sync Labs with key pool) ───
     if _should_run_step(status, "generating_lipsync"):
         if selfie.get("lipsync_video_url"):
             logger.info("Step 4/6: Lip-sync already complete, skipping...")
             lipsync_url = selfie["lipsync_video_url"]
         else:
-            db.update_status(sid, "generating_lipsync")
-            logger.info("Step 4/6: Generating lip-sync (Sync Labs)...")
+            # Claim a Sync Labs key slot (round-robin, max concurrent per key)
+            slot_key_id = None
+            while not _shutdown:
+                slot_key_id = db.claim_kling_slot(sid)
+                if slot_key_id:
+                    break
+                logger.info("Step 4/6: All Sync Labs slots full, waiting 15s...")
+                time.sleep(15)
 
-            video_signed = db.create_signed_url(base_model["video_storage_path"])
-            audio_signed = db.create_signed_url(tts_path)
+            if _shutdown:
+                return
 
-            lipsync_url = run_lipsync(video_signed, audio_signed)
-            db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
-            selfie["lipsync_video_url"] = lipsync_url
+            try:
+                key_data = db.get_kling_key(slot_key_id)
+                if not key_data:
+                    raise RuntimeError(f"Sync Labs key {slot_key_id} not found in database")
+
+                db.update_status(sid, "generating_lipsync")
+                logger.info("Step 4/6: Generating lip-sync (key: %s)...", str(slot_key_id)[:8])
+
+                video_signed = db.create_signed_url(base_model["video_storage_path"])
+                audio_signed = db.create_signed_url(tts_path)
+
+                lipsync_url = run_lipsync(video_signed, audio_signed, api_key=key_data["access_key"])
+                db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
+                selfie["lipsync_video_url"] = lipsync_url
+            finally:
+                db.release_kling_slot(sid)
     else:
         lipsync_url = selfie.get("lipsync_video_url", "")
 
