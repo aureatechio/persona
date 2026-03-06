@@ -14,13 +14,23 @@ SUBMIT_MAX_ATTEMPTS = 5
 TRANSIENT_POLL_ERRORS = 3  # max transient errors before giving up
 
 
-def _submit(video_url: str, audio_url: str, api_key: str = "") -> str:
+def _submit(
+    video_url: str,
+    audio_url: str,
+    api_key: str = "",
+    model: str = "lipsync-2-pro",
+    sync_mode: str = "cut_off",
+    temperature: float = 0.3,
+) -> str:
     key = api_key or SYNC_API_KEY
     if not key:
         raise RuntimeError("SYNC_API_KEY not configured")
 
     for attempt in range(SUBMIT_MAX_ATTEMPTS):
-        logger.info("Submitting lip-sync job to Sync Labs... (attempt %d/%d)", attempt + 1, SUBMIT_MAX_ATTEMPTS)
+        logger.info(
+            "Submitting lip-sync job (attempt %d/%d, model=%s, sync=%s, temp=%.1f)",
+            attempt + 1, SUBMIT_MAX_ATTEMPTS, model, sync_mode, temperature,
+        )
 
         response = requests.post(
             "https://api.sync.so/v2/generate",
@@ -29,12 +39,15 @@ def _submit(video_url: str, audio_url: str, api_key: str = "") -> str:
                 "x-api-key": key,
             },
             json={
-                "model": "lipsync-2-pro",
+                "model": model,
                 "input": [
                     {"type": "video", "url": video_url},
                     {"type": "audio", "url": audio_url},
                 ],
-                "options": {"sync_mode": "cut_off"},
+                "options": {
+                    "sync_mode": sync_mode,
+                    "temperature": temperature,
+                },
             },
             timeout=30,
         )
@@ -146,8 +159,19 @@ class SyncLabsJobFailed(RuntimeError):
     pass
 
 
-def run_lipsync(video_url: str, audio_url: str, api_key: str = "", heartbeat_fn=None) -> str:
+def run_lipsync(
+    video_url: str,
+    audio_url: str,
+    api_key: str = "",
+    heartbeat_fn=None,
+    model: str = "lipsync-2-pro",
+    sync_mode: str = "cut_off",
+    temperature: float = 0.3,
+) -> str:
     """Submit and poll Sync Labs lip-sync. Returns output video URL.
-    heartbeat_fn: optional callable to renew DB lock during polling."""
-    job_id = _submit(video_url, audio_url, api_key=api_key)
+    heartbeat_fn: optional callable to renew DB lock during polling.
+    model: Sync Labs model (lipsync-2-pro, lipsync-2, lipsync-1.9.0-beta).
+    sync_mode: how to handle duration mismatch (cut_off, bounce, loop, silence, remap).
+    temperature: 0-1, controls lip expressiveness (lower = more subtle)."""
+    job_id = _submit(video_url, audio_url, api_key=api_key, model=model, sync_mode=sync_mode, temperature=temperature)
     return _poll(job_id, api_key=api_key, heartbeat_fn=heartbeat_fn)

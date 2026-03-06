@@ -24,7 +24,14 @@ def generate_text(name: str, transcription: str, prompt_template: str) -> str:
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f'Nome: {name}\nDepoimento: "{transcription}"'},
+            {
+                "role": "user",
+                "content": (
+                    f'Nome: {name}\nDepoimento: "{transcription}"\n\n'
+                    "IMPORTANTE: Se houver nomes de cidades ou bairros no depoimento, "
+                    "escreva o nome COMPLETO e CORRETO. Nunca corte ou abrevie nomes de lugares."
+                ),
+            },
         ],
         max_tokens=200,
         temperature=0.8,

@@ -1,5 +1,6 @@
 """Step 3: Generate TTS audio using ElevenLabs cloned voice + outdoor audio FX."""
 
+import re
 import subprocess
 import tempfile
 import os
@@ -81,6 +82,35 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
             pass
 
 
+def _fix_pronunciation(text: str) -> str:
+    """
+    Pre-process text to improve TTS pronunciation of Brazilian city/neighborhood names.
+    Expands hyphenated syllables (Cu-ba-tão → Cubatão) and adds commas around
+    city names to force the TTS to pause and pronounce them as complete words.
+    """
+    # Remove syllable hyphens the GPT may have inserted (e.g. "Cu-ba-tão" → "Cubatão")
+    # Pattern: sequences of 2-4 letter groups separated by hyphens, at least 3 groups
+    def _join_syllables(m: re.Match) -> str:
+        return m.group(0).replace("-", "")
+
+    text = re.sub(
+        r'\b[A-ZÀ-Ú][a-zà-ú]{1,4}(?:-[A-Za-zà-ú]{1,4}){2,}\b',
+        _join_syllables,
+        text,
+    )
+
+    # Add slight pause (comma) before city names ending in common Brazilian suffixes
+    # This prevents the TTS from merging the city name with surrounding words
+    suffixes = r'(?:tão|ções|lhos|íba|uba|uba|anga|inga|ema|uma|aba|aia|eira|ópolis|ândia|lândia)'
+    text = re.sub(
+        rf'(\s)([A-ZÀ-Ú][a-zà-ú]*{suffixes})\b',
+        r'\1\2,',
+        text,
+    )
+
+    return text
+
+
 def generate_tts(text: str, voice_id: str) -> bytes:
     """
     Generate TTS audio using ElevenLabs + apply outdoor environment FX.
@@ -88,7 +118,12 @@ def generate_tts(text: str, voice_id: str) -> bytes:
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-    logger.info("Generating TTS for voice '%s' (%d chars)...", voice_id, len(text))
+    # Fix pronunciation of city names before sending to TTS
+    processed_text = _fix_pronunciation(text)
+    if processed_text != text:
+        logger.info("Pronunciation fix applied: '%s' → '%s'", text[:80], processed_text[:80])
+
+    logger.info("Generating TTS for voice '%s' (%d chars)...", voice_id, len(processed_text))
 
     response = requests.post(
         url,
@@ -97,10 +132,10 @@ def generate_tts(text: str, voice_id: str) -> bytes:
             "xi-api-key": ELEVENLABS_API_KEY,
         },
         json={
-            "text": text,
+            "text": processed_text,
             "model_id": "eleven_v3",
-            "language_code": "pt",
-            "apply_text_normalization": "auto",
+            "language_code": "pt-BR",
+            "apply_text_normalization": "on",
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.85,

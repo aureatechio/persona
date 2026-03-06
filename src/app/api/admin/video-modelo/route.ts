@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { videoPath, name, prompt_template } = body;
+    const { videoPath, name, prompt_template, lipsync_config } = body;
 
     if (!videoPath || !prompt_template) {
       return NextResponse.json({ error: 'videoPath e prompt_template são obrigatórios' }, { status: 400 });
@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
         video_storage_path: videoPath,
         voice_model_id: voiceModel.id,
         prompt_template,
+        lipsync_config: lipsync_config || { model: 'lipsync-2-pro', sync_mode: 'cut_off', temperature: 0.3 },
         is_active: true,
       })
       .select('*, voice_models(*)')
@@ -159,7 +160,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, prompt_template, name } = body;
+    const { id, prompt_template, name, lipsync_config } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'id é obrigatório' }, { status: 400 });
@@ -168,6 +169,7 @@ export async function PATCH(request: NextRequest) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (prompt_template !== undefined) updates.prompt_template = prompt_template;
     if (name !== undefined) updates.name = name;
+    if (lipsync_config !== undefined) updates.lipsync_config = lipsync_config;
 
     const { data: model, error } = await supabaseAdmin
       .from('video_base_models')
