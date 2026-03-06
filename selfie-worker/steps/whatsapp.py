@@ -1,42 +1,66 @@
-"""Step 6: Send final video via WhatsApp (UAZAPI)."""
+"""Step 6: Send final video via WhatsApp (Meta Business API — template message)."""
 
 import logging
 import requests
 
-from config import UAZAPI_URL, UAZAPI_TOKEN
+from config import META_WHATSAPP_TOKEN, META_PHONE_NUMBER_ID
 
 logger = logging.getLogger("worker.whatsapp")
+
+META_API_URL = f"https://graph.facebook.com/v22.0/{META_PHONE_NUMBER_ID}/messages"
 
 
 def send_whatsapp(phone: str, name: str, video_url: str):
     """
-    Send the final video via UAZAPI WhatsApp.
+    Send the final video via Meta WhatsApp Business API using template 'videoduda2'.
     Sends EXACTLY ONCE — no retries to prevent duplicate messages.
     """
-    # Ensure country code
     if not phone.startswith("55"):
         phone = f"55{phone}"
 
-    logger.info("Sending WhatsApp to %s...", phone)
+    logger.info("Sending WhatsApp to %s via Meta API...", phone)
 
     resp = requests.post(
-        f"{UAZAPI_URL}/send/media",
+        META_API_URL,
         headers={
-            "Accept": "application/json",
+            "Authorization": f"Bearer {META_WHATSAPP_TOKEN}",
             "Content-Type": "application/json",
-            "token": UAZAPI_TOKEN,
         },
         json={
-            "number": phone,
-            "type": "video",
-            "file": video_url,
-            "text": f"Olá {name}! Aqui está seu vídeo personalizado do evento!",
+            "messaging_product": "whatsapp",
+            "to": phone,
+            "type": "template",
+            "template": {
+                "name": "videoduda2",
+                "language": {"code": "pt_BR"},
+                "components": [
+                    {
+                        "type": "header",
+                        "parameters": [
+                            {
+                                "type": "video",
+                                "parameter_name": "video_header",
+                                "video": {"link": video_url},
+                            }
+                        ],
+                    },
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {
+                                "type": "text",
+                                "parameter_name": "nome",
+                                "text": name,
+                            }
+                        ],
+                    },
+                ],
+            },
         },
         timeout=60,
     )
 
     if resp.ok:
-        logger.info("WhatsApp sent successfully to %s (status: %d)", phone, resp.status_code)
+        logger.info("Meta API: WhatsApp sent to %s (status: %d)", phone, resp.status_code)
     else:
-        # Log but do NOT retry — UAZAPI may have sent the message even on error
-        logger.error("UAZAPI returned %d: %s (message may have been sent anyway)", resp.status_code, resp.text[:300])
+        logger.error("Meta API returned %d: %s", resp.status_code, resp.text[:300])

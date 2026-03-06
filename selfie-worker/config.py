@@ -17,9 +17,9 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 # Sync Labs (lip-sync)
 SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
 
-# UAZAPI (WhatsApp)
-UAZAPI_URL = os.getenv("UAZAPI_URL", "https://aureatech.uazapi.com")
-UAZAPI_TOKEN = os.getenv("UAZAPI_TOKEN", "")
+# Meta WhatsApp Business API
+META_WHATSAPP_TOKEN = os.getenv("META_WHATSAPP_TOKEN", "")
+META_PHONE_NUMBER_ID = os.getenv("META_PHONE_NUMBER_ID", "859990870526143")
 
 # Worker settings
 POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "3"))
