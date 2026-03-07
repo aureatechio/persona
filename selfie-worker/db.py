@@ -133,6 +133,24 @@ def get_kling_key(key_id: str) -> dict | None:
         return None
 
 
+def count_tts_in_progress() -> int:
+    """Count how many selfies are currently in 'generating_tts' status.
+    Used to limit concurrent ElevenLabs API calls."""
+    import logging
+    logger = logging.getLogger("worker.db")
+    try:
+        res = (
+            client.table("video_selfies")
+            .select("id", count="exact")
+            .eq("status", "generating_tts")
+            .execute()
+        )
+        return res.count or 0
+    except Exception as e:
+        logger.warning("count_tts_in_progress failed: %s — assuming 0", e)
+        return 0
+
+
 def get_active_base_model():
     """Get the active base model with voice_models joined."""
     res = (

@@ -136,8 +136,19 @@ def process_selfie(selfie: dict):
 
     # ─── Step 3: TTS ───
     if _should_run_step(status, "generating_tts"):
-        if selfie.get("status") != "generating_tts":
-            db.update_status(sid, "generating_tts")
+        # Wait for ElevenLabs concurrency slot (max 5 simultaneous)
+        MAX_TTS_CONCURRENT = 5
+        while not _shutdown:
+            tts_count = db.count_tts_in_progress()
+            if tts_count < MAX_TTS_CONCURRENT:
+                break
+            logger.info("Step 3/6: ElevenLabs slots full (%d/%d), waiting 5s...", tts_count, MAX_TTS_CONCURRENT)
+            time.sleep(5)
+
+        if _shutdown:
+            return
+
+        db.update_status(sid, "generating_tts")
         logger.info("Step 3/6: Generating TTS...")
 
         voice_id = voice_model["elevenlabs_voice_id"]
