@@ -7,7 +7,12 @@ import { cn } from '@/lib/utils';
 type Step = 'dados' | 'gravacao' | 'preview' | 'enviando' | 'obrigado';
 
 function formatPhone(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 11);
+  let digits = value.replace(/\D/g, '');
+  // Strip country code "55" if user typed it
+  if (digits.startsWith('55') && digits.length > 11) {
+    digits = digits.slice(2);
+  }
+  digits = digits.slice(0, 11);
   if (digits.length <= 2) return digits;
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
@@ -139,7 +144,7 @@ export default function SelfieVideoPage() {
 
   // ===== STEP NAVIGATION =====
   function handleContinueToDados() {
-    if (!name.trim() || phone.replace(/\D/g, '').length < 10) return;
+    if (!name.trim() || phone.replace(/\D/g, '').length !== 11) return;
     setStep('gravacao');
     setTimeout(() => startCamera(), 100);
   }
@@ -297,13 +302,16 @@ export default function SelfieVideoPage() {
                   Seu telefone
                 </label>
                 <div className="relative">
-                  <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-zinc-500 text-sm pointer-events-none">
+                    <span className="text-base leading-none">🇧🇷</span>
+                    <span className="font-medium">+55</span>
+                  </span>
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(formatPhone(e.target.value))}
                     className={cn(
-                      'w-full pl-11 pr-4 py-3',
+                      'w-full pl-[5.25rem] pr-4 py-3',
                       'bg-white/[0.04] hover:bg-white/[0.06]',
                       'border border-white/[0.08] focus:border-emerald-500/50',
                       'rounded-xl text-base text-white placeholder:text-zinc-600',
@@ -318,7 +326,7 @@ export default function SelfieVideoPage() {
 
               <button
                 onClick={handleContinueToDados}
-                disabled={!name.trim() || phone.replace(/\D/g, '').length < 10}
+                disabled={!name.trim() || phone.replace(/\D/g, '').length !== 11}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 mt-4',
                   'bg-emerald-500 hover:bg-emerald-400',
