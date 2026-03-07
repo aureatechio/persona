@@ -264,7 +264,7 @@ def main():
     logger.info("╚══════════════════════════════════════════╝")
 
     # Validate config
-    from config import SUPABASE_URL, OPENAI_API_KEY, ELEVENLABS_API_KEY, META_WHATSAPP_TOKEN
+    from config import SUPABASE_URL, OPENAI_API_KEY, ELEVENLABS_API_KEY, UAZAPI_TOKEN
 
     missing = []
     if not SUPABASE_URL:
@@ -273,8 +273,8 @@ def main():
         missing.append("OPENAI_API_KEY")
     if not ELEVENLABS_API_KEY:
         missing.append("ELEVENLABS_API_KEY")
-    if not META_WHATSAPP_TOKEN:
-        missing.append("META_WHATSAPP_TOKEN")
+    if not UAZAPI_TOKEN:
+        missing.append("UAZAPI_TOKEN")
 
     if missing:
         logger.error("Missing environment variables: %s", ", ".join(missing))

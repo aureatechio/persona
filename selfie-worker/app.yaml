@@ -34,13 +34,13 @@ workers:
         scope: RUN_AND_BUILD_TIME
         type: SECRET
         value: "QMhHJYFMdDRbKGKaRpCrhPJf83FBGTGt"
-      - key: META_WHATSAPP_TOKEN
+      - key: UAZAPI_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://aureatech.uazapi.com"
+      - key: UAZAPI_TOKEN
         scope: RUN_AND_BUILD_TIME
         type: SECRET
-        value: "EAAWTeQZBHbxcBPyNC2opZBaA5y5IwgUivZAfoy8mqlVZAubmUjjIwULVYr2oJ98lZBjouOO6KmEcB6bRF9s7FBJAD0GI1oRXYv7L4VNqzY2sQ5lzF0kBRt6N1hZCP7igKiabWghtzVZByZA0K0LEz6SM8W3eKmLwvnFXWMMzZBwZARpBbZC90vPIduyZA9mX6fZApipOUWQZDZD"
-      - key: META_PHONE_NUMBER_ID
-        scope: RUN_AND_BUILD_TIME
-        value: "777213165485256"
+        value: "0abdc72b-f461-40e8-865a-25ef59ccbe5d"
       - key: WORKER_POLL_INTERVAL
         scope: RUN_AND_BUILD_TIME
         value: "3"
