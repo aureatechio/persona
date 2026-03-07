@@ -47,9 +47,6 @@ workers:
       - key: WORKER_MAX_RETRIES
         scope: RUN_AND_BUILD_TIME
         value: "3"
-      - key: WHISPER_MODEL
-        scope: RUN_AND_BUILD_TIME
-        value: "base"
       - key: LIPSYNC_PROVIDER
         scope: RUN_AND_BUILD_TIME
         value: "kling"
