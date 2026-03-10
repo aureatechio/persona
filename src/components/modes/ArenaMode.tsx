@@ -320,7 +320,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     if (processedAttachments?.length) {
       emitLive(blockId, baseLiveData);
     } else {
-      onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: baseLiveData });
+      // For Python path, start with collecting phase; for local, start streaming immediately
+      const initialPhase = useLocalProcessing ? 'streaming' : 'collecting';
+      onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: {
+        ...baseLiveData,
+        phase: initialPhase as ArenaLiveData['phase'],
+        ...(initialPhase === 'collecting' ? { collectingStatus: 'analyzing' } : {}),
+      }});
     }
 
     // ── If local processing is sufficient, skip Python backend ──────────────
@@ -448,6 +454,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // Start in collecting phase — no metrics shown yet
+    emitLive(blockId, {
+      ...baseLiveData,
+      phase: 'collecting',
+      collectingStatus: 'analyzing',
+    });
+
     let hasResults = false;
     let useFallback = false;
     let simulation: any = null;
@@ -544,8 +557,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               const payload = JSON.parse(line.slice(6));
 
               switch (payload.type) {
-                case 'phase':
-                  if (payload.data?.phase === 'aggregating') {
+                case 'phase': {
+                  const pythonPhase = payload.data?.phase;
+                  if (pythonPhase === 'aggregating') {
                     emitLive(blockId, {
                       ...baseLiveData,
                       phase: 'aggregating',
@@ -557,16 +571,39 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       liveIdeology: ideoAcc.toResults(),
                       liveComments,
                     });
+                  } else if (pythonPhase === 'processing_personas') {
+                    // Transition from collecting to streaming
+                    emitLive(blockId, {
+                      ...baseLiveData,
+                      phase: 'streaming',
+                      processedCount: 0,
+                      totalCount: baseLiveData.totalCount,
+                    });
+                  } else if (pythonPhase !== 'processing_personas') {
+                    // Map Python phases to collecting status
+                    const statusMap: Record<string, string> = {
+                      analyzing_query: 'analyzing',
+                      web_research: 'researching',
+                      building_context: 'context',
+                      loading_personas: 'loading',
+                    };
+                    const collectingStatus = statusMap[pythonPhase] || 'analyzing';
+                    emitLive(blockId, {
+                      ...baseLiveData,
+                      phase: 'collecting',
+                      collectingStatus,
+                    });
                   }
                   break;
+                }
 
                 case 'personas_loaded':
                   baseLiveData.totalCount = payload.data.count;
                   baseLiveData.totalPersonas = payload.data.count;
                   emitLive(blockId, {
                     ...baseLiveData,
-                    processedCount: 0,
-                    totalCount: payload.data.count,
+                    phase: 'collecting',
+                    collectingStatus: 'loading',
                   });
                   break;
 

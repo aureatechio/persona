@@ -28,7 +28,7 @@ interface MediaItem {
 
 export interface ArenaLiveData {
   question: string;
-  phase: 'streaming' | 'aggregating' | 'complete';
+  phase: 'collecting' | 'streaming' | 'aggregating' | 'complete';
   processedCount: number;
   totalCount: number;
   positive: number;
@@ -48,6 +48,8 @@ export interface ArenaLiveData {
     politicalFigures: PoliticalFigureDetection[];
   };
   liveComments?: CommentResult[];
+  /** Status message during collecting phase */
+  collectingStatus?: string;
 }
 
 /* ============================================================
@@ -55,6 +57,71 @@ export interface ArenaLiveData {
    ============================================================ */
 
 type TabKey = 'principal' | 'segmentos' | 'ideologia' | 'reacoes';
+
+/* ============================================================
+   Collecting Phase (pre-processing)
+   ============================================================ */
+
+const COLLECTING_STEPS = [
+  { key: 'analyzing', label: 'Analisando pergunta', icon: '🔍' },
+  { key: 'researching', label: 'Pesquisando na web', icon: '🌐' },
+  { key: 'context', label: 'Construindo contexto', icon: '🧠' },
+  { key: 'loading', label: 'Carregando personas', icon: '👥' },
+] as const;
+
+function CollectingPhase({ status }: { status?: string }) {
+  const activeIndex = COLLECTING_STEPS.findIndex(s => status?.includes(s.key));
+
+  return (
+    <div className="px-6 py-10 flex flex-col items-center justify-center gap-6">
+      <div className="relative">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
+          <Activity size={28} className="text-violet-400 animate-pulse" />
+        </div>
+        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-violet-500 rounded-full ring-2 ring-black animate-pulse" />
+      </div>
+      <div className="text-center space-y-1.5">
+        <p className="text-sm font-semibold text-white">Coletando dados</p>
+        <p className="text-xs text-zinc-500">Preparando analise com IA — isso pode levar alguns minutos</p>
+      </div>
+      <div className="w-full max-w-xs space-y-2.5">
+        {COLLECTING_STEPS.map((step, i) => {
+          const isActive = i === activeIndex;
+          const isDone = i < activeIndex;
+          const isPending = i > activeIndex && activeIndex >= 0;
+
+          return (
+            <div
+              key={step.key}
+              className={cn(
+                'flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-500',
+                isActive
+                  ? 'bg-violet-500/10 border-violet-500/25 shadow-lg shadow-violet-500/5'
+                  : isDone
+                    ? 'bg-emerald-500/5 border-emerald-500/15'
+                    : 'bg-white/[0.02] border-white/[0.04]',
+              )}
+            >
+              <span className="text-sm">{step.icon}</span>
+              <span className={cn(
+                'text-xs font-medium transition-colors duration-300',
+                isActive ? 'text-violet-300' : isDone ? 'text-emerald-400/70' : isPending ? 'text-zinc-600' : 'text-zinc-500',
+              )}>
+                {step.label}
+              </span>
+              {isActive && (
+                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+              )}
+              {isDone && (
+                <span className="ml-auto text-[10px] text-emerald-400">✓</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /* ============================================================
    Progress Bar
@@ -647,6 +714,7 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   const hasMediaContext = cleanedMediaContext.length > 0;
   const blockRef = useRef<HTMLDivElement>(null);
 
+  const isCollecting = phase === 'collecting';
   const isStreaming = phase === 'streaming' || phase === 'aggregating';
   const isComplete = phase === 'complete';
 
@@ -684,7 +752,7 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
       key: 'ideologia',
       label: 'Ideologia',
       icon: <Sparkles size={13} />,
-      available: hasIdeology || isStreaming,
+      available: hasIdeology || (isStreaming && !isCollecting),
     },
     {
       key: 'reacoes',
@@ -720,9 +788,9 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                   <Zap size={9} /> Instantaneo
                 </span>
               )}
-              {isStreaming && (
+              {(isCollecting || isStreaming) && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
-                  <Activity size={9} /> Ao vivo
+                  <Activity size={9} /> {isCollecting ? 'Preparando' : 'Ao vivo'}
                 </span>
               )}
             </div>
@@ -769,11 +837,14 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
         <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
       </div>
 
+      {/* ─── Collecting Phase (before metrics) ─── */}
+      {isCollecting && <CollectingPhase status={data.collectingStatus} />}
+
       {/* ─── Tab Bar ─── */}
-      <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      {!isCollecting && <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />}
 
       {/* ─── Tab Content ─── */}
-      {activeTab === 'principal' && (
+      {!isCollecting && activeTab === 'principal' && (
         <TabPrincipal
           isStreaming={isStreaming}
           phase={phase}
