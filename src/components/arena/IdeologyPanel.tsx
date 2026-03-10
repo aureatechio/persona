@@ -109,7 +109,7 @@ function QuadrantCard({ quadrant, total }: { quadrant: QuadrantResult; total: nu
 
   return (
     <div className={cn(
-      'relative p-4 rounded-xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.01]',
+      'relative p-5 rounded-xl border backdrop-blur-sm transition-all duration-300 hover:scale-[1.01]',
       config.borderColor,
       config.bgColor,
     )}>
@@ -292,12 +292,12 @@ export function IdeologyPanel({ quadrants, clusterResults, total }: IdeologyPane
     <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
       {/* Section: Quadrant Grid */}
       {hasQuadrants && orderedQuadrants.length > 0 && (
-        <div className="p-4 sm:p-5">
-          <div className="flex items-center gap-2.5 mb-4">
-            <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500/20 to-sky-500/20 border border-white/[0.08] flex items-center justify-center">
-              <Target size={12} className="text-white/60" />
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center gap-2.5 mb-5">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500/20 to-sky-500/20 border border-white/[0.08] flex items-center justify-center">
+              <Target size={14} className="text-white/60" />
             </div>
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-500">
               Espectro Ideologico
             </p>
           </div>
@@ -306,20 +306,20 @@ export function IdeologyPanel({ quadrants, clusterResults, total }: IdeologyPane
           <div className="relative">
             {/* Axis labels */}
             <div className="absolute left-1/2 -translate-x-1/2 -top-1 z-10">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Progressista</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Progressista</span>
             </div>
             <div className="absolute left-1/2 -translate-x-1/2 -bottom-1 z-10">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Conservador</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Conservador</span>
             </div>
             <div className="absolute top-1/2 -translate-y-1/2 -left-1 z-10 -rotate-90">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Estado</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Estado</span>
             </div>
             <div className="absolute top-1/2 -translate-y-1/2 -right-1 z-10 rotate-90">
-              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Mercado</span>
+              <span className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600/70 bg-zinc-950 px-2">Mercado</span>
             </div>
 
             {/* Grid */}
-            <div className="grid grid-cols-2 gap-2 px-3 py-2">
+            <div className="grid grid-cols-2 gap-3 px-4 py-3">
               {orderedQuadrants.map((q) => (
                 <QuadrantCard key={q.quadrant} quadrant={q} total={total} />
               ))}

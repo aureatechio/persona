@@ -18,6 +18,7 @@ import { ChatMode } from './modes/ChatMode';
 
 // Block renderers
 import { ArenaResultBlock } from './blocks/ArenaResultBlock';
+import { ArenaLiveBlock } from './blocks/ArenaLiveBlock';
 import { ProcessingBlock } from './blocks/ProcessingBlock';
 import { MediaScannerBlock } from './blocks/MediaScannerBlock';
 import { ElectoralResultBlock } from './blocks/ElectoralResultBlock';
@@ -30,7 +31,7 @@ import type { Politician } from '@/lib/arena-eleitoral/types';
 export function UnifiedShell() {
   const router = useRouter();
   const { session, loading: authLoading } = useAuth();
-  const [activeMode, setActiveMode] = useState<Mode | null>(null);
+  const [activeMode, setActiveMode] = useState<Mode | null>('arena');
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPersonaDrawer, setShowPersonaDrawer] = useState(false);
   const { blocks, addBlock, updateBlock, replaceBlock, removeBlock, clearAll } = useConversation();
@@ -46,6 +47,12 @@ export function UnifiedShell() {
     if (authLoading) return;
     if (!session) router.push('/login');
   }, [authLoading, session, router]);
+
+  const handleNewChat = useCallback(() => {
+    clearAll();
+    setActiveMode('arena');
+    setIsProcessing(false);
+  }, [clearAll]);
 
   const handleSelectMode = useCallback((mode: Mode) => {
     // Chat mode: open persona selector drawer
@@ -80,6 +87,8 @@ export function UnifiedShell() {
         return <MediaScannerBlock data={block.data} />;
       case 'arena-result':
         return <ArenaResultBlock data={block.data} />;
+      case 'arena-live':
+        return <ArenaLiveBlock data={block.data} />;
       case 'electoral-result':
         return <ElectoralResultBlock data={block.data} />;
       case 'electoral-setup':
@@ -111,7 +120,7 @@ export function UnifiedShell() {
 
   return (
     <div className="flex flex-col h-screen bg-black text-white font-sans overflow-hidden">
-      <TopBar personaCount={personaCache.count} />
+      <TopBar personaCount={personaCache.count} hasBlocks={blocks.length > 0} onNewChat={handleNewChat} />
 
       <div className="flex-1 flex flex-col min-h-0 relative">
         {/* Animated neural network background */}
@@ -166,6 +175,7 @@ export function UnifiedShell() {
           }}
           isProcessing={isProcessing}
           hasBlocks={blocks.length > 0}
+          personaCount={personaCache.count}
         />
       </div>
 

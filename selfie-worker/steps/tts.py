@@ -88,6 +88,17 @@ def _fix_pronunciation(text: str) -> str:
     Expands hyphenated syllables (Cu-ba-tão → Cubatão) and adds commas around
     city names to force the TTS to pause and pronounce them as complete words.
     """
+    # Fix specific city names the TTS mispronounces
+    # "Manhuaçu" — TTS reads "nh" as digraph (ñ), should be "Man-hu-açu"
+    pronunciation_fixes = {
+        "Manhuaçu": "Manuassu",
+        "manhuaçu": "manuassu",
+        "Manhumirim": "Manumirim",
+        "manhumirim": "manumirim",
+    }
+    for wrong, right in pronunciation_fixes.items():
+        text = text.replace(wrong, right)
+
     # Remove syllable hyphens the GPT may have inserted (e.g. "Cu-ba-tão" → "Cubatão")
     # Pattern: sequences of 2-4 letter groups separated by hyphens, at least 3 groups
     def _join_syllables(m: re.Match) -> str:

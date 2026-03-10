@@ -19,7 +19,7 @@ export function HeroSentimentBar({ positive, negative, neutral, total }: HeroSen
       <div className="absolute inset-x-0 -bottom-3 h-6 bg-gradient-to-r from-emerald-500/10 via-amber-500/5 to-rose-500/10 blur-xl rounded-full pointer-events-none" />
 
       {/* Bar */}
-      <div className="h-10 sm:h-12 rounded-2xl overflow-hidden flex bg-zinc-900/80 border border-white/[0.06]">
+      <div className="h-12 sm:h-14 rounded-2xl overflow-hidden flex bg-zinc-900/80 border border-white/[0.06]">
         {/* Positive */}
         <div
           className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 flex items-center justify-center transition-all duration-[2500ms] ease-out"

@@ -1,15 +1,18 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Send,
   Image as ImageIcon,
-  Play,
+  Video,
   Link as LinkIcon,
   X,
   Paperclip,
+  Camera,
+  Mic,
 } from 'lucide-react';
 import { ActionChips, type Mode } from './ActionChips';
+import { VideoRecorder } from './VideoRecorder';
 import { cn } from '@/lib/utils';
 import {
   type Attachment,
@@ -27,23 +30,27 @@ interface BottomInputProps {
   placeholder?: string;
   customInput?: React.ReactNode;
   hasBlocks: boolean;
+  personaCount?: number;
 }
 
-const PLACEHOLDERS: Record<string, string[]> = {
-  default: [
-    'Pergunte alguma coisa...',
-    'O que 2.000 personas pensam sobre...',
-    'Digite uma pergunta ou selecione uma acao',
-  ],
-  arena: [
-    'O que 2.000 personas pensam sobre...',
-    'A maconha deveria ser legalizada?',
-    'O Brasil deveria investir mais em energia nuclear?',
-    'Deveria existir pena de morte no Brasil?',
-  ],
-  chat: ['Envie uma mensagem...'],
-  eleitoral: ['Selecione os candidatos abaixo...'],
-};
+function buildPlaceholders(count: number): Record<string, string[]> {
+  const formatted = count > 0 ? count.toLocaleString('pt-BR') : '20.000';
+  return {
+    default: [
+      'Pergunte alguma coisa...',
+      `O que ${formatted} personas pensam sobre...`,
+      'Digite uma pergunta ou selecione uma acao',
+    ],
+    arena: [
+      `O que ${formatted} personas pensam sobre...`,
+      'A maconha deveria ser legalizada?',
+      'O Brasil deveria investir mais em energia nuclear?',
+      'Deveria existir pena de morte no Brasil?',
+    ],
+    chat: ['Envie uma mensagem...'],
+    eleitoral: ['Selecione os candidatos abaixo...'],
+  };
+}
 
 export function BottomInput({
   activeMode,
@@ -53,13 +60,16 @@ export function BottomInput({
   placeholder: customPlaceholder,
   customInput,
   hasBlocks,
+  personaCount = 0,
 }: BottomInputProps) {
   const [value, setValue] = useState('');
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [showUrlInput, setShowUrlInput] = useState(false);
-  const [urlValue, setUrlValue] = useState('');
   const [isDragging, setIsDragging] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+
+  const PLACEHOLDERS = useMemo(() => buildPlaceholders(personaCount), [personaCount]);
+  const [showRecorder, setShowRecorder] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -84,8 +94,6 @@ export function BottomInput({
   useEffect(() => {
     if (!isArena) {
       setAttachments([]);
-      setShowUrlInput(false);
-      setUrlValue('');
     }
   }, [isArena]);
 
@@ -115,17 +123,6 @@ export function BottomInput({
   const removeAttachment = useCallback((id: string) => {
     setAttachments(prev => prev.filter(a => a.id !== id));
   }, []);
-
-  const addUrl = useCallback(() => {
-    const url = urlValue.trim();
-    if (!url || !canAddAttachment(attachments)) return;
-    setAttachments(prev => [
-      ...prev,
-      { id: crypto.randomUUID(), type: 'url', url, name: url.length > 35 ? url.slice(0, 35) + '...' : url },
-    ]);
-    setUrlValue('');
-    setShowUrlInput(false);
-  }, [urlValue, attachments]);
 
   // Drag and drop handlers (arena only)
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -192,7 +189,7 @@ export function BottomInput({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             className={cn(
-              'relative bg-zinc-900/90 border rounded-[1.5rem] overflow-hidden transition-all duration-300 backdrop-blur-2xl',
+              'relative bg-zinc-900/90 border rounded-[1.5rem] transition-all duration-300 backdrop-blur-2xl',
               isDragging
                 ? 'border-emerald-500/40 bg-emerald-500/[0.03]'
                 : 'border-white/[0.08] group-focus-within:border-violet-500/30',
@@ -216,11 +213,19 @@ export function BottomInput({
                     {att.type === 'image' && att.preview ? (
                       <img src={att.preview} alt="" className="w-6 h-6 rounded-lg object-cover" />
                     ) : att.type === 'video' ? (
-                      <Play size={12} className="text-violet-400" />
+                      <Video size={12} className="text-violet-400" />
                     ) : (
                       <LinkIcon size={12} className="text-sky-400" />
                     )}
-                    <span className="max-w-[80px] truncate">{att.name}</span>
+                    <div className="flex flex-col min-w-0">
+                      <span className="max-w-[100px] truncate leading-tight">{att.name}</span>
+                      {att.type === 'video' && (
+                        <span className="text-[9px] text-violet-400/70 leading-tight">Audio sera transcrito</span>
+                      )}
+                      {att.type === 'image' && (
+                        <span className="text-[9px] text-emerald-400/70 leading-tight">Contexto sera extraido</span>
+                      )}
+                    </div>
                     <button
                       onClick={() => removeAttachment(att.id)}
                       className="p-0.5 rounded-lg hover:bg-white/[0.1] text-zinc-600 hover:text-zinc-300 transition-colors"
@@ -229,34 +234,6 @@ export function BottomInput({
                     </button>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* URL input inline (arena only) */}
-            {isArena && showUrlInput && (
-              <div className="flex items-center gap-2 px-4 pt-2">
-                <input
-                  type="url"
-                  value={urlValue}
-                  onChange={e => setUrlValue(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
-                  placeholder="https://..."
-                  className="flex-1 px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-xl text-xs text-white placeholder-zinc-600 outline-none focus:border-emerald-500/40 transition-all duration-200"
-                  autoFocus
-                />
-                <button
-                  onClick={addUrl}
-                  disabled={!urlValue.trim()}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 hover:bg-emerald-500/20 transition-all duration-200 disabled:opacity-40"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => { setShowUrlInput(false); setUrlValue(''); }}
-                  className="p-1 rounded-lg text-zinc-600 hover:text-zinc-300 transition-colors"
-                >
-                  <X size={14} />
-                </button>
               </div>
             )}
 
@@ -279,51 +256,92 @@ export function BottomInput({
               <div className="flex items-center gap-1.5 flex-wrap">
                 <ActionChips activeMode={activeMode} onSelect={onSelectMode} compact />
 
-                {/* Arena upload buttons - appear when arena is active */}
+                {/* Arena attachment button + dropdown menu */}
                 {isArena && (
-                  <div className="flex items-center gap-1 ml-1.5 pl-1.5 border-l border-white/[0.08]">
+                  <div className="relative ml-1.5 pl-1.5 border-l border-white/[0.08]">
                     <button
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept = 'image/*';
-                          fileInputRef.current.click();
-                        }
-                      }}
+                      onClick={() => setShowAttachMenu(!showAttachMenu)}
                       disabled={!canAddAttachment(attachments)}
-                      title="Anexar imagem"
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <ImageIcon size={15} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (fileInputRef.current) {
-                          fileInputRef.current.accept = 'video/*';
-                          fileInputRef.current.click();
-                        }
-                      }}
-                      disabled={!canAddAttachment(attachments)}
-                      title="Anexar video"
-                      className="p-1.5 rounded-lg text-zinc-500 hover:text-violet-400 hover:bg-violet-500/10 transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <Play size={15} />
-                    </button>
-                    <button
-                      onClick={() => setShowUrlInput(!showUrlInput)}
-                      title="Adicionar link"
+                      title="Anexar midia"
                       className={cn(
-                        'p-1.5 rounded-lg transition-all duration-200',
-                        showUrlInput
-                          ? 'text-sky-400 bg-sky-500/10'
-                          : 'text-zinc-500 hover:text-sky-400 hover:bg-sky-500/10',
+                        'p-1.5 rounded-lg transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed',
+                        showAttachMenu
+                          ? 'text-emerald-400 bg-emerald-500/10'
+                          : 'text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10',
                       )}
                     >
-                      <LinkIcon size={15} />
+                      <Paperclip size={15} />
                     </button>
+
                     {attachments.length > 0 && (
-                      <span className="text-[9px] text-zinc-600 font-bold tabular-nums ml-0.5">
-                        {attachments.length}/5
+                      <span className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-black">
+                        {attachments.length}
                       </span>
+                    )}
+
+                    {/* Attachment dropdown menu */}
+                    {showAttachMenu && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowAttachMenu(false)} />
+                        <div className="absolute bottom-full left-0 mb-2 z-50 w-56 rounded-2xl bg-zinc-900/95 backdrop-blur-2xl border border-white/[0.1] shadow-2xl shadow-black/50 overflow-hidden animate-fade-in-up">
+                          <div className="p-1.5">
+                            <button
+                              onClick={() => {
+                                setShowAttachMenu(false);
+                                if (fileInputRef.current) {
+                                  fileInputRef.current.accept = 'image/*';
+                                  fileInputRef.current.click();
+                                }
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] transition-colors duration-200"
+                            >
+                              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                                <ImageIcon size={14} className="text-emerald-400" />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs font-semibold text-zinc-200">Imagem</p>
+                                <p className="text-[10px] text-zinc-500">Foto, print ou screenshot</p>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setShowAttachMenu(false);
+                                if (fileInputRef.current) {
+                                  fileInputRef.current.accept = 'video/*';
+                                  fileInputRef.current.click();
+                                }
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] transition-colors duration-200"
+                            >
+                              <div className="w-8 h-8 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                                <Video size={14} className="text-violet-400" />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs font-semibold text-zinc-200">Video</p>
+                                <p className="text-[10px] text-zinc-500">Audio sera transcrito automaticamente</p>
+                              </div>
+                            </button>
+
+                            <button
+                              onClick={() => {
+                                setShowAttachMenu(false);
+                                setShowRecorder(true);
+                              }}
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/[0.06] transition-colors duration-200"
+                            >
+                              <div className="w-8 h-8 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                                <Camera size={14} className="text-cyan-400" />
+                              </div>
+                              <div className="text-left">
+                                <p className="text-xs font-semibold text-zinc-200">Gravar Video</p>
+                                <p className="text-[10px] text-zinc-500">Ate 2 minutos, com transcricao</p>
+                              </div>
+                            </button>
+
+                          </div>
+                        </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -360,6 +378,18 @@ export function BottomInput({
               }
             }}
             className="hidden"
+          />
+        )}
+
+        {/* Video recorder modal */}
+        {isArena && (
+          <VideoRecorder
+            isOpen={showRecorder}
+            onClose={() => setShowRecorder(false)}
+            onRecorded={(file) => {
+              addFilesAsAttachments([file]);
+            }}
+            maxDurationSec={120}
           />
         )}
       </div>

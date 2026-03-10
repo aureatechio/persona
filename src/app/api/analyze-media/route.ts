@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     content.push({ type: 'text', text: prompt });
 
     // Add image attachments (Claude supports images natively)
+    // For videos, transcribe audio first via Whisper
     for (const att of attachments) {
       if (att.type === 'image' && att.data.startsWith('data:')) {
         const match = att.data.match(/^data:(image\/[\w+]+);base64,(.+)$/);
@@ -96,10 +97,44 @@ export async function POST(request: Request) {
       } else if (att.type === 'url') {
         content.push({ type: 'text', text: `\n\nURL para contexto: ${att.data}` });
       } else if (att.type === 'video') {
-        content.push({
-          type: 'text',
-          text: `\n\n[Video anexado: ${att.name} - para analise completa de video, ative a API Gemini. Analise baseada no nome do arquivo.]`,
-        });
+        // Transcribe video audio via Whisper
+        try {
+          const origin = request.headers.get('origin') || request.headers.get('host') || '';
+          const baseUrl = origin.startsWith('http') ? origin : `https://${origin}`;
+
+          const transcribeRes = await fetch(`${baseUrl}/api/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: att.data, name: att.name }),
+          });
+
+          if (transcribeRes.ok) {
+            const { transcript } = await transcribeRes.json();
+            if (transcript) {
+              content.push({
+                type: 'text',
+                text: `\n\n--- TRANSCRICAO DO VIDEO "${att.name}" ---\n${transcript}\n--- FIM DA TRANSCRICAO ---`,
+              });
+            } else {
+              content.push({
+                type: 'text',
+                text: `\n\n[Video anexado: ${att.name} - audio sem fala detectada]`,
+              });
+            }
+          } else {
+            console.warn('[Analyze Media] Transcription failed for', att.name);
+            content.push({
+              type: 'text',
+              text: `\n\n[Video anexado: ${att.name} - transcricao indisponivel]`,
+            });
+          }
+        } catch (transcribeErr) {
+          console.warn('[Analyze Media] Transcription error:', transcribeErr);
+          content.push({
+            type: 'text',
+            text: `\n\n[Video anexado: ${att.name} - erro na transcricao]`,
+          });
+        }
       }
     }
 
@@ -116,16 +151,35 @@ export async function POST(request: Request) {
       .join('\n')
       .trim();
 
-    // Parse JSON response from Claude
+    // Parse JSON response from Claude — strip code fences first
+    let cleanText = rawText
+      .replace(/```(?:json|JSON)?\s*/gi, '')
+      .replace(/```/g, '')
+      .trim();
+
     try {
-      const parsed = JSON.parse(rawText);
+      // Find JSON object boundaries
+      const start = cleanText.indexOf('{');
+      const end = cleanText.lastIndexOf('}');
+      const jsonStr = start !== -1 && end > start ? cleanText.slice(start, end + 1) : cleanText;
+
+      const parsed = JSON.parse(jsonStr);
       return NextResponse.json({
-        context: parsed.context || rawText,
+        context: parsed.context || cleanText,
         ...(parsed.generated_question && { generated_question: parsed.generated_question }),
       });
     } catch {
-      // If Claude didn't return valid JSON, use raw text as context
-      return NextResponse.json({ context: rawText });
+      // If parsing failed, return the cleaned text as context
+      // Also strip residual JSON keys if present
+      cleanText = cleanText
+        .replace(/^\s*\{?\s*"context"\s*:\s*"?/i, '')
+        .replace(/"?\s*,?\s*"generated_question"\s*:[\s\S]*$/i, '')
+        .replace(/"\s*\}\s*$/g, '')
+        .replace(/\\n/g, ' ')
+        .replace(/\\"/g, '"')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      return NextResponse.json({ context: cleanText });
     }
   } catch (err: any) {
     console.error('[Analyze Media] Claude error:', err?.message || err);

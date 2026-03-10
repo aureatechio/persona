@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react';
 
 export type BlockType =
   | 'arena-result'
+  | 'arena-live'
   | 'electoral-result'
   | 'electoral-setup'
   | 'chat-session'

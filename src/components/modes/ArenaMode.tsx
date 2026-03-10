@@ -1,22 +1,28 @@
 'use client';
 
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import type { ConversationBlock } from '@/hooks/useConversation';
-import type { Sentiment, EnhancedSimulationResult } from '@/lib/arena';
+import type { EnhancedSimulationResult } from '@/lib/arena';
 import {
-  CLUSTERS,
   detectTopics,
   buildPersonasForAI,
   generateAIComments,
   runEnhancedSimulation,
+  computePersonaSentiment,
+  computeAllSegments,
+  SegmentAccumulator,
+  classifyQuickPersona,
 } from '@/lib/arena';
+import type { AllSegments } from '@/lib/arena/segments';
+import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
 import { processAttachmentsForUpload, type Attachment } from '@/lib/file-utils';
+import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 
 interface ArenaModeProps {
   personaCache: {
     personas: any[];
     count: number;
-    loadAll: () => Promise<any[]>;
+    loadAll: (onBatch?: (loaded: number, total: number, batch: any[]) => void) => Promise<any[]>;
   };
   onAddBlock: (block: ConversationBlock) => void;
   onReplaceBlock: (id: string, block: ConversationBlock) => void;
@@ -25,19 +31,26 @@ interface ArenaModeProps {
 
 export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessing }: ArenaModeProps) {
   const abortRef = useRef<AbortController | null>(null);
-  const processingIdRef = useRef<string | null>(null);
+
+  /** Helper to build and replace an arena-live block */
+  const emitLive = useCallback((blockId: string, data: ArenaLiveData) => {
+    onReplaceBlock(blockId, {
+      id: blockId,
+      type: 'arena-live',
+      timestamp: new Date(),
+      data,
+    });
+  }, [onReplaceBlock]);
 
   const handleSubmit = useCallback(async (value: string, contextText?: string, attachments?: Attachment[]) => {
     let q = value.trim();
     const hasMedia = attachments && attachments.length > 0;
 
-    // Must have either text or media
     if (!q && !hasMedia) return;
 
     onProcessing(true);
 
     const blockId = crypto.randomUUID();
-    processingIdRef.current = blockId;
 
     // Process attachments to base64
     const processedAttachments = hasMedia
@@ -46,12 +59,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     let enrichedContext = contextText || '';
 
-    // Keep small previews for the result block (thumbnail), full images for scanner
     const mediaPreviews = hasMedia
       ? attachments.map(a => ({ type: a.type, preview: a.preview, name: a.name }))
       : undefined;
 
-    // Scanner gets the full compressed images for a better display
     const scannerPreviews = hasMedia && processedAttachments
       ? attachments.map((a, i) => ({
           type: a.type,
@@ -60,17 +71,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         }))
       : mediaPreviews;
 
-    // If there are media attachments, use Claude to extract context
+    // ── Media analysis ──────────────────────────────────────────────────────
     if (processedAttachments?.length) {
-      // Show the scanner block while analyzing media
       onAddBlock({
         id: blockId,
         type: 'media-scanning',
         timestamp: new Date(),
-        data: {
-          previews: scannerPreviews,
-          phase: 'Analisando mídia com IA...',
-        },
+        data: { previews: scannerPreviews, phase: 'Analisando midia com IA...' },
       });
 
       try {
@@ -80,18 +87,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           body: JSON.stringify({
             attachments: processedAttachments,
             question: q || undefined,
-            generate_question: !q, // Ask AI to generate a question if user didn't provide one
+            generate_question: !q,
           }),
         });
 
         if (mediaRes.ok) {
           const mediaData = await mediaRes.json();
-
-          // If no question was provided, use the AI-generated one
-          if (!q && mediaData.generated_question) {
-            q = mediaData.generated_question;
-          }
-
+          if (!q && mediaData.generated_question) q = mediaData.generated_question;
           if (mediaData.context) {
             enrichedContext = enrichedContext
               ? `${enrichedContext}\n\n--- Contexto extraido da midia ---\n${mediaData.context}`
@@ -102,39 +104,167 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         console.warn('[Arena] Media analysis failed, continuing without:', mediaErr);
       }
 
-      // If still no question after media analysis, create a generic one
-      if (!q) {
-        q = 'O que voce acha deste conteudo?';
+      if (!q) q = 'O que voce acha deste conteudo?';
+    }
+
+    if (!q) return;
+
+    // ── Quick Answer check ──────────────────────────────────────────────────
+    const quickMatch = detectQuickAnswer(q);
+    if (quickMatch) {
+      const baseLiveData: ArenaLiveData = {
+        question: q,
+        phase: 'streaming',
+        processedCount: 0,
+        totalCount: personaCache.count,
+        positive: 0,
+        negative: 0,
+        neutral: 0,
+        simulation: null,
+        totalPersonas: personaCache.count,
+        media: mediaPreviews,
+        mediaContext: enrichedContext || undefined,
+        isQuickAnswer: true,
+      };
+
+      if (processedAttachments?.length) {
+        emitLive(blockId, baseLiveData);
+      } else {
+        onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: baseLiveData });
       }
 
-      // Transition from scanner to processing block
-      onReplaceBlock(blockId, {
-        id: blockId,
-        type: 'processing',
-        timestamp: new Date(),
-        data: {
-          type: 'arena',
-          question: q,
-          pipelinePhase: 'Analisando personas...',
-          processedCount: 0,
-          totalCount: personaCache.count,
-        },
-      });
+      try {
+        let pos = 0, neg = 0, neu = 0;
+        const segAcc = new SegmentAccumulator();
+        const BATCH = 100;
+
+        /** Delay progressivo: lento no inicio, acelera no final */
+        const getDelay = (progress: number) => {
+          // 0-30%: 450ms (analise profunda), 30-70%: 350ms, 70-100%: 250ms
+          if (progress < 0.3) return 450;
+          if (progress < 0.7) return 350;
+          return 250;
+        };
+
+        /** Process a slice of personas and emit live update */
+        const processBatch = (batch: any[], processed: number, total: number) => {
+          for (const p of batch) {
+            const sentiment = classifyQuickPersona(p, quickMatch);
+            if (sentiment === 'positive') pos++;
+            else if (sentiment === 'negative') neg++;
+            else neu++;
+            segAcc.addPersona(p, sentiment);
+          }
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: processed,
+            totalCount: total,
+            positive: pos,
+            negative: neg,
+            neutral: neu,
+            totalPersonas: total,
+            segments: segAcc.toSegments(),
+          });
+        };
+
+        // Accumulate Supabase batches (1000 each) — we'll process them in sub-batches
+        let pendingPersonas: any[] = [];
+
+        const allData = await personaCache.loadAll((loaded, total, batch) => {
+          pendingPersonas.push(...batch);
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: 0,
+            totalCount: total,
+          });
+        });
+
+        // Determine which array to iterate: freshly fetched or cached
+        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
+        const total = toProcess.length;
+
+        // Process in small batches with progressive delay (~70s for 20K)
+        for (let offset = 0; offset < total; offset += BATCH) {
+          const batch = toProcess.slice(offset, offset + BATCH);
+          const processed = Math.min(offset + BATCH, total);
+          processBatch(batch, processed, total);
+          await new Promise(r => setTimeout(r, getDelay(processed / total)));
+        }
+
+        // Final complete state (instant result)
+        const qaResult = runQuickAnswer(quickMatch, allData);
+        const qaSegments = segAcc.toSegments();
+
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: total,
+          totalCount: total,
+          positive: pos,
+          negative: neg,
+          neutral: neu,
+          totalPersonas: total,
+          segments: qaSegments,
+          quickAnswer: qaResult,
+        });
+
+        onProcessing(false);
+
+        // Enrich with full simulation (ideology, political figures, comments) in background
+        (async () => {
+          try {
+            const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+            const enhanced = runEnhancedSimulation(queryForAnalysis, total, allData);
+            const topicScores = detectTopics(queryForAnalysis);
+            const personasForAI = buildPersonasForAI(q, allData, topicScores);
+            const claudeComments = await generateAIComments(q, personasForAI);
+
+            emitLive(blockId, {
+              ...baseLiveData,
+              phase: 'complete',
+              processedCount: total,
+              totalCount: total,
+              positive: pos,
+              negative: neg,
+              neutral: neu,
+              totalPersonas: total,
+              segments: qaSegments,
+              quickAnswer: qaResult,
+              simulation: { ...enhanced, comments: claudeComments },
+            });
+          } catch (err) {
+            console.warn('[Arena] Quick answer enrichment failed:', err);
+          }
+        })();
+      } catch (err) {
+        console.error('[Arena] Quick answer failed:', err);
+        emitLive(blockId, { ...baseLiveData, phase: 'complete', error: 'Falha ao processar' });
+        onProcessing(false);
+      }
+      return;
+    }
+
+    // ── Full analysis with streaming live block ─────────────────────────────
+    const baseLiveData: ArenaLiveData = {
+      question: q,
+      phase: 'streaming',
+      processedCount: 0,
+      totalCount: personaCache.count,
+      positive: 0,
+      negative: 0,
+      neutral: 0,
+      simulation: null,
+      totalPersonas: personaCache.count,
+      media: mediaPreviews,
+      mediaContext: enrichedContext || undefined,
+    };
+
+    if (processedAttachments?.length) {
+      emitLive(blockId, baseLiveData);
     } else {
-      // No media - text only, go straight to processing
-      if (!q) return; // Safety: shouldn't happen but just in case
-      onAddBlock({
-        id: blockId,
-        type: 'processing',
-        timestamp: new Date(),
-        data: {
-          type: 'arena',
-          question: q,
-          pipelinePhase: 'Analisando personas...',
-          processedCount: 0,
-          totalCount: personaCache.count,
-        },
-      });
+      onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: baseLiveData });
     }
 
     // Abort previous
@@ -145,6 +275,28 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let hasResults = false;
     let useFallback = false;
     let simulation: any = null;
+
+    // Helper: compute segments in background and update block
+    const computeSegmentsAsync = (sim: any, total: number) => {
+      personaCache.loadAll().then((allData) => {
+        if (allData.length > 0) {
+          const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+          const segs = computeAllSegments(allData, (p) => computePersonaSentiment(p, queryForSeg));
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'complete',
+            processedCount: total,
+            totalCount: total,
+            positive: sim?.positive || 0,
+            negative: sim?.negative || 0,
+            neutral: sim?.neutral || 0,
+            simulation: sim,
+            totalPersonas: total,
+            segments: segs,
+          });
+        }
+      }).catch(() => {});
+    };
 
     try {
       const fetchTimeout = setTimeout(() => {
@@ -200,50 +352,41 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               switch (payload.type) {
                 case 'phase':
                   if (payload.data?.phase === 'aggregating') {
-                    onReplaceBlock(blockId, {
-                      id: blockId,
-                      type: 'processing',
-                      timestamp: new Date(),
-                      data: {
-                        type: 'arena',
-                        question: q,
-                        pipelinePhase: 'Agregando resultados...',
-                        processedCount: simulation?.total || personaCache.count,
-                        totalCount: simulation?.total || personaCache.count,
-                      },
+                    emitLive(blockId, {
+                      ...baseLiveData,
+                      phase: 'aggregating',
+                      processedCount: simulation?.total || personaCache.count,
+                      totalCount: simulation?.total || personaCache.count,
+                      positive: simulation?.positive || 0,
+                      negative: simulation?.negative || 0,
+                      neutral: simulation?.neutral || 0,
                     });
                   }
                   break;
 
                 case 'personas_loaded':
-                  onReplaceBlock(blockId, {
-                    id: blockId,
-                    type: 'processing',
-                    timestamp: new Date(),
-                    data: {
-                      type: 'arena',
-                      question: q,
-                      pipelinePhase: 'Analisando personas...',
-                      processedCount: 0,
-                      totalCount: payload.data.count,
-                    },
+                  baseLiveData.totalCount = payload.data.count;
+                  baseLiveData.totalPersonas = payload.data.count;
+                  emitLive(blockId, {
+                    ...baseLiveData,
+                    processedCount: 0,
+                    totalCount: payload.data.count,
                   });
                   break;
 
                 case 'progress':
                   receivedAnyProgress = true;
                   stallThreshold = 90_000;
-                  onReplaceBlock(blockId, {
-                    id: blockId,
-                    type: 'processing',
-                    timestamp: new Date(),
-                    data: {
-                      type: 'arena',
-                      question: q,
-                      pipelinePhase: 'Processando respostas...',
-                      processedCount: payload.data.processed,
-                      totalCount: payload.data.total,
-                    },
+                  // Update live block with real-time sentiment data + segments from backend
+                  emitLive(blockId, {
+                    ...baseLiveData,
+                    phase: 'streaming',
+                    processedCount: payload.data.processed,
+                    totalCount: payload.data.total,
+                    positive: payload.data.positive,
+                    negative: payload.data.negative,
+                    neutral: payload.data.neutral,
+                    ...(payload.data.segments ? { segments: payload.data.segments } : {}),
                   });
                   simulation = {
                     total: payload.data.total,
@@ -264,22 +407,42 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   };
                   break;
 
-                case 'results':
-                  simulation = payload.data as EnhancedSimulationResult;
+                case 'results': {
+                  const resultsData = payload.data;
+                  // Extract segments from results if present (Python backend sends them)
+                  const backendSegments = resultsData.segments;
+                  delete resultsData.segments;
+                  simulation = resultsData as EnhancedSimulationResult;
+                  if (backendSegments) {
+                    (simulation as any)._backendSegments = backendSegments;
+                  }
                   hasResults = true;
                   break;
+                }
 
-                case 'done':
+                case 'done': {
                   streamDone = true;
-                  // Replace processing with result
-                  onReplaceBlock(blockId, {
-                    id: blockId,
-                    type: 'arena-result',
-                    timestamp: new Date(),
-                    data: { question: q, simulation, totalPersonas: payload.data.total_personas, media: mediaPreviews, mediaContext: enrichedContext || undefined },
+                  const doneTotal = payload.data.total_personas || simulation?.total || 0;
+                  const doneSegments = (simulation as any)?._backendSegments;
+                  emitLive(blockId, {
+                    ...baseLiveData,
+                    phase: 'complete',
+                    processedCount: doneTotal,
+                    totalCount: doneTotal,
+                    positive: simulation?.positive || 0,
+                    negative: simulation?.negative || 0,
+                    neutral: simulation?.neutral || 0,
+                    simulation,
+                    totalPersonas: doneTotal,
+                    ...(doneSegments ? { segments: doneSegments } : {}),
                   });
                   onProcessing(false);
+                  // Only compute segments locally if backend didn't provide them
+                  if (!doneSegments) {
+                    computeSegmentsAsync(simulation, doneTotal);
+                  }
                   break;
+                }
               }
             } catch {
               // Skip parse errors
@@ -291,116 +454,159 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       }
 
       if (!streamDone && hasResults) {
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'arena-result',
-          timestamp: new Date(),
-          data: { question: q, simulation, totalPersonas: simulation?.total || 0, media: mediaPreviews, mediaContext: enrichedContext || undefined },
+        const total = simulation?.total || 0;
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: total,
+          totalCount: total,
+          positive: simulation?.positive || 0,
+          negative: simulation?.negative || 0,
+          neutral: simulation?.neutral || 0,
+          simulation,
+          totalPersonas: total,
         });
         onProcessing(false);
+        computeSegmentsAsync(simulation, total);
       } else if (!streamDone && !hasResults) {
         useFallback = true;
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' && hasResults) {
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'arena-result',
-          timestamp: new Date(),
-          data: { question: q, simulation, totalPersonas: simulation?.total || 0, media: mediaPreviews, mediaContext: enrichedContext || undefined },
+        const total = simulation?.total || 0;
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          simulation,
+          positive: simulation?.positive || 0,
+          negative: simulation?.negative || 0,
+          neutral: simulation?.neutral || 0,
+          totalPersonas: total,
         });
         onProcessing(false);
+        computeSegmentsAsync(simulation, total);
         return;
       }
       if (err?.name === 'AbortError' && !hasResults) {
         useFallback = true;
       } else if (hasResults) {
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'arena-result',
-          timestamp: new Date(),
-          data: { question: q, simulation, totalPersonas: simulation?.total || 0, media: mediaPreviews, mediaContext: enrichedContext || undefined },
+        const total = simulation?.total || 0;
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          simulation,
+          positive: simulation?.positive || 0,
+          negative: simulation?.negative || 0,
+          neutral: simulation?.neutral || 0,
+          totalPersonas: total,
         });
         onProcessing(false);
+        computeSegmentsAsync(simulation, total);
         return;
       } else {
         useFallback = true;
       }
     }
 
-    // Fallback JS
+    // ── Fallback: local JS simulation with progressive segments ────────────
     if (useFallback) {
       try {
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'processing',
-          timestamp: new Date(),
-          data: {
-            type: 'arena',
-            question: q,
-            pipelinePhase: 'Simulacao local...',
+        const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+        let pos = 0, neg = 0, neu = 0;
+        const segAcc = new SegmentAccumulator();
+        const BATCH = 100;
+
+        const getDelay = (progress: number) => {
+          if (progress < 0.3) return 450;
+          if (progress < 0.7) return 350;
+          return 250;
+        };
+
+        const processFallbackBatch = (batch: any[], processed: number, total: number) => {
+          for (const p of batch) {
+            const sentiment = computePersonaSentiment(p, queryForAnalysis);
+            if (sentiment === 'positive') pos++;
+            else if (sentiment === 'negative') neg++;
+            else neu++;
+            segAcc.addPersona(p, sentiment);
+          }
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: processed,
+            totalCount: total,
+            positive: pos,
+            negative: neg,
+            neutral: neu,
+            segments: segAcc.toSegments(),
+          });
+        };
+
+        let pendingPersonas: any[] = [];
+
+        const allData = await personaCache.loadAll((loaded, total, batch) => {
+          pendingPersonas.push(...batch);
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
             processedCount: 0,
-            totalCount: personaCache.count,
-          },
+            totalCount: total,
+          });
         });
 
-        const allData = await personaCache.loadAll();
-        const effectiveCount = allData.length || personaCache.count;
+        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
+        const effectiveCount = toProcess.length;
 
-        // Animate counter
-        const animDuration = 5000;
-        const animStart = performance.now();
-        let animStopped = false;
+        for (let offset = 0; offset < effectiveCount; offset += BATCH) {
+          const batch = toProcess.slice(offset, offset + BATCH);
+          const processed = Math.min(offset + BATCH, effectiveCount);
+          processFallbackBatch(batch, processed, effectiveCount);
+          await new Promise(r => setTimeout(r, getDelay(processed / effectiveCount)));
+        }
 
-        const animateCount = (time: number) => {
-          if (animStopped) return;
-          const progress = Math.min((time - animStart) / animDuration, 1);
-          const eased = 1 - Math.pow(1 - progress, 2);
-          const count = Math.round(effectiveCount * eased);
-          onReplaceBlock(blockId, {
-            id: blockId,
-            type: 'processing',
-            timestamp: new Date(),
-            data: {
-              type: 'arena',
-              question: q,
-              pipelinePhase: 'Simulacao local...',
-              processedCount: count,
-              totalCount: effectiveCount,
-            },
-          });
-          if (progress < 1) requestAnimationFrame(animateCount);
-        };
-        requestAnimationFrame(animateCount);
+        // Run enhanced simulation + AI comments
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'aggregating',
+          processedCount: effectiveCount,
+          totalCount: effectiveCount,
+          positive: pos,
+          negative: neg,
+          neutral: neu,
+          segments: segAcc.toSegments(),
+        });
 
-        const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
         const topicScores = detectTopics(queryForAnalysis);
         const personasForAI = buildPersonasForAI(q, allData, topicScores);
         const claudeComments = await generateAIComments(q, personasForAI);
 
-        animStopped = true;
         simulation = { ...enhanced, comments: claudeComments };
 
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'arena-result',
-          timestamp: new Date(),
-          data: { question: q, simulation, totalPersonas: effectiveCount, media: mediaPreviews, mediaContext: enrichedContext || undefined },
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: effectiveCount,
+          totalCount: effectiveCount,
+          positive: simulation.positive,
+          negative: simulation.negative,
+          neutral: simulation.neutral,
+          simulation,
+          totalPersonas: effectiveCount,
+          segments: segAcc.toSegments(),
         });
         onProcessing(false);
       } catch (fallbackErr) {
         console.error('[Arena] Fallback failed:', fallbackErr);
-        onReplaceBlock(blockId, {
-          id: blockId,
-          type: 'arena-result',
-          timestamp: new Date(),
-          data: { question: q, simulation: null, error: 'Falha ao processar', media: mediaPreviews, mediaContext: enrichedContext || undefined },
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          error: 'Falha ao processar',
         });
         onProcessing(false);
       }
     }
-  }, [personaCache, onAddBlock, onReplaceBlock, onProcessing]);
+  }, [personaCache, onAddBlock, emitLive, onProcessing]);
 
   // Listen for submit events from BottomInput (text-only)
   useEffect(() => {
