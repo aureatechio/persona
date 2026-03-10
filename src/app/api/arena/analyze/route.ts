@@ -1,7 +1,7 @@
 const BACKEND = process.env.ARENA_BACKEND_URL || 'http://localhost:3002';
 
 // No duration limit — Python processes 20k personas via GPT, can take 10+ min
-export const maxDuration = 900;
+export const maxDuration = 800;
 
 export async function POST(request: Request) {
   const body = await request.text();
