@@ -12,6 +12,7 @@ import {
   computeAllSegments,
   SegmentAccumulator,
   classifyQuickPersona,
+  hasLocalFieldMatch,
 } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
@@ -246,6 +247,27 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       return;
     }
 
+    // ── Ask AI whether to process locally or use Python backend ────────────
+    let useLocalProcessing = hasLocalFieldMatch(q); // fast keyword check first
+
+    // If keyword check says no match, ask GPT for smarter classification
+    if (!useLocalProcessing) {
+      try {
+        const classifyRes = await fetch('/api/arena/classify-route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: q }),
+        });
+        if (classifyRes.ok) {
+          const classification = await classifyRes.json();
+          console.log('[Arena] Route classification:', classification);
+          useLocalProcessing = classification.route === 'local';
+        }
+      } catch {
+        // On error, fall through to Python backend
+      }
+    }
+
     // ── Full analysis with streaming live block ─────────────────────────────
     const baseLiveData: ArenaLiveData = {
       question: q,
@@ -267,6 +289,104 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: baseLiveData });
     }
 
+    // ── If local processing is sufficient, skip Python backend ──────────────
+    if (useLocalProcessing) {
+      try {
+        const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+        let pos = 0, neg = 0, neu = 0;
+        const segAcc = new SegmentAccumulator();
+        const BATCH = 100;
+
+        const getDelay = (progress: number) => {
+          if (progress < 0.3) return 450;
+          if (progress < 0.7) return 350;
+          return 250;
+        };
+
+        let pendingPersonas: any[] = [];
+
+        const allData = await personaCache.loadAll((loaded, total, batch) => {
+          pendingPersonas.push(...batch);
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: 0,
+            totalCount: total,
+          });
+        });
+
+        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
+        const effectiveCount = toProcess.length;
+
+        for (let offset = 0; offset < effectiveCount; offset += BATCH) {
+          const batch = toProcess.slice(offset, offset + BATCH);
+          const processed = Math.min(offset + BATCH, effectiveCount);
+
+          for (const p of batch) {
+            const sentiment = computePersonaSentiment(p, queryForAnalysis);
+            if (sentiment === 'positive') pos++;
+            else if (sentiment === 'negative') neg++;
+            else neu++;
+            segAcc.addPersona(p, sentiment);
+          }
+
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: processed,
+            totalCount: effectiveCount,
+            positive: pos,
+            negative: neg,
+            neutral: neu,
+            segments: segAcc.toSegments(),
+          });
+
+          await new Promise(r => setTimeout(r, getDelay(processed / effectiveCount)));
+        }
+
+        // Enrichment: simulation + AI comments
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'aggregating',
+          processedCount: effectiveCount,
+          totalCount: effectiveCount,
+          positive: pos,
+          negative: neg,
+          neutral: neu,
+          segments: segAcc.toSegments(),
+        });
+
+        const enhanced = runEnhancedSimulation(
+          enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q,
+          effectiveCount, allData,
+        );
+        const topicScores = detectTopics(q);
+        const personasForAI = buildPersonasForAI(q, allData, topicScores);
+        const claudeComments = await generateAIComments(q, personasForAI);
+
+        const sim = { ...enhanced, comments: claudeComments };
+
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: effectiveCount,
+          totalCount: effectiveCount,
+          positive: sim.positive,
+          negative: sim.negative,
+          neutral: sim.neutral,
+          simulation: sim,
+          totalPersonas: effectiveCount,
+          segments: segAcc.toSegments(),
+        });
+        onProcessing(false);
+        return;
+      } catch (localErr) {
+        console.warn('[Arena] Local processing failed, trying Python:', localErr);
+        // Fall through to Python backend
+      }
+    }
+
+    // ── Python backend (for questions without local column match) ────────────
     // Abort previous
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();

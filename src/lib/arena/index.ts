@@ -75,7 +75,7 @@ export {
 export type { QuestionPolarity } from './analysis-2d';
 
 // Data-Driven Persona Sentiment
-export { computePersonaSentiment } from './persona-sentiment';
+export { computePersonaSentiment, hasLocalFieldMatch } from './persona-sentiment';
 
 // Quick Answer (Yes/No columns)
 export { detectQuickAnswer, runQuickAnswer, classifyQuickPersona } from './quick-answer';

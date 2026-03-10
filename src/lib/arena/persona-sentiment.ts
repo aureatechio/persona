@@ -526,6 +526,38 @@ function analyzeVotingData(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// QUESTION COVERAGE CHECK
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Checks if a question can be answered using local persona data fields.
+ * Returns true when keywords match QUESTION_FIELD_MAP entries, political
+ * figure detection, or moral consensus — meaning we DON'T need the Python
+ * AI backend. Returns false only when the question is truly unrelated to
+ * any column (current events, news, novel topics).
+ */
+export function hasLocalFieldMatch(question: string): boolean {
+  const n = norm(question);
+
+  // Moral consensus covers extreme propositions
+  if (detectMoralConsensus(n)) return true;
+
+  // Political figures (Lula, Bolsonaro) use voting data
+  const politicalKeywords = [
+    'lula', 'petista', ' pt ', 'pt ', 'governo lula', 'partido dos trabalhadores',
+    'bolsonaro', 'bolsonarism', 'capitao', 'mito ',
+  ];
+  if (politicalKeywords.some(k => n.includes(k))) return true;
+
+  // Check all 170+ field mappings
+  for (const mapping of QUESTION_FIELD_MAP) {
+    if (mapping.keywords.some(kw => n.includes(norm(kw)))) return true;
+  }
+
+  return false;
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════════
 

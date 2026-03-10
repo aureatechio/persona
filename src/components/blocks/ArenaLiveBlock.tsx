@@ -4,7 +4,7 @@ import { useState, useMemo, useRef } from 'react';
 import {
   Users, Zap, Eye, ChevronDown, ChevronUp, ChevronRight,
   Image, Film, Link, Sparkles, MapPin, GraduationCap,
-  Activity, Church, Palette, Briefcase, Vote,
+  Activity, Church, Palette, Briefcase, Vote, FileText, X, Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EnhancedSimulationResult, Sentiment } from '@/lib/arena/types';
@@ -326,51 +326,83 @@ function cleanMediaContext(raw: string): string {
   return text;
 }
 
-function MediaReference({ media, mediaContext }: { media?: MediaItem[]; mediaContext?: string }) {
-  const [expanded, setExpanded] = useState(false);
+function MediaHeader({ media, mediaContext }: { media?: MediaItem[]; mediaContext?: string }) {
+  const [showSummary, setShowSummary] = useState(false);
+  const cleanedContext = useMemo(() => mediaContext ? cleanMediaContext(mediaContext) : '', [mediaContext]);
+
   if (!media || media.length === 0) return null;
 
-  const cleanedContext = useMemo(() => mediaContext ? cleanMediaContext(mediaContext) : '', [mediaContext]);
-  const previewText = cleanedContext.length > 200 ? cleanedContext.slice(0, 200) + '...' : cleanedContext;
-  const needsExpand = cleanedContext.length > 200;
+  const hasContext = cleanedContext.length > 0;
+  const primaryMedia = media[0];
+  const TypeIcon = primaryMedia.type === 'image' ? Image : primaryMedia.type === 'video' ? Film : Link;
+  const typeLabel = primaryMedia.type === 'image' ? 'Imagem' : primaryMedia.type === 'video' ? 'Video' : 'Link';
 
   return (
-    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-      <div className="flex gap-2 p-3 pb-0">
-        {media.map((item, idx) => {
-          const TypeIcon = item.type === 'image' ? Image : item.type === 'video' ? Film : Link;
-          return (
-            <div key={idx} className="relative w-16 h-16 rounded-lg overflow-hidden bg-zinc-900 border border-white/[0.06] shrink-0">
-              {item.preview && item.type === 'image' ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.preview} alt={item.name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <TypeIcon size={20} className="text-zinc-700" />
-                </div>
-              )}
+    <div className="mt-4">
+      {/* Media bar */}
+      <div className="flex items-center gap-3">
+        {/* Thumbnail / Icon */}
+        <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900/80 border border-white/[0.08] shrink-0 flex items-center justify-center">
+          {primaryMedia.preview && primaryMedia.type === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={primaryMedia.preview} alt={primaryMedia.name} className="w-full h-full object-cover" />
+          ) : primaryMedia.type === 'video' ? (
+            <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-500/10 to-zinc-900">
+              <div className="w-6 h-6 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+                <Play size={10} className="text-white ml-0.5" />
+              </div>
             </div>
-          );
-        })}
-        <div className="flex flex-col justify-center ml-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <Sparkles size={10} className="text-violet-400/60 shrink-0" />
-            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Midia analisada</p>
-          </div>
-          <p className="text-[9px] text-zinc-600 truncate">{media.map(m => m.name).join(', ')}</p>
-        </div>
-      </div>
-      {cleanedContext && (
-        <div className="px-3 pt-2 pb-3">
-          <p className="text-[11px] text-zinc-400 leading-relaxed">{expanded ? cleanedContext : previewText}</p>
-          {needsExpand && (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="mt-1.5 text-[9px] font-semibold text-violet-400/70 hover:text-violet-400 transition-colors duration-200"
-            >
-              {expanded ? 'Ver menos' : 'Ver tudo'}
-            </button>
+          ) : (
+            <TypeIcon size={18} className="text-zinc-500" />
           )}
+        </div>
+
+        {/* File info */}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-zinc-300 truncate">{primaryMedia.name}</p>
+          <p className="text-[10px] text-zinc-600">{typeLabel}{media.length > 1 ? ` + ${media.length - 1} arquivo${media.length > 2 ? 's' : ''}` : ''}</p>
+        </div>
+
+        {/* "Ver Resumo" button */}
+        {hasContext && (
+          <button
+            onClick={() => setShowSummary(!showSummary)}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 shrink-0',
+              showSummary
+                ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
+                : 'bg-white/[0.05] text-zinc-400 border border-white/[0.08] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
+            )}
+          >
+            <FileText size={13} />
+            {showSummary ? 'Fechar' : 'Ver Resumo'}
+          </button>
+        )}
+      </div>
+
+      {/* Expandable summary panel */}
+      {showSummary && hasContext && (
+        <div className="mt-3 rounded-xl bg-violet-500/[0.04] border border-violet-500/15 overflow-hidden animate-fade-in-up">
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <div className="flex items-center gap-2">
+              <Sparkles size={12} className="text-violet-400/70" />
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-400/70">Conteudo Extraido</p>
+            </div>
+            <button
+              onClick={() => setShowSummary(false)}
+              className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className="px-4 pb-4">
+            <p className="text-[13px] text-zinc-300 leading-relaxed">{cleanedContext}</p>
+            <div className="mt-3 pt-3 border-t border-violet-500/10">
+              <p className="text-[10px] text-zinc-500 italic">
+                As personas abaixo analisaram este conteudo e expressaram suas opinioes a favor ou contra.
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -456,6 +488,9 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
             </span>
           </div>
         )}
+
+        {/* Media with "Ver Resumo" button */}
+        <MediaHeader media={media} mediaContext={mediaContext} />
       </div>
 
       {/* 3-Column Dashboard Layout */}
@@ -531,9 +566,6 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
             neutral={finalNeutral}
             total={finalTotal}
           />
-
-          {/* Media Reference */}
-          <MediaReference media={media} mediaContext={mediaContext} />
 
           {/* Ideology Panel (full results only) */}
           {simulation && (simulation.quadrants.length > 0 || simulation.clusterResults.length > 0) && (
