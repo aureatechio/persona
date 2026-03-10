@@ -452,103 +452,45 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let useFallback = false;
     let simulation: any = null;
 
-    // ── Local progressive processing (runs in parallel with Python) ──────
-    const queryForLocal = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-    const localSegAcc = new SegmentAccumulator();
-    const localIdeoAcc = new IdeologyAccumulator(q);
-    const localCommentAcc = new LiveCommentAccumulator(q);
-    let localLiveComments: import('@/lib/arena/types').CommentResult[] = [];
-    let localAiCommentsFired = false;
-    let localPos = 0, localNeg = 0, localNeu = 0;
-    let localProcessingDone = false;
-    let localAllData: any[] = [];
+    // ── Progressive accumulators fed by Python progress events ──────────
+    const ideoAcc = new IdeologyAccumulator(q);
+    const commentAcc = new LiveCommentAccumulator(q);
+    let liveComments: import('@/lib/arena/types').CommentResult[] = [];
+    let aiCommentsFired = false;
 
-    // Start local processing in background — fills accumulators progressively
-    const localProcessingPromise = (async () => {
-      try {
-        const BATCH = 100;
-        let pendingPersonas: any[] = [];
+    // Pre-load persona data for accumulators (fast, from cache)
+    let allPersonas: any[] = [];
+    let personaIndex = 0; // tracks how many personas we've fed to accumulators
+    const personaLoadPromise = personaCache.loadAll().then(data => {
+      allPersonas = data;
+      commentAcc.setTotal(data.length);
+    }).catch(() => {});
 
-        const allData = await personaCache.loadAll((loaded, total, batch) => {
-          pendingPersonas.push(...batch);
-          localCommentAcc.setTotal(total);
-        });
-        localAllData = allData;
-
-        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
-        const total = toProcess.length;
-        localCommentAcc.setTotal(total);
-
-        for (let offset = 0; offset < total; offset += BATCH) {
-          const batch = toProcess.slice(offset, offset + BATCH);
-          const processed = Math.min(offset + BATCH, total);
-
-          for (const p of batch) {
-            const sentiment = computePersonaSentiment(p, queryForLocal);
-            if (sentiment === 'positive') localPos++;
-            else if (sentiment === 'negative') localNeg++;
-            else localNeu++;
-            localSegAcc.addPersona(p, sentiment);
-            localIdeoAcc.addPersona(p, sentiment);
-            localCommentAcc.addPersona(p, sentiment);
-          }
-
-          // Fire AI comments at ~25%
-          const progress = processed / total;
-          if (!localAiCommentsFired && progress >= 0.25 && localCommentAcc.count >= 8) {
-            localAiCommentsFired = true;
-            const selectedSnapshot = [...localCommentAcc.selectedPersonas];
-            generateAIComments(q, selectedSnapshot).then(aiComments => {
-              localLiveComments = aiComments;
-            }).catch(() => {});
-          }
-
-          // Small yield to not block the main thread
-          if (offset % 500 === 0) await new Promise(r => setTimeout(r, 0));
-        }
-        localProcessingDone = true;
-      } catch (e) {
-        console.warn('[Arena] Local parallel processing failed:', e);
+    /** Feed next N personas to ideology/comment accumulators based on Python progress */
+    const feedAccumulators = (pythonProcessed: number, pythonTotal: number) => {
+      if (allPersonas.length === 0) return;
+      // Map Python progress proportionally to local personas
+      const targetIndex = Math.min(
+        Math.floor((pythonProcessed / pythonTotal) * allPersonas.length),
+        allPersonas.length,
+      );
+      const queryForLocal = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+      while (personaIndex < targetIndex) {
+        const p = allPersonas[personaIndex];
+        const sentiment = computePersonaSentiment(p, queryForLocal);
+        ideoAcc.addPersona(p, sentiment);
+        commentAcc.addPersona(p, sentiment);
+        personaIndex++;
       }
-    })();
-
-    // Helper: compute segments in background and update block
-    const computeSegmentsAsync = (sim: any, total: number) => {
-      // If local processing already ran, use its results directly
-      if (localProcessingDone) {
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: total,
-          totalCount: total,
-          positive: sim?.positive || 0,
-          negative: sim?.negative || 0,
-          neutral: sim?.neutral || 0,
-          simulation: sim,
-          totalPersonas: total,
-          segments: localSegAcc.toSegments(),
-          liveIdeology: localIdeoAcc.toResults(),
-          liveComments: localLiveComments,
-        });
-        return;
+      // Fire AI comments at ~25% of Python progress
+      const progress = pythonProcessed / pythonTotal;
+      if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
+        aiCommentsFired = true;
+        const selectedSnapshot = [...commentAcc.selectedPersonas];
+        generateAIComments(q, selectedSnapshot).then(aiComments => {
+          liveComments = aiComments;
+        }).catch(() => {});
       }
-      personaCache.loadAll().then((allData) => {
-        if (allData.length > 0) {
-          const segs = computeAllSegments(allData, (p) => computePersonaSentiment(p, queryForLocal));
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'complete',
-            processedCount: total,
-            totalCount: total,
-            positive: sim?.positive || 0,
-            negative: sim?.negative || 0,
-            neutral: sim?.neutral || 0,
-            simulation: sim,
-            totalPersonas: total,
-            segments: segs,
-          });
-        }
-      }).catch(() => {});
     };
 
     try {
@@ -613,9 +555,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       positive: simulation?.positive || 0,
                       negative: simulation?.negative || 0,
                       neutral: simulation?.neutral || 0,
-                      segments: localSegAcc.toSegments(),
-                      liveIdeology: localIdeoAcc.toResults(),
-                      liveComments: localLiveComments,
+                      liveIdeology: ideoAcc.toResults(),
+                      liveComments,
                     });
                   }
                   break;
@@ -630,10 +571,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   });
                   break;
 
-                case 'progress':
+                case 'progress': {
                   receivedAnyProgress = true;
                   stallThreshold = 90_000;
-                  // Update live block with Python sentiment + local progressive data
+                  // Feed accumulators proportionally to Python progress
+                  feedAccumulators(payload.data.processed, payload.data.total);
+                  // Emit with Python sentiment + progressive ideology/comments
                   emitLive(blockId, {
                     ...baseLiveData,
                     phase: 'streaming',
@@ -642,9 +585,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     positive: payload.data.positive,
                     negative: payload.data.negative,
                     neutral: payload.data.neutral,
-                    ...(payload.data.segments ? { segments: payload.data.segments } : { segments: localSegAcc.toSegments() }),
-                    liveIdeology: localIdeoAcc.toResults(),
-                    liveComments: localLiveComments,
+                    ...(payload.data.segments ? { segments: payload.data.segments } : {}),
+                    liveIdeology: ideoAcc.toResults(),
+                    liveComments,
                   });
                   simulation = {
                     total: payload.data.total,
@@ -664,10 +607,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     intensityBands: simulation?.intensityBands || [],
                   };
                   break;
+                }
 
                 case 'results': {
                   const resultsData = payload.data;
-                  // Extract segments from results if present (Python backend sends them)
                   const backendSegments = resultsData.segments;
                   delete resultsData.segments;
                   simulation = resultsData as EnhancedSimulationResult;
@@ -680,10 +623,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
                 case 'done': {
                   streamDone = true;
-                  // Wait for local processing to finish for segments/ideology/comments
-                  await localProcessingPromise;
+                  await personaLoadPromise;
+                  // Feed remaining personas to accumulators
+                  feedAccumulators(payload.data.total_personas || simulation?.total || allPersonas.length, payload.data.total_personas || simulation?.total || allPersonas.length);
                   const doneTotal = payload.data.total_personas || simulation?.total || 0;
-                  const doneSegments = (simulation as any)?._backendSegments || localSegAcc.toSegments();
+                  const doneSegments = (simulation as any)?._backendSegments;
                   emitLive(blockId, {
                     ...baseLiveData,
                     phase: 'complete',
@@ -694,15 +638,33 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     neutral: simulation?.neutral || 0,
                     simulation,
                     totalPersonas: doneTotal,
-                    segments: doneSegments,
-                    liveComments: localLiveComments,
+                    ...(doneSegments ? { segments: doneSegments } : {}),
+                    liveComments,
                   });
                   onProcessing(false);
 
+                  // Compute segments locally if backend didn't provide them
+                  if (!doneSegments && allPersonas.length > 0) {
+                    const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+                    const segs = computeAllSegments(allPersonas, (p) => computePersonaSentiment(p, queryForSeg));
+                    emitLive(blockId, {
+                      ...baseLiveData,
+                      phase: 'complete',
+                      processedCount: doneTotal,
+                      totalCount: doneTotal,
+                      positive: simulation?.positive || 0,
+                      negative: simulation?.negative || 0,
+                      neutral: simulation?.neutral || 0,
+                      simulation,
+                      totalPersonas: doneTotal,
+                      segments: segs,
+                    });
+                  }
+
                   // Generate full AI comments if not already available
                   if (!simulation?.comments?.length) {
-                    const topicScores = detectTopics(queryForLocal);
-                    const personasForAI = buildPersonasForAI(q, localAllData.length > 0 ? localAllData : await personaCache.loadAll(), topicScores);
+                    const topicScores = detectTopics(enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q);
+                    const personasForAI = buildPersonasForAI(q, allPersonas.length > 0 ? allPersonas : await personaCache.loadAll(), topicScores);
                     const claudeComments = await generateAIComments(q, personasForAI);
                     simulation = { ...simulation, comments: claudeComments };
                     emitLive(blockId, {
@@ -715,7 +677,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       neutral: simulation?.neutral || 0,
                       simulation,
                       totalPersonas: doneTotal,
-                      segments: doneSegments,
+                      ...(doneSegments ? { segments: doneSegments } : {}),
                     });
                   }
                   break;
@@ -731,7 +693,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       }
 
       if (!streamDone && hasResults) {
-        await localProcessingPromise;
         const total = simulation?.total || 0;
         emitLive(blockId, {
           ...baseLiveData,
@@ -743,35 +704,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           neutral: simulation?.neutral || 0,
           simulation,
           totalPersonas: total,
-          segments: localSegAcc.toSegments(),
-          liveComments: localLiveComments,
+          liveComments,
         });
         onProcessing(false);
-        // Generate full AI comments
-        if (!simulation?.comments?.length) {
-          const topicScores = detectTopics(queryForLocal);
-          const personasForAI = buildPersonasForAI(q, localAllData.length > 0 ? localAllData : await personaCache.loadAll(), topicScores);
-          const claudeComments = await generateAIComments(q, personasForAI);
-          simulation = { ...simulation, comments: claudeComments };
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'complete',
-            processedCount: total,
-            totalCount: total,
-            positive: simulation.positive,
-            negative: simulation.negative,
-            neutral: simulation.neutral,
-            simulation,
-            totalPersonas: total,
-            segments: localSegAcc.toSegments(),
-          });
-        }
       } else if (!streamDone && !hasResults) {
         useFallback = true;
       }
     } catch (err: any) {
       if (err?.name === 'AbortError' && hasResults) {
-        await localProcessingPromise;
         const total = simulation?.total || 0;
         emitLive(blockId, {
           ...baseLiveData,
@@ -781,17 +721,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           totalPersonas: total,
-          segments: localSegAcc.toSegments(),
-          liveComments: localLiveComments,
+          liveComments,
         });
         onProcessing(false);
-        computeSegmentsAsync(simulation, total);
         return;
       }
       if (err?.name === 'AbortError' && !hasResults) {
         useFallback = true;
       } else if (hasResults) {
-        await localProcessingPromise;
         const total = simulation?.total || 0;
         emitLive(blockId, {
           ...baseLiveData,
@@ -801,8 +738,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           totalPersonas: total,
-          segments: localSegAcc.toSegments(),
-          liveComments: localLiveComments,
+          liveComments,
         });
         onProcessing(false);
         return;
