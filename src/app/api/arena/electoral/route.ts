@@ -1,6 +1,6 @@
 const BACKEND = process.env.ARENA_BACKEND_URL || 'http://localhost:3002';
 
-export const maxDuration = 300;
+export const maxDuration = 900;
 
 export async function POST(request: Request) {
   const body = await request.text();

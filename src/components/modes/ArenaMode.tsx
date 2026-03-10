@@ -494,10 +494,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     };
 
     try {
-      const fetchTimeout = setTimeout(() => {
-        if (!hasResults && !simulation) controller.abort();
-      }, 300_000);
-
       const response = await fetch('/api/arena/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -508,8 +504,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         }),
         signal: controller.signal,
       });
-
-      clearTimeout(fetchTimeout);
 
       if (!response.ok || !response.body) throw new Error('Python backend unavailable');
 
