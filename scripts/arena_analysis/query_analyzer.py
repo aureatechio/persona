@@ -56,19 +56,37 @@ class QueryAnalyzer:
         try:
             response = await self._claude.messages.create(
                 model=settings.model,
-                max_tokens=100,
+                max_tokens=200,
                 system=ANALYZER_PROMPT,
                 messages=[{"role": "user", "content": question}],
                 temperature=0,
             )
             text = next(
                 (b.text for b in response.content if b.type == "text"), "{}"
-            )
+            ).strip()
+
+            # Limpar markdown fences se houver
+            if text.startswith("```"):
+                import re
+                text = re.sub(r"^```json?\n?", "", text)
+                text = re.sub(r"\n?```$", "", text)
+                text = text.strip()
+
+            # Tentar extrair JSON de dentro do texto
+            if not text.startswith("{"):
+                start = text.find("{")
+                if start >= 0:
+                    text = text[start:]
+                    end = text.rfind("}") + 1
+                    if end > 0:
+                        text = text[:end]
+
             data = json.loads(text)
             needs = data.get("research", False)
             reason = data.get("reason", "")
             print(f"[QueryAnalyzer] research={needs} | {reason}")
             return AnalyzerResult(needs_research=needs, reason=reason)
         except Exception as e:
-            print(f"[QueryAnalyzer] Error, defaulting to NO research: {e}")
-            return AnalyzerResult(needs_research=False, reason="error fallback")
+            print(f"[QueryAnalyzer] Error ({e}), defaulting to YES research (safe fallback)")
+            # Fallback para YES — é mais seguro pesquisar do que não pesquisar
+            return AnalyzerResult(needs_research=True, reason="error fallback - defaulting to research")
