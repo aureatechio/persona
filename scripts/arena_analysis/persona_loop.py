@@ -39,6 +39,7 @@ class BatchProgress:
     negative: int
     neutral: int
     results: list[PersonaResult]
+    batch_meta: dict | None = None
 
 
 def _chunk_list(lst: list, size: int) -> list[list]:
@@ -204,7 +205,7 @@ class PersonaLoop:
         semaphore: asyncio.Semaphore,
         client: anthropic.AsyncAnthropic,
         key_id: int = 0,
-    ) -> list[PersonaResult]:
+    ) -> tuple[list[PersonaResult], str, list[dict[str, Any]]]:
         tag = f"Claude-{key_id+1}"
         max_retries = 2
         async with semaphore:
@@ -223,7 +224,7 @@ class PersonaLoop:
                     )
                     if not text_block:
                         raise ValueError("No text block in response")
-                    return _parse_response(text_block.text, personas, tag)
+                    return (_parse_response(text_block.text, personas, tag), tag, personas)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -231,7 +232,7 @@ class PersonaLoop:
                         await asyncio.sleep(1)
                         continue
                     print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                    return _fallback_results(personas)
+                    return (_fallback_results(personas), tag, personas)
 
                 except Exception as e:
                     is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
@@ -242,8 +243,8 @@ class PersonaLoop:
                         await asyncio.sleep(wait)
                         continue
                     print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                    return _fallback_results(personas)
-        return _fallback_results(personas)
+                    return (_fallback_results(personas), tag, personas)
+        return (_fallback_results(personas), tag, personas)
 
     # ── OpenAI batch ─────────────────────────────────────────────────────
     async def _process_openai(
@@ -254,7 +255,7 @@ class PersonaLoop:
         semaphore: asyncio.Semaphore,
         client: openai.AsyncOpenAI,
         key_id: int = 0,
-    ) -> list[PersonaResult]:
+    ) -> tuple[list[PersonaResult], str, list[dict[str, Any]]]:
         tag = f"GPT-{key_id+1}"
         max_retries = 2
         async with semaphore:
@@ -272,7 +273,7 @@ class PersonaLoop:
                         response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content or ""
-                    return _parse_response(raw, personas, tag)
+                    return (_parse_response(raw, personas, tag), tag, personas)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -280,7 +281,7 @@ class PersonaLoop:
                         await asyncio.sleep(1)
                         continue
                     print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                    return _fallback_results(personas)
+                    return (_fallback_results(personas), tag, personas)
 
                 except Exception as e:
                     is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
@@ -291,8 +292,8 @@ class PersonaLoop:
                         await asyncio.sleep(wait)
                         continue
                     print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                    return _fallback_results(personas)
-        return _fallback_results(personas)
+                    return (_fallback_results(personas), tag, personas)
+        return (_fallback_results(personas), tag, personas)
 
     # ── Run principal ────────────────────────────────────────────────────
     async def run(
@@ -300,6 +301,7 @@ class PersonaLoop:
         question: str,
         context: ContextResult | None,
         personas: list[dict[str, Any]],
+        verbose: bool = False,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
         Divide personas entre Claude (N chaves) e GPT (N chaves) em paralelo.
@@ -370,7 +372,7 @@ class PersonaLoop:
                 )
 
         for coro in asyncio.as_completed(all_tasks):
-            batch_results = await coro
+            batch_results, model_tag, batch_personas = await coro
 
             for r in batch_results:
                 processed += 1
@@ -381,6 +383,26 @@ class PersonaLoop:
                 else:
                     neutral += 1
 
+            # Build batch_meta when verbose
+            meta = None
+            if verbose:
+                personas_summary = []
+                for i, r in enumerate(batch_results):
+                    p = batch_personas[i] if i < len(batch_personas) else {}
+                    personas_summary.append({
+                        "id": r.persona_id,
+                        "name": str(p.get("name", r.persona_id)),
+                        "state": str(p.get("state", "")),
+                        "age": p.get("age", 0),
+                        "sentiment": r.sentiment,
+                        "comment": r.comment[:200] if r.comment else "",
+                    })
+                meta = {
+                    "model": model_tag,
+                    "persona_count": len(batch_results),
+                    "personas_summary": personas_summary,
+                }
+
             yield BatchProgress(
                 processed=processed,
                 total=total,
@@ -388,6 +410,7 @@ class PersonaLoop:
                 negative=negative,
                 neutral=neutral,
                 results=batch_results,
+                batch_meta=meta,
             )
 
         print(

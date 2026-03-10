@@ -63,6 +63,7 @@ class AnalyzeRequest(BaseModel):
     question: str
     cluster_filter: Optional[str] = None
     context_text: Optional[str] = None
+    verbose: bool = False
 
 
 class ElectoralRequest(BaseModel):
@@ -121,6 +122,9 @@ async def analyze(request: AnalyzeRequest):
         start_time = time.time()
         total_tokens = 0
 
+        # ── 0. Route event ────────────────────────────────────────
+        yield sse_event("route", {"route": "python"})
+
         # ── 1. Query Analysis + Persona Loading em paralelo ────────
         yield sse_event("phase", {
             "phase": "analyzing_query",
@@ -134,6 +138,17 @@ async def analyze(request: AnalyzeRequest):
 
         analysis = await query_analyzer.analyze(request.question)
         context = None
+
+        if request.verbose:
+            yield sse_event("log", {
+                "step": "query_analyzer",
+                "level": "info",
+                "message": f"research={'yes' if analysis.needs_research else 'no'}: {analysis.reason}",
+                "detail": {
+                    "needs_research": analysis.needs_research,
+                    "reason": analysis.reason,
+                },
+            })
 
         # Se já temos contexto da mídia (imagem/arquivo analisado), usar diretamente
         if request.context_text:
@@ -167,6 +182,18 @@ async def analyze(request: AnalyzeRequest):
                 "sources_count": len(web_result.sources),
             })
 
+            if request.verbose:
+                yield sse_event("log", {
+                    "step": "web_research",
+                    "level": "info",
+                    "message": f"{len(web_result.snippets)} snippets found",
+                    "detail": {
+                        "queries": web_result.queries,
+                        "snippets": [s[:300] for s in web_result.snippets],
+                        "sources": web_result.sources,
+                    },
+                })
+
             # ── 1c. Context Builder ──────────────────────────────────
             yield sse_event("phase", {
                 "phase": "building_context",
@@ -179,6 +206,19 @@ async def analyze(request: AnalyzeRequest):
             )
             total_tokens += context.prompt_tokens + context.output_tokens
 
+            if request.verbose:
+                yield sse_event("log", {
+                    "step": "context_builder",
+                    "level": "info",
+                    "message": "Context built",
+                    "detail": {
+                        "tema": context.tema,
+                        "contexto": context.contexto,
+                        "figuras": context.figuras,
+                        "periodo": context.periodo,
+                    },
+                })
+
             # ── 1d. Context Validator (skip para velocidade) ─────────
             validation = await context_validator.validate(
                 question=request.question,
@@ -186,6 +226,18 @@ async def analyze(request: AnalyzeRequest):
                 web_context=web_result.combined_context,
             )
             total_tokens += validation.prompt_tokens + validation.output_tokens
+
+            if request.verbose:
+                yield sse_event("log", {
+                    "step": "context_validator",
+                    "level": "info",
+                    "message": validation.verdict,
+                    "detail": {
+                        "verdict": validation.verdict,
+                        "issues": validation.issues or [],
+                        "corrections": validation.corrections or "",
+                    },
+                })
 
             if validation.verdict == "REVISE" and validation.corrections:
                 context = await context_builder.build(
@@ -196,6 +248,12 @@ async def analyze(request: AnalyzeRequest):
                 total_tokens += context.prompt_tokens + context.output_tokens
         else:
             print(f"[Pipeline] Pesquisa pulada: {analysis.reason}")
+            if request.verbose:
+                yield sse_event("log", {
+                    "step": "query_analyzer",
+                    "level": "info",
+                    "message": f"Research skipped: {analysis.reason}",
+                })
 
         # ── 2. Aguardar personas (já carregando em paralelo) ──────────
         yield sse_event("phase", {
@@ -219,7 +277,7 @@ async def analyze(request: AnalyzeRequest):
 
         all_results = []
 
-        async for progress in persona_loop.run(request.question, context, personas):
+        async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose):
             all_results.extend(progress.results)
 
             yield sse_event("progress", {
@@ -229,6 +287,9 @@ async def analyze(request: AnalyzeRequest):
                 "negative": progress.negative,
                 "neutral": progress.neutral,
             })
+
+            if request.verbose and progress.batch_meta:
+                yield sse_event("batch_detail", progress.batch_meta)
 
         # ── 6. Aggregate Results ──────────────────────────────────────
         yield sse_event("phase", {
