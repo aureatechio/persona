@@ -1,8 +1,9 @@
-import type { CommentResult } from './types';
+import type { CommentResult, Sentiment } from './types';
 import type { PersonaForAI } from '@/lib/simulation-prompt';
 import type { PersonaContext } from '@/lib/persona-writing-style';
 import { generateComment } from '@/lib/comment-generator';
 import { detectTopics } from './engine';
+import { ARCHETYPE_SCORERS } from './constants';
 
 /** Generate AI-powered comments via Claude API route, with template fallback */
 export async function generateAIComments(
@@ -68,6 +69,113 @@ export async function generateOpenAIComments(
     console.error('[OpenAI] Falha total, usando FALLBACK:', err);
     return generateFallbackComments(personasForAI, question);
   }
+}
+
+// ── Live Comment Accumulator ─────────────────────────────────────────────────
+
+import type { PersonaForAI as _PersonaForAI } from '@/lib/simulation-prompt';
+import { mapPersona as _mapPersona } from './engine';
+
+function findBestArchetypeForComment(persona: Record<string, any>): string {
+  let bestId = 'progressista_base';
+  let bestScore = 0;
+  for (const [id, scorer] of Object.entries(ARCHETYPE_SCORERS)) {
+    const score = scorer(persona);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = id;
+    }
+  }
+  return bestId;
+}
+
+/**
+ * Progressively selects diverse personas during streaming.
+ * Stores selected PersonaForAI objects so the caller can trigger
+ * AI comment generation in the background at the right moment.
+ *
+ * Personas are selected SPREAD across the entire streaming run,
+ * not all at the beginning.
+ */
+export class LiveCommentAccumulator {
+  private targetCount = 35;
+  private usedIds = new Set<string>();
+  private usedRegions = new Set<string>();
+  private usedGenerations = new Set<string>();
+  private usedClusters = new Set<string>();
+  private usedGenders = new Set<string>();
+  /** Selected personas ready for AI comment generation */
+  selectedPersonas: _PersonaForAI[] = [];
+  private posCount = 0;
+  private negCount = 0;
+  private neuCount = 0;
+  private totalSeen = 0;
+  /** Estimated total personas (set after first batch) */
+  estimatedTotal = 20000;
+  /** Next persona index at which we'll try to select */
+  private nextSelectionAt = 0;
+
+  constructor(_question: string) {
+    // Spacing will be set once we know the total
+  }
+
+  /** Update estimated total to properly space selections */
+  setTotal(total: number) {
+    this.estimatedTotal = total;
+  }
+
+  addPersona(p: Record<string, any>, sentiment: Sentiment) {
+    this.totalSeen++;
+    if (this.selectedPersonas.length >= this.targetCount) return;
+
+    // Space selections evenly: only attempt at scheduled intervals
+    // e.g. 20000 personas / 35 comments = every ~571 personas
+    const spacing = Math.max(50, Math.floor(this.estimatedTotal / this.targetCount));
+
+    // Allow the first 5 quickly (for initial diversity), then space out
+    if (this.selectedPersonas.length >= 5 && this.totalSeen < this.nextSelectionAt) return;
+
+    const pid = p.id || p.name || `p-${this.totalSeen}`;
+    if (this.usedIds.has(pid)) return;
+
+    const region = p.region_br || '';
+    const gen = p.generation || '';
+    const cluster = p.cluster_id || '';
+    const gender = p.gender_identity || '';
+
+    // Require diversity for first 20, relax after
+    const newDimensions =
+      (region && !this.usedRegions.has(region) ? 1 : 0) +
+      (gen && !this.usedGenerations.has(gen) ? 1 : 0) +
+      (cluster && !this.usedClusters.has(cluster) ? 1 : 0) +
+      (gender && !this.usedGenders.has(gender) ? 1 : 0);
+
+    if (this.selectedPersonas.length < 20 && newDimensions === 0) return;
+
+    // Proportional balance
+    const sentCounts = { positive: this.posCount, negative: this.negCount, neutral: this.neuCount };
+    const maxAllowed = Math.ceil(this.targetCount * 0.6);
+    if (sentCounts[sentiment] >= maxAllowed) return;
+
+    this.usedIds.add(pid);
+    this.usedRegions.add(region);
+    this.usedGenerations.add(gen);
+    this.usedClusters.add(cluster);
+    this.usedGenders.add(gender);
+
+    if (sentiment === 'positive') this.posCount++;
+    else if (sentiment === 'negative') this.negCount++;
+    else this.neuCount++;
+
+    // Schedule next selection
+    this.nextSelectionAt = this.totalSeen + spacing;
+
+    const archetypeId = findBestArchetypeForComment(p);
+    this.selectedPersonas.push(_mapPersona(p, archetypeId, sentiment));
+  }
+
+  /** Number of personas selected so far */
+  get count() { return this.selectedPersonas.length; }
 }
 
 /** Fallback: use template engine if AI is unavailable — with deduplication */

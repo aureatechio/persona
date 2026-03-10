@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ScanLine, Eye, Image, Film, Link, Sparkles } from 'lucide-react';
+import { ScanLine, Eye, Image, Film, Link, Sparkles, Play, Globe, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MediaScannerBlockProps {
@@ -11,44 +11,78 @@ interface MediaScannerBlockProps {
   };
 }
 
-const SCAN_LABELS = [
-  'Identificando o que aparece na imagem...',
+const SCAN_LABELS_MEDIA = [
+  'Identificando o que aparece na midia...',
   'Lendo textos e legendas...',
   'Entendendo o contexto geral...',
-  'Procurando figuras públicas...',
-  'Analisando o tom da publicação...',
-  'Extraindo informações relevantes...',
+  'Procurando figuras publicas...',
+  'Analisando o tom da publicacao...',
+  'Extraindo informacoes relevantes...',
+  'Preparando contexto para as personas...',
+  'Quase pronto...',
+];
+
+const SCAN_LABELS_URL = [
+  'Acessando o conteudo do link...',
+  'Lendo o conteudo da pagina...',
+  'Extraindo informacoes principais...',
+  'Entendendo o contexto do conteudo...',
+  'Analisando o tom e as opinioes...',
   'Preparando contexto para as personas...',
   'Quase pronto...',
 ];
 
 function ScannerFrame({ src, name, type }: { src?: string; name: string; type: string }) {
+  const isUrl = type === 'url';
+  const labels = isUrl ? SCAN_LABELS_URL : SCAN_LABELS_MEDIA;
   const [scanLabel, setScanLabel] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setScanLabel(prev => (prev + 1) % SCAN_LABELS.length);
+      setScanLabel(prev => (prev + 1) % labels.length);
     }, 2200);
     return () => clearInterval(interval);
-  }, []);
+  }, [labels.length]);
 
-  const hasPreview = src && (type === 'image');
-  const TypeIcon = type === 'image' ? Image : type === 'video' ? Film : Link;
+  const hasPreview = !!src && !isUrl;
 
   return (
     <div className="relative rounded-2xl overflow-hidden bg-zinc-950 border border-white/[0.06] backdrop-blur-xl">
-      {/* Image area */}
+      {/* Image/preview area */}
       <div className="relative w-full bg-zinc-950 overflow-hidden" style={{ maxHeight: '280px' }}>
         {hasPreview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt={name}
-            className="w-full h-auto max-h-[280px] object-contain opacity-70"
-          />
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={name}
+              className="w-full h-auto max-h-[280px] object-contain opacity-70"
+            />
+            {type === 'video' && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-12 h-12 rounded-full bg-black/50 backdrop-blur-sm border border-white/10 flex items-center justify-center">
+                  <Play size={18} className="text-white ml-0.5" />
+                </div>
+              </div>
+            )}
+          </div>
+        ) : isUrl ? (
+          <div className="w-full h-36 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-sky-500/[0.06] to-zinc-950">
+            <div className="w-14 h-14 rounded-2xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+              <Globe size={22} className="text-sky-400/80" />
+            </div>
+            <p className="text-[11px] text-zinc-500 font-medium max-w-[200px] truncate">{name}</p>
+          </div>
+        ) : type === 'video' ? (
+          <div className="w-full h-36 flex flex-col items-center justify-center gap-3 bg-gradient-to-br from-violet-500/[0.06] to-zinc-950">
+            <div className="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+              <Play size={22} className="text-violet-400/80 ml-0.5" />
+            </div>
+            <p className="text-[11px] text-zinc-500 font-medium">Transcrevendo audio do video...</p>
+          </div>
         ) : (
-          <div className="w-full h-40 flex items-center justify-center">
-            <TypeIcon size={40} className="text-zinc-800" />
+          <div className="w-full h-36 flex items-center justify-center">
+            <Link size={32} className="text-zinc-800" />
           </div>
         )}
 
@@ -57,8 +91,12 @@ function ScannerFrame({ src, name, type }: { src?: string; name: string; type: s
           className="absolute left-0 right-0 h-[2px] z-10 pointer-events-none"
           style={{
             animation: 'scanner-sweep 2.5s ease-in-out infinite',
-            background: 'linear-gradient(90deg, transparent 5%, rgba(139,92,246,0.5) 30%, rgba(236,72,153,0.3) 70%, transparent 95%)',
-            boxShadow: '0 0 16px 3px rgba(139,92,246,0.15), 0 0 40px 6px rgba(139,92,246,0.08)',
+            background: isUrl
+              ? 'linear-gradient(90deg, transparent 5%, rgba(56,189,248,0.5) 30%, rgba(139,92,246,0.3) 70%, transparent 95%)'
+              : 'linear-gradient(90deg, transparent 5%, rgba(139,92,246,0.5) 30%, rgba(236,72,153,0.3) 70%, transparent 95%)',
+            boxShadow: isUrl
+              ? '0 0 16px 3px rgba(56,189,248,0.15), 0 0 40px 6px rgba(56,189,248,0.08)'
+              : '0 0 16px 3px rgba(139,92,246,0.15), 0 0 40px 6px rgba(139,92,246,0.08)',
           }}
         />
 
@@ -93,8 +131,8 @@ function ScannerFrame({ src, name, type }: { src?: string; name: string; type: s
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] text-zinc-400 truncate">{name}</p>
-            <p className="text-[10px] text-violet-400/70 mt-0.5">
-              {SCAN_LABELS[scanLabel]}
+            <p className={cn('text-[10px] mt-0.5', isUrl ? 'text-sky-400/70' : 'text-violet-400/70')}>
+              {labels[scanLabel]}
             </p>
           </div>
           <Sparkles size={12} className="text-fuchsia-400/40 animate-pulse shrink-0" />
@@ -105,7 +143,9 @@ function ScannerFrame({ src, name, type }: { src?: string; name: string; type: s
           <div
             className="h-full w-full rounded-full"
             style={{
-              background: 'linear-gradient(90deg, transparent, rgba(139,92,246,0.4), transparent)',
+              background: isUrl
+                ? 'linear-gradient(90deg, transparent, rgba(56,189,248,0.4), transparent)'
+                : 'linear-gradient(90deg, transparent, rgba(139,92,246,0.4), transparent)',
               backgroundSize: '200% 100%',
               animation: 'shimmer 1.5s infinite',
             }}
@@ -116,18 +156,51 @@ function ScannerFrame({ src, name, type }: { src?: string; name: string; type: s
   );
 }
 
-export function MediaScannerBlock({ data }: MediaScannerBlockProps) {
-  const { previews, phase } = data;
+/** Full-screen intuitive analyzing overlay */
+function AnalyzingOverlay({ phase, hasUrl }: { phase?: string; hasUrl: boolean }) {
+  const [dotCount, setDotCount] = useState(1);
+
+  useEffect(() => {
+    const t = setInterval(() => setDotCount(p => (p % 3) + 1), 600);
+    return () => clearInterval(t);
+  }, []);
+
+  const dots = '.'.repeat(dotCount);
 
   return (
-    <div className="w-full max-w-md mx-auto space-y-3">
-      {/* Phase header */}
-      <div className="flex items-center justify-center gap-2">
-        <ScanLine size={14} className="text-violet-400/60 animate-pulse" />
-        <p className="text-xs font-semibold text-violet-400/80">
-          {phase || 'Analisando mídia com IA...'}
+    <div className="flex flex-col items-center gap-3 mb-4 animate-fade-in-up">
+      <div className="relative">
+        <div className={cn(
+          'w-12 h-12 rounded-2xl flex items-center justify-center',
+          hasUrl ? 'bg-sky-500/10 border border-sky-500/20' : 'bg-violet-500/10 border border-violet-500/20',
+        )}>
+          <Loader2 size={20} className={cn('animate-spin', hasUrl ? 'text-sky-400' : 'text-violet-400')} />
+        </div>
+        <div className={cn(
+          'absolute -inset-3 rounded-3xl blur-xl opacity-40',
+          hasUrl ? 'bg-sky-500/10' : 'bg-violet-500/10',
+        )} />
+      </div>
+      <div className="text-center">
+        <p className="text-sm font-semibold text-zinc-200">
+          {phase || 'Estamos analisando seu arquivo'}{dots}
+        </p>
+        <p className="text-[11px] text-zinc-500 mt-1">
+          Isso pode levar alguns segundos
         </p>
       </div>
+    </div>
+  );
+}
+
+export function MediaScannerBlock({ data }: MediaScannerBlockProps) {
+  const { previews, phase } = data;
+  const hasUrl = previews.some(p => p.type === 'url');
+
+  return (
+    <div className="w-full max-w-sm mx-auto space-y-3">
+      {/* Intuitive analyzing message */}
+      <AnalyzingOverlay phase={phase} hasUrl={hasUrl} />
 
       {/* Scanner frames */}
       <div className={cn(

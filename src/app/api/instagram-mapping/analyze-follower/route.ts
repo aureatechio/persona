@@ -13,6 +13,7 @@ const ANTHROPIC_KEYS = [
   process.env.ANTHROPIC_API_KEY_2,
   process.env.ANTHROPIC_API_KEY_3,
   process.env.ANTHROPIC_API_KEY_4,
+  process.env.ANTHROPIC_API_KEY_5,
 ].filter(Boolean) as string[];
 
 let keyIndex = 0;

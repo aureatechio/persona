@@ -9,32 +9,20 @@ import { ConversationArea } from './ConversationArea';
 import { WelcomeScreen } from './WelcomeScreen';
 import { useConversation, type ConversationBlock } from '@/hooks/useConversation';
 import { usePersonaCache } from '@/hooks/usePersonaCache';
-import { type Mode } from './ActionChips';
-
 // Mode components
 import { ArenaMode } from './modes/ArenaMode';
-import { ElectoralMode } from './modes/ElectoralMode';
-import { ChatMode } from './modes/ChatMode';
 
 // Block renderers
-import { ArenaResultBlock } from './blocks/ArenaResultBlock';
 import { ArenaLiveBlock } from './blocks/ArenaLiveBlock';
 import { ProcessingBlock } from './blocks/ProcessingBlock';
 import { MediaScannerBlock } from './blocks/MediaScannerBlock';
-import { ElectoralResultBlock } from './blocks/ElectoralResultBlock';
-import { ChatBlock } from './blocks/ChatBlock';
-import { PersonaSelectorDrawer } from './PersonaSelectorDrawer';
-import { CandidateSelector } from './arena-eleitoral/CandidateSelector';
 import { NeuralBackground } from './NeuralBackground';
-import type { Politician } from '@/lib/arena-eleitoral/types';
 
 export function UnifiedShell() {
   const router = useRouter();
   const { session, loading: authLoading } = useAuth();
-  const [activeMode, setActiveMode] = useState<Mode | null>('arena');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [showPersonaDrawer, setShowPersonaDrawer] = useState(false);
-  const { blocks, addBlock, updateBlock, replaceBlock, removeBlock, clearAll } = useConversation();
+  const { blocks, addBlock, replaceBlock, clearAll } = useConversation();
   const personaCache = usePersonaCache();
 
   // Load persona count on mount
@@ -50,34 +38,8 @@ export function UnifiedShell() {
 
   const handleNewChat = useCallback(() => {
     clearAll();
-    setActiveMode('arena');
     setIsProcessing(false);
   }, [clearAll]);
-
-  const handleSelectMode = useCallback((mode: Mode) => {
-    // Chat mode: open persona selector drawer
-    if (mode === 'chat') {
-      setActiveMode('chat');
-      setShowPersonaDrawer(true);
-      return;
-    }
-
-    setActiveMode(prev => {
-      // If switching to electoral mode, add candidate selector block
-      if (mode === 'eleitoral' && prev !== 'eleitoral') {
-        const existing = blocks.find(b => b.type === 'electoral-setup');
-        if (!existing) {
-          addBlock({
-            id: crypto.randomUUID(),
-            type: 'electoral-setup',
-            timestamp: new Date(),
-            data: {},
-          });
-        }
-      }
-      return prev === mode ? null : mode;
-    });
-  }, [blocks, addBlock]);
 
   const renderBlock = useCallback((block: ConversationBlock) => {
     switch (block.type) {
@@ -85,29 +47,12 @@ export function UnifiedShell() {
         return <ProcessingBlock data={block.data} />;
       case 'media-scanning':
         return <MediaScannerBlock data={block.data} />;
-      case 'arena-result':
-        return <ArenaResultBlock data={block.data} />;
       case 'arena-live':
         return <ArenaLiveBlock data={block.data} />;
-      case 'electoral-result':
-        return <ElectoralResultBlock data={block.data} />;
-      case 'electoral-setup':
-        return (
-          <CandidateSelector
-            onStart={(candidateA: Politician, candidateB: Politician) => {
-              removeBlock(block.id);
-              window.dispatchEvent(new CustomEvent('electoral-start', {
-                detail: { candidateA, candidateB },
-              }));
-            }}
-          />
-        );
-      case 'chat-session':
-        return <ChatBlock data={block.data} blockId={block.id} onUpdate={(data) => updateBlock(block.id, { data })} />;
       default:
         return null;
     }
-  }, [addBlock, updateBlock, removeBlock]);
+  }, []);
 
   // Loading screen
   if (authLoading || !session) {
@@ -136,59 +81,23 @@ export function UnifiedShell() {
           welcomeScreen={<WelcomeScreen personaCount={personaCache.count} />}
         />
 
-        {/* Mode-specific input handlers (invisible - they control submit logic) */}
-        {activeMode === 'arena' && (
-          <ArenaMode
-            personaCache={personaCache}
-            onAddBlock={addBlock}
-            onReplaceBlock={replaceBlock}
-            onProcessing={setIsProcessing}
-          />
-        )}
-        {activeMode === 'eleitoral' && (
-          <ElectoralMode
-            personaCache={personaCache}
-            onAddBlock={addBlock}
-            onReplaceBlock={replaceBlock}
-            onUpdateBlock={updateBlock}
-            onProcessing={setIsProcessing}
-          />
-        )}
-        {activeMode === 'chat' && (
-          <ChatMode
-            onAddBlock={addBlock}
-            onUpdateBlock={updateBlock}
-            onProcessing={setIsProcessing}
-          />
-        )}
+        {/* Arena mode handler (invisible - controls submit logic) */}
+        <ArenaMode
+          personaCache={personaCache}
+          onAddBlock={addBlock}
+          onReplaceBlock={replaceBlock}
+          onProcessing={setIsProcessing}
+        />
 
         <BottomInput
-          activeMode={activeMode}
-          onSelectMode={handleSelectMode}
           onSubmit={(value) => {
-            // Default: if no mode selected, treat as arena
-            if (!activeMode) {
-              setActiveMode('arena');
-            }
-            // Dispatch to the active mode's submit handler via custom event
-            window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: activeMode || 'arena' } }));
+            window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: 'arena' } }));
           }}
           isProcessing={isProcessing}
           hasBlocks={blocks.length > 0}
           personaCount={personaCache.count}
         />
       </div>
-
-      <PersonaSelectorDrawer
-        isOpen={showPersonaDrawer}
-        onClose={() => setShowPersonaDrawer(false)}
-        onSelect={(personaId) => {
-          setShowPersonaDrawer(false);
-          window.dispatchEvent(new CustomEvent('chat-select-persona', {
-            detail: { personaId },
-          }));
-        }}
-      />
     </div>
   );
 }

@@ -52,6 +52,7 @@ export {
   generateAIComments,
   generateOpenAIComments,
   generateFallbackComments,
+  LiveCommentAccumulator,
 } from './ai-comments';
 
 // 2D Analysis
@@ -70,6 +71,7 @@ export {
   buildIdeologicalScatter,
   computeIntensityCorrelation,
   runEnhancedSimulation,
+  IdeologyAccumulator,
 } from './analysis-2d';
 
 export type { QuestionPolarity } from './analysis-2d';

@@ -9,6 +9,7 @@ import type {
   PoliticalFigure,
   PoliticalFigureDetection,
   IntensityBand,
+  ClusterResult,
   EnhancedSimulationResult,
   SimulationResult,
 } from './types';
@@ -407,6 +408,132 @@ function analyzePoliticalFigures(
       attackClusters: topAttack,
     };
   });
+}
+
+// ── Incremental Ideology Accumulator ─────────────────────────────────────────
+
+/**
+ * Progressively accumulates ideology data (quadrants, clusters, political figures)
+ * as persona batches are processed. Similar to SegmentAccumulator but for ideology.
+ */
+export class IdeologyAccumulator {
+  private quadrantMap = new Map<Quadrant, { count: number; positive: number; negative: number; neutral: number; clusterCounts: Map<string, number> }>();
+  private clusterMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private figures: PoliticalFigure[];
+  private figureMap = new Map<PoliticalFigure, {
+    supportCount: number; attackCount: number; neutralCount: number;
+    supportClusters: Map<string, number>; attackClusters: Map<string, number>;
+  }>();
+
+  constructor(question: string) {
+    this.figures = detectPoliticalFigures(question);
+    for (const fig of this.figures) {
+      this.figureMap.set(fig, {
+        supportCount: 0, attackCount: 0, neutralCount: 0,
+        supportClusters: new Map(), attackClusters: new Map(),
+      });
+    }
+  }
+
+  addPersona(p: Record<string, any>, sentiment: Sentiment) {
+    const eco = p.score_economico ?? 0;
+    const cost = p.score_costumes ?? 0;
+
+    // Quadrant
+    const q = classifyQuadrant(eco, cost);
+    if (!this.quadrantMap.has(q)) {
+      this.quadrantMap.set(q, { count: 0, positive: 0, negative: 0, neutral: 0, clusterCounts: new Map() });
+    }
+    const qEntry = this.quadrantMap.get(q)!;
+    qEntry.count++;
+    qEntry[sentiment]++;
+    const cid = p.cluster_id || '?';
+    qEntry.clusterCounts.set(cid, (qEntry.clusterCounts.get(cid) || 0) + 1);
+
+    // Cluster
+    if (cid && cid !== '?') {
+      if (!this.clusterMap.has(cid)) {
+        this.clusterMap.set(cid, { count: 0, positive: 0, negative: 0, neutral: 0 });
+      }
+      const cEntry = this.clusterMap.get(cid)!;
+      cEntry.count++;
+      cEntry[sentiment]++;
+    }
+
+    // Political figures
+    for (const fig of this.figures) {
+      const stance = adjustSentimentForPoliticalFigure(eco, cost, fig);
+      const fEntry = this.figureMap.get(fig)!;
+      if (stance === 'positive') {
+        fEntry.supportCount++;
+        fEntry.supportClusters.set(cid, (fEntry.supportClusters.get(cid) || 0) + 1);
+      } else if (stance === 'negative') {
+        fEntry.attackCount++;
+        fEntry.attackClusters.set(cid, (fEntry.attackClusters.get(cid) || 0) + 1);
+      } else {
+        fEntry.neutralCount++;
+      }
+    }
+  }
+
+  toResults(): {
+    quadrants: QuadrantResult[];
+    clusterResults: ClusterResult[];
+    politicalFigures: PoliticalFigureDetection[];
+  } {
+    // Quadrants
+    const quadrants: QuadrantResult[] = [];
+    for (const [quadrant, data] of this.quadrantMap.entries()) {
+      const sortedClusters = [...data.clusterCounts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id]) => id);
+      quadrants.push({
+        quadrant,
+        label: QUADRANT_LABELS[quadrant],
+        count: data.count,
+        positive: data.positive,
+        negative: data.negative,
+        neutral: data.neutral,
+        dominantClusters: sortedClusters,
+      });
+    }
+
+    // Clusters
+    const clusterResults: ClusterResult[] = [];
+    for (const cluster of CLUSTERS) {
+      const data = this.clusterMap.get(cluster.id);
+      if (data && data.count > 0) {
+        clusterResults.push({
+          id: cluster.id,
+          name: cluster.name,
+          macro: cluster.macro,
+          count: data.count,
+          positive: data.positive,
+          negative: data.negative,
+          neutral: data.neutral,
+        });
+      }
+    }
+
+    // Political figures
+    const politicalFigures: PoliticalFigureDetection[] = [];
+    for (const [figure, data] of this.figureMap.entries()) {
+      const topSupport = [...data.supportClusters.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+      const topAttack = [...data.attackClusters.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
+      politicalFigures.push({
+        figure,
+        label: figure === 'lula' ? 'Lula (PT)' : 'Bolsonaro',
+        supportCount: data.supportCount,
+        attackCount: data.attackCount,
+        neutralCount: data.neutralCount,
+        supportClusters: topSupport,
+        attackClusters: topAttack,
+      });
+    }
+
+    return { quadrants, clusterResults, politicalFigures };
+  }
 }
 
 // ── Enhanced Simulation ──────────────────────────────────────────────────────

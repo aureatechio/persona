@@ -36,7 +36,7 @@ export function WelcomeScreen({ personaCount }: WelcomeScreenProps) {
         className="text-zinc-500 text-sm md:text-base max-w-md mx-auto mb-4 animate-fade-in-up leading-relaxed"
         style={{ animationDelay: '200ms' }}
       >
-        Escolha uma funcionalidade abaixo ou digite diretamente para consultar{' '}
+        Digite uma pergunta, cole um link ou envie uma midia para consultar{' '}
         <span className="text-zinc-300 font-semibold">{personaCount.toLocaleString('pt-BR')}</span>{' '}
         personas sinteticas.
       </p>

@@ -5,9 +5,10 @@ import {
   Users, Zap, Eye, ChevronDown, ChevronUp, ChevronRight,
   Image, Film, Link, Sparkles, MapPin, GraduationCap,
   Activity, Church, Palette, Briefcase, Vote, FileText, X, Play,
+  BarChart3, MessageCircle, TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { EnhancedSimulationResult, Sentiment } from '@/lib/arena/types';
+import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult } from '@/lib/arena/types';
 import type { QuickAnswerResult } from '@/lib/arena/quick-answer';
 import type { AllSegments, SegmentItem } from '@/lib/arena/segments';
 import { HeroSentimentBar } from '@/components/arena/HeroSentimentBar';
@@ -41,7 +42,19 @@ export interface ArenaLiveData {
   isQuickAnswer?: boolean;
   quickAnswer?: QuickAnswerResult;
   segments?: AllSegments;
+  liveIdeology?: {
+    quadrants: QuadrantResult[];
+    clusterResults: ClusterResult[];
+    politicalFigures: PoliticalFigureDetection[];
+  };
+  liveComments?: CommentResult[];
 }
+
+/* ============================================================
+   Tab type
+   ============================================================ */
+
+type TabKey = 'principal' | 'segmentos' | 'ideologia' | 'reacoes';
 
 /* ============================================================
    Progress Bar
@@ -92,14 +105,14 @@ function LiveProgressBar({ processed, total, phase }: { processed: number; total
 }
 
 /* ============================================================
-   Sentiment Summary (compact hero)
+   Sentiment Summary
    ============================================================ */
 
 function SentimentSummary({ positive, negative, neutral, total }: { positive: number; negative: number; neutral: number; total: number }) {
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
 
   return (
-    <div className="grid grid-cols-3 gap-3 mb-5">
+    <div className="grid grid-cols-3 gap-3">
       <div className="p-4 rounded-xl bg-zinc-950/80 border border-emerald-500/10 text-center transition-all duration-500">
         <p className="text-3xl font-black text-emerald-400 tabular-nums">{pct(positive)}%</p>
         <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/80 mt-1">A Favor</p>
@@ -123,21 +136,12 @@ function SentimentSummary({ positive, negative, neutral, total }: { positive: nu
    Sidebar Segment Card
    ============================================================ */
 
-function SegmentCard({ item, index, accentColor = 'emerald' }: {
-  item: SegmentItem;
-  index: number;
-  accentColor?: string;
-}) {
+function SegmentCard({ item, index }: { item: SegmentItem; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const pct = (n: number) => item.count > 0 ? Math.round((n / item.count) * 100) : 0;
   const pctPos = pct(item.positive);
   const pctNeg = pct(item.negative);
   const pctNeu = pct(item.neutral);
-
-  // Determine dominant sentiment color
-  const dominant = pctPos >= pctNeg && pctPos >= pctNeu ? 'emerald'
-    : pctNeg >= pctPos && pctNeg >= pctNeu ? 'rose'
-    : 'amber';
 
   return (
     <div
@@ -152,7 +156,6 @@ function SegmentCard({ item, index, accentColor = 'emerald' }: {
           <span className="text-sm font-semibold text-zinc-200 truncate">{item.label}</span>
           <span className="text-[10px] text-zinc-600 tabular-nums shrink-0 ml-2">{item.count.toLocaleString('pt-BR')}</span>
         </div>
-        {/* Mini sentiment bar */}
         <div className="h-2 rounded-full overflow-hidden flex bg-zinc-900/80">
           <div className="h-full bg-emerald-500 transition-all duration-[1200ms] ease-out rounded-l-full" style={{ width: `${pctPos}%` }} />
           <div className="h-full bg-amber-500 transition-all duration-[1200ms] ease-out" style={{ width: `${pctNeu}%` }} />
@@ -224,7 +227,7 @@ function SegmentGroup({
   icon,
   items,
   startIndex = 0,
-  defaultOpen = false,
+  defaultOpen = true,
 }: {
   title: string;
   icon: React.ReactNode;
@@ -233,25 +236,13 @@ function SegmentGroup({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const [isTransitioning, setIsTransitioning] = useState(false);
 
   if (items.length === 0) return null;
-
-  const handleToggle = () => {
-    if (!open) {
-      setIsTransitioning(true);
-      setOpen(true);
-      // Clear transition state after animations settle
-      setTimeout(() => setIsTransitioning(false), Math.min(items.length * 30, 300) + 200);
-    } else {
-      setOpen(false);
-    }
-  };
 
   return (
     <div className="mb-5">
       <button
-        onClick={handleToggle}
+        onClick={() => setOpen(!open)}
         className="flex items-center gap-2 mb-2.5 px-1 hover:opacity-80 transition-opacity duration-200 w-full"
       >
         {icon}
@@ -262,12 +253,6 @@ function SegmentGroup({
 
       {open && (
         <div className="space-y-2.5">
-          {isTransitioning && (
-            <div className="flex items-center gap-2 px-1 py-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
-              <span className="text-[9px] text-zinc-600 font-medium">Carregando dados...</span>
-            </div>
-          )}
           {items.map((item, idx) => (
             <SegmentCard key={item.label} item={item} index={startIndex + idx} />
           ))}
@@ -278,29 +263,7 @@ function SegmentGroup({
 }
 
 /* ============================================================
-   Sidebar Panel (left or right)
-   ============================================================ */
-
-function SidebarPanel({
-  children,
-  side,
-}: {
-  children: React.ReactNode;
-  side: 'left' | 'right';
-}) {
-  return (
-    <div className={cn(
-      'w-full lg:w-72 xl:w-80 shrink-0 overflow-y-auto max-h-[70vh] lg:max-h-none',
-      'scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50',
-      side === 'left' ? 'pr-1' : 'pl-1',
-    )}>
-      {children}
-    </div>
-  );
-}
-
-/* ============================================================
-   Media Reference
+   Media helpers
    ============================================================ */
 
 function cleanMediaContext(raw: string): string {
@@ -326,83 +289,257 @@ function cleanMediaContext(raw: string): string {
   return text;
 }
 
-function MediaHeader({ media, mediaContext }: { media?: MediaItem[]; mediaContext?: string }) {
-  const [showSummary, setShowSummary] = useState(false);
-  const cleanedContext = useMemo(() => mediaContext ? cleanMediaContext(mediaContext) : '', [mediaContext]);
-
+function MediaHeaderInline({ media }: { media?: MediaItem[] }) {
   if (!media || media.length === 0) return null;
 
-  const hasContext = cleanedContext.length > 0;
   const primaryMedia = media[0];
-  const TypeIcon = primaryMedia.type === 'image' ? Image : primaryMedia.type === 'video' ? Film : Link;
-  const typeLabel = primaryMedia.type === 'image' ? 'Imagem' : primaryMedia.type === 'video' ? 'Video' : 'Link';
+  const isVideo = primaryMedia.type === 'video';
+  const isImage = primaryMedia.type === 'image';
+  const isUrl = primaryMedia.type === 'url';
+  const typeLabel = isImage ? 'Imagem' : isVideo ? 'Video' : 'Link';
+
+  const cleanName = primaryMedia.name.replace(/-\d{10,}/, '').replace(/\.[^.]+$/, '');
+  const ext = isUrl ? 'URL' : (primaryMedia.name.split('.').pop()?.toUpperCase() || '');
 
   return (
-    <div className="mt-4">
-      {/* Media bar */}
-      <div className="flex items-center gap-3">
-        {/* Thumbnail / Icon */}
-        <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-zinc-900/80 border border-white/[0.08] shrink-0 flex items-center justify-center">
-          {primaryMedia.preview && primaryMedia.type === 'image' ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={primaryMedia.preview} alt={primaryMedia.name} className="w-full h-full object-cover" />
-          ) : primaryMedia.type === 'video' ? (
-            <div className="relative w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-500/10 to-zinc-900">
-              <div className="w-6 h-6 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center">
+    <div className="shrink-0 flex items-center gap-3 rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+      <div className="relative w-10 h-10 rounded-lg overflow-hidden shrink-0 flex items-center justify-center">
+        {primaryMedia.preview ? (
+          <div className="relative w-full h-full">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={primaryMedia.preview} alt={primaryMedia.name} className="w-full h-full object-cover rounded-lg" />
+            {isVideo && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-lg">
                 <Play size={10} className="text-white ml-0.5" />
               </div>
-            </div>
-          ) : (
-            <TypeIcon size={18} className="text-zinc-500" />
-          )}
+            )}
+          </div>
+        ) : isUrl ? (
+          <div className="w-full h-full flex items-center justify-center rounded-lg bg-sky-500/10 border border-sky-500/20">
+            <Link size={16} className="text-sky-400" />
+          </div>
+        ) : isVideo ? (
+          <div className="w-full h-full flex items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 border border-violet-500/20">
+            <Film size={16} className="text-violet-400" />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+            <Image size={16} className="text-emerald-400" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-zinc-200 truncate max-w-[120px]">{cleanName || primaryMedia.name}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-600">{ext} • {typeLabel}</span>
+          {media.length > 1 && <span className="text-[9px] text-zinc-600">+{media.length - 1}</span>}
         </div>
+      </div>
+    </div>
+  );
+}
 
-        {/* File info */}
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-zinc-300 truncate">{primaryMedia.name}</p>
-          <p className="text-[10px] text-zinc-600">{typeLabel}{media.length > 1 ? ` + ${media.length - 1} arquivo${media.length > 2 ? 's' : ''}` : ''}</p>
+function MediaSummaryPanel({ cleanedContext, open, onClose }: { cleanedContext: string; open: boolean; onClose: () => void }) {
+  if (!open || !cleanedContext) return null;
+
+  const paragraphs = cleanedContext.split(/\n{2,}|\. (?=[A-Z])/).map(p => p.trim()).filter(p => p.length > 0);
+  const formattedBlocks = paragraphs.length <= 1
+    ? cleanedContext.split(/(?<=\.)\s+/).reduce<string[]>((acc, sentence, i) => {
+        const blockIdx = Math.floor(i / 3);
+        acc[blockIdx] = (acc[blockIdx] || '') + (acc[blockIdx] ? ' ' : '') + sentence;
+        return acc;
+      }, [])
+    : paragraphs;
+
+  return (
+    <div className="mt-4 rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden animate-fade-in-up">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-white/[0.04]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-6 h-6 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+            <FileText size={12} className="text-violet-400" />
+          </div>
+          <div>
+            <p className="text-[11px] font-bold text-zinc-200">Resumo do Conteudo</p>
+            <p className="text-[9px] text-zinc-600">Extraido por IA a partir da midia enviada</p>
+          </div>
         </div>
+        <button onClick={onClose} className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] text-zinc-500 hover:text-zinc-300 transition-all duration-200">
+          <X size={12} />
+        </button>
+      </div>
+      <div className="px-5 py-4 space-y-3 max-h-40 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+        {formattedBlocks.map((block, idx) => (
+          <p key={idx} className="text-[12px] text-zinc-300 leading-[1.7]">{block}</p>
+        ))}
+      </div>
+    </div>
+  );
+}
 
-        {/* "Ver Resumo" button */}
-        {hasContext && (
+/* ============================================================
+   Tab Bar
+   ============================================================ */
+
+interface TabDef {
+  key: TabKey;
+  label: string;
+  icon: React.ReactNode;
+  badge?: string | number;
+  available: boolean;
+}
+
+function TabBar({ tabs, active, onChange }: { tabs: TabDef[]; active: TabKey; onChange: (t: TabKey) => void }) {
+  return (
+    <div className="flex items-center gap-1 px-5 py-2 border-b border-white/[0.04] overflow-x-auto scrollbar-none">
+      {tabs.filter(t => t.available).map(tab => {
+        const isActive = active === tab.key;
+        return (
           <button
-            onClick={() => setShowSummary(!showSummary)}
+            key={tab.key}
+            onClick={() => onChange(tab.key)}
             className={cn(
-              'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-200 shrink-0',
-              showSummary
-                ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
-                : 'bg-white/[0.05] text-zinc-400 border border-white/[0.08] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
+              'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all duration-200 shrink-0 active:scale-[0.97]',
+              isActive
+                ? 'bg-white/[0.08] border-white/[0.15] text-white shadow-lg shadow-black/20'
+                : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]',
             )}
           >
-            <FileText size={13} />
-            {showSummary ? 'Fechar' : 'Ver Resumo'}
+            {tab.icon}
+            {tab.label}
+            {tab.badge !== undefined && (
+              <span className={cn(
+                'ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold',
+                isActive ? 'bg-white/[0.1] text-zinc-300' : 'bg-white/[0.04] text-zinc-600',
+              )}>
+                {tab.badge}
+              </span>
+            )}
           </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ============================================================
+   Tab: Principal
+   ============================================================ */
+
+function TabPrincipal({
+  isStreaming, phase, processedCount, totalCount,
+  finalPositive, finalNegative, finalNeutral, finalTotal,
+}: {
+  isStreaming: boolean;
+  phase: string;
+  processedCount: number;
+  totalCount: number;
+  finalPositive: number;
+  finalNegative: number;
+  finalNeutral: number;
+  finalTotal: number;
+}) {
+  return (
+    <div className="p-5 lg:p-8">
+      {isStreaming && (
+        <LiveProgressBar processed={processedCount} total={totalCount} phase={phase} />
+      )}
+
+      {finalTotal > 0 && (
+        <div className="mb-6">
+          <HeroSentimentBar
+            positive={finalPositive}
+            negative={finalNegative}
+            neutral={finalNeutral}
+            total={finalTotal}
+          />
+        </div>
+      )}
+
+      <SentimentSummary
+        positive={finalPositive}
+        negative={finalNegative}
+        neutral={finalNeutral}
+        total={finalTotal}
+      />
+    </div>
+  );
+}
+
+/* ============================================================
+   Tab: Segmentos (3-col layout with sidebars)
+   ============================================================ */
+
+function TabSegmentos({ segments, hasSegments }: { segments?: AllSegments; hasSegments: boolean }) {
+  return (
+    <div className="flex flex-col lg:flex-row">
+      {/* LEFT: Identidade */}
+      <div className="lg:border-r border-white/[0.04] p-5 lg:p-6 lg:w-1/2 shrink-0">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Identidade</p>
+        {hasSegments ? (
+          <>
+            <SegmentGroup title="Genero" icon={<Users size={11} className="text-violet-400/70" />} items={segments!.gender} startIndex={0} defaultOpen={true} />
+            <SegmentGroup title="Religiao" icon={<Church size={11} className="text-amber-400/70" />} items={segments!.religion} startIndex={10} defaultOpen={false} />
+            <SegmentGroup title="Raca/Etnia" icon={<Palette size={11} className="text-cyan-400/70" />} items={segments!.race} startIndex={20} defaultOpen={false} />
+            <SegmentGroup title="Posicao Politica" icon={<Vote size={11} className="text-rose-400/70" />} items={segments!.politicalLeaning} startIndex={30} defaultOpen={false} />
+          </>
+        ) : (
+          <>
+            <SegmentGroupSkeleton title="Genero" icon={<Users size={11} className="text-violet-400/70" />} count={2} />
+            <SegmentGroupSkeleton title="Religiao" icon={<Church size={11} className="text-amber-400/70" />} count={3} />
+            <SegmentGroupSkeleton title="Raca/Etnia" icon={<Palette size={11} className="text-cyan-400/70" />} count={3} />
+          </>
         )}
       </div>
 
-      {/* Expandable summary panel */}
-      {showSummary && hasContext && (
-        <div className="mt-3 rounded-xl bg-violet-500/[0.04] border border-violet-500/15 overflow-hidden animate-fade-in-up">
-          <div className="flex items-center justify-between px-4 pt-3 pb-2">
-            <div className="flex items-center gap-2">
-              <Sparkles size={12} className="text-violet-400/70" />
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-violet-400/70">Conteudo Extraido</p>
-            </div>
-            <button
-              onClick={() => setShowSummary(false)}
-              className="p-1 rounded-lg hover:bg-white/[0.06] text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
-            >
-              <X size={12} />
-            </button>
+      {/* RIGHT: Socioeconomico */}
+      <div className="lg:border-l border-white/[0.04] p-5 lg:p-6 lg:w-1/2 shrink-0">
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Socioeconomico</p>
+        {hasSegments ? (
+          <>
+            <SegmentGroup title="Regiao" icon={<MapPin size={11} className="text-cyan-400/70" />} items={segments!.region} startIndex={40} defaultOpen={true} />
+            <SegmentGroup title="Geracao" icon={<Users size={11} className="text-amber-400/70" />} items={segments!.generation} startIndex={50} defaultOpen={false} />
+            <SegmentGroup title="Classe Social" icon={<Briefcase size={11} className="text-violet-400/70" />} items={segments!.socialClass} startIndex={60} defaultOpen={false} />
+            <SegmentGroup title="Escolaridade" icon={<GraduationCap size={11} className="text-emerald-400/70" />} items={segments!.education} startIndex={70} defaultOpen={false} />
+          </>
+        ) : (
+          <>
+            <SegmentGroupSkeleton title="Regiao" icon={<MapPin size={11} className="text-cyan-400/70" />} count={5} />
+            <SegmentGroupSkeleton title="Geracao" icon={<Users size={11} className="text-amber-400/70" />} count={4} />
+            <SegmentGroupSkeleton title="Classe Social" icon={<Briefcase size={11} className="text-violet-400/70" />} count={3} />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   Tab: Ideologia
+   ============================================================ */
+
+function TabIdeologia({
+  quadrants, clusters, total, figures,
+}: {
+  quadrants: QuadrantResult[];
+  clusters: ClusterResult[];
+  total: number;
+  figures: PoliticalFigureDetection[];
+}) {
+  return (
+    <div className="p-5 lg:p-8 space-y-6">
+      {(quadrants.length > 0 || clusters.length > 0) && (
+        <IdeologyPanel quadrants={quadrants} clusterResults={clusters} total={total} />
+      )}
+      {figures.length > 0 && (
+        <PoliticalFigurePanel figures={figures} />
+      )}
+      {quadrants.length === 0 && clusters.length === 0 && figures.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+            <Sparkles size={28} className="text-zinc-600" />
           </div>
-          <div className="px-4 pb-4">
-            <p className="text-[13px] text-zinc-300 leading-relaxed">{cleanedContext}</p>
-            <div className="mt-3 pt-3 border-t border-violet-500/10">
-              <p className="text-[10px] text-zinc-500 italic">
-                As personas abaixo analisaram este conteudo e expressaram suas opinioes a favor ou contra.
-              </p>
-            </div>
-          </div>
+          <p className="text-zinc-500 text-sm">Dados ideologicos ainda nao disponiveis</p>
+          <p className="text-zinc-600 text-xs mt-1">Aguarde a conclusao da analise</p>
         </div>
       )}
     </div>
@@ -410,7 +547,88 @@ function MediaHeader({ media, mediaContext }: { media?: MediaItem[]; mediaContex
 }
 
 /* ============================================================
-   Main Component: ArenaLiveBlock (3-column dashboard layout)
+   Tab: Reacoes (Comments)
+   ============================================================ */
+
+function TabReacoes({
+  comments,
+  commentFilter,
+  setCommentFilter,
+  commentsToShow,
+  setCommentsToShow,
+}: {
+  comments: CommentResult[];
+  commentFilter: 'all' | Sentiment;
+  setCommentFilter: (f: 'all' | Sentiment) => void;
+  commentsToShow: number;
+  setCommentsToShow: (fn: (prev: number) => number) => void;
+}) {
+  const filteredComments = commentFilter === 'all'
+    ? comments
+    : comments.filter(c => c.sentiment === commentFilter);
+  const visibleComments = filteredComments.slice(0, commentsToShow);
+
+  if (comments.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+          <MessageCircle size={28} className="text-zinc-600" />
+        </div>
+        <p className="text-zinc-500 text-sm">Reacoes ainda nao disponiveis</p>
+        <p className="text-zinc-600 text-xs mt-1">As personas estao sendo avaliadas</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 lg:p-8">
+      {/* Filter chips */}
+      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
+        {([
+          { key: 'all' as const, label: 'Todos', active: 'bg-white/10 text-white border-white/20' },
+          { key: 'positive' as const, label: 'A Favor', active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
+          { key: 'neutral' as const, label: 'Neutros', active: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+          { key: 'negative' as const, label: 'Contra', active: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
+        ]).map(({ key, label, active }) => {
+          const count = key === 'all' ? comments.length : comments.filter(c => c.sentiment === key).length;
+          return (
+            <button
+              key={key}
+              onClick={() => { setCommentFilter(key); setCommentsToShow(() => 10); }}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-200',
+                commentFilter === key ? active : 'text-zinc-500 border-zinc-800/50 hover:text-zinc-300 hover:border-zinc-700/50',
+              )}
+            >
+              {label} ({count.toLocaleString('pt-BR')})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Comments grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {visibleComments.map((comment, idx) => (
+          <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
+        ))}
+      </div>
+
+      {filteredComments.length > commentsToShow && (
+        <div className="text-center mt-5">
+          <button
+            onClick={() => setCommentsToShow(prev => prev + 30)}
+            className="px-6 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/50 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-700/50 transition-all duration-200"
+          >
+            Carregar mais {Math.min(30, filteredComments.length - commentsToShow)}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   Main Component: ArenaLiveBlock — Tab layout
    ============================================================ */
 
 export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
@@ -418,11 +636,15 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
     question, phase, processedCount, totalCount,
     positive, negative, neutral,
     simulation, totalPersonas, media, mediaContext,
-    isQuickAnswer, quickAnswer, segments,
+    isQuickAnswer, quickAnswer, segments, liveIdeology, liveComments,
   } = data;
-  const [showComments, setShowComments] = useState(true);
-  const [commentsToShow, setCommentsToShow] = useState(30);
+
+  const [activeTab, setActiveTab] = useState<TabKey>('principal');
+  const [commentsToShow, setCommentsToShow] = useState(10);
   const [commentFilter, setCommentFilter] = useState<'all' | Sentiment>('all');
+  const [showMediaSummary, setShowMediaSummary] = useState(false);
+  const cleanedMediaContext = useMemo(() => mediaContext ? cleanMediaContext(mediaContext) : '', [mediaContext]);
+  const hasMediaContext = cleanedMediaContext.length > 0;
   const blockRef = useRef<HTMLDivElement>(null);
 
   const isStreaming = phase === 'streaming' || phase === 'aggregating';
@@ -433,15 +655,45 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   const finalNeutral = isComplete ? (quickAnswer?.neutral ?? simulation?.neutral ?? neutral) : neutral;
   const finalTotal = isComplete ? (quickAnswer?.total ?? simulation?.total ?? totalCount) : totalCount;
 
-  // Segment data — prefer explicit segments, fall back to simulation data
   const hasSegments = !!segments && Object.values(segments).some(arr => arr.length > 0);
 
-  // Comments
-  const comments = simulation?.comments ?? [];
-  const filteredComments = commentFilter === 'all'
-    ? comments
-    : comments.filter(c => c.sentiment === commentFilter);
-  const visibleComments = filteredComments.slice(0, commentsToShow);
+  const comments = (simulation?.comments?.length ?? 0) > 0
+    ? simulation!.comments
+    : liveComments ?? [];
+
+  const quadrants = simulation?.quadrants ?? liveIdeology?.quadrants ?? [];
+  const clusters = simulation?.clusterResults ?? liveIdeology?.clusterResults ?? [];
+  const figures = simulation?.politicalFigures ?? liveIdeology?.politicalFigures ?? [];
+  const hasIdeology = quadrants.length > 0 || clusters.length > 0 || figures.length > 0;
+
+  // Tab definitions
+  const tabs: TabDef[] = [
+    {
+      key: 'principal',
+      label: 'Principal',
+      icon: <TrendingUp size={13} />,
+      available: true,
+    },
+    {
+      key: 'segmentos',
+      label: 'Segmentos',
+      icon: <BarChart3 size={13} />,
+      available: true,
+    },
+    {
+      key: 'ideologia',
+      label: 'Ideologia',
+      icon: <Sparkles size={13} />,
+      available: hasIdeology || isStreaming,
+    },
+    {
+      key: 'reacoes',
+      label: 'Reacoes',
+      icon: <MessageCircle size={13} />,
+      badge: comments.length > 0 ? comments.length : undefined,
+      available: true,
+    },
+  ];
 
   // Error state
   if (data.error && !simulation && !quickAnswer) {
@@ -455,243 +707,107 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
 
   return (
     <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-      {/* Header */}
-      <div className="px-6 py-5 border-b border-white/[0.04]">
-        <div className="flex items-center gap-2 mb-2">
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
-            Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
-          </p>
-          {isQuickAnswer && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400">
-              <Zap size={9} /> Instantaneo
-            </span>
-          )}
-          {isStreaming && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
-              <Activity size={9} /> Ao vivo
-            </span>
-          )}
-        </div>
-        <p className="text-base font-semibold text-white leading-relaxed">&ldquo;{question}&rdquo;</p>
-        {isComplete && (
-          <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
-            <span className="flex items-center gap-1">
-              <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
-            </span>
-            {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
-              <span className="flex items-center gap-1">
-                <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
-              </span>
-            )}
-            <span className="text-emerald-400 font-bold">
-              {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
-            </span>
-          </div>
-        )}
-
-        {/* Media with "Ver Resumo" button */}
-        <MediaHeader media={media} mediaContext={mediaContext} />
-      </div>
-
-      {/* 3-Column Dashboard Layout */}
-      <div className="flex flex-col lg:flex-row">
-        {/* ─── LEFT SIDEBAR: Identity segments ─── */}
-        <div className="lg:border-r border-white/[0.04] p-5 lg:p-6 lg:w-72 xl:w-80 shrink-0 order-2 lg:order-1">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Identidade</p>
-
-          {hasSegments ? (
-            <>
-              <SegmentGroup
-                title="Genero"
-                icon={<Users size={11} className="text-violet-400/70" />}
-                items={segments!.gender}
-                startIndex={0}
-                defaultOpen={true}
-              />
-
-              <SegmentGroup
-                title="Religiao"
-                icon={<Church size={11} className="text-amber-400/70" />}
-                items={segments!.religion}
-                startIndex={10}
-              />
-
-              <SegmentGroup
-                title="Raca/Etnia"
-                icon={<Palette size={11} className="text-cyan-400/70" />}
-                items={segments!.race}
-                startIndex={20}
-              />
-
-              <SegmentGroup
-                title="Posicao Politica"
-                icon={<Vote size={11} className="text-rose-400/70" />}
-                items={segments!.politicalLeaning}
-                startIndex={30}
-              />
-            </>
-          ) : (
-            <>
-              <SegmentGroupSkeleton title="Genero" icon={<Users size={11} className="text-violet-400/70" />} count={2} />
-              <SegmentGroupSkeleton title="Religiao" icon={<Church size={11} className="text-amber-400/70" />} count={3} />
-              <SegmentGroupSkeleton title="Raca/Etnia" icon={<Palette size={11} className="text-cyan-400/70" />} count={3} />
-              <SegmentGroupSkeleton title="Posicao Politica" icon={<Vote size={11} className="text-rose-400/70" />} count={3} />
-            </>
-          )}
-        </div>
-
-        {/* ─── CENTER: Main results ─── */}
-        <div className="flex-1 min-w-0 p-5 lg:p-8 order-1 lg:order-2">
-          {/* Progress bar (during streaming) */}
-          {isStreaming && (
-            <LiveProgressBar processed={processedCount} total={totalCount} phase={phase} />
-          )}
-
-          {/* Hero Sentiment Bar */}
-          {(finalTotal > 0) && (
-            <div className="mb-6">
-              <HeroSentimentBar
-                positive={finalPositive}
-                negative={finalNegative}
-                neutral={finalNeutral}
-                total={finalTotal}
-              />
-            </div>
-          )}
-
-          {/* Stat cards */}
-          <SentimentSummary
-            positive={finalPositive}
-            negative={finalNegative}
-            neutral={finalNeutral}
-            total={finalTotal}
-          />
-
-          {/* Ideology Panel (full results only) */}
-          {simulation && (simulation.quadrants.length > 0 || simulation.clusterResults.length > 0) && (
-            <div className="mt-4 animate-fade-in-up">
-              <IdeologyPanel
-                quadrants={simulation.quadrants}
-                clusterResults={simulation.clusterResults}
-                total={simulation.total}
-              />
-            </div>
-          )}
-
-          {/* Political Figures */}
-          {simulation && simulation.politicalFigures.length > 0 && (
-            <div className="mt-4 animate-fade-in-up" style={{ animationDelay: '150ms' }}>
-              <PoliticalFigurePanel figures={simulation.politicalFigures} />
-            </div>
-          )}
-
-          {/* Comments */}
-          {comments.length > 0 && (
-            <div className="mt-5 animate-fade-in-up" style={{ animationDelay: '300ms' }}>
-              <div className="h-px bg-gradient-to-r from-transparent via-zinc-800/50 to-transparent mb-4" />
-
-              <button
-                onClick={() => setShowComments(!showComments)}
-                className="flex items-center gap-2 mb-3 px-1 hover:opacity-80 transition-opacity duration-200"
-              >
-                <Eye size={14} className="text-zinc-500" />
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Reacoes</p>
-                <span className="text-[10px] text-zinc-600 font-bold ml-1">{comments.length.toLocaleString('pt-BR')}</span>
-                {showComments ? <ChevronUp size={12} className="text-zinc-600" /> : <ChevronDown size={12} className="text-zinc-600" />}
-              </button>
-
-              {showComments && (
-                <>
-                  <div className="flex items-center gap-1.5 mb-4 flex-wrap">
-                    {([
-                      { key: 'all' as const, label: 'Todos', active: 'bg-white/10 text-white border-white/20' },
-                      { key: 'positive' as const, label: 'A Favor', active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-                      { key: 'neutral' as const, label: 'Neutros', active: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-                      { key: 'negative' as const, label: 'Contra', active: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
-                    ]).map(({ key, label, active }) => {
-                      const count = key === 'all' ? comments.length : comments.filter(c => c.sentiment === key).length;
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => { setCommentFilter(key); setCommentsToShow(30); }}
-                          className={cn(
-                            'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-200',
-                            commentFilter === key ? active : 'text-zinc-500 border-zinc-800/50 hover:text-zinc-300 hover:border-zinc-700/50',
-                          )}
-                        >
-                          {label} ({count.toLocaleString('pt-BR')})
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {visibleComments.map((comment, idx) => (
-                      <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
-                    ))}
-                  </div>
-
-                  {filteredComments.length > commentsToShow && (
-                    <div className="text-center mt-5">
-                      <button
-                        onClick={() => setCommentsToShow(prev => prev + 30)}
-                        className="px-6 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/50 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-700/50 transition-all duration-200"
-                      >
-                        Carregar mais {Math.min(30, filteredComments.length - commentsToShow)}
-                      </button>
-                    </div>
-                  )}
-                </>
+      {/* ─── Header ─── */}
+      <div className="px-6 py-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
+              </p>
+              {isQuickAnswer && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400">
+                  <Zap size={9} /> Instantaneo
+                </span>
+              )}
+              {isStreaming && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
+                  <Activity size={9} /> Ao vivo
+                </span>
               )}
             </div>
+            <p className="text-base font-semibold text-white leading-relaxed">&ldquo;{question}&rdquo;</p>
+            {isComplete && (
+              <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
+                <span className="flex items-center gap-1">
+                  <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
+                </span>
+                {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
+                  <span className="flex items-center gap-1">
+                    <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+                  </span>
+                )}
+                <span className="text-emerald-400 font-bold">
+                  {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
+                </span>
+              </div>
+            )}
+          </div>
+
+          {media && media.length > 0 && (
+            <div className="shrink-0 flex flex-col items-end gap-2">
+              <MediaHeaderInline media={media} />
+              <button
+                onClick={() => hasMediaContext && setShowMediaSummary(!showMediaSummary)}
+                disabled={!hasMediaContext}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
+                  !hasMediaContext
+                    ? 'bg-white/[0.02] text-zinc-700 border border-white/[0.04] cursor-not-allowed'
+                    : showMediaSummary
+                      ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
+                      : 'bg-white/[0.04] text-zinc-500 border border-white/[0.06] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
+                )}
+              >
+                <FileText size={11} />
+                {!hasMediaContext ? 'Processando...' : showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
+              </button>
+            </div>
           )}
         </div>
 
-        {/* ─── RIGHT SIDEBAR: Socioeconomic segments ─── */}
-        <div className="lg:border-l border-white/[0.04] p-5 lg:p-6 lg:w-72 xl:w-80 shrink-0 order-3">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Socioeconomico</p>
-
-          {hasSegments ? (
-            <>
-              <SegmentGroup
-                title="Regiao"
-                icon={<MapPin size={11} className="text-cyan-400/70" />}
-                items={segments!.region}
-                startIndex={40}
-                defaultOpen={true}
-              />
-
-              <SegmentGroup
-                title="Geracao"
-                icon={<Users size={11} className="text-amber-400/70" />}
-                items={segments!.generation}
-                startIndex={50}
-              />
-
-              <SegmentGroup
-                title="Classe Social"
-                icon={<Briefcase size={11} className="text-violet-400/70" />}
-                items={segments!.socialClass}
-                startIndex={60}
-              />
-
-              <SegmentGroup
-                title="Escolaridade"
-                icon={<GraduationCap size={11} className="text-emerald-400/70" />}
-                items={segments!.education}
-                startIndex={70}
-              />
-            </>
-          ) : (
-            <>
-              <SegmentGroupSkeleton title="Regiao" icon={<MapPin size={11} className="text-cyan-400/70" />} count={5} />
-              <SegmentGroupSkeleton title="Geracao" icon={<Users size={11} className="text-amber-400/70" />} count={4} />
-              <SegmentGroupSkeleton title="Classe Social" icon={<Briefcase size={11} className="text-violet-400/70" />} count={3} />
-              <SegmentGroupSkeleton title="Escolaridade" icon={<GraduationCap size={11} className="text-emerald-400/70" />} count={3} />
-            </>
-          )}
-        </div>
+        <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
       </div>
+
+      {/* ─── Tab Bar ─── */}
+      <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+
+      {/* ─── Tab Content ─── */}
+      {activeTab === 'principal' && (
+        <TabPrincipal
+          isStreaming={isStreaming}
+          phase={phase}
+          processedCount={processedCount}
+          totalCount={totalCount}
+          finalPositive={finalPositive}
+          finalNegative={finalNegative}
+          finalNeutral={finalNeutral}
+          finalTotal={finalTotal}
+        />
+      )}
+
+      {activeTab === 'segmentos' && (
+        <TabSegmentos segments={segments} hasSegments={hasSegments} />
+      )}
+
+      {activeTab === 'ideologia' && (
+        <TabIdeologia
+          quadrants={quadrants}
+          clusters={clusters}
+          total={simulation?.total ?? finalTotal}
+          figures={figures}
+        />
+      )}
+
+      {activeTab === 'reacoes' && (
+        <TabReacoes
+          comments={comments}
+          commentFilter={commentFilter}
+          setCommentFilter={setCommentFilter}
+          commentsToShow={commentsToShow}
+          setCommentsToShow={setCommentsToShow}
+        />
+      )}
     </div>
   );
 }

@@ -111,6 +111,59 @@ export async function createImagePreview(file: File): Promise<string> {
 }
 
 /**
+ * Capture a thumbnail frame from a video file.
+ * Seeks to 1 second, draws onto canvas, returns base64 WebP.
+ */
+export async function createVideoThumbnail(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+
+    const url = URL.createObjectURL(file);
+
+    video.onloadeddata = () => {
+      // Seek to 1s or 25% of duration, whichever is smaller
+      video.currentTime = Math.min(1, video.duration * 0.25);
+    };
+
+    video.onseeked = () => {
+      const canvas = document.createElement('canvas');
+      const size = 160;
+      const aspect = video.videoWidth / video.videoHeight;
+      canvas.width = size;
+      canvas.height = Math.round(size / aspect);
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error('Canvas context unavailable'));
+        return;
+      }
+
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL('image/webp', 0.6);
+      URL.revokeObjectURL(url);
+      resolve(dataUrl);
+    };
+
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load video'));
+    };
+
+    // Timeout fallback
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Video thumbnail timeout'));
+    }, 8000);
+
+    video.src = url;
+  });
+}
+
+/**
  * Extract audio from a video file in the browser.
  * Uses AudioContext.decodeAudioData to decode the video's audio track,
  * then encodes to WAV mono 16kHz (~2MB for 2 minutes).
