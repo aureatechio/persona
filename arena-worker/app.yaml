@@ -1,0 +1,33 @@
+name: arena-worker
+region: nyc
+services:
+  - name: arena-api
+    github:
+      repo: aureatechio/persona
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: arena-worker/Dockerfile
+    source_dir: arena-worker
+    instance_count: 1
+    instance_size_slug: professional-xs
+    http_port: 3002
+    routes:
+      - path: /
+    envs:
+      - key: SUPABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://sobfplitrzgggzqsycew.supabase.co"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "${SUPABASE_SERVICE_ROLE_KEY}"
+      - key: OPENAI_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "${OPENAI_API_KEY}"
+      - key: AI_BATCH_SIZE
+        scope: RUN_AND_BUILD_TIME
+        value: "50"
+      - key: PORT
+        scope: RUN_AND_BUILD_TIME
+        value: "3002"
