@@ -251,7 +251,8 @@ Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 PERFIS:
 {personas_block}
 
-FORMATO JSON: [{{"id": 1, "sentiment": "positive|negative|neutral", "comment": "..."}}, ...]
+FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
+{{"results": [{{"id": 1, "sentiment": "positive|negative|neutral", "comment": "..."}}, ...]}}
 
 ⚠️ REGRA CRÍTICA DE COERÊNCIA:
 - positive = o comentário CONCORDA/APOIA o que a pergunta diz

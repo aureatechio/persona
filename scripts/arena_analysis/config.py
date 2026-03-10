@@ -71,11 +71,11 @@ class Settings:
     )
 
     # Batching (otimizado para 20K personas com 8 contas)
-    batch_size: int = 50  # personas por batch (50 = bom tradeoff confiabilidade/velocidade)
+    batch_size: int = 30  # personas por batch (30 = mais confiável, menos JSON truncado)
     max_parallel_claude: int = 12  # batches Claude simultaneos (~3/chave, evita 50 RPM limit)
     max_parallel_openai: int = 80  # batches OpenAI simultaneos (~20/chave, GPT aguenta 500 RPM)
     claude_share: float = 0.10  # 10% Claude, 90% GPT (Claude=gargalo com 50 RPM/chave)
-    max_tokens_per_batch: int = 8192  # tokens de saida por batch (necessario para batch 50)
+    max_tokens_per_batch: int = 8192  # tokens de saida por batch
 
     # Web search
     max_web_results: int = 5

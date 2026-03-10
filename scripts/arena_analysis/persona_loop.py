@@ -46,26 +46,99 @@ def _chunk_list(lst: list, size: int) -> list[list]:
     return [lst[i : i + size] for i in range(0, len(lst), size)]
 
 
-def _parse_response(raw: str, personas: list[dict[str, Any]]) -> list[PersonaResult]:
-    """Parse JSON da resposta e retorna PersonaResult para cada persona."""
-    text = raw.strip()
+def _recover_truncated_json(text: str) -> str:
+    """
+    Attempt to recover truncated JSON arrays.
+    Common issues: model hits max_tokens and output is cut mid-array.
+    """
+    text = text.strip()
+    # Remove markdown fences
     if text.startswith("```"):
         text = re.sub(r"^```json?\n?", "", text)
         text = re.sub(r"\n?```$", "", text)
+        text = text.strip()
 
-    parsed = json.loads(text)
+    # Handle {"results": [...]} wrapper
+    if text.startswith("{"):
+        # Try to extract the array from inside
+        match = re.search(r'\[\s*\{', text)
+        if match:
+            start = match.start()
+            text = text[start:]
+
+    # If it doesn't start with [, wrap it
+    if not text.startswith("["):
+        text = "[" + text
+
+    # Remove trailing comma before attempting to close
+    text = re.sub(r',\s*$', '', text)
+
+    # Try parsing as-is
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        pass
+
+    # Try closing truncated objects and array
+    # Find the last complete object (ending with })
+    last_brace = text.rfind("}")
+    if last_brace > 0:
+        truncated = text[:last_brace + 1]
+        # Remove any trailing comma
+        truncated = re.sub(r',\s*$', '', truncated)
+        # Close the array
+        truncated += "]"
+        try:
+            json.loads(truncated)
+            return truncated
+        except json.JSONDecodeError:
+            pass
+
+    # Last resort: extract individual objects with regex
+    objects = re.findall(r'\{[^{}]*\}', text)
+    if objects:
+        return "[" + ",".join(objects) + "]"
+
+    raise json.JSONDecodeError("Cannot recover JSON", text, 0)
+
+
+def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "") -> list[PersonaResult]:
+    """
+    Parse JSON da resposta com recuperação robusta de JSON truncado/malformado.
+    """
+    text = raw.strip()
+    if not text:
+        print(f"[{tag}] Empty response, fallback")
+        return _fallback_results(personas)
+
+    try:
+        text = _recover_truncated_json(text)
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError) as e:
+        # Log first 200 chars for debugging
+        preview = raw[:200].replace('\n', ' ')
+        print(f"[{tag}] JSON parse failed even after recovery: {e}")
+        print(f"[{tag}] Response preview: {preview}")
+        raise
+
+    # Handle both array and {"results": [...]} formats
+    if isinstance(parsed, dict):
+        parsed = parsed.get("results", parsed.get("data", []))
+    if not isinstance(parsed, list):
+        parsed = [parsed]
+
     results = []
-
     for i, item in enumerate(parsed):
         if i >= len(personas):
             break
+        if not isinstance(item, dict):
+            continue
         persona = personas[i]
         pid = str(persona.get("id", persona.get("name", f"unknown_{i}")))
         sentiment = item.get("sentiment", "neutral")
-
         if sentiment not in ("positive", "negative", "neutral"):
             sentiment = "neutral"
-
         results.append(
             PersonaResult(
                 persona_id=pid,
@@ -74,12 +147,16 @@ def _parse_response(raw: str, personas: list[dict[str, Any]]) -> list[PersonaRes
             )
         )
 
+    # Fill remaining personas with neutral
     for i in range(len(results), len(personas)):
         persona = personas[i]
         pid = str(persona.get("id", persona.get("name", f"unknown_{i}")))
         results.append(
             PersonaResult(persona_id=pid, sentiment="neutral", comment="...")
         )
+
+    if len(results) < len(personas):
+        print(f"[{tag}] Partial parse: {len(results)}/{len(personas)} recovered")
 
     return results
 
@@ -129,7 +206,7 @@ class PersonaLoop:
         key_id: int = 0,
     ) -> list[PersonaResult]:
         tag = f"Claude-{key_id+1}"
-        max_retries = 3
+        max_retries = 2
         async with semaphore:
             user_prompt = build_batch_prompt(question, context, personas)
             for attempt in range(max_retries + 1):
@@ -146,25 +223,25 @@ class PersonaLoop:
                     )
                     if not text_block:
                         raise ValueError("No text block in response")
-                    return _parse_response(text_block.text, personas)
+                    return _parse_response(text_block.text, personas, tag)
 
                 except json.JSONDecodeError:
-                    if attempt < 2:
-                        print(f"[{tag}] JSON error, retry {attempt+1}/2...")
-                        await asyncio.sleep(2)
+                    if attempt < max_retries:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                        await asyncio.sleep(1)
                         continue
-                    print(f"[{tag}] JSON error after retries, fallback")
+                    print(f"[{tag}] JSON error after {max_retries} retries, fallback")
                     return _fallback_results(personas)
 
                 except Exception as e:
-                    is_rate = "rate_limit" in str(e) or "429" in str(e)
+                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
                     max_r = 3 if is_rate else 1
                     if attempt < max_r:
                         wait = (attempt + 1) * 5 if is_rate else 2
-                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s...")
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
                         await asyncio.sleep(wait)
                         continue
-                    print(f"[{tag}] Error after retries, fallback: {e}")
+                    print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
                     return _fallback_results(personas)
         return _fallback_results(personas)
 
@@ -179,7 +256,7 @@ class PersonaLoop:
         key_id: int = 0,
     ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
-        max_retries = 3
+        max_retries = 2
         async with semaphore:
             user_prompt = build_batch_prompt(question, context, personas)
             for attempt in range(max_retries + 1):
@@ -192,27 +269,28 @@ class PersonaLoop:
                             {"role": "user", "content": user_prompt},
                         ],
                         temperature=1.0,
+                        response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content or ""
-                    return _parse_response(raw, personas)
+                    return _parse_response(raw, personas, tag)
 
                 except json.JSONDecodeError:
-                    if attempt < 2:
-                        print(f"[{tag}] JSON error, retry {attempt+1}/2...")
-                        await asyncio.sleep(2)
+                    if attempt < max_retries:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                        await asyncio.sleep(1)
                         continue
-                    print(f"[{tag}] JSON error after retries, fallback")
+                    print(f"[{tag}] JSON error after {max_retries} retries, fallback")
                     return _fallback_results(personas)
 
                 except Exception as e:
-                    is_rate = "rate_limit" in str(e) or "429" in str(e)
+                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
                     max_r = 3 if is_rate else 1
                     if attempt < max_r:
                         wait = (attempt + 1) * 3 if is_rate else 2
-                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s...")
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
                         await asyncio.sleep(wait)
                         continue
-                    print(f"[{tag}] Error after retries, fallback: {e}")
+                    print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
                     return _fallback_results(personas)
         return _fallback_results(personas)
 
