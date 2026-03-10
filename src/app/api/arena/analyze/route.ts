@@ -1,11 +1,15 @@
 const BACKEND = process.env.ARENA_BACKEND_URL || 'http://localhost:3002';
 
+// Allow up to 5 minutes for long-running Python analysis (20k personas via GPT)
+export const maxDuration = 300;
+
 export async function POST(request: Request) {
   const body = await request.text();
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
+    // 5-minute timeout to match Vercel maxDuration
+    const timeout = setTimeout(() => controller.abort(), 300_000);
 
     const upstream = await fetch(`${BACKEND}/api/arena/analyze`, {
       method: 'POST',

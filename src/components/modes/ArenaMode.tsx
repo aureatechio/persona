@@ -496,7 +496,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     try {
       const fetchTimeout = setTimeout(() => {
         if (!hasResults && !simulation) controller.abort();
-      }, 120000);
+      }, 300_000);
 
       const response = await fetch('/api/arena/analyze', {
         method: 'POST',
