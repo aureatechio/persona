@@ -494,6 +494,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     };
 
     try {
+      console.log('[Arena] 🐍 Fetching Python backend...');
       const response = await fetch('/api/arena/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -505,7 +506,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) throw new Error('Python backend unavailable');
+      console.log(`[Arena] 🐍 Response: status=${response.status}, hasBody=${!!response.body}`);
+      if (!response.ok || !response.body) throw new Error(`Python backend unavailable (status=${response.status})`);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -689,7 +691,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         clearInterval(stallCheck);
       }
 
+      console.log(`[Arena] 🐍 Stream ended. streamDone=${streamDone}, hasResults=${hasResults}, receivedAnyProgress=${receivedAnyProgress}`);
       if (!streamDone && hasResults) {
+        console.log('[Arena] 🐍 Stream incomplete but has results — using partial data');
         const total = simulation?.total || 0;
         emitLive(blockId, {
           ...baseLiveData,
@@ -705,9 +709,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         });
         onProcessing(false);
       } else if (!streamDone && !hasResults) {
+        console.warn('[Arena] ⚠️ Stream incomplete, no results — FALLING BACK TO LOCAL');
         useFallback = true;
       }
     } catch (err: any) {
+      console.error('[Arena] ❌ Python fetch error:', err?.name, err?.message);
       if (err?.name === 'AbortError' && hasResults) {
         const total = simulation?.total || 0;
         emitLive(blockId, {
@@ -746,6 +752,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     // ── Fallback: local JS simulation with progressive segments ────────────
     if (useFallback) {
+      console.warn('[Arena] 🔄 Running LOCAL FALLBACK (Python unavailable)');
       try {
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
         let pos = 0, neg = 0, neu = 0;
