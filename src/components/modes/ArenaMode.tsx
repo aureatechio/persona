@@ -513,14 +513,17 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       let streamDone = false;
       let lastEventTime = Date.now();
       let receivedAnyProgress = false;
-      let stallThreshold = 30_000;
+      // Python needs time: query analysis + loading 20k personas + GPT batches
+      // Only cancel if truly stalled (no events at all for 2 min)
+      let stallThreshold = 120_000;
 
       const stallCheck = setInterval(() => {
         if (Date.now() - lastEventTime > stallThreshold && !hasResults) {
+          console.warn('[Arena] SSE stalled, cancelling');
           clearInterval(stallCheck);
           reader.cancel();
         }
-      }, 5000);
+      }, 10_000);
 
       try {
         while (true) {
@@ -567,7 +570,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
                 case 'progress': {
                   receivedAnyProgress = true;
-                  stallThreshold = 90_000;
+                  stallThreshold = 120_000;
                   // Feed accumulators proportionally to Python progress
                   feedAccumulators(payload.data.processed, payload.data.total);
                   // Emit with Python sentiment + progressive ideology/comments
