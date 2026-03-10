@@ -85,25 +85,39 @@ export async function POST(request: Request) {
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
-        role: 'user',
-        content: `Voce analisa perguntas de pesquisa de opiniao publica brasileira.
-
-Dado a pergunta abaixo, determine se ela pode ser respondida usando as colunas de dados existentes das personas sinteticas, ou se precisa de analise por IA (perguntas sobre noticias atuais, eventos especificos, temas novos sem coluna).
+        role: 'system',
+        content: `Voce e um classificador de perguntas de pesquisa de opiniao publica brasileira.
+Sua tarefa: decidir se a pergunta pode ser respondida com colunas de dados existentes (LOCAL) ou precisa de IA generativa (PYTHON).
 
 COLUNAS DISPONIVEIS:
 ${AVAILABLE_COLUMNS}
 
-REGRAS:
-- Se a pergunta se relaciona DIRETAMENTE ou INDIRETAMENTE com alguma coluna, retorne "local" e liste as colunas relevantes
-- "O STF e corrupto?" → LOCAL (usa q_confianca_stf — confiança baixa = acha corrupto)
-- "A policia e violenta?" → LOCAL (usa q_policia_violenta, q_confianca_policia)
-- "O que acham do caso X que saiu no jornal?" → PYTHON (noticia especifica, sem coluna)
-- "Devemos invadir a Venezuela?" → PYTHON (evento geopolitico sem coluna)
-- "O Lula e bom presidente?" → LOCAL (aprovacao_lula, voto_2022, voto_2026)
-- Considere relacoes INDIRETAS: "O Brasil e racista?" → q_racismo_estrutural, q_ti_racismo_latente, q_vi_sofreu_racismo
-- Se tem QUALQUER coluna minimamente relacionada, prefira LOCAL
+REGRAS DE DECISAO (em ordem de prioridade):
 
-PERGUNTA: "${question}"
+1. PYTHON OBRIGATORIAMENTE se a pergunta:
+   - Menciona uma PESSOA ESPECIFICA (politico, celebridade, empresario, influencer) que NAO seja Lula ou Bolsonaro
+   - Menciona um EVENTO ESPECIFICO (acidente, caso judicial, escandalo, noticia)
+   - Pede OPINIAO sobre algo que aconteceu recentemente (fato noticioso)
+   - Pergunta sobre POLITICA EXTERNA especifica (guerra, invasao, acordo)
+   - Menciona NOMES PROPRIOS de pessoas, empresas, ou lugares especificos
+   - Exemplos: "O Daniel Vorcara era pra estar preso", "O que acham do caso do aviao?", "Devemos invadir a Venezuela?", "O Pablo Marçal deveria ser presidente?"
+
+2. LOCAL se a pergunta:
+   - E sobre um TEMA GENERICO coberto pelas colunas (aborto, armas, drogas, economia, etc.)
+   - E sobre INSTITUICOES GENERICAS (STF, policia, congresso, imprensa, igreja)
+   - E sobre Lula ou Bolsonaro ESPECIFICAMENTE (temos colunas dedicadas)
+   - Pode ser inferida de colunas existentes por RELACAO INDIRETA clara
+   - Exemplos: "O STF e corrupto?", "A maconha deveria ser legalizada?", "O Brasil e racista?", "O Lula e bom presidente?"
+
+3. NA DUVIDA: prefira PYTHON. E melhor usar IA do que dar resposta errada com colunas nao relacionadas.
+
+ATENCAO: Nao confunda COINCIDENCIA DE PALAVRAS com RELACAO SEMANTICA.
+- "Fulano era pra estar preso" NAO tem relacao com q_vi_preso_ou_familiar_preso (que e sobre vivencia pessoal)
+- "A policia e violenta" TEM relacao com q_policia_violenta (mesmo tema)
+- A coluna deve medir EXATAMENTE o que a pergunta pede, nao apenas conter uma palavra parecida`
+      }, {
+        role: 'user',
+        content: `PERGUNTA: "${question}"
 
 Responda APENAS com JSON (sem markdown):
 {"route":"local"|"python","fields":["coluna1","coluna2"],"reason":"explicacao curta"}`

@@ -11,8 +11,9 @@ import {
   computePersonaSentiment,
   computeAllSegments,
   SegmentAccumulator,
+  IdeologyAccumulator,
+  LiveCommentAccumulator,
   classifyQuickPersona,
-  hasLocalFieldMatch,
 } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
@@ -94,15 +95,19 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         if (mediaRes.ok) {
           const mediaData = await mediaRes.json();
+          console.log('[Arena] Media analysis result:', { hasContext: !!mediaData.context, hasQuestion: !!mediaData.generated_question });
           if (!q && mediaData.generated_question) q = mediaData.generated_question;
           if (mediaData.context) {
             enrichedContext = enrichedContext
               ? `${enrichedContext}\n\n--- Contexto extraido da midia ---\n${mediaData.context}`
               : mediaData.context;
           }
+        } else {
+          const errBody = await mediaRes.text().catch(() => '');
+          console.error('[Arena] Media analysis HTTP error:', mediaRes.status, errBody.slice(0, 500));
         }
       } catch (mediaErr) {
-        console.warn('[Arena] Media analysis failed, continuing without:', mediaErr);
+        console.error('[Arena] Media analysis failed, continuing without:', mediaErr);
       }
 
       if (!q) q = 'O que voce acha deste conteudo?';
@@ -137,17 +142,18 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       try {
         let pos = 0, neg = 0, neu = 0;
         const segAcc = new SegmentAccumulator();
+        const ideoAcc = new IdeologyAccumulator(q);
+        const commentAcc = new LiveCommentAccumulator(q);
         const BATCH = 100;
+        let liveComments: import('@/lib/arena/types').CommentResult[] = [];
+        let aiCommentsFired = false;
 
-        /** Delay progressivo: lento no inicio, acelera no final */
         const getDelay = (progress: number) => {
-          // 0-30%: 450ms (analise profunda), 30-70%: 350ms, 70-100%: 250ms
           if (progress < 0.3) return 450;
           if (progress < 0.7) return 350;
           return 250;
         };
 
-        /** Process a slice of personas and emit live update */
         const processBatch = (batch: any[], processed: number, total: number) => {
           for (const p of batch) {
             const sentiment = classifyQuickPersona(p, quickMatch);
@@ -155,6 +161,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             else if (sentiment === 'negative') neg++;
             else neu++;
             segAcc.addPersona(p, sentiment);
+            ideoAcc.addPersona(p, sentiment);
+            commentAcc.addPersona(p, sentiment);
           }
           emitLive(blockId, {
             ...baseLiveData,
@@ -166,14 +174,16 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             neutral: neu,
             totalPersonas: total,
             segments: segAcc.toSegments(),
+            liveIdeology: ideoAcc.toResults(),
+            liveComments,
           });
         };
 
-        // Accumulate Supabase batches (1000 each) — we'll process them in sub-batches
         let pendingPersonas: any[] = [];
 
         const allData = await personaCache.loadAll((loaded, total, batch) => {
           pendingPersonas.push(...batch);
+          commentAcc.setTotal(total);
           emitLive(blockId, {
             ...baseLiveData,
             phase: 'streaming',
@@ -182,19 +192,29 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           });
         });
 
-        // Determine which array to iterate: freshly fetched or cached
         const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
         const total = toProcess.length;
+        commentAcc.setTotal(total);
 
-        // Process in small batches with progressive delay (~70s for 20K)
         for (let offset = 0; offset < total; offset += BATCH) {
           const batch = toProcess.slice(offset, offset + BATCH);
           const processed = Math.min(offset + BATCH, total);
           processBatch(batch, processed, total);
-          await new Promise(r => setTimeout(r, getDelay(processed / total)));
+
+          // At ~25% progress, fire AI comment generation in background
+          const progress = processed / total;
+          if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
+            aiCommentsFired = true;
+            const selectedSnapshot = [...commentAcc.selectedPersonas];
+            generateAIComments(q, selectedSnapshot).then(aiComments => {
+              liveComments = aiComments;
+            }).catch(() => {});
+          }
+
+          await new Promise(r => setTimeout(r, getDelay(progress)));
         }
 
-        // Final complete state (instant result)
+        // Final complete state
         const qaResult = runQuickAnswer(quickMatch, allData);
         const qaSegments = segAcc.toSegments();
 
@@ -209,15 +229,32 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: qaSegments,
           quickAnswer: qaResult,
+          liveComments,
         });
 
         onProcessing(false);
 
-        // Enrich with full simulation (ideology, political figures, comments) in background
+        // Enrich with full simulation in background
         (async () => {
           try {
             const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
             const enhanced = runEnhancedSimulation(queryForAnalysis, total, allData);
+
+            emitLive(blockId, {
+              ...baseLiveData,
+              phase: 'complete',
+              processedCount: total,
+              totalCount: total,
+              positive: pos,
+              negative: neg,
+              neutral: neu,
+              totalPersonas: total,
+              segments: qaSegments,
+              quickAnswer: qaResult,
+              simulation: { ...enhanced, comments: [] },
+            });
+
+            // Generate full AI comments with all personas if not already done
             const topicScores = detectTopics(queryForAnalysis);
             const personasForAI = buildPersonasForAI(q, allData, topicScores);
             const claudeComments = await generateAIComments(q, personasForAI);
@@ -248,24 +285,21 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     }
 
     // ── Ask AI whether to process locally or use Python backend ────────────
-    let useLocalProcessing = hasLocalFieldMatch(q); // fast keyword check first
-
-    // If keyword check says no match, ask GPT for smarter classification
-    if (!useLocalProcessing) {
-      try {
-        const classifyRes = await fetch('/api/arena/classify-route', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q }),
-        });
-        if (classifyRes.ok) {
-          const classification = await classifyRes.json();
-          console.log('[Arena] Route classification:', classification);
-          useLocalProcessing = classification.route === 'local';
-        }
-      } catch {
-        // On error, fall through to Python backend
+    // Always use GPT classify-route for semantic analysis (no keyword shortcut)
+    let useLocalProcessing = false;
+    try {
+      const classifyRes = await fetch('/api/arena/classify-route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      });
+      if (classifyRes.ok) {
+        const classification = await classifyRes.json();
+        console.log('[Arena] Route classification:', classification);
+        useLocalProcessing = classification.route === 'local';
       }
+    } catch {
+      // On error, fall through to Python backend
     }
 
     // ── Full analysis with streaming live block ─────────────────────────────
@@ -295,7 +329,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
         let pos = 0, neg = 0, neu = 0;
         const segAcc = new SegmentAccumulator();
+        const ideoAcc = new IdeologyAccumulator(q);
+        const commentAcc = new LiveCommentAccumulator(q);
         const BATCH = 100;
+        let liveComments: import('@/lib/arena/types').CommentResult[] = [];
+        let aiCommentsFired = false;
 
         const getDelay = (progress: number) => {
           if (progress < 0.3) return 450;
@@ -307,6 +345,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         const allData = await personaCache.loadAll((loaded, total, batch) => {
           pendingPersonas.push(...batch);
+          commentAcc.setTotal(total);
           emitLive(blockId, {
             ...baseLiveData,
             phase: 'streaming',
@@ -317,6 +356,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
         const effectiveCount = toProcess.length;
+        commentAcc.setTotal(effectiveCount);
 
         for (let offset = 0; offset < effectiveCount; offset += BATCH) {
           const batch = toProcess.slice(offset, offset + BATCH);
@@ -328,6 +368,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             else if (sentiment === 'negative') neg++;
             else neu++;
             segAcc.addPersona(p, sentiment);
+            ideoAcc.addPersona(p, sentiment);
+            commentAcc.addPersona(p, sentiment);
           }
 
           emitLive(blockId, {
@@ -339,33 +381,48 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             negative: neg,
             neutral: neu,
             segments: segAcc.toSegments(),
+            liveIdeology: ideoAcc.toResults(),
+            liveComments,
           });
 
-          await new Promise(r => setTimeout(r, getDelay(processed / effectiveCount)));
+          // Fire AI comment generation at ~25% with selected personas
+          const progress = processed / effectiveCount;
+          if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
+            aiCommentsFired = true;
+            const selectedSnapshot = [...commentAcc.selectedPersonas];
+            generateAIComments(q, selectedSnapshot).then(aiComments => {
+              liveComments = aiComments;
+            }).catch(() => {});
+          }
+
+          await new Promise(r => setTimeout(r, getDelay(progress)));
         }
 
-        // Enrichment: simulation + AI comments
+        // Enrichment: simulation
+        const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
+
+        const simWithoutComments = { ...enhanced, comments: [] as any[] };
         emitLive(blockId, {
           ...baseLiveData,
-          phase: 'aggregating',
+          phase: 'complete',
           processedCount: effectiveCount,
           totalCount: effectiveCount,
-          positive: pos,
-          negative: neg,
-          neutral: neu,
+          positive: simWithoutComments.positive,
+          negative: simWithoutComments.negative,
+          neutral: simWithoutComments.neutral,
+          simulation: simWithoutComments,
+          totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
+          liveComments,
         });
+        onProcessing(false);
 
-        const enhanced = runEnhancedSimulation(
-          enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q,
-          effectiveCount, allData,
-        );
+        // Generate full AI comments with all personas
         const topicScores = detectTopics(q);
         const personasForAI = buildPersonasForAI(q, allData, topicScores);
         const claudeComments = await generateAIComments(q, personasForAI);
 
         const sim = { ...enhanced, comments: claudeComments };
-
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -378,7 +435,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
         });
-        onProcessing(false);
         return;
       } catch (localErr) {
         console.warn('[Arena] Local processing failed, trying Python:', localErr);
@@ -634,7 +690,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
         let pos = 0, neg = 0, neu = 0;
         const segAcc = new SegmentAccumulator();
+        const ideoAcc = new IdeologyAccumulator(q);
+        const commentAcc = new LiveCommentAccumulator(q);
         const BATCH = 100;
+        let liveComments: import('@/lib/arena/types').CommentResult[] = [];
+        let aiCommentsFired = false;
 
         const getDelay = (progress: number) => {
           if (progress < 0.3) return 450;
@@ -642,30 +702,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           return 250;
         };
 
-        const processFallbackBatch = (batch: any[], processed: number, total: number) => {
-          for (const p of batch) {
-            const sentiment = computePersonaSentiment(p, queryForAnalysis);
-            if (sentiment === 'positive') pos++;
-            else if (sentiment === 'negative') neg++;
-            else neu++;
-            segAcc.addPersona(p, sentiment);
-          }
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'streaming',
-            processedCount: processed,
-            totalCount: total,
-            positive: pos,
-            negative: neg,
-            neutral: neu,
-            segments: segAcc.toSegments(),
-          });
-        };
-
         let pendingPersonas: any[] = [];
 
         const allData = await personaCache.loadAll((loaded, total, batch) => {
           pendingPersonas.push(...batch);
+          commentAcc.setTotal(total);
           emitLive(blockId, {
             ...baseLiveData,
             phase: 'streaming',
@@ -676,46 +717,85 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
         const effectiveCount = toProcess.length;
+        commentAcc.setTotal(effectiveCount);
 
         for (let offset = 0; offset < effectiveCount; offset += BATCH) {
           const batch = toProcess.slice(offset, offset + BATCH);
           const processed = Math.min(offset + BATCH, effectiveCount);
-          processFallbackBatch(batch, processed, effectiveCount);
-          await new Promise(r => setTimeout(r, getDelay(processed / effectiveCount)));
+
+          for (const p of batch) {
+            const sentiment = computePersonaSentiment(p, queryForAnalysis);
+            if (sentiment === 'positive') pos++;
+            else if (sentiment === 'negative') neg++;
+            else neu++;
+            segAcc.addPersona(p, sentiment);
+            ideoAcc.addPersona(p, sentiment);
+            commentAcc.addPersona(p, sentiment);
+          }
+
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'streaming',
+            processedCount: processed,
+            totalCount: effectiveCount,
+            positive: pos,
+            negative: neg,
+            neutral: neu,
+            segments: segAcc.toSegments(),
+            liveIdeology: ideoAcc.toResults(),
+            liveComments,
+          });
+
+          // Fire AI comment generation at ~25% with selected personas
+          const progress = processed / effectiveCount;
+          if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
+            aiCommentsFired = true;
+            const selectedSnapshot = [...commentAcc.selectedPersonas];
+            generateAIComments(q, selectedSnapshot).then(aiComments => {
+              liveComments = aiComments;
+            }).catch(() => {});
+          }
+
+          await new Promise(r => setTimeout(r, getDelay(progress)));
         }
 
-        // Run enhanced simulation + AI comments
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'aggregating',
-          processedCount: effectiveCount,
-          totalCount: effectiveCount,
-          positive: pos,
-          negative: neg,
-          neutral: neu,
-          segments: segAcc.toSegments(),
-        });
-
+        // Enrichment: simulation
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
-        const topicScores = detectTopics(queryForAnalysis);
-        const personasForAI = buildPersonasForAI(q, allData, topicScores);
-        const claudeComments = await generateAIComments(q, personasForAI);
 
-        simulation = { ...enhanced, comments: claudeComments };
-
+        const simWithoutComments = { ...enhanced, comments: [] as any[] };
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
           processedCount: effectiveCount,
           totalCount: effectiveCount,
-          positive: simulation.positive,
-          negative: simulation.negative,
-          neutral: simulation.neutral,
-          simulation,
+          positive: simWithoutComments.positive,
+          negative: simWithoutComments.negative,
+          neutral: simWithoutComments.neutral,
+          simulation: simWithoutComments,
+          totalPersonas: effectiveCount,
+          segments: segAcc.toSegments(),
+          liveComments,
+        });
+        onProcessing(false);
+
+        // Generate full AI comments with all personas
+        const topicScores = detectTopics(q);
+        const personasForAI = buildPersonasForAI(q, allData, topicScores);
+        const claudeComments = await generateAIComments(q, personasForAI);
+
+        const sim = { ...enhanced, comments: claudeComments };
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: effectiveCount,
+          totalCount: effectiveCount,
+          positive: sim.positive,
+          negative: sim.negative,
+          neutral: sim.neutral,
+          simulation: sim,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
         });
-        onProcessing(false);
       } catch (fallbackErr) {
         console.error('[Arena] Fallback failed:', fallbackErr);
         emitLive(blockId, {
