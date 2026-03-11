@@ -46,6 +46,7 @@ class ArenaWebResearcher:
                     max_results=settings.max_web_results,
                     include_answer=True,
                     include_raw_content=False,
+                    topic="news",
                 ),
             )
             return response.get("results", []), response.get("answer", "")
@@ -57,18 +58,19 @@ class ArenaWebResearcher:
         """
         Gera queries de busca a partir da pergunta.
         Sempre gera 2-3 queries para cobrir o tema.
+        Todas em português para priorizar resultados em PT-BR.
         """
         # Query 1: a pergunta como esta (mais direta)
         q1 = question.strip().rstrip("?").strip()
 
-        # Query 2: adiciona "Brasil" e "contexto" para resultados mais informativos
-        q2 = f"{q1} Brasil contexto"
+        # Query 2: adiciona "Brasil" para resultados em PT-BR
+        q2 = f"{q1} Brasil notícias"
 
         # Query 3: busca por noticias atuais
         from datetime import datetime
 
         year = datetime.now().year
-        q3 = f"{q1} noticias {year}"
+        q3 = f"{q1} últimas notícias {year} Brasil"
 
         return [q1, q2, q3]
 
@@ -101,7 +103,9 @@ class ArenaWebResearcher:
 
         parts = []
         if answers:
-            parts.append("RESUMO: " + " ".join(answers)[:1200])
+            # Tavily answers may come in English — prefix with instruction for downstream consumers
+            combined_answer = " ".join(answers)[:1200]
+            parts.append("RESUMO: " + combined_answer)
         for i, snippet in enumerate(snippets[:6]):
             parts.append(f"[{i + 1}] {snippet}")
 

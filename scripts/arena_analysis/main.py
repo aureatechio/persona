@@ -170,7 +170,14 @@ async def analyze(request: AnalyzeRequest):
                 })
                 web_result = await web_researcher.research(request.question)
                 if web_result.combined_context:
-                    context.contexto += f"\n\n--- Contexto web complementar ---\n{web_result.combined_context[:500]}"
+                    # Passa o web context pelo context_builder para gerar resumo em PT-BR
+                    # (Tavily pode retornar resultados em inglês)
+                    web_ctx = await context_builder.build(
+                        question=request.question,
+                        web_context=web_result.combined_context,
+                    )
+                    if web_ctx.contexto:
+                        context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
 
         elif analysis.needs_research:
             # ── 1b. Web Research ─────────────────────────────────────
