@@ -17,32 +17,48 @@ function getClient() {
   return new Anthropic({ apiKey: key });
 }
 
-const SYSTEM_PROMPT = `Voce e um analista especializado em extrair contexto de midias para pesquisa de opiniao publica brasileira.
+const SYSTEM_PROMPT = `Voce e um analista especializado em extrair o PONTO CENTRAL de midias para pesquisa de opiniao publica brasileira.
 
-Sua tarefa: analisar o conteudo fornecido (imagem, screenshot, print de tela, foto ou texto) e produzir:
+Sua tarefa: analisar o conteudo fornecido (video, imagem, screenshot, print de tela, foto ou texto) e produzir:
 
 1. **CONTEXTO** (obrigatorio): Um resumo estruturado do conteudo que sera usado para que 2.000 personas sinteticas brasileiras formem opiniao.
 
 2. **PERGUNTA** (somente se solicitado): Uma pergunta clara e direta para ser feita as personas sobre o conteudo analisado.
 
+3. **PONTO_CENTRAL** (obrigatorio): Uma frase curta e precisa que resume a TESE PRINCIPAL do autor. Ex: "O autor defende que Fulano deveria estar preso por corrupcao."
+
 Regras para o CONTEXTO:
 - Extraia TODOS os fatos, argumentos, numeros e posicoes mencionados
-- Identifique o tema central e subtemas
-- Identifique figuras publicas, partidos ou instituicoes mencionados
+- Identifique o PONTO CENTRAL ESPECIFICO — a tese, opiniao ou afirmacao principal do autor
+- Identifique figuras publicas, partidos ou instituicoes mencionados POR NOME
 - Identifique o tom geral (positivo, negativo, neutro, polemico)
 - Seja factual e neutro - nao adicione opiniao propria
 - Se for um print de rede social, identifique o autor, a plataforma e o conteudo exato
 - Formato: texto corrido em 2-4 paragrafos, maximo 500 palavras
 
+REGRA CRITICA PARA O PONTO CENTRAL:
+- Abstraia o que o autor REALMENTE quer dizer — qual a TESE dele?
+- Se menciona uma PESSOA ESPECIFICA, o ponto central DEVE conter o nome dela
+- Se defende uma ACAO ESPECIFICA (prender, demitir, eleger, punir), o ponto central DEVE conter essa acao
+- NUNCA generalize para temas abstratos. "Fulano deveria estar preso" NAO e "corrupcao e um problema"
+- O ponto central responde: O QUE o autor QUER/DEFENDE, sobre QUEM, e POR QUE
+
 Regras para a PERGUNTA (quando solicitada):
+- DEVE preservar o ponto central especifico — nomes, acoes, entidades
+- Se o autor fala de "Fulano deveria estar preso", a pergunta DEVE ser sobre Fulano estar preso, NAO sobre corrupcao em geral
 - Deve ser direta e compreensivel para qualquer brasileiro
 - Deve gerar opiniao polarizada (concordo/discordo/neutro)
-- Deve refletir o tema central do conteudo
 - Maximo 1 frase
-- Exemplo: "Voce concorda com a proposta de...?" ou "O que voce acha sobre...?"
+- Exemplos corretos:
+  - Autor: "O Vorcaro deveria estar preso" → "Voce concorda que o Vorcaro deveria estar preso?"
+  - Autor: "O Pablo Marcal e um perigo" → "Voce concorda que o Pablo Marcal representa um perigo?"
+  - Autor: "O SUS nao funciona" → "Voce concorda que o SUS nao funciona?"
+- Exemplos ERRADOS (nunca faca isso):
+  - Autor: "O Vorcaro deveria estar preso" → "A corrupcao e um problema no Brasil?" (ERRADO - generalizou)
+  - Autor: "O Pablo Marcal e um perigo" → "Politicos populistas sao perigosos?" (ERRADO - generalizou)
 
 FORMATO DE RESPOSTA (JSON):
-{"context": "...", "generated_question": "..."}
+{"context": "...", "core_point": "...", "generated_question": "..."}
 
 Se nao foi pedida pergunta, omita o campo generated_question.
 Responda APENAS o JSON, sem markdown, sem code blocks.`;
@@ -146,9 +162,71 @@ export async function POST(request: Request) {
       const jsonStr = start !== -1 && end > start ? cleanText.slice(start, end + 1) : cleanText;
 
       const parsed = JSON.parse(jsonStr);
+      const context = parsed.context || cleanText;
+      const corePoint = parsed.core_point || '';
+      const generatedQuestion = parsed.generated_question || '';
+
+      // ── Fidelity verification: check if core_point and question preserve specifics ──
+      // Extract transcriptions from the original attachments for comparison
+      const transcriptions: string[] = [];
+      for (const att of attachments) {
+        if (att.type === 'video' && att.data && att.data !== '__TRANSCRIPTION_FAILED__') {
+          transcriptions.push(att.data);
+        }
+      }
+
+      if (transcriptions.length > 0 && (generatedQuestion || corePoint)) {
+        const verifyClient = getClient();
+        try {
+          const verifyRes = await verifyClient.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 512,
+            system: `Voce e um verificador de fidelidade. Sua tarefa e checar se a analise de um conteudo preservou o PONTO CENTRAL ESPECIFICO do que foi dito.
+
+REGRAS:
+- Se o autor citou uma PESSOA ESPECIFICA pelo nome, a analise DEVE conter esse nome
+- Se o autor defendeu uma ACAO ESPECIFICA (prender, demitir, proibir), a analise DEVE conter essa acao
+- Se o autor falou sobre um EVENTO ESPECIFICO, a analise DEVE referenciar o evento
+- O ponto central NAO pode ter sido diluido em tema generico
+
+Responda APENAS com JSON (sem markdown):
+{"faithful": true|false, "issue": "explicacao curta se faithful=false", "corrected_question": "pergunta corrigida se faithful=false"}`,
+            messages: [{
+              role: 'user',
+              content: `TRANSCRICAO ORIGINAL:\n${transcriptions.join('\n---\n')}\n\nPONTO CENTRAL EXTRAIDO: ${corePoint}\nPERGUNTA GERADA: ${generatedQuestion}\nCONTEXTO: ${context}`,
+            }],
+          });
+
+          const verifyRaw = verifyRes.content.find(b => b.type === 'text')?.text?.trim() || '';
+          const vStart = verifyRaw.indexOf('{');
+          const vEnd = verifyRaw.lastIndexOf('}');
+          if (vStart !== -1 && vEnd > vStart) {
+            const verification = JSON.parse(verifyRaw.slice(vStart, vEnd + 1));
+            console.log('[Analyze Media] Fidelity check:', verification);
+
+            if (!verification.faithful) {
+              console.warn('[Analyze Media] Fidelity FAILED:', verification.issue);
+              // Use corrected question if provided
+              if (verification.corrected_question) {
+                return NextResponse.json({
+                  context,
+                  core_point: corePoint,
+                  ...(verification.corrected_question && { generated_question: verification.corrected_question }),
+                  fidelity_corrected: true,
+                  fidelity_issue: verification.issue,
+                });
+              }
+            }
+          }
+        } catch (verifyErr) {
+          console.warn('[Analyze Media] Fidelity check failed, continuing:', verifyErr);
+        }
+      }
+
       return NextResponse.json({
-        context: parsed.context || cleanText,
-        ...(parsed.generated_question && { generated_question: parsed.generated_question }),
+        context,
+        core_point: corePoint,
+        ...(generatedQuestion && { generated_question: generatedQuestion }),
       });
     } catch {
       // If parsing failed, return the cleaned text as context

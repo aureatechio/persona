@@ -81,6 +81,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     const blockId = crypto.randomUUID();
 
     let enrichedContext = contextText || '';
+    let mediaCorePoint = '';
 
     const mediaPreviews = hasMedia
       ? attachments.map(a => ({ type: a.type, preview: a.preview, name: a.name }))
@@ -136,8 +137,19 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         if (mediaRes.ok) {
           const mediaData = await mediaRes.json();
-          console.log('[Arena] Media analysis result:', { hasContext: !!mediaData.context, hasQuestion: !!mediaData.generated_question });
+          console.log('[Arena] Media analysis result:', {
+            hasContext: !!mediaData.context,
+            hasQuestion: !!mediaData.generated_question,
+            corePoint: mediaData.core_point || 'none',
+            fidelityCorrected: mediaData.fidelity_corrected || false,
+          });
+          if (mediaData.fidelity_corrected) {
+            console.warn('[Arena] Fidelity correction applied:', mediaData.fidelity_issue);
+          }
           if (!q && mediaData.generated_question) q = mediaData.generated_question;
+          if (mediaData.core_point) {
+            mediaCorePoint = mediaData.core_point;
+          }
           if (mediaData.context) {
             enrichedContext = enrichedContext
               ? `${enrichedContext}\n\n--- Contexto extraido da midia ---\n${mediaData.context}`
@@ -356,7 +368,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       const classifyRes = await fetch('/api/arena/classify-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({
+          question: q,
+          context: enrichedContext || undefined,
+          core_point: mediaCorePoint || undefined,
+        }),
       });
       if (classifyRes.ok) {
         const classification = await classifyRes.json();

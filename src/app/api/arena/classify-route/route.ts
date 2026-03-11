@@ -108,13 +108,27 @@ ATENCAO: Nao confunda COINCIDENCIA DE PALAVRAS com RELACAO SEMANTICA.
 - "A policia e violenta" TEM relacao com q_policia_violenta (mesmo tema)
 - A coluna deve medir EXATAMENTE o que a pergunta pede, nao apenas conter uma palavra parecida
 
+IMPORTANTE: Voce pode receber CONTEXTO e PONTO CENTRAL alem da pergunta.
+- SEMPRE analise o PONTO CENTRAL e o CONTEXTO para identificar entidades especificas (nomes, eventos)
+- Se o ponto central menciona uma pessoa especifica, a rota DEVE ser PYTHON (mesmo que a pergunta pareca generica)
+- O ponto central tem PRIORIDADE sobre a pergunta na decisao de rota
+
 Responda APENAS com JSON (sem markdown):
 {"route":"local"|"python","fields":["coluna1","coluna2"],"reason":"explicacao curta"}`;
 
 export async function POST(request: Request) {
   try {
-    const { question } = await request.json();
+    const { question, context, core_point } = await request.json();
     if (!question) return Response.json({ route: 'python', fields: [], reason: 'empty' });
+
+    // Build user message with all available context for better classification
+    let userMessage = `PERGUNTA: "${question}"`;
+    if (core_point) {
+      userMessage += `\nPONTO CENTRAL DO CONTEUDO: "${core_point}"`;
+    }
+    if (context) {
+      userMessage += `\nCONTEXTO EXTRAIDO DA MIDIA: "${context.slice(0, 500)}"`;
+    }
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -122,7 +136,7 @@ export async function POST(request: Request) {
       system: SYSTEM_PROMPT,
       messages: [{
         role: 'user',
-        content: `PERGUNTA: "${question}"`,
+        content: userMessage,
       }],
       temperature: 0,
     });

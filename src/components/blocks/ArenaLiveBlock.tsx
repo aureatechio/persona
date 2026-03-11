@@ -260,23 +260,55 @@ function LiveProgressBar({ processed, total, phase }: { processed: number; total
 
 function SentimentSummary({ positive, negative, neutral, total }: { positive: number; negative: number; neutral: number; total: number }) {
   const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
+  const pctPos = pct(positive);
+  const pctNeg = pct(negative);
+  const pctNeu = pct(neutral);
+
+  // Determine dominant sentiment
+  const dominant = pctPos >= pctNeg && pctPos >= pctNeu ? 'positive' : pctNeg >= pctPos && pctNeg >= pctNeu ? 'negative' : 'neutral';
+  const dominantLabel = dominant === 'positive' ? 'A Favor' : dominant === 'negative' ? 'Contra' : 'Neutros';
+  const dominantPct = dominant === 'positive' ? pctPos : dominant === 'negative' ? pctNeg : pctNeu;
+
+  const cardBg = dominant === 'positive' ? 'bg-emerald-500/[0.04] border-emerald-500/15'
+    : dominant === 'negative' ? 'bg-rose-500/[0.04] border-rose-500/15'
+    : 'bg-amber-500/[0.04] border-amber-500/15';
+  const pctColor = dominant === 'positive' ? 'text-emerald-400'
+    : dominant === 'negative' ? 'text-rose-400'
+    : 'text-amber-400';
+  const labelColor = dominant === 'positive' ? 'text-emerald-400/80'
+    : dominant === 'negative' ? 'text-rose-400/80'
+    : 'text-amber-400/80';
 
   return (
-    <div className="grid grid-cols-3 gap-3">
-      <div className="p-4 rounded-xl bg-zinc-950/80 border border-emerald-500/10 text-center transition-all duration-500">
-        <p className="text-3xl font-black text-emerald-400 tabular-nums">{pct(positive)}%</p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/80 mt-1">A Favor</p>
-        <p className="text-[10px] text-zinc-600 tabular-nums mt-0.5">{positive.toLocaleString('pt-BR')}</p>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Left: Dominant Insight */}
+      <div className={cn(
+        'lg:col-span-1 p-5 rounded-2xl border text-center lg:text-left flex flex-col justify-center transition-all duration-500',
+        cardBg,
+      )}>
+        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-2">Tendencia dominante</p>
+        <p className={cn('text-5xl lg:text-6xl font-black tabular-nums tracking-tight', pctColor)}>{dominantPct}%</p>
+        <p className={cn('text-sm font-bold mt-1', labelColor)}>{dominantLabel}</p>
+        <p className="text-[10px] text-zinc-600 mt-2">de {total.toLocaleString('pt-BR')} personas simuladas</p>
       </div>
-      <div className="p-4 rounded-xl bg-zinc-950/80 border border-rose-500/10 text-center transition-all duration-500">
-        <p className="text-3xl font-black text-rose-400 tabular-nums">{pct(negative)}%</p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-rose-400/80 mt-1">Contra</p>
-        <p className="text-[10px] text-zinc-600 tabular-nums mt-0.5">{negative.toLocaleString('pt-BR')}</p>
-      </div>
-      <div className="p-4 rounded-xl bg-zinc-950/80 border border-amber-500/10 text-center transition-all duration-500">
-        <p className="text-3xl font-black text-amber-400 tabular-nums">{pct(neutral)}%</p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/80 mt-1">Neutros</p>
-        <p className="text-[10px] text-zinc-600 tabular-nums mt-0.5">{neutral.toLocaleString('pt-BR')}</p>
+
+      {/* Right: 3 stat cards */}
+      <div className="lg:col-span-2 grid grid-cols-3 gap-3">
+        <div className="p-5 rounded-xl bg-zinc-950/80 border border-emerald-500/10 text-center transition-all duration-500 flex flex-col justify-center">
+          <p className="text-3xl font-black text-emerald-400 tabular-nums">{pctPos}%</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/80 mt-1.5">A Favor</p>
+          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{positive.toLocaleString('pt-BR')}</p>
+        </div>
+        <div className="p-5 rounded-xl bg-zinc-950/80 border border-rose-500/10 text-center transition-all duration-500 flex flex-col justify-center">
+          <p className="text-3xl font-black text-rose-400 tabular-nums">{pctNeg}%</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-rose-400/80 mt-1.5">Contra</p>
+          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{negative.toLocaleString('pt-BR')}</p>
+        </div>
+        <div className="p-5 rounded-xl bg-zinc-950/80 border border-amber-500/10 text-center transition-all duration-500 flex flex-col justify-center">
+          <p className="text-3xl font-black text-amber-400 tabular-nums">{pctNeu}%</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/80 mt-1.5">Neutros</p>
+          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{neutral.toLocaleString('pt-BR')}</p>
+        </div>
       </div>
     </div>
   );
@@ -895,23 +927,23 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
           </div>
 
           {media && media.length > 0 && (
-            <div className="shrink-0 flex flex-col items-end gap-2">
+            <div className="shrink-0 flex items-center gap-2">
               <MediaHeaderInline media={media} />
               {hasMediaContext ? (
                 <button
                   onClick={() => setShowMediaSummary(!showMediaSummary)}
                   className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
+                    'inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-semibold transition-all duration-200',
                     showMediaSummary
                       ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
                       : 'bg-white/[0.04] text-zinc-500 border border-white/[0.06] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
                   )}
                 >
                   <FileText size={11} />
-                  {showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
+                  {showMediaSummary ? 'Fechar' : 'Resumo'}
                 </button>
               ) : !isComplete ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.02] text-zinc-600 border border-white/[0.04]">
+                <span className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[11px] font-medium bg-white/[0.02] text-zinc-600 border border-white/[0.04]">
                   <FileText size={11} className="animate-pulse" />
                   Processando...
                 </span>
