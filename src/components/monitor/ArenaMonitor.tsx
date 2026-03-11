@@ -1011,6 +1011,7 @@ export function ArenaMonitor() {
             analyzing_query: { node: 'queryAnalyzer' },
             web_research: { node: 'webResearch', completeNodes: ['queryAnalyzer'] },
             building_context: { node: 'contextBuilder', completeNodes: ['webResearch'] },
+            validating_context: { node: 'contextValidator', completeNodes: ['contextBuilder'] },
             loading_personas: {
               node: 'personaLoader',
               completeNodes: ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'],
@@ -1023,7 +1024,11 @@ export function ArenaMonitor() {
           if (m) {
             m.completeNodes?.forEach(n => {
               setState(prev => {
-                if (prev.nodes[n] === 'running') return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
+                // Transition running → complete, AND idle → complete
+                // (some steps complete without an explicit "running" notification)
+                if (prev.nodes[n] === 'running' || prev.nodes[n] === 'idle') {
+                  return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
+                }
                 return prev;
               });
             });
@@ -1072,6 +1077,9 @@ export function ArenaMonitor() {
           }
           if (d.step === 'context_builder' && d.detail) {
             updateNode('contextBuilder', 'complete');
+            // Context built → validator starts
+            updateNode('contextValidator', 'running');
+            addLog('contextValidator', 'info', 'Validando precisao e neutralidade do contexto...');
             setState(prev => ({
               ...prev,
               stepDetails: {

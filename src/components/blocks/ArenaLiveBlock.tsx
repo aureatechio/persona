@@ -877,12 +877,6 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                 </span>
               )}
             </div>
-            <p className="text-base font-semibold text-white leading-relaxed">
-              {question === 'Analise este conteudo' && media?.length
-                ? <span className="flex items-center gap-2"><Film size={16} className="text-zinc-500" /> Analise de midia</span>
-                : <>&ldquo;{question}&rdquo;</>
-              }
-            </p>
             {isComplete && (
               <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
                 <span className="flex items-center gap-1">

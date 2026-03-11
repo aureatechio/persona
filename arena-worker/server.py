@@ -14,13 +14,17 @@ SSE protocol (matches what the Next.js frontend expects):
 import json
 import time
 import asyncio
+import base64
+import tempfile
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
+from openai import OpenAI
 
-from config import PORT, AI_BATCH_SIZE
+from config import PORT, AI_BATCH_SIZE, OPENAI_API_KEY
 from db import load_all_personas
 from classifier import classify_batch
 from segments import SegmentAccumulator
@@ -169,6 +173,84 @@ async def analyze(request: Request):
         event_stream(),
         media_type="text/event-stream",
     )
+
+
+# ── Video transcription via Whisper ───────────────────────────────────────────
+
+MIME_TO_EXT = {
+    "video/webm": "webm",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/webm": "webm",
+}
+
+
+@app.post("/api/transcribe")
+async def transcribe(request: Request):
+    """
+    Accept base64 video/audio, send directly to Whisper API, return transcript.
+    Whisper accepts video files natively (mp4, webm, mov, etc.) — no FFmpeg needed.
+    """
+    if not OPENAI_API_KEY:
+        return {"error": "OPENAI_API_KEY not configured"}
+
+    body = await request.json()
+    data: str = body.get("data", "")
+    name: str = body.get("name", "recording")
+    mime_type: str = body.get("mimeType", "video/mp4")
+
+    if not data:
+        return {"error": "No data provided"}
+
+    # Strip data URI prefix if present
+    raw_b64 = data
+    if data.startswith("data:"):
+        parts = data.split(";base64,", 1)
+        if len(parts) == 2:
+            mime_type = parts[0].replace("data:", "")
+            raw_b64 = parts[1]
+
+    try:
+        file_bytes = base64.b64decode(raw_b64)
+    except Exception:
+        return {"error": "Invalid base64 data"}
+
+    if len(file_bytes) > 25 * 1024 * 1024:
+        return {"error": "Arquivo muito grande. Maximo 25MB."}
+
+    ext = MIME_TO_EXT.get(mime_type, "mp4")
+    base_name = os.path.splitext(name)[0]
+    file_name = f"{base_name}.{ext}"
+
+    # Write to temp file and send to Whisper
+    tmp = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+        tmp.write(file_bytes)
+        tmp.close()
+
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        with open(tmp.name, "rb") as f:
+            result = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=(file_name, f),
+                language="pt",
+                response_format="text",
+            )
+
+        transcript = result.strip() if isinstance(result, str) else str(result).strip()
+        print(f"[Transcribe] OK — {len(file_bytes)} bytes → {len(transcript)} chars")
+        return {"transcript": transcript}
+
+    except Exception as e:
+        print(f"[Transcribe] Error: {e}")
+        return {"error": "Falha na transcricao", "detail": str(e)}
+    finally:
+        if tmp and os.path.exists(tmp.name):
+            os.unlink(tmp.name)
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────

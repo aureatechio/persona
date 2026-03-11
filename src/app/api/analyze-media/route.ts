@@ -98,42 +98,17 @@ export async function POST(request: Request) {
       } else if (att.type === 'url') {
         content.push({ type: 'text', text: `\n\nURL para contexto: ${att.data}` });
       } else if (att.type === 'video') {
-        // Transcribe video audio via Whisper
-        try {
-          const origin = request.headers.get('origin') || request.headers.get('host') || '';
-          const baseUrl = origin.startsWith('http') ? origin : `https://${origin}`;
-
-          const transcribeRes = await fetch(`${baseUrl}/api/transcribe-video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ data: att.data, name: att.name }),
-          });
-
-          if (transcribeRes.ok) {
-            const { transcript } = await transcribeRes.json();
-            if (transcript) {
-              content.push({
-                type: 'text',
-                text: `\n\n--- TRANSCRICAO DO VIDEO "${att.name}" ---\n${transcript}\n--- FIM DA TRANSCRICAO ---`,
-              });
-            } else {
-              content.push({
-                type: 'text',
-                text: `\n\n[Video anexado: ${att.name} - audio sem fala detectada]`,
-              });
-            }
-          } else {
-            console.warn('[Analyze Media] Transcription failed for', att.name);
-            content.push({
-              type: 'text',
-              text: `\n\n[Video anexado: ${att.name} - transcricao indisponivel]`,
-            });
-          }
-        } catch (transcribeErr) {
-          console.warn('[Analyze Media] Transcription error:', transcribeErr);
+        // Video transcripts arrive pre-resolved as { type:'video', data:'transcript text' }
+        // from the frontend (transcribed via Python backend before calling this route)
+        if (att.data) {
           content.push({
             type: 'text',
-            text: `\n\n[Video anexado: ${att.name} - erro na transcricao]`,
+            text: `\n\n--- TRANSCRICAO DO VIDEO "${att.name}" ---\n${att.data}\n--- FIM DA TRANSCRICAO ---`,
+          });
+        } else {
+          content.push({
+            type: 'text',
+            text: `\n\n[Video anexado: ${att.name} - audio sem fala detectada]`,
           });
         }
       }
