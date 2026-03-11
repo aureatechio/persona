@@ -6,6 +6,7 @@ import {
   Cpu, BarChart3, ChevronDown, ChevronRight,
   Database, AlertCircle, CheckCircle2, Loader2,
   MessageSquare, ArrowDown, GitBranch, Minus, Radio,
+  ExternalLink, FileText, Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -43,6 +44,38 @@ interface ClassifierDecision {
   reason: string;
 }
 
+/* Step detail data stored from verbose events */
+interface QueryAnalyzerData {
+  needs_research: boolean;
+  reason: string;
+}
+
+interface WebResearchData {
+  queries: string[];
+  snippets: string[];
+  sources: string[];
+}
+
+interface ContextData {
+  tema: string;
+  contexto: string;
+  figuras: Array<Record<string, unknown>>;
+  periodo: string;
+}
+
+interface ValidatorData {
+  verdict: string;
+  issues: string[];
+  corrections: string;
+}
+
+interface StepDetails {
+  queryAnalyzer: QueryAnalyzerData | null;
+  webResearch: WebResearchData | null;
+  context: ContextData | null;
+  validator: ValidatorData | null;
+}
+
 interface PipelineState {
   question: string;
   route: 'unknown' | 'local' | 'python';
@@ -50,11 +83,19 @@ interface PipelineState {
   nodes: Record<string, NodeStatus>;
   logs: LogEntry[];
   batches: BatchDetail[];
+  stepDetails: StepDetails;
   progress: { processed: number; total: number; positive: number; negative: number; neutral: number };
   startTime: number | null;
   endTime: number | null;
   listening: boolean;
 }
+
+const initialStepDetails: StepDetails = {
+  queryAnalyzer: null,
+  webResearch: null,
+  context: null,
+  validator: null,
+};
 
 const initialState: PipelineState = {
   question: '',
@@ -72,6 +113,7 @@ const initialState: PipelineState = {
   },
   logs: [],
   batches: [],
+  stepDetails: { ...initialStepDetails },
   progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0 },
   startTime: null,
   endTime: null,
@@ -128,6 +170,7 @@ function FlowNode({
   lastLogMessage,
   isSelected,
   onClick,
+  hasDetail,
   extra,
 }: {
   nodeKey: string;
@@ -136,6 +179,7 @@ function FlowNode({
   lastLogMessage?: string;
   isSelected: boolean;
   onClick: () => void;
+  hasDetail?: boolean;
   extra?: React.ReactNode;
 }) {
   const statusIcon = {
@@ -173,6 +217,9 @@ function FlowNode({
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-zinc-200">{NODE_LABELS[nodeKey]}</span>
             {statusIcon}
+            {hasDetail && (
+              <Eye size={10} className="text-violet-400" />
+            )}
           </div>
           <p className="text-[9px] text-zinc-600 mt-0.5 truncate">
             {lastLogMessage || NODE_DESCRIPTIONS[nodeKey]}
@@ -196,7 +243,7 @@ function ClassifierCard({ decision }: { decision: ClassifierDecision }) {
 
   return (
     <div className={cn(
-      'mx-3 mt-3 rounded-xl border p-4 animate-fade-in-up',
+      'mx-3 mt-3 rounded-xl border p-4',
       isPython
         ? 'bg-violet-500/5 border-violet-500/20'
         : 'bg-sky-500/5 border-sky-500/20',
@@ -251,6 +298,199 @@ function FlowArrow({ active }: { active: boolean }) {
         'w-px h-5 transition-colors duration-500',
         active ? 'bg-gradient-to-b from-violet-500/40 to-violet-500/10' : 'bg-zinc-800/30',
       )} />
+    </div>
+  );
+}
+
+/* ================================================================
+   Step Detail Panels — Rich visualization per step
+   ================================================================ */
+
+function QueryAnalyzerPanel({ data }: { data: QueryAnalyzerData }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={<Search size={14} />} title="Analise da Pergunta" subtitle="Claude Haiku analisou a pergunta" />
+      <div className={cn(
+        'rounded-xl border p-4',
+        data.needs_research
+          ? 'bg-emerald-500/5 border-emerald-500/20'
+          : 'bg-amber-500/5 border-amber-500/20',
+      )}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className={cn(
+            'text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full',
+            data.needs_research
+              ? 'bg-emerald-500/15 text-emerald-400'
+              : 'bg-amber-500/15 text-amber-400',
+          )}>
+            {data.needs_research ? 'Pesquisa Necessaria' : 'Pesquisa Dispensada'}
+          </span>
+        </div>
+        <p className="text-[11px] text-zinc-300 leading-relaxed">{data.reason}</p>
+      </div>
+    </div>
+  );
+}
+
+function WebResearchPanel({ data }: { data: WebResearchData }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={<Globe size={14} />} title="Pesquisa na Web" subtitle={`${data.snippets?.length || 0} trechos de ${data.sources?.length || 0} fontes`} />
+
+      {/* Queries searched */}
+      {data.queries?.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Queries pesquisadas</p>
+          <div className="space-y-1.5">
+            {data.queries.map((q, i) => (
+              <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <Search size={10} className="text-sky-400 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-zinc-300">{q}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sources */}
+      {data.sources?.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Fontes encontradas</p>
+          <div className="space-y-1">
+            {data.sources.map((src, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                <ExternalLink size={9} className="text-violet-400 shrink-0" />
+                <span className="text-[10px] text-sky-400 truncate">{src}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Snippets */}
+      {data.snippets?.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Trechos coletados</p>
+          <div className="space-y-2">
+            {data.snippets.map((snip, i) => (
+              <div key={i} className="px-3 py-2.5 rounded-lg bg-zinc-900/60 border border-white/[0.04]">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <FileText size={9} className="text-zinc-600" />
+                  <span className="text-[9px] text-zinc-600 font-bold">Trecho #{i + 1}</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-relaxed whitespace-pre-wrap">{snip}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContextPanel({ data }: { data: ContextData }) {
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={<Brain size={14} />} title="Contexto Gerado" subtitle="Claude Haiku construiu este contexto" />
+
+      {data.tema && (
+        <div className="px-3 py-2.5 rounded-xl bg-violet-500/5 border border-violet-500/20">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-violet-400/60 mb-1">Tema</p>
+          <p className="text-[12px] text-violet-300 font-medium">{data.tema}</p>
+        </div>
+      )}
+
+      {data.periodo && (
+        <div className="px-3 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-0.5">Periodo</p>
+          <p className="text-[11px] text-zinc-400">{data.periodo}</p>
+        </div>
+      )}
+
+      {data.contexto && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Texto de contexto enviado as personas</p>
+          <div className="px-4 py-3 rounded-xl bg-zinc-900/60 border border-white/[0.04] max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+            <p className="text-[11px] text-zinc-300 leading-relaxed whitespace-pre-wrap">{data.contexto}</p>
+          </div>
+        </div>
+      )}
+
+      {data.figuras && data.figuras.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Figuras publicas mencionadas</p>
+          <div className="flex flex-wrap gap-1.5">
+            {data.figuras.map((fig, i) => (
+              <span key={i} className="text-[10px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                {typeof fig === 'string' ? fig : JSON.stringify(fig)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ValidatorPanel({ data }: { data: ValidatorData }) {
+  const isValid = data.verdict?.toUpperCase() === 'VALID';
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={<ShieldCheck size={14} />} title="Validacao de Contexto" subtitle="Claude Haiku verificou precisao e neutralidade" />
+
+      <div className={cn(
+        'rounded-xl border p-4',
+        isValid
+          ? 'bg-emerald-500/5 border-emerald-500/20'
+          : 'bg-amber-500/5 border-amber-500/20',
+      )}>
+        <span className={cn(
+          'text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full',
+          isValid
+            ? 'bg-emerald-500/15 text-emerald-400'
+            : 'bg-amber-500/15 text-amber-400',
+        )}>
+          {isValid ? 'Contexto Valido' : 'Contexto Revisado'}
+        </span>
+      </div>
+
+      {data.issues && data.issues.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Problemas encontrados</p>
+          <div className="space-y-1.5">
+            {data.issues.map((issue, i) => (
+              <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-500/5 border border-amber-500/15">
+                <AlertCircle size={10} className="text-amber-400 shrink-0 mt-0.5" />
+                <span className="text-[10px] text-amber-300">{issue}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.corrections && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Correcoes aplicadas</p>
+          <div className="px-3 py-2.5 rounded-lg bg-zinc-900/60 border border-white/[0.04]">
+            <p className="text-[10px] text-zinc-400 leading-relaxed whitespace-pre-wrap">{data.corrections}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
+  return (
+    <div className="flex items-center gap-2.5 pb-2 border-b border-white/[0.04]">
+      <div className="w-7 h-7 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-400">
+        {icon}
+      </div>
+      <div>
+        <p className="text-xs font-bold text-white">{title}</p>
+        <p className="text-[9px] text-zinc-600">{subtitle}</p>
+      </div>
     </div>
   );
 }
@@ -428,10 +668,10 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
               {isExpanded ? <ChevronDown size={12} className="text-zinc-600" /> : <ChevronRight size={12} className="text-zinc-600" />}
             </button>
             {isExpanded && (
-              <div className="border-t border-white/[0.04] max-h-64 overflow-y-auto">
+              <div className="border-t border-white/[0.04] max-h-80 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <thead>
-                    <tr className="text-zinc-600 font-semibold uppercase tracking-wider border-b border-white/[0.04]">
+                    <tr className="text-zinc-600 font-semibold uppercase tracking-wider border-b border-white/[0.04] sticky top-0 bg-zinc-950/95 backdrop-blur-sm">
                       <th className="text-left px-3 py-2 w-36">Persona</th>
                       <th className="text-left px-3 py-2 w-12">UF</th>
                       <th className="text-left px-3 py-2 w-10">Idade</th>
@@ -452,11 +692,11 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
                             p.sentiment === 'negative' ? 'bg-rose-500/10 text-rose-400' :
                             'bg-amber-500/10 text-amber-400',
                           )}>
-                            {p.sentiment === 'positive' ? '+' : p.sentiment === 'negative' ? '-' : '~'}
+                            {p.sentiment === 'positive' ? 'A favor' : p.sentiment === 'negative' ? 'Contra' : 'Neutro'}
                           </span>
                         </td>
                         <td className="px-3 py-1.5 text-zinc-400 max-w-xs">
-                          <span className="line-clamp-2">{p.comment}</span>
+                          <span className="line-clamp-3">{p.comment}</span>
                         </td>
                       </tr>
                     ))}
@@ -503,13 +743,80 @@ function ProgressStats({ progress, startTime, endTime }: {
 }
 
 /* ================================================================
+   Step Detail View — shown in the right panel when a node is selected
+   ================================================================ */
+
+function StepDetailView({ nodeKey, stepDetails, classifierDecision, batches }: {
+  nodeKey: string;
+  stepDetails: StepDetails;
+  classifierDecision: ClassifierDecision | null;
+  batches: BatchDetail[];
+}) {
+  if (nodeKey === 'classifier' && classifierDecision) {
+    return (
+      <div className="p-4">
+        <ClassifierCard decision={classifierDecision} />
+      </div>
+    );
+  }
+
+  if (nodeKey === 'queryAnalyzer' && stepDetails.queryAnalyzer) {
+    return (
+      <div className="p-4">
+        <QueryAnalyzerPanel data={stepDetails.queryAnalyzer} />
+      </div>
+    );
+  }
+
+  if (nodeKey === 'webResearch' && stepDetails.webResearch) {
+    return (
+      <div className="p-4">
+        <WebResearchPanel data={stepDetails.webResearch} />
+      </div>
+    );
+  }
+
+  if (nodeKey === 'contextBuilder' && stepDetails.context) {
+    return (
+      <div className="p-4">
+        <ContextPanel data={stepDetails.context} />
+      </div>
+    );
+  }
+
+  if (nodeKey === 'contextValidator' && stepDetails.validator) {
+    return (
+      <div className="p-4">
+        <ValidatorPanel data={stepDetails.validator} />
+      </div>
+    );
+  }
+
+  if (nodeKey === 'personaLoop' && batches.length > 0) {
+    return <BatchInspector batches={batches} />;
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center p-8">
+      <div className="w-12 h-12 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-3">
+        {NODE_ICONS[nodeKey] || <Eye size={20} className="text-zinc-700" />}
+      </div>
+      <p className="text-[11px] text-zinc-500 font-medium">{NODE_LABELS[nodeKey]}</p>
+      <p className="text-[9px] text-zinc-700 mt-1.5 max-w-xs leading-relaxed">
+        Os detalhes deste step aparecerao quando o pipeline executar.
+      </p>
+    </div>
+  );
+}
+
+/* ================================================================
    Main Component — PASSIVE LISTENER
    ================================================================ */
 
 export function ArenaMonitor() {
   const [state, setState] = useState<PipelineState>({ ...initialState });
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [bottomTab, setBottomTab] = useState<'logs' | 'batches'>('logs');
+  const [rightTab, setRightTab] = useState<'detail' | 'logs' | 'batches'>('detail');
   const logIdRef = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tick, setTick] = useState(0);
@@ -544,19 +851,18 @@ export function ArenaMonitor() {
 
   /* ── Listen to BroadcastChannel from main Arena page ─────── */
   useEffect(() => {
-    console.log('[Monitor] 🎧 Criando BroadcastChannel listener...');
+    console.log('[Monitor] Criando BroadcastChannel listener...');
     const channel = new BroadcastChannel(MONITOR_CHANNEL);
 
     channel.onmessage = (event) => {
       const payload = event.data;
-      console.log('[Monitor] 📩 Evento recebido:', payload?.type, payload);
+      console.log('[Monitor] Evento recebido:', payload?.type, payload);
       if (!payload || !payload.type) return;
 
       switch (payload.type) {
         /* ── Events from ArenaMode.tsx ─────────────────────── */
 
         case 'pipeline_start': {
-          // Reset everything for new pipeline
           logIdRef.current = 0;
           setState({
             ...initialState,
@@ -597,14 +903,13 @@ export function ArenaMonitor() {
         }
 
         case 'local_start': {
-          addLog('system', 'info', '🗃️ CAMINHO: BANCO DE DADOS LOCAL');
+          addLog('system', 'info', 'CAMINHO: BANCO DE DADOS LOCAL');
           addLog('system', 'info', 'Processando via colunas existentes — sem IA generativa');
           ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'].forEach(n => {
             updateNode(n, 'skipped');
           });
           updateNode('personaLoader', 'running');
           addLog('personaLoader', 'info', 'Carregando personas...');
-          // Local processing completes quickly
           setTimeout(() => {
             updateNode('personaLoader', 'complete');
             updateNode('personaLoop', 'running');
@@ -612,7 +917,7 @@ export function ArenaMonitor() {
             setTimeout(() => {
               updateNode('personaLoop', 'complete');
               updateNode('aggregator', 'complete');
-              addLog('system', 'info', '✅ Pipeline LOCAL concluido');
+              addLog('system', 'info', 'Pipeline LOCAL concluido');
               setState(prev => ({ ...prev, endTime: Date.now() }));
             }, 500);
           }, 300);
@@ -628,7 +933,6 @@ export function ArenaMonitor() {
         case 'phase': {
           const phase = payload.data?.phase;
           const msg = payload.data?.message || `Fase: ${phase}`;
-          addLog('system', 'info', '🐍 CAMINHO: PYTHON IA');
 
           const map: Record<string, { node: string; completeNodes?: string[] }> = {
             analyzing_query: { node: 'queryAnalyzer' },
@@ -660,8 +964,19 @@ export function ArenaMonitor() {
           const d = payload.data;
           addLog(d.step || 'system', d.level || 'info', d.message || '', d.detail);
 
+          // Store structured step details for rich panels
           if (d.step === 'query_analyzer' && d.detail?.needs_research !== undefined) {
             updateNode('queryAnalyzer', 'complete');
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                queryAnalyzer: {
+                  needs_research: d.detail.needs_research as boolean,
+                  reason: (d.detail.reason as string) || d.message || '',
+                },
+              },
+            }));
             if (!d.detail.needs_research) {
               updateNode('webResearch', 'skipped');
               addLog('webResearch', 'debug', 'Pulado — Claude decidiu que nao precisa pesquisa');
@@ -669,8 +984,48 @@ export function ArenaMonitor() {
               updateNode('contextValidator', 'skipped');
             }
           }
-          if (d.step === 'context_builder') updateNode('contextBuilder', 'complete');
-          if (d.step === 'context_validator') updateNode('contextValidator', 'complete');
+          if (d.step === 'web_research' && d.detail) {
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                webResearch: {
+                  queries: (d.detail.queries as string[]) || [],
+                  snippets: (d.detail.snippets as string[]) || [],
+                  sources: (d.detail.sources as string[]) || [],
+                },
+              },
+            }));
+          }
+          if (d.step === 'context_builder' && d.detail) {
+            updateNode('contextBuilder', 'complete');
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                context: {
+                  tema: (d.detail.tema as string) || '',
+                  contexto: (d.detail.contexto as string) || '',
+                  figuras: (d.detail.figuras as Array<Record<string, unknown>>) || [],
+                  periodo: (d.detail.periodo as string) || '',
+                },
+              },
+            }));
+          }
+          if (d.step === 'context_validator' && d.detail) {
+            updateNode('contextValidator', 'complete');
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                validator: {
+                  verdict: (d.detail.verdict as string) || '',
+                  issues: (d.detail.issues as string[]) || [],
+                  corrections: (d.detail.corrections as string) || '',
+                },
+              },
+            }));
+          }
           break;
         }
 
@@ -727,7 +1082,7 @@ export function ArenaMonitor() {
 
         case 'done':
           addLog('system', 'info',
-            `✅ Pipeline finalizado em ${(payload.data.processing_time_ms / 1000).toFixed(1)}s — ${payload.data.total_personas?.toLocaleString('pt-BR')} personas`,
+            `Pipeline finalizado em ${(payload.data.processing_time_ms / 1000).toFixed(1)}s — ${payload.data.total_personas?.toLocaleString('pt-BR')} personas`,
             payload.data,
           );
           setState(prev => {
@@ -741,7 +1096,6 @@ export function ArenaMonitor() {
       }
     };
 
-    // Mark as listening
     setState(prev => ({ ...prev, listening: true }));
 
     return () => channel.close();
@@ -761,7 +1115,29 @@ export function ArenaMonitor() {
     return matching[matching.length - 1]?.message;
   };
 
+  const nodeHasDetail = (key: string): boolean => {
+    if (key === 'classifier') return !!state.classifierDecision;
+    if (key === 'queryAnalyzer') return !!state.stepDetails.queryAnalyzer;
+    if (key === 'webResearch') return !!state.stepDetails.webResearch;
+    if (key === 'contextBuilder') return !!state.stepDetails.context;
+    if (key === 'contextValidator') return !!state.stepDetails.validator;
+    if (key === 'personaLoop') return state.batches.length > 0;
+    return false;
+  };
+
   const nodeOrder = ['classifier', 'queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator', 'personaLoader', 'personaLoop', 'aggregator'];
+
+  // Auto-switch to detail tab when clicking a node with data
+  const handleNodeClick = (key: string) => {
+    if (selectedNode === key) {
+      setSelectedNode(null);
+    } else {
+      setSelectedNode(key);
+      if (nodeHasDetail(key)) {
+        setRightTab('detail');
+      }
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-black overflow-hidden">
@@ -794,7 +1170,6 @@ export function ArenaMonitor() {
           </div>
 
           <div className="flex items-center gap-3 text-[10px]">
-            {/* Listening indicator */}
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-emerald-400 font-semibold">Escutando</span>
@@ -831,7 +1206,8 @@ export function ArenaMonitor() {
                 logCount={logCountFor(key)}
                 lastLogMessage={lastLogFor(key)}
                 isSelected={selectedNode === key}
-                onClick={() => setSelectedNode(selectedNode === key ? null : key)}
+                onClick={() => handleNodeClick(key)}
+                hasDetail={nodeHasDetail(key)}
                 extra={key === 'personaLoop' && state.progress.total > 0 ? (
                   <div className="mt-2.5">
                     <div className="h-1.5 rounded-full bg-zinc-900/80 overflow-hidden">
@@ -869,24 +1245,47 @@ export function ArenaMonitor() {
           )}
 
           <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b border-white/[0.04]">
-            {(['logs', 'batches'] as const).map(tab => (
+            {([
+              { key: 'detail' as const, label: () => selectedNode ? `Detalhes — ${NODE_LABELS[selectedNode] || selectedNode}` : 'Detalhes' },
+              { key: 'logs' as const, label: () => `Logs (${state.logs.length})` },
+              { key: 'batches' as const, label: () => `Lotes (${state.batches.length})` },
+            ]).map(tab => (
               <button
-                key={tab}
-                onClick={() => setBottomTab(tab)}
+                key={tab.key}
+                onClick={() => setRightTab(tab.key)}
                 className={cn(
                   'px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
-                  bottomTab === tab
+                  rightTab === tab.key
                     ? 'bg-violet-500/10 text-violet-300 border border-violet-500/20'
                     : 'text-zinc-600 hover:text-zinc-400 border border-transparent',
                 )}
               >
-                {tab === 'logs' ? `Logs (${state.logs.length})` : `Lotes (${state.batches.length})`}
+                {tab.label()}
               </button>
             ))}
           </div>
 
-          <div className="flex-1 min-h-0">
-            {bottomTab === 'logs' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+            {rightTab === 'detail' ? (
+              selectedNode ? (
+                <StepDetailView
+                  nodeKey={selectedNode}
+                  stepDetails={state.stepDetails}
+                  classifierDecision={state.classifierDecision}
+                  batches={state.batches}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                  <div className="w-14 h-14 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-4">
+                    <Eye size={24} className="text-zinc-700" />
+                  </div>
+                  <p className="text-sm font-semibold text-zinc-500">Selecione um step no fluxo</p>
+                  <p className="text-[11px] text-zinc-700 mt-2 max-w-xs leading-relaxed">
+                    Clique em qualquer etapa do pipeline para ver os detalhes do que foi gerado naquele step.
+                  </p>
+                </div>
+              )
+            ) : rightTab === 'logs' ? (
               <LogPanel logs={state.logs} selectedNode={selectedNode} />
             ) : (
               <BatchInspector batches={state.batches} />
