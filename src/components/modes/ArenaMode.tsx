@@ -233,7 +233,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         const processBatch = (batch: any[], processed: number, total: number) => {
           for (const p of batch) {
-            const sentiment = classifyQuickPersona(p, quickMatch);
+            const sentiment = classifyQuickPersona(p, quickMatch, q);
             if (sentiment === 'positive') pos++;
             else if (sentiment === 'negative') neg++;
             else neu++;
@@ -292,7 +292,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         }
 
         // Final complete state
-        const qaResult = runQuickAnswer(quickMatch, allData);
+        const qaResult = runQuickAnswer(quickMatch, allData, q);
         const qaSegments = segAcc.toSegments();
 
         emitLive(blockId, {

@@ -323,7 +323,7 @@ function detectMoralConsensus(normQuestion: string): ConsensusResult | null {
  * Low conviction → higher chance of being neutral even on yes/no topics.
  * This is what generates the ~5-15% neutrals in local route processing.
  */
-function computeConviction(
+export function computeConviction(
   persona: Record<string, any>,
   normQuestion: string,
 ): number {

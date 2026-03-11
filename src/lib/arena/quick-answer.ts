@@ -8,6 +8,7 @@
 
 import type { Sentiment, RegionResult, GenerationResult } from './types';
 import { computeAllSegments, type AllSegments } from './segments';
+import { computeConviction } from './persona-sentiment';
 
 function norm(str: string): string {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -150,15 +151,32 @@ export interface QuickAnswerResult {
   processingTimeMs: number;
 }
 
-/** Classify a single persona for a quick answer match */
+/** Classify a single persona for a quick answer match.
+ *  When `question` is provided, uses conviction scoring to generate
+ *  realistic neutrals (~5-15%) based on persona profile analysis. */
 export function classifyQuickPersona(
   p: Record<string, any>,
   match: QuickAnswerMatch,
+  question?: string,
 ): Sentiment {
   const raw = p[match.column];
+
+  // If data is missing, always neutral
+  if (!isYes(raw) && !isNo(raw)) return 'neutral';
+
+  // Data says yes or no — but is this persona actually convicted?
+  // Moderate/center personas may be neutral even with a recorded yes/no
+  if (question) {
+    const normQ = norm(question);
+    const conviction = computeConviction(p, normQ);
+    const neutralChance = 0.18 * (1 - conviction);
+    if (neutralChance > 0 && Math.random() < neutralChance) {
+      return 'neutral';
+    }
+  }
+
   if (isYes(raw)) return match.yesIsPositive ? 'positive' : 'negative';
-  if (isNo(raw)) return match.yesIsPositive ? 'negative' : 'positive';
-  return 'neutral';
+  return match.yesIsPositive ? 'negative' : 'positive';
 }
 
 /**
@@ -168,6 +186,7 @@ export function classifyQuickPersona(
 export function runQuickAnswer(
   match: QuickAnswerMatch,
   personas: Record<string, any>[],
+  question?: string,
 ): QuickAnswerResult {
   const start = performance.now();
 
@@ -180,7 +199,7 @@ export function runQuickAnswer(
   const genMap = new Map<string, { count: number; positive: number; negative: number; neutral: number; totalAge: number }>();
 
   for (const p of personas) {
-    const sentiment = classifyQuickPersona(p, match);
+    const sentiment = classifyQuickPersona(p, match, question);
 
     if (sentiment === 'positive') positive++;
     else if (sentiment === 'negative') negative++;
@@ -210,7 +229,7 @@ export function runQuickAnswer(
   }
 
   // Compute full demographic segments using the same sentiment logic
-  const segments = computeAllSegments(personas, (p) => classifyQuickPersona(p, match));
+  const segments = computeAllSegments(personas, (p) => classifyQuickPersona(p, match, question));
 
   return {
     column: match.column,
