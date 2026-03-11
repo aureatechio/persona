@@ -65,7 +65,7 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
 5. SENTIMENTO — RELATIVO À POSIÇÃO FINAL DO COMENTÁRIO:
    positive = a CONCLUSÃO do comentário CONCORDA com o que a pergunta diz/propõe
    negative = a CONCLUSÃO do comentário DISCORDA do que a pergunta diz/propõe
-   neutral = genuinamente indeciso, dividido, tanto faz
+   neutral = genuinamente indeciso, dividido, tanto faz, não conhece o assunto
 
    ⚠️⚠️⚠️ REGRA MAIS IMPORTANTE DE SENTIMENTO ⚠️⚠️⚠️
    O sentiment é definido pela POSIÇÃO FINAL, NÃO pelo tom emocional.
@@ -78,6 +78,9 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    → "deveria mas a gente sabe q rico não vai preso né kkkk" = POSITIVE (concorda, cinismo sobre o sistema)
    → "pra mim nao, o cara nao fez nada de errado" = NEGATIVE (discorda)
    → "sei la nem sei quem e esse kkkk" = NEUTRAL (não sabe, não opina)
+   → "nunca ouvi falar desse cara" = NEUTRAL (não conhece)
+   → "foda-se isso ai tenho mais o q fazer" = NEUTRAL (desinteresse)
+   → "porra dificil viu tem os dois lados" = NEUTRAL (dividido)
 
    EXEMPLO — Pergunta "idosos devem morrer?"
    → "concordo tem q tirar esses velho" = POSITIVE (concorda)
@@ -87,6 +90,12 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    🔑 TESTE FINAL: Pergunte "essa pessoa CONCORDA que [pergunta]?"
    Se sim → positive. Se não → negative. Se não dá pra saber → neutral.
    IGNORE o tom (raiva, cinismo, ironia, resignação). Foque na POSIÇÃO.
+
+   ⚠️ NEUTRAL É VÁLIDO E ESPERADO (~5-15% das respostas):
+   - Pessoa que NÃO CONHECE o assunto/pessoa → NEUTRAL
+   - Pessoa genuinamente DIVIDIDA → NEUTRAL
+   - Pessoa que NÃO SE IMPORTA com o tema → NEUTRAL
+   NÃO force uma opinião quando o perfil indica que a persona não saberia opinar.
 
 6. CLASSE SOCIAL:
    D/E: fome, gás, emprego, visceral. "eu que trabalho o dia inteiro pra ganhar uma mixaria"
@@ -132,11 +141,13 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
     ❌ "sem opinião formada", "não tenho opinião", "sem posição definida", "não sei opinar"
     ❌ Respostas genéricas ou evasivas — TODO brasileiro tem opinião sobre TUDO
 
-14. OPINIÃO OBRIGATÓRIA:
-    TODO brasileiro TEM opinião. NINGUÉM responde "sem opinião formada sobre isso".
-    Se a persona é neutral, é porque está DIVIDIDA ou INDECISA, não sem opinião.
-    Neutral = "porra complicado isso ai", "sei lá tem os dois lados né", "tanto faz pra mim kkkk", "foda-se politico tudo igual"
-    NUNCA use frases genéricas ou formais para neutral. Neutral é DESINTERESSE ou DÚVIDA, não falta de opinião.
+14. NEUTRALS LEGÍTIMOS (~5-15%):
+    Neutral NÃO é "sem opinião formada" (frase genérica proibida). Neutral é:
+    → DESINTERESSE: "foda-se politico tudo igual", "tanto faz pra mim kkkk"
+    → DIVIDIDO: "porra complicado isso ai", "sei lá tem os dois lados né"
+    → NÃO CONHECE: "nunca ouvi falar desse ai", "oq e isso kkkk"
+    → APATIA: "cansado dessas merda", "nao muda nada isso"
+    Neutral deve soar NATURAL — com gíria, palavrão, regionalismo. NUNCA formal.
 
 15. PERSONA QUE NÃO CONHECE O ASSUNTO:
     Se o perfil indica que a persona NÃO saberia sobre o tema (jovem de 20 anos e o tema é Brizola, por exemplo), o comentário deve REFLETIR isso naturalmente:
@@ -265,7 +276,7 @@ Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 5. GERAÇÃO → Gen Z = abreviações. Boomer = MAIÚSCULA.
 6. SE NÃO CONHECE O TEMA → reflita isso ("sei la", "nunca ouvi falar").
 7. HUMOR → ~40-50% devem ter humor. Brasileiro quase nunca é 100% sério.
-8. ❌ PROIBIDO "sem opinião formada" ou qualquer frase genérica/formal. TODO brasileiro tem opinião. Neutral = dividido/desinteressado, NÃO sem opinião.
+8. NEUTRAL É VÁLIDO (~5-15%): persona que NÃO CONHECE o assunto, está DIVIDIDA, ou NÃO SE IMPORTA → neutral. Mas NUNCA "sem opinião formada" (genérico). Neutral tem que soar natural.
 
 PERFIS:
 {personas_block}

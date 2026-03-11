@@ -39,7 +39,6 @@ export function ArenaResultBlock({ data }: ArenaResultBlockProps) {
     return (
       <div className="bg-white/[0.03] border border-red-500/20 rounded-2xl p-6 text-center">
         <p className="text-sm text-red-400">{data.error || 'Erro ao processar analise'}</p>
-        <p className="text-xs text-zinc-600 mt-2">&ldquo;{question}&rdquo;</p>
       </div>
     );
   }
@@ -67,7 +66,6 @@ export function ArenaResultBlock({ data }: ArenaResultBlockProps) {
       >
         <div className="text-left">
           <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-1">Arena • Analise de Sentimento</p>
-          <p className="text-sm font-semibold text-white leading-relaxed">&ldquo;{question}&rdquo;</p>
           <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
             <span className="flex items-center gap-1"><Users size={10} /> {totalPersonas.toLocaleString('pt-BR')} personas</span>
             <span className="flex items-center gap-1"><Zap size={10} /> {simulation.processingTime.toFixed(0)}ms</span>
@@ -170,11 +168,20 @@ export function ArenaResultBlock({ data }: ArenaResultBlockProps) {
                 })}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {visibleComments.map((comment, idx) => (
-                  <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
-                ))}
-              </div>
+              {filteredComments.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <div className="p-3 rounded-2xl bg-zinc-900/50 mb-3">
+                    <Eye size={24} className="text-zinc-700" />
+                  </div>
+                  <p className="text-zinc-600 text-xs">Nenhuma reacao {commentFilter === 'positive' ? 'a favor' : commentFilter === 'negative' ? 'contra' : 'neutra'} nesta analise</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {visibleComments.map((comment, idx) => (
+                    <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
+                  ))}
+                </div>
+              )}
 
               {filteredComments.length > commentsToShow && (
                 <div className="text-center mt-5">
