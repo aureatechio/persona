@@ -586,10 +586,17 @@ async def electoral_analyze(request: ElectoralRequest):
 import subprocess
 import httpx
 
-# Semaphore: limit concurrent FFmpeg/Whisper to avoid OOM on 1GB instance
-_transcribe_semaphore = asyncio.Semaphore(2)
+# Semaphore: 1 concurrent transcription on 1GB instance (download+FFmpeg+whisper uses ~300MB peak)
+_transcribe_semaphore = asyncio.Semaphore(1)
 
-DOWNLOAD_MAX_SIZE = 500 * 1024 * 1024  # 500MB hard limit
+# Reusable HTTP client for Supabase downloads (connection pooling)
+_download_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(connect=10, read=120, write=10, pool=10),
+    limits=httpx.Limits(max_connections=5, max_keepalive_connections=2),
+    follow_redirects=True,
+)
+
+DOWNLOAD_MAX_SIZE = 200 * 1024 * 1024  # 200MB (safe for 1GB instance)
 
 
 class TranscribeRequest(BaseModel):
@@ -612,25 +619,25 @@ async def transcribe_url(req: TranscribeRequest):
         try:
             ext = os.path.splitext(req.filename)[1] or ".webm"
 
-            # 1. Download video from Supabase signed URL (streaming)
+            # 1. Download video from Supabase signed URL (streaming to disk)
             print(f"[Transcribe] Downloading {req.filename}...")
             tmp_input = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
             total_size = 0
 
-            async with httpx.AsyncClient(timeout=120) as client:
-                async with client.stream("GET", req.url) as response:
-                    if response.status_code != 200:
-                        print(f"[Transcribe] Download failed: HTTP {response.status_code}")
-                        return JSONResponse({"error": "Falha ao baixar video do storage"}, status_code=502)
-                    async for chunk in response.aiter_bytes(1024 * 1024):
-                        total_size += len(chunk)
-                        if total_size > DOWNLOAD_MAX_SIZE:
-                            tmp_input.close()
-                            return JSONResponse(
-                                {"error": f"Arquivo muito grande ({total_size // (1024*1024)}MB). Maximo 500MB."},
-                                status_code=413,
-                            )
-                        tmp_input.write(chunk)
+            async with _download_client.stream("GET", req.url) as response:
+                if response.status_code != 200:
+                    tmp_input.close()
+                    print(f"[Transcribe] Download failed: HTTP {response.status_code}")
+                    return JSONResponse({"error": "Falha ao baixar video do storage"}, status_code=502)
+                async for chunk in response.aiter_bytes(512 * 1024):  # 512KB chunks (less RAM)
+                    total_size += len(chunk)
+                    if total_size > DOWNLOAD_MAX_SIZE:
+                        tmp_input.close()
+                        return JSONResponse(
+                            {"error": f"Arquivo muito grande ({total_size // (1024*1024)}MB). Maximo 200MB."},
+                            status_code=413,
+                        )
+                    tmp_input.write(chunk)
             tmp_input.close()
 
             print(f"[Transcribe] Downloaded {total_size / (1024*1024):.1f}MB")
@@ -639,6 +646,7 @@ async def transcribe_url(req: TranscribeRequest):
             tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
             tmp_audio.close()
 
+            # Delete input video ASAP after FFmpeg reads it (pipe approach)
             print("[Transcribe] Extracting audio via FFmpeg...")
             ffmpeg_result = await asyncio.to_thread(
                 subprocess.run,
@@ -652,9 +660,15 @@ async def transcribe_url(req: TranscribeRequest):
                     "-y",                     # overwrite output
                     tmp_audio.name,
                 ],
-                capture_output=True,
+                stdout=subprocess.DEVNULL,    # don't capture stdout (saves RAM)
+                stderr=subprocess.PIPE,       # only capture stderr for errors
                 timeout=120,
             )
+
+            # Free disk space immediately — input video no longer needed
+            if tmp_input and os.path.exists(tmp_input.name):
+                os.unlink(tmp_input.name)
+                tmp_input = None
 
             if ffmpeg_result.returncode != 0:
                 stderr = ffmpeg_result.stderr.decode(errors="replace")[:500]
