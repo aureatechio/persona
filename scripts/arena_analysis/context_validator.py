@@ -103,7 +103,7 @@ class ContextValidator:
 
         try:
             response = await self._client.messages.create(
-                model=settings.model,
+                model=settings.smart_model,
                 max_tokens=800,
                 system=VALIDATOR_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],

@@ -1,16 +1,16 @@
 /**
  * AI-powered route classifier for Arena questions.
  *
- * Uses GPT-4o-mini to determine whether a question can be answered
+ * Uses Claude Sonnet 4 to determine whether a question can be answered
  * using existing persona data columns (local processing) or needs
  * the full Python AI backend.
  *
  * Returns: { route: "local" | "python", fields: string[], reason: string }
  */
 
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const AVAILABLE_COLUMNS = `
 TEMAS POLÊMICOS (sim/não):
@@ -77,16 +77,7 @@ gender_identity, age, region_br, generation, social_class, education_level,
 macro_religion, raca_cor, political_leaning
 `;
 
-export async function POST(request: Request) {
-  try {
-    const { question } = await request.json();
-    if (!question) return Response.json({ route: 'python', fields: [], reason: 'empty' });
-
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages: [{
-        role: 'system',
-        content: `Voce e um classificador de perguntas de pesquisa de opiniao publica brasileira.
+const SYSTEM_PROMPT = `Voce e um classificador de perguntas de pesquisa de opiniao publica brasileira.
 Sua tarefa: decidir se a pergunta pode ser respondida com colunas de dados existentes (LOCAL) ou precisa de IA generativa (PYTHON).
 
 COLUNAS DISPONIVEIS:
@@ -114,19 +105,28 @@ REGRAS DE DECISAO (em ordem de prioridade):
 ATENCAO: Nao confunda COINCIDENCIA DE PALAVRAS com RELACAO SEMANTICA.
 - "Fulano era pra estar preso" NAO tem relacao com q_vi_preso_ou_familiar_preso (que e sobre vivencia pessoal)
 - "A policia e violenta" TEM relacao com q_policia_violenta (mesmo tema)
-- A coluna deve medir EXATAMENTE o que a pergunta pede, nao apenas conter uma palavra parecida`
-      }, {
-        role: 'user',
-        content: `PERGUNTA: "${question}"
+- A coluna deve medir EXATAMENTE o que a pergunta pede, nao apenas conter uma palavra parecida
 
 Responda APENAS com JSON (sem markdown):
-{"route":"local"|"python","fields":["coluna1","coluna2"],"reason":"explicacao curta"}`
+{"route":"local"|"python","fields":["coluna1","coluna2"],"reason":"explicacao curta"}`;
+
+export async function POST(request: Request) {
+  try {
+    const { question } = await request.json();
+    if (!question) return Response.json({ route: 'python', fields: [], reason: 'empty' });
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 200,
+      system: SYSTEM_PROMPT,
+      messages: [{
+        role: 'user',
+        content: `PERGUNTA: "${question}"`,
       }],
       temperature: 0,
-      max_tokens: 200,
     });
 
-    const raw = response.choices[0].message.content?.trim() || '';
+    const raw = response.content.find(b => b.type === 'text')?.text?.trim() || '';
 
     // Parse JSON
     let parsed;
@@ -138,7 +138,6 @@ Responda APENAS com JSON (sem markdown):
         : raw;
       parsed = JSON.parse(clean);
     } catch {
-      // If parsing fails, default to python
       return Response.json({ route: 'python', fields: [], reason: 'parse_error' });
     }
 
@@ -149,7 +148,6 @@ Responda APENAS com JSON (sem markdown):
     });
   } catch (err) {
     console.error('[classify-route] Error:', err);
-    // On error, default to local (cheaper fallback)
     return Response.json({ route: 'local', fields: [], reason: 'error_fallback' });
   }
 }

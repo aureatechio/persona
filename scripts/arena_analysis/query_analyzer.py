@@ -55,7 +55,7 @@ class QueryAnalyzer:
     async def analyze(self, question: str) -> AnalyzerResult:
         try:
             response = await self._claude.messages.create(
-                model=settings.model,
+                model=settings.smart_model,
                 max_tokens=200,
                 system=ANALYZER_PROMPT,
                 messages=[{"role": "user", "content": question}],

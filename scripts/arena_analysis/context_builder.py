@@ -96,7 +96,7 @@ class ContextBuilder:
 
         try:
             response = await self._client.messages.create(
-                model=settings.model,
+                model=settings.smart_model,
                 max_tokens=1500,
                 system=CONTEXT_BUILDER_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],

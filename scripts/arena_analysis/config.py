@@ -55,6 +55,8 @@ class Settings:
         default_factory=lambda: _collect_keys("ANTHROPIC_API_KEY")
     )
     model: str = "claude-haiku-4-5-20251001"
+    # Modelo potente para steps criticos (analise, contexto, validacao)
+    smart_model: str = "claude-sonnet-4-20250514"
 
     # LLM — OpenAI (todas as chaves)
     openai_api_key: str = field(
