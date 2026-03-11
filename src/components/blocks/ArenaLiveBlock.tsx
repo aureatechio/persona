@@ -80,75 +80,53 @@ function CollectingPhase({ status }: { status?: string }) {
     return () => clearInterval(interval);
   }, []);
 
+  const colorMap = {
+    violet: { active: 'bg-violet-500/10 border-violet-500/25 shadow-lg shadow-violet-500/10', icon: 'text-violet-400', text: 'text-violet-300', glow: 'bg-violet-400' },
+    sky: { active: 'bg-sky-500/10 border-sky-500/25 shadow-lg shadow-sky-500/10', icon: 'text-sky-400', text: 'text-sky-300', glow: 'bg-sky-400' },
+    amber: { active: 'bg-amber-500/10 border-amber-500/25 shadow-lg shadow-amber-500/10', icon: 'text-amber-400', text: 'text-amber-300', glow: 'bg-amber-400' },
+    emerald: { active: 'bg-emerald-500/10 border-emerald-500/25 shadow-lg shadow-emerald-500/10', icon: 'text-emerald-400', text: 'text-emerald-300', glow: 'bg-emerald-400' },
+  };
+
   return (
-    <div className="relative px-6 py-14 flex flex-col items-center justify-center gap-8 overflow-hidden">
+    <div className="relative px-4 py-6 md:px-6 md:py-8 flex flex-col items-center justify-center gap-4 md:gap-5 overflow-hidden">
       {/* Background glow orbs */}
-      <div className="absolute -top-20 -right-20 w-60 h-60 bg-violet-500/[0.07] rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-emerald-500/[0.05] rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
+      <div className="absolute -top-16 -right-16 w-40 h-40 bg-violet-500/[0.07] rounded-full blur-3xl pointer-events-none animate-pulse" />
+      <div className="absolute -bottom-16 -left-16 w-40 h-40 bg-emerald-500/[0.05] rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
 
       {/* Central icon with rotating ring */}
       <div className="relative">
-        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-emerald-500/10 border border-violet-500/20 flex items-center justify-center backdrop-blur-xl shadow-lg shadow-violet-500/10">
-          <Activity size={32} className="text-violet-400" style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+        <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-emerald-500/10 border border-violet-500/20 flex items-center justify-center backdrop-blur-xl shadow-lg shadow-violet-500/10">
+          <Activity size={24} className="text-violet-400 md:w-7 md:h-7" style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
         </div>
-        {/* Spinning orbit ring */}
-        <div className="absolute inset-[-8px] rounded-3xl border border-violet-500/20" style={{ animation: 'spin 8s linear infinite' }} />
-        <div className="absolute inset-[-14px] rounded-3xl border border-dashed border-violet-500/10" style={{ animation: 'spin 12s linear infinite reverse' }} />
-        {/* Live dot */}
-        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-violet-500 rounded-full ring-2 ring-black" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
+        <div className="absolute inset-[-6px] rounded-2xl border border-violet-500/20" style={{ animation: 'spin 8s linear infinite' }} />
+        <div className="absolute inset-[-11px] rounded-3xl border border-dashed border-violet-500/10" style={{ animation: 'spin 12s linear infinite reverse' }} />
+        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-violet-500 rounded-full ring-2 ring-black" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
       </div>
 
       {/* Title and subtitle */}
-      <div className="text-center space-y-2">
-        <p className="text-base font-semibold text-white tracking-tight">
+      <div className="text-center space-y-1">
+        <p className="text-sm md:text-base font-semibold text-white tracking-tight">
           Coletando dados{dots}
         </p>
-        <p className="text-xs text-zinc-500 max-w-xs">
-          Preparando analise com IA — isso pode levar alguns minutos
+        <p className="text-[11px] text-zinc-500">
+          Preparando analise com IA
         </p>
       </div>
 
-      {/* Steps */}
-      <div className="w-full max-w-sm space-y-3">
+      {/* Steps — grid 2x2 on mobile, vertical on md+ */}
+      <div className="w-full max-w-md grid grid-cols-2 md:grid-cols-1 md:max-w-sm gap-2">
         {COLLECTING_STEPS.map((step, i) => {
           const isActive = i === activeIndex;
           const isDone = i < activeIndex;
           const isPending = i > activeIndex && activeIndex >= 0;
           const StepIcon = step.icon;
-
-          const colorMap = {
-            violet: {
-              active: 'bg-violet-500/10 border-violet-500/25 shadow-lg shadow-violet-500/10',
-              icon: 'text-violet-400',
-              text: 'text-violet-300',
-              glow: 'bg-violet-400',
-            },
-            sky: {
-              active: 'bg-sky-500/10 border-sky-500/25 shadow-lg shadow-sky-500/10',
-              icon: 'text-sky-400',
-              text: 'text-sky-300',
-              glow: 'bg-sky-400',
-            },
-            amber: {
-              active: 'bg-amber-500/10 border-amber-500/25 shadow-lg shadow-amber-500/10',
-              icon: 'text-amber-400',
-              text: 'text-amber-300',
-              glow: 'bg-amber-400',
-            },
-            emerald: {
-              active: 'bg-emerald-500/10 border-emerald-500/25 shadow-lg shadow-emerald-500/10',
-              icon: 'text-emerald-400',
-              text: 'text-emerald-300',
-              glow: 'bg-emerald-400',
-            },
-          };
           const colors = colorMap[step.color];
 
           return (
             <div
               key={step.key}
               className={cn(
-                'flex items-center gap-3.5 px-4 py-3 rounded-xl border transition-all duration-700 ease-out',
+                'flex items-center gap-2 md:gap-3 px-3 py-2 md:px-4 md:py-2.5 rounded-xl border transition-all duration-700 ease-out',
                 isActive
                   ? colors.active
                   : isDone
@@ -156,13 +134,10 @@ function CollectingPhase({ status }: { status?: string }) {
                     : 'bg-white/[0.02] border-white/[0.04] opacity-50',
                 isActive && 'scale-[1.02]',
               )}
-              style={{
-                animationDelay: `${i * 100}ms`,
-                ...(isActive ? { animation: 'fadeIn 0.5s ease-out' } : {}),
-              }}
+              style={isActive ? { animation: 'fadeIn 0.5s ease-out' } : undefined}
             >
               <div className={cn(
-                'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-500',
+                'w-6 h-6 md:w-7 md:h-7 rounded-lg flex items-center justify-center shrink-0 transition-all duration-500',
                 isActive
                   ? `bg-${step.color}-500/20`
                   : isDone
@@ -170,38 +145,34 @@ function CollectingPhase({ status }: { status?: string }) {
                     : 'bg-white/[0.03]',
               )}>
                 {isDone ? (
-                  <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <svg className="w-3 h-3 md:w-3.5 md:h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" style={{ strokeDasharray: 24, strokeDashoffset: 0, animation: 'checkDraw 0.4s ease-out' }} />
                   </svg>
                 ) : (
-                  <StepIcon size={16} className={cn(
-                    'transition-colors duration-500',
+                  <StepIcon size={13} className={cn(
+                    'md:w-4 md:h-4 transition-colors duration-500',
                     isActive ? colors.icon : 'text-zinc-600',
                     isActive && 'animate-pulse',
                   )} />
                 )}
               </div>
               <span className={cn(
-                'text-sm font-medium transition-all duration-500',
+                'text-[11px] md:text-xs font-medium transition-all duration-500 truncate',
                 isActive ? colors.text : isDone ? 'text-emerald-400/80' : isPending ? 'text-zinc-600' : 'text-zinc-500',
               )}>
                 {step.label}
               </span>
               {isActive && (
-                <div className="ml-auto flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '0ms', background: 'currentColor' }}>
-                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}>
-                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}>
-                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
-                  </span>
+                <div className="ml-auto flex items-center gap-0.5 shrink-0">
+                  {[0, 150, 300].map(delay => (
+                    <span key={delay} className="w-1 h-1 md:w-1.5 md:h-1.5 rounded-full animate-bounce" style={{ animationDelay: `${delay}ms` }}>
+                      <span className={cn('block w-full h-full rounded-full', colors.glow)} />
+                    </span>
+                  ))}
                 </div>
               )}
               {isDone && (
-                <span className="ml-auto text-[10px] text-emerald-400 font-medium">Pronto</span>
+                <span className="ml-auto text-[9px] md:text-[10px] text-emerald-400 font-medium shrink-0">✓</span>
               )}
             </div>
           );
@@ -209,7 +180,7 @@ function CollectingPhase({ status }: { status?: string }) {
       </div>
 
       {/* Animated progress line */}
-      <div className="w-full max-w-sm">
+      <div className="w-full max-w-md md:max-w-sm">
         <div className="h-0.5 bg-white/[0.04] rounded-full overflow-hidden">
           <div
             className="h-full bg-gradient-to-r from-violet-500 via-sky-500 to-emerald-500 rounded-full"
@@ -221,7 +192,6 @@ function CollectingPhase({ status }: { status?: string }) {
         </div>
       </div>
 
-      {/* CSS keyframes */}
       <style>{`
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }
