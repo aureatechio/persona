@@ -29,7 +29,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'username é obrigatório' }, { status: 400 });
     }
 
-    const cleanUsername = username.replace(/^@/, '').trim();
+    // Extract username from Instagram URLs (e.g. https://www.instagram.com/user/)
+    const cleanUsername = username
+      .replace(/^(?:https?:\/\/)?(?:www\.)?instagram\.com\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/^@/, '')
+      .trim();
 
     /* ─── Check DB cache first ─── */
     const supabase = createClient(supabaseUrl, supabaseKey);

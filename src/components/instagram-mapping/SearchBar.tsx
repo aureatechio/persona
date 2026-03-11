@@ -24,7 +24,11 @@ export function SearchBar({ onSearch, loading, filterSlot, defaultUsername = '' 
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const clean = username.replace(/^@/, '').trim();
+    const clean = username
+      .replace(/^(?:https?:\/\/)?(?:www\.)?instagram\.com\//, '')
+      .replace(/\/.*$/, '')
+      .replace(/^@/, '')
+      .trim();
     if (!clean) return;
     onSearch(clean, maxCount);
   }
