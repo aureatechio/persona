@@ -15,14 +15,18 @@ Uso:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import os
+import tempfile
 import time
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
+from openai import OpenAI
 
 from arena_analysis.config import settings
 from arena_analysis.query_analyzer import QueryAnalyzer
@@ -575,6 +579,87 @@ async def electoral_analyze(request: ElectoralRequest):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ── Video Transcription via Whisper ───────────────────────────────────────────
+
+MIME_TO_EXT = {
+    "video/webm": "webm",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "audio/mpeg": "mp3",
+    "audio/wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/webm": "webm",
+}
+
+
+@app.post("/api/transcribe")
+async def transcribe(request: Request):
+    """
+    Accept base64 video/audio, transcribe via Whisper API, return transcript.
+    Whisper accepts video files natively (mp4, webm, mov, etc.).
+    """
+    openai_key = settings.openai_api_key
+    if not openai_key:
+        return JSONResponse({"error": "OPENAI_API_KEY not configured"}, status_code=500)
+
+    body = await request.json()
+    data: str = body.get("data", "")
+    name: str = body.get("name", "recording")
+    mime_type: str = body.get("mimeType", "video/mp4")
+
+    if not data:
+        return JSONResponse({"error": "No data provided"}, status_code=400)
+
+    # Strip data URI prefix if present
+    raw_b64 = data
+    if data.startswith("data:"):
+        parts = data.split(";base64,", 1)
+        if len(parts) == 2:
+            mime_type = parts[0].replace("data:", "")
+            raw_b64 = parts[1]
+
+    try:
+        file_bytes = base64.b64decode(raw_b64)
+    except Exception:
+        return JSONResponse({"error": "Invalid base64 data"}, status_code=400)
+
+    if len(file_bytes) > 25 * 1024 * 1024:
+        return JSONResponse({"error": "Arquivo muito grande. Maximo 25MB."}, status_code=413)
+
+    ext = MIME_TO_EXT.get(mime_type, "mp4")
+    base_name = os.path.splitext(name)[0]
+    file_name = f"{base_name}.{ext}"
+
+    tmp = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
+        tmp.write(file_bytes)
+        tmp.close()
+
+        client = OpenAI(api_key=openai_key)
+
+        def _transcribe():
+            with open(tmp.name, "rb") as f:
+                return client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=(file_name, f),
+                    language="pt",
+                    response_format="text",
+                )
+
+        result = await asyncio.to_thread(_transcribe)
+        transcript = result.strip() if isinstance(result, str) else str(result).strip()
+        print(f"[Transcribe] OK — {len(file_bytes)} bytes → {len(transcript)} chars")
+        return JSONResponse({"transcript": transcript})
+
+    except Exception as e:
+        print(f"[Transcribe] Error: {e}")
+        return JSONResponse({"error": "Falha na transcricao", "detail": str(e)}, status_code=500)
+    finally:
+        if tmp and os.path.exists(tmp.name):
+            os.unlink(tmp.name)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
