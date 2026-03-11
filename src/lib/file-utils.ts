@@ -164,56 +164,96 @@ export async function createVideoThumbnail(file: File): Promise<string> {
 }
 
 /**
- * Transcribe video via Python backend (FFmpeg audio extraction + Whisper).
- * Sends raw file as multipart FormData (no base64 overhead).
- * Retries once on transient 500 errors. Fails fast on 4xx (quota, bad request).
- * 60-second timeout per attempt.
+ * Transcribe video via Digital Ocean Python backend.
+ * Flow: Browser → Supabase Storage → DO downloads by URL → FFmpeg → Whisper → transcript
+ * Zero Vercel involvement — no body size limits, no function timeouts.
  */
 export async function transcribeVideoBackend(file: File): Promise<string | null> {
-  const MAX_RETRIES = 1;
-  const TIMEOUT_MS = 60_000;
+  const TIMEOUT_MS = 90_000;
+  const BACKEND = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || 'https://arena-analysis-api-2puat.ondigitalocean.app';
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      const formData = new FormData();
-      formData.append('file', file, file.name);
+  // Dynamic import to avoid SSR issues
+  const { supabase } = await import('@/lib/supabase');
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const ext = file.name.split('.').pop() || 'webm';
+  const storagePath = `temp-transcriptions/${crypto.randomUUID()}.${ext}`;
 
-      const res = await fetch('/api/transcribe-video', {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
+  try {
+    // 1. Get signed upload URL (bypasses Vercel 4.5MB limit)
+    console.log(`[transcribeVideo] Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB to Supabase...`);
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage.from('voice-models')
+      .createSignedUploadUrl(storagePath);
 
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        console.warn(`[transcribeVideo] Attempt ${attempt + 1} failed:`, res.status, errText.slice(0, 300));
-        // Don't retry on 4xx (quota, bad request) — only on 500+ transient errors
-        if (res.status < 500 || attempt >= MAX_RETRIES) return null;
-        continue;
-      }
-
-      const json = await res.json();
-      if (json.error) {
-        console.warn(`[transcribeVideo] Backend error:`, json.error);
-        return null;
-      }
-
-      console.log(`[transcribeVideo] OK — ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(json.transcript?.length || 0)} chars`);
-      return json.transcript || '';
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        console.warn(`[transcribeVideo] Timeout after ${TIMEOUT_MS / 1000}s (attempt ${attempt + 1})`);
-      } else {
-        console.warn(`[transcribeVideo] Network error (attempt ${attempt + 1}):`, err);
-      }
-      if (attempt >= MAX_RETRIES) return null;
+    if (uploadError || !uploadData) {
+      console.error('[transcribeVideo] Failed to create upload URL:', uploadError);
+      return null;
     }
+
+    // 2. Upload directly to Supabase Storage (browser → Supabase, no Vercel)
+    const uploadRes = await fetch(uploadData.signedUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'video/webm' },
+      body: file,
+    });
+
+    if (!uploadRes.ok) {
+      console.error('[transcribeVideo] Upload failed:', uploadRes.status);
+      return null;
+    }
+    console.log('[transcribeVideo] Upload OK');
+
+    // 3. Get signed download URL for DO to fetch (5 min expiry)
+    const { data: signedData, error: signedError } = await supabase
+      .storage.from('voice-models')
+      .createSignedUrl(storagePath, 300);
+
+    if (signedError || !signedData?.signedUrl) {
+      console.error('[transcribeVideo] Failed to create signed URL:', signedError);
+      return null;
+    }
+
+    // 4. Call DO directly with the Supabase URL (no Vercel proxy)
+    console.log('[transcribeVideo] Sending to DO for transcription...');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    const res = await fetch(`${BACKEND}/api/transcribe-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: signedData.signedUrl,
+        filename: file.name,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn('[transcribeVideo] DO error:', res.status, errText.slice(0, 300));
+      return null;
+    }
+
+    const json = await res.json();
+    if (json.error) {
+      console.warn('[transcribeVideo] Backend error:', json.error);
+      return null;
+    }
+
+    console.log(`[transcribeVideo] OK — ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(json.transcript?.length || 0)} chars`);
+    return json.transcript || '';
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      console.warn(`[transcribeVideo] Timeout after ${TIMEOUT_MS / 1000}s`);
+    } else {
+      console.warn('[transcribeVideo] Error:', err);
+    }
+    return null;
+  } finally {
+    // 5. Cleanup: delete temp file from Supabase (fire-and-forget)
+    supabase.storage.from('voice-models').remove([storagePath]).catch(() => {});
   }
-  return null;
 }
 
 export async function processAttachmentsForUpload(attachments: Attachment[]): Promise<ProcessedAttachment[]> {
