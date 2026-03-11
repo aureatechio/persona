@@ -2,10 +2,10 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import {
-  Play, Square, Search, Brain, Globe, ShieldCheck, Users,
+  Search, Brain, Globe, ShieldCheck, Users,
   Cpu, BarChart3, ChevronDown, ChevronRight,
-  Database, Zap, AlertCircle, CheckCircle2, Loader2,
-  MessageSquare, ArrowDown, GitBranch, Minus,
+  Database, AlertCircle, CheckCircle2, Loader2,
+  MessageSquare, ArrowDown, GitBranch, Minus, Radio,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -44,6 +44,7 @@ interface ClassifierDecision {
 }
 
 interface PipelineState {
+  question: string;
   route: 'unknown' | 'local' | 'python';
   classifierDecision: ClassifierDecision | null;
   nodes: Record<string, NodeStatus>;
@@ -52,9 +53,11 @@ interface PipelineState {
   progress: { processed: number; total: number; positive: number; negative: number; neutral: number };
   startTime: number | null;
   endTime: number | null;
+  listening: boolean;
 }
 
 const initialState: PipelineState = {
+  question: '',
   route: 'unknown',
   classifierDecision: null,
   nodes: {
@@ -72,7 +75,10 @@ const initialState: PipelineState = {
   progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0 },
   startTime: null,
   endTime: null,
+  listening: false,
 };
+
+const MONITOR_CHANNEL = 'arena-monitor';
 
 /* ================================================================
    Node Config
@@ -168,7 +174,7 @@ function FlowNode({
             <span className="text-xs font-semibold text-zinc-200">{NODE_LABELS[nodeKey]}</span>
             {statusIcon}
           </div>
-          <p className="text-[9px] text-zinc-600 mt-0.5">
+          <p className="text-[9px] text-zinc-600 mt-0.5 truncate">
             {lastLogMessage || NODE_DESCRIPTIONS[nodeKey]}
           </p>
         </div>
@@ -226,8 +232,8 @@ function ClassifierCard({ decision }: { decision: ClassifierDecision }) {
             </div>
           </div>
         )}
-        {!isPython && decision.fields.length === 0 && (
-          <p className="text-[10px] text-zinc-500">Nenhuma coluna especifica — usando inferencia geral</p>
+        {isPython && decision.fields.length === 0 && (
+          <p className="text-[10px] text-zinc-500">Nenhuma coluna no banco responde — precisa de IA generativa</p>
         )}
       </div>
     </div>
@@ -259,8 +265,8 @@ function LogPanel({ logs, selectedNode }: { logs: LogEntry[]; selectedNode: stri
 
   const filtered = selectedNode
     ? logs.filter(l => {
-        const snakeKey = selectedNode.replace(/([A-Z])/g, '_$1').toLowerCase();
-        return l.step === selectedNode || l.step === snakeKey || l.step.includes(snakeKey.replace(/^_/, ''));
+        const snakeKey = selectedNode.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
+        return l.step === selectedNode || l.step === snakeKey || l.step.includes(snakeKey);
       })
     : logs;
 
@@ -311,11 +317,14 @@ function LogPanel({ logs, selectedNode }: { logs: LogEntry[]; selectedNode: stri
       >
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="w-12 h-12 rounded-xl bg-zinc-900/50 flex items-center justify-center mb-3">
-              <MessageSquare size={20} className="text-zinc-700" />
+            <div className="w-14 h-14 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-4">
+              <Radio size={24} className="text-zinc-700" />
             </div>
-            <p className="text-[11px] text-zinc-600">Digite uma pergunta acima e clique Executar</p>
-            <p className="text-[9px] text-zinc-700 mt-1">Todo o fluxo aparecera aqui em tempo real</p>
+            <p className="text-sm font-semibold text-zinc-500">Aguardando atividade...</p>
+            <p className="text-[11px] text-zinc-700 mt-2 max-w-xs leading-relaxed">
+              Abra a tela principal em outra aba e faca uma pergunta na Arena.
+              Os logs aparecerao aqui automaticamente em tempo real.
+            </p>
           </div>
         ) : (
           filtered.map(log => <LogLine key={log.id} log={log} levelColors={levelColors} />)
@@ -381,7 +390,7 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
           <Cpu size={20} className="text-zinc-700" />
         </div>
         <p className="text-[11px] text-zinc-600">Nenhum lote processado ainda</p>
-        <p className="text-[9px] text-zinc-700 mt-1">Os lotes aparecem quando o Python processa as personas</p>
+        <p className="text-[9px] text-zinc-700 mt-1">Os lotes aparecem quando o Python processa personas</p>
       </div>
     );
   }
@@ -425,7 +434,7 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
                     <tr className="text-zinc-600 font-semibold uppercase tracking-wider border-b border-white/[0.04]">
                       <th className="text-left px-3 py-2 w-36">Persona</th>
                       <th className="text-left px-3 py-2 w-12">UF</th>
-                      <th className="text-left px-3 py-2 w-10">Age</th>
+                      <th className="text-left px-3 py-2 w-10">Idade</th>
                       <th className="text-center px-3 py-2 w-16">Sent.</th>
                       <th className="text-left px-3 py-2">Resposta da Persona</th>
                     </tr>
@@ -494,26 +503,23 @@ function ProgressStats({ progress, startTime, endTime }: {
 }
 
 /* ================================================================
-   Main Component
+   Main Component — PASSIVE LISTENER
    ================================================================ */
 
 export function ArenaMonitor() {
-  const [question, setQuestion] = useState('');
-  const [running, setRunning] = useState(false);
   const [state, setState] = useState<PipelineState>({ ...initialState });
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [bottomTab, setBottomTab] = useState<'logs' | 'batches'>('logs');
-  const abortRef = useRef<AbortController | null>(null);
   const logIdRef = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tick, setTick] = useState(0);
 
   // Timer for elapsed display
   useEffect(() => {
-    if (!running) return;
+    if (!state.startTime || state.endTime) return;
     const id = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(id);
-  }, [running]);
+  }, [state.startTime, state.endTime]);
 
   const addLog = useCallback((step: string, level: LogEntry['level'], message: string, detail?: Record<string, unknown>) => {
     setState(prev => ({
@@ -536,333 +542,213 @@ export function ArenaMonitor() {
     }));
   }, []);
 
-  /* ── Handle Submit ─────────────────────────────────────────── */
-  const handleSubmit = useCallback(async () => {
-    const q = question.trim();
-    if (!q || running) return;
+  /* ── Listen to BroadcastChannel from main Arena page ─────── */
+  useEffect(() => {
+    const channel = new BroadcastChannel(MONITOR_CHANNEL);
 
-    // Reset
-    setState({ ...initialState, startTime: Date.now() });
-    setRunning(true);
-    setSelectedNode(null);
-    logIdRef.current = 0;
+    channel.onmessage = (event) => {
+      const payload = event.data;
+      if (!payload || !payload.type) return;
 
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+      switch (payload.type) {
+        /* ── Events from ArenaMode.tsx ─────────────────────── */
 
-    addLog('system', 'info', `Pipeline iniciado para: "${q}"`);
+        case 'pipeline_start': {
+          // Reset everything for new pipeline
+          logIdRef.current = 0;
+          setState({
+            ...initialState,
+            question: payload.data.question,
+            startTime: Date.now(),
+            listening: true,
+          });
+          addLog('system', 'info', `Pipeline iniciado: "${payload.data.question}"`);
+          addLog('classifier', 'info', 'Enviando pergunta para GPT-4o-mini decidir caminho...');
+          updateNode('classifier', 'running');
+          break;
+        }
 
-    // ── Step 1: Classify Route ──────────────────────────────
-    updateNode('classifier', 'running');
-    addLog('classifier', 'info', 'Enviando pergunta para GPT-4o-mini decidir caminho...');
-    addLog('classifier', 'debug', 'GPT analisa se existem colunas no banco que respondem a pergunta ou se precisa IA generativa');
+        case 'classify_result': {
+          const d = payload.data;
+          const route = d.route || 'python';
+          updateNode('classifier', 'complete');
 
-    let route = 'python';
-    let classifierResult: ClassifierDecision | null = null;
-
-    try {
-      const res = await fetch('/api/arena/classify-route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q }),
-        signal: controller.signal,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        route = data.route || 'python';
-        classifierResult = {
-          route: data.route || 'python',
-          fields: data.fields || [],
-          reason: data.reason || 'sem razao informada',
-        };
-
-        updateNode('classifier', 'complete');
-        addLog('classifier', 'info',
-          route === 'python'
-            ? `➜ PYTHON IA — Motivo: ${classifierResult.reason}`
-            : `➜ BANCO LOCAL — Motivo: ${classifierResult.reason}`,
-          {
-            rota: classifierResult.route,
-            campos_banco: classifierResult.fields,
-            motivo: classifierResult.reason,
-          },
-        );
-
-        if (classifierResult.fields.length > 0) {
           addLog('classifier', 'info',
-            `Colunas encontradas no banco: ${classifierResult.fields.join(', ')}`,
-            { colunas: classifierResult.fields },
+            route === 'python'
+              ? `➜ PYTHON IA — Motivo: ${d.reason || '?'}`
+              : `➜ BANCO LOCAL — Motivo: ${d.reason || '?'}`,
+            { rota: d.route, campos_banco: d.fields, motivo: d.reason },
           );
-        } else if (route === 'python') {
-          addLog('classifier', 'info', 'Nenhuma coluna no banco responde essa pergunta — precisa de IA generativa');
+
+          if (d.fields?.length > 0) {
+            addLog('classifier', 'info', `Colunas encontradas: ${d.fields.join(', ')}`, { colunas: d.fields });
+          } else if (route === 'python') {
+            addLog('classifier', 'info', 'Nenhuma coluna no banco responde essa pergunta');
+          }
+
+          setState(prev => ({
+            ...prev,
+            route: route as 'local' | 'python',
+            classifierDecision: { route, fields: d.fields || [], reason: d.reason || '' },
+          }));
+          break;
         }
 
-        setState(prev => ({
-          ...prev,
-          route: route as 'local' | 'python',
-          classifierDecision: classifierResult,
-        }));
-      } else {
-        updateNode('classifier', 'error');
-        addLog('classifier', 'error', `HTTP ${res.status} — fallback para Python`);
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-      updateNode('classifier', 'error');
-      addLog('classifier', 'error', `Erro: ${err?.message} — fallback para Python`);
-    }
-
-    // ── Local Route ─────────────────────────────────────────
-    if (route === 'local') {
-      addLog('system', 'info', '🗃️ CAMINHO: BANCO DE DADOS LOCAL');
-      addLog('system', 'info', `A pergunta pode ser respondida com colunas existentes: ${classifierResult?.fields.join(', ') || 'colunas gerais'}`);
-      addLog('system', 'info', `Motivo da decisao: ${classifierResult?.reason || '?'}`);
-      addLog('system', 'info', 'Nao precisa de IA generativa — cada persona ja tem respostas pre-gravadas para esses temas');
-
-      // Nodes pulados
-      updateNode('queryAnalyzer', 'skipped');
-      addLog('queryAnalyzer', 'debug', 'Pulado — nao vai para Python, nao precisa analisar query');
-      updateNode('webResearch', 'skipped');
-      addLog('webResearch', 'debug', 'Pulado — tema generico, nao precisa pesquisa web');
-      updateNode('contextBuilder', 'skipped');
-      addLog('contextBuilder', 'debug', 'Pulado — sem pesquisa web, nao tem contexto para construir');
-      updateNode('contextValidator', 'skipped');
-      addLog('contextValidator', 'debug', 'Pulado — sem contexto para validar');
-
-      // Carregamento
-      updateNode('personaLoader', 'running');
-      addLog('personaLoader', 'info', 'Carregando 20.000 personas do cache do navegador...');
-      await new Promise(r => setTimeout(r, 500));
-      updateNode('personaLoader', 'complete');
-      addLog('personaLoader', 'info', 'Personas carregadas com sucesso');
-
-      // Processamento local
-      updateNode('personaLoop', 'running');
-      addLog('personaLoop', 'info', `Lendo respostas de cada persona nas colunas: ${classifierResult?.fields.join(', ') || '?'}`);
-      addLog('personaLoop', 'info', 'Cada persona tem respostas sim/nao ou escala (1-10) para esses temas');
-      addLog('personaLoop', 'info', 'O sentimento (a favor/contra/neutro) e calculado a partir dessas respostas');
-      await new Promise(r => setTimeout(r, 400));
-      updateNode('personaLoop', 'complete');
-      addLog('personaLoop', 'info', 'Todas as personas processadas via banco — sem chamada de IA');
-
-      // Agregacao
-      updateNode('aggregator', 'running');
-      addLog('aggregator', 'info', 'Agregando sentimentos por regiao, geracao, classe social, religiao...');
-      await new Promise(r => setTimeout(r, 300));
-      updateNode('aggregator', 'complete');
-      addLog('aggregator', 'info', 'Resultados agregados — gerando visualizacoes');
-
-      addLog('system', 'info', '✅ Pipeline LOCAL concluido — processamento instantaneo via banco de dados');
-      setState(prev => ({ ...prev, endTime: Date.now() }));
-      setRunning(false);
-      return;
-    }
-
-    // ── Python Route ────────────────────────────────────────
-    setState(prev => ({ ...prev, route: 'python' }));
-    addLog('system', 'info', '🐍 CAMINHO: PYTHON IA (Digital Ocean)');
-    addLog('system', 'info', 'A pergunta precisa de IA generativa — nao tem colunas no banco que respondam');
-    addLog('system', 'info', 'Conectando ao backend Python na Digital Ocean...');
-    updateNode('queryAnalyzer', 'running');
-
-    try {
-      const response = await fetch('/api/arena/monitor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok || !response.body) {
-        throw new Error(`Backend indisponivel (status=${response.status})`);
-      }
-
-      addLog('system', 'info', '✅ Conexao estabelecida com backend Python');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      // Process SSE event inline to access all state updaters
-      const processEvent = (payload: { type: string; data: any }) => {
-        switch (payload.type) {
-          case 'route':
-            addLog('system', 'debug', `Backend Python confirmou processamento via: ${payload.data.route}`);
-            break;
-
-          case 'phase': {
-            const phase = payload.data?.phase;
-            const msg = payload.data?.message || `Phase: ${phase}`;
-            const map: Record<string, { node: string; completeNodes?: string[] }> = {
-              analyzing_query: { node: 'queryAnalyzer' },
-              web_research: { node: 'webResearch', completeNodes: ['queryAnalyzer'] },
-              building_context: { node: 'contextBuilder', completeNodes: ['webResearch'] },
-              loading_personas: {
-                node: 'personaLoader',
-                completeNodes: ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'],
-              },
-              processing_personas: { node: 'personaLoop', completeNodes: ['personaLoader'] },
-              aggregating: { node: 'aggregator', completeNodes: ['personaLoop'] },
-            };
-
-            const m = map[phase];
-            if (m) {
-              m.completeNodes?.forEach(n => {
-                setState(prev => {
-                  if (prev.nodes[n] === 'running') {
-                    return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
-                  }
-                  return prev;
-                });
-              });
-              updateNode(m.node, 'running');
-              addLog(m.node, 'info', msg);
-            }
-            break;
-          }
-
-          case 'log': {
-            const d = payload.data;
-            addLog(d.step || 'system', d.level || 'info', d.message || '', d.detail);
-
-            // Auto-update node status from log content
-            if (d.step === 'query_analyzer' && d.detail?.needs_research !== undefined) {
-              updateNode('queryAnalyzer', 'complete');
-              if (!d.detail.needs_research) {
-                updateNode('webResearch', 'skipped');
-                addLog('webResearch', 'debug', 'Pulado — Claude decidiu que nao precisa pesquisar na web');
-                updateNode('contextBuilder', 'skipped');
-                addLog('contextBuilder', 'debug', 'Pulado — sem dados da web para construir contexto');
-                updateNode('contextValidator', 'skipped');
-                addLog('contextValidator', 'debug', 'Pulado — sem contexto para validar');
-              }
-            }
-            if (d.step === 'context_builder') {
-              updateNode('contextBuilder', 'complete');
-            }
-            if (d.step === 'context_validator') {
-              updateNode('contextValidator', 'complete');
-            }
-            break;
-          }
-
-          case 'web_complete':
-            updateNode('webResearch', 'complete');
-            addLog('webResearch', 'info',
-              `Pesquisa concluida: ${payload.data.snippets_count} trechos de ${payload.data.sources_count} fontes`,
-              payload.data,
-            );
-            break;
-
-          case 'personas_loaded':
+        case 'local_start': {
+          addLog('system', 'info', '🗃️ CAMINHO: BANCO DE DADOS LOCAL');
+          addLog('system', 'info', 'Processando via colunas existentes — sem IA generativa');
+          ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'].forEach(n => {
+            updateNode(n, 'skipped');
+          });
+          updateNode('personaLoader', 'running');
+          addLog('personaLoader', 'info', 'Carregando personas...');
+          // Local processing completes quickly
+          setTimeout(() => {
             updateNode('personaLoader', 'complete');
-            addLog('personaLoader', 'info', `${payload.data.count?.toLocaleString('pt-BR')} personas carregadas do banco`);
-            setState(prev => ({
-              ...prev,
-              progress: { ...prev.progress, total: payload.data.count },
-            }));
-            break;
-
-          case 'progress':
-            setState(prev => ({
-              ...prev,
-              progress: {
-                processed: payload.data.processed,
-                total: payload.data.total,
-                positive: payload.data.positive,
-                negative: payload.data.negative,
-                neutral: payload.data.neutral,
-              },
-            }));
-            break;
-
-          case 'batch_detail':
-            setState(prev => ({
-              ...prev,
-              batches: [...prev.batches, payload.data],
-            }));
-            addLog('personaLoop', 'debug',
-              `Lote ${payload.data.model}: ${payload.data.persona_count} personas → ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'positive').length} a favor, ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'negative').length} contra, ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'neutral').length} neutros`,
-            );
-            break;
-
-          case 'results':
-            updateNode('aggregator', 'complete');
-            updateNode('personaLoop', 'complete');
-            addLog('aggregator', 'info', `Resultados agregados: ${payload.data.total} personas | A favor: ${payload.data.positive} | Contra: ${payload.data.negative} | Neutros: ${payload.data.neutral}`, {
-              total: payload.data.total,
-              a_favor: payload.data.positive,
-              contra: payload.data.negative,
-              neutros: payload.data.neutral,
-              comentarios: payload.data.comments?.length || 0,
-            });
-            break;
-
-          case 'done':
-            addLog('system', 'info',
-              `✅ Pipeline PYTHON finalizado em ${(payload.data.processing_time_ms / 1000).toFixed(1)}s — ${payload.data.total_personas?.toLocaleString('pt-BR')} personas analisadas`,
-              payload.data,
-            );
-            setState(prev => {
-              const updated = { ...prev.nodes };
-              for (const key of Object.keys(updated)) {
-                if (updated[key] === 'running') updated[key] = 'complete';
-              }
-              return { ...prev, nodes: updated };
-            });
-            break;
-
-          default:
-            addLog('system', 'debug', `Evento: ${payload.type}`, payload.data);
+            updateNode('personaLoop', 'running');
+            addLog('personaLoop', 'info', 'Processando personas via colunas do banco...');
+            setTimeout(() => {
+              updateNode('personaLoop', 'complete');
+              updateNode('aggregator', 'complete');
+              addLog('system', 'info', '✅ Pipeline LOCAL concluido');
+              setState(prev => ({ ...prev, endTime: Date.now() }));
+            }, 500);
+          }, 300);
+          break;
         }
-      };
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        /* ── SSE events forwarded from Python backend ─────── */
 
-        buffer += decoder.decode(value, { stream: true });
-        const chunks = buffer.split('\n\n');
-        buffer = chunks.pop() || '';
+        case 'route':
+          addLog('system', 'debug', `Backend Python confirmou: ${payload.data?.route}`);
+          break;
 
-        for (const c of chunks) {
-          const line = c.trim();
-          if (!line.startsWith('data: ')) continue;
-          try {
-            processEvent(JSON.parse(line.slice(6)));
-          } catch {
-            // skip
+        case 'phase': {
+          const phase = payload.data?.phase;
+          const msg = payload.data?.message || `Fase: ${phase}`;
+          addLog('system', 'info', '🐍 CAMINHO: PYTHON IA');
+
+          const map: Record<string, { node: string; completeNodes?: string[] }> = {
+            analyzing_query: { node: 'queryAnalyzer' },
+            web_research: { node: 'webResearch', completeNodes: ['queryAnalyzer'] },
+            building_context: { node: 'contextBuilder', completeNodes: ['webResearch'] },
+            loading_personas: {
+              node: 'personaLoader',
+              completeNodes: ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'],
+            },
+            processing_personas: { node: 'personaLoop', completeNodes: ['personaLoader'] },
+            aggregating: { node: 'aggregator', completeNodes: ['personaLoop'] },
+          };
+
+          const m = map[phase];
+          if (m) {
+            m.completeNodes?.forEach(n => {
+              setState(prev => {
+                if (prev.nodes[n] === 'running') return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
+                return prev;
+              });
+            });
+            updateNode(m.node, 'running');
+            addLog(m.node, 'info', msg);
           }
+          break;
         }
+
+        case 'log': {
+          const d = payload.data;
+          addLog(d.step || 'system', d.level || 'info', d.message || '', d.detail);
+
+          if (d.step === 'query_analyzer' && d.detail?.needs_research !== undefined) {
+            updateNode('queryAnalyzer', 'complete');
+            if (!d.detail.needs_research) {
+              updateNode('webResearch', 'skipped');
+              addLog('webResearch', 'debug', 'Pulado — Claude decidiu que nao precisa pesquisa');
+              updateNode('contextBuilder', 'skipped');
+              updateNode('contextValidator', 'skipped');
+            }
+          }
+          if (d.step === 'context_builder') updateNode('contextBuilder', 'complete');
+          if (d.step === 'context_validator') updateNode('contextValidator', 'complete');
+          break;
+        }
+
+        case 'web_complete':
+          updateNode('webResearch', 'complete');
+          addLog('webResearch', 'info',
+            `Pesquisa concluida: ${payload.data.snippets_count} trechos de ${payload.data.sources_count} fontes`,
+            payload.data,
+          );
+          break;
+
+        case 'personas_loaded':
+          updateNode('personaLoader', 'complete');
+          addLog('personaLoader', 'info', `${payload.data.count?.toLocaleString('pt-BR')} personas carregadas do banco`);
+          setState(prev => ({
+            ...prev,
+            progress: { ...prev.progress, total: payload.data.count },
+          }));
+          break;
+
+        case 'progress':
+          setState(prev => ({
+            ...prev,
+            progress: {
+              processed: payload.data.processed,
+              total: payload.data.total,
+              positive: payload.data.positive,
+              negative: payload.data.negative,
+              neutral: payload.data.neutral,
+            },
+          }));
+          break;
+
+        case 'batch_detail':
+          setState(prev => ({
+            ...prev,
+            batches: [...prev.batches, payload.data],
+          }));
+          addLog('personaLoop', 'debug',
+            `Lote ${payload.data.model}: ${payload.data.persona_count} personas → ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'positive').length} a favor, ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'negative').length} contra`,
+          );
+          break;
+
+        case 'results':
+          updateNode('aggregator', 'complete');
+          updateNode('personaLoop', 'complete');
+          addLog('aggregator', 'info', `Resultados: ${payload.data.total} personas | A favor: ${payload.data.positive} | Contra: ${payload.data.negative} | Neutros: ${payload.data.neutral}`, {
+            total: payload.data.total,
+            a_favor: payload.data.positive,
+            contra: payload.data.negative,
+            neutros: payload.data.neutral,
+          });
+          break;
+
+        case 'done':
+          addLog('system', 'info',
+            `✅ Pipeline finalizado em ${(payload.data.processing_time_ms / 1000).toFixed(1)}s — ${payload.data.total_personas?.toLocaleString('pt-BR')} personas`,
+            payload.data,
+          );
+          setState(prev => {
+            const updated = { ...prev.nodes };
+            for (const key of Object.keys(updated)) {
+              if (updated[key] === 'running') updated[key] = 'complete';
+            }
+            return { ...prev, nodes: updated, endTime: Date.now() };
+          });
+          break;
       }
+    };
 
-      addLog('system', 'info', 'Stream SSE encerrado');
-    } catch (err: any) {
-      if (err?.name === 'AbortError') {
-        addLog('system', 'warn', 'Pipeline cancelado');
-        return;
-      }
-      addLog('system', 'error', `Erro na conexao: ${err?.message}`);
-    }
+    // Mark as listening
+    setState(prev => ({ ...prev, listening: true }));
 
-    setState(prev => ({ ...prev, endTime: Date.now() }));
-    setRunning(false);
-  }, [question, running, addLog, updateNode]);
-
-  const handleStop = useCallback(() => {
-    abortRef.current?.abort();
-    setRunning(false);
-    addLog('system', 'warn', 'Pipeline cancelado pelo usuario');
-    setState(prev => ({ ...prev, endTime: Date.now() }));
-  }, [addLog]);
+    return () => channel.close();
+  }, [addLog, updateNode]);
 
   const elapsed = state.startTime
     ? (((state.endTime || Date.now()) - state.startTime) / 1000).toFixed(0)
     : '0';
 
-  // Count logs per node
   const logCountFor = (key: string) => {
     const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '');
     return state.logs.filter(l => l.step === key || l.step === snakeKey || l.step.includes(snakeKey)).length;
@@ -882,42 +768,36 @@ export function ArenaMonitor() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
-              <Cpu size={16} className="text-violet-400" />
+              <Radio size={16} className="text-violet-400" />
             </div>
             <div>
               <h1 className="text-sm font-bold text-white tracking-tight">Monitor da Arena</h1>
-              <p className="text-[10px] text-zinc-600">Fluxo de analise em tempo real</p>
+              <p className="text-[10px] text-zinc-600">Escutando a tela principal em tempo real</p>
             </div>
           </div>
 
-          <div className="flex-1 flex items-center gap-2 max-w-2xl">
-            <input
-              value={question}
-              onChange={e => setQuestion(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-              placeholder="Digite uma pergunta para monitorar o fluxo..."
-              disabled={running}
-              className="flex-1 px-4 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-violet-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-violet-500/20 transition-all duration-200 disabled:opacity-50"
-            />
-            {running ? (
-              <button
-                onClick={handleStop}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl font-semibold text-sm active:scale-[0.97] transition-all duration-200"
-              >
-                <Square size={14} /> Parar
-              </button>
+          {/* Question display */}
+          <div className="flex-1 flex items-center gap-3 max-w-2xl">
+            {state.question ? (
+              <div className="flex-1 px-4 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-0.5">Pergunta detectada</p>
+                <p className="text-sm text-white truncate">{state.question}</p>
+              </div>
             ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={!question.trim()}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-violet-500 hover:bg-violet-400 text-black font-semibold text-sm rounded-xl shadow-lg shadow-violet-500/25 active:scale-[0.97] transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <Play size={14} /> Executar
-              </button>
+              <div className="flex-1 flex items-center gap-2 px-4 py-3 bg-white/[0.02] border border-dashed border-white/[0.06] rounded-xl">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-xs text-zinc-500">Aguardando pergunta na tela principal...</p>
+              </div>
             )}
           </div>
 
           <div className="flex items-center gap-3 text-[10px]">
+            {/* Listening indicator */}
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-400 font-semibold">Escutando</span>
+            </span>
+
             {state.route !== 'unknown' && (
               <span className={cn(
                 'px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border',
@@ -973,7 +853,6 @@ export function ArenaMonitor() {
             </div>
           ))}
 
-          {/* Classifier Decision Card */}
           {state.classifierDecision && (
             <ClassifierCard decision={state.classifierDecision} />
           )}
@@ -981,14 +860,12 @@ export function ArenaMonitor() {
 
         {/* ─── Right ─── */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Progress Stats */}
           {state.progress.total > 0 && (
             <div className="shrink-0 border-b border-white/[0.06]">
               <ProgressStats progress={state.progress} startTime={state.startTime} endTime={state.endTime} />
             </div>
           )}
 
-          {/* Tabs */}
           <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b border-white/[0.04]">
             {(['logs', 'batches'] as const).map(tab => (
               <button
@@ -1006,7 +883,6 @@ export function ArenaMonitor() {
             ))}
           </div>
 
-          {/* Content */}
           <div className="flex-1 min-h-0">
             {bottomTab === 'logs' ? (
               <LogPanel logs={state.logs} selectedNode={selectedNode} />

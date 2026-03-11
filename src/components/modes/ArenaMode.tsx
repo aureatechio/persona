@@ -31,6 +31,18 @@ interface ArenaModeProps {
   onProcessing: (processing: boolean) => void;
 }
 
+// BroadcastChannel to send events to /monitor page
+const MONITOR_CHANNEL = 'arena-monitor';
+function broadcastToMonitor(event: { type: string; data: any }) {
+  try {
+    const ch = new BroadcastChannel(MONITOR_CHANNEL);
+    ch.postMessage(event);
+    ch.close();
+  } catch {
+    // BroadcastChannel not supported or error — ignore
+  }
+}
+
 export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessing }: ArenaModeProps) {
   const abortRef = useRef<AbortController | null>(null);
 
@@ -297,6 +309,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const classification = await classifyRes.json();
         console.log('[Arena] Route classification:', classification);
         useLocalProcessing = classification.route === 'local';
+        // Broadcast to monitor
+        broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
+        broadcastToMonitor({ type: 'classify_result', data: classification });
       }
     } catch {
       // On error, fall through to Python backend
@@ -331,6 +346,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     // ── If local processing is sufficient, skip Python backend ──────────────
     if (useLocalProcessing) {
+      broadcastToMonitor({ type: 'local_start', data: { question: q } });
       try {
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
         let pos = 0, neg = 0, neu = 0;
@@ -514,6 +530,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         body: JSON.stringify({
           question: q,
           cluster_filter: null,
+          verbose: true,
           ...(enrichedContext && { context_text: enrichedContext }),
         }),
         signal: controller.signal,
@@ -555,6 +572,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             if (!line.startsWith('data: ')) continue;
             try {
               const payload = JSON.parse(line.slice(6));
+              // Broadcast all SSE events to monitor page
+              broadcastToMonitor(payload);
 
               switch (payload.type) {
                 case 'phase': {
