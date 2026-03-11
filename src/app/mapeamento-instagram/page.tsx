@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -66,6 +67,7 @@ export default function MapeamentoInstagramPage() {
 /* ─────────────────── Main content ─────────────────── */
 
 function MapeamentoContent() {
+  const searchParams = useSearchParams();
   const [pageState, setPageState] = useState<PageState>('search');
   const [targetUsername, setTargetUsername] = useState('');
 
@@ -290,6 +292,16 @@ function MapeamentoContent() {
     setIsAnalyzing(false);
   }, [persistFollower]);
 
+  /* ─── Sync URL ↔ search state ─── */
+
+  const syncUrlUsername = useCallback((username: string | null) => {
+    if (username) {
+      window.history.replaceState(null, '', `/mapeamento-instagram/${encodeURIComponent(username.toLowerCase())}`);
+    } else {
+      window.history.replaceState(null, '', '/mapeamento-instagram');
+    }
+  }, []);
+
   /* ─── Search handler ─── */
 
   const handleSearch = useCallback(async (username: string, maxCount: number) => {
@@ -352,6 +364,7 @@ function MapeamentoContent() {
 
         setSearchLoading(false);
         setPageState('results');
+        syncUrlUsername(username);
         return;
       }
 
@@ -387,6 +400,7 @@ function MapeamentoContent() {
 
       setSearchLoading(false);
       setPageState('results');
+      syncUrlUsername(username);
 
       analyzeBatch(firstBatch);
     } catch (err) {
@@ -395,7 +409,18 @@ function MapeamentoContent() {
       setPageState('search');
       setSearchLoading(false);
     }
-  }, [analyzeBatch]);
+  }, [analyzeBatch, syncUrlUsername]);
+
+  // Auto-search from URL param on mount
+  const autoSearchedRef = useRef(false);
+  useEffect(() => {
+    if (autoSearchedRef.current) return;
+    const u = searchParams.get('u');
+    if (u) {
+      autoSearchedRef.current = true;
+      handleSearch(u.replace(/^@/, '').trim(), 100);
+    }
+  }, [searchParams, handleSearch]);
 
   /* ─── Load more — analyze next 10 raw followers ─── */
 
@@ -593,7 +618,8 @@ function MapeamentoContent() {
     setFilters({ ...EMPTY_FILTERS });
     setNoMoreFollowers(false);
     setIsFetchingMore(false);
-  }, []);
+    syncUrlUsername(null);
+  }, [syncUrlUsername]);
 
   /* ─── Render ─── */
 
@@ -645,6 +671,7 @@ function MapeamentoContent() {
             <SearchBar
               onSearch={handleSearch}
               loading={searchLoading}
+              defaultUsername={searchParams.get('u') || ''}
               filterSlot={
                 <FilterSidebar
                   filters={filters}

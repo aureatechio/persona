@@ -34,11 +34,20 @@ export async function POST(request: NextRequest) {
     /* ─── Check DB cache first ─── */
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: account } = await supabase
+    // Try exact username match first, then fallback to slug
+    let { data: account } = await supabase
       .from('instagram_accounts')
       .select('id')
       .eq('username', cleanUsername)
       .maybeSingle();
+
+    if (!account) {
+      ({ data: account } = await supabase
+        .from('instagram_accounts')
+        .select('id')
+        .eq('slug', cleanUsername.toLowerCase())
+        .maybeSingle());
+    }
 
     if (account) {
       // Fetch all cached followers for this account
@@ -113,7 +122,7 @@ export async function POST(request: NextRequest) {
     const { data: upsertedAccount } = await supabase
       .from('instagram_accounts')
       .upsert(
-        { username: cleanUsername, updated_at: new Date().toISOString() },
+        { username: cleanUsername, slug: cleanUsername.toLowerCase(), updated_at: new Date().toISOString() },
         { onConflict: 'username' },
       )
       .select('id')

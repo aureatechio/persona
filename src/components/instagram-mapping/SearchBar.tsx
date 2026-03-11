@@ -8,6 +8,7 @@ interface SearchBarProps {
   onSearch: (username: string, maxCount: number) => void;
   loading: boolean;
   filterSlot?: React.ReactNode;
+  defaultUsername?: string;
 }
 
 const QUANTITY_OPTIONS = [
@@ -17,8 +18,8 @@ const QUANTITY_OPTIONS = [
   { value: 100, label: '100 primeiros' },
 ];
 
-export function SearchBar({ onSearch, loading, filterSlot }: SearchBarProps) {
-  const [username, setUsername] = useState('');
+export function SearchBar({ onSearch, loading, filterSlot, defaultUsername = '' }: SearchBarProps) {
+  const [username, setUsername] = useState(defaultUsername);
   const [maxCount, setMaxCount] = useState(100);
 
   function handleSubmit(e: React.FormEvent) {
