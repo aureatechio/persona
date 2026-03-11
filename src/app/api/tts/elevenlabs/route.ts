@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
                 use_speaker_boost: true,
               },
         }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       },
     );
 

@@ -327,7 +327,7 @@ function WhatsAppPlayer({ text }: { text: string }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
       if (!res.ok) throw new Error('TTS failed');
 
@@ -674,70 +674,21 @@ export function FollowerRow({ data, index, campaignImageUrl, voiceModel, isRegen
                 </span>
               </div>
 
-              <div className="flex gap-4 items-stretch">
-                  {/* Frase + Audio */}
-                  <div className="relative flex-1 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
-                    <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-                    <div className="relative p-5 flex flex-col justify-center h-full gap-5">
-                      {isRegenerating ? (
-                        <div className="flex items-center gap-3">
-                          <Loader2 size={16} className="text-violet-400 animate-spin shrink-0" />
-                          <span className="text-sm text-violet-300 animate-pulse">Regenerando frase...</span>
-                        </div>
-                      ) : (
-                        <p className="text-base md:text-lg leading-relaxed text-zinc-100">
-                          <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
-                        </p>
-                      )}
-
-                      {/* WhatsApp-style audio player */}
-                      {analysis.frase_comunicacao && !isRegenerating && (
-                        <WhatsAppPlayer text={analysis.frase_comunicacao} />
-                      )}
+              <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.08] via-emerald-500/[0.04] to-transparent">
+                <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative p-5 flex flex-col justify-center">
+                  {isRegenerating ? (
+                    <div className="flex items-center gap-3">
+                      <Loader2 size={16} className="text-violet-400 animate-spin shrink-0" />
+                      <span className="text-sm text-violet-300 animate-pulse">Regenerando frase...</span>
                     </div>
-                  </div>
-
-                  {/* Arte de campanha OU Video lip-sync */}
-                  {voiceModel && analysis.frase_comunicacao ? (
-                    <LipSyncVideoPlayer
-                      voiceModelId={voiceModel.id}
-                      username={data.username}
-                      phrase={analysis.frase_comunicacao}
-                    />
                   ) : (
-                    <>
-                      <div
-                        className="shrink-0 w-[180px] md:w-[220px] relative overflow-hidden rounded-2xl border border-emerald-500/20 cursor-pointer group/art hover:border-emerald-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/10 hover:scale-[1.03]"
-                        onClick={() => setModalOpen(true)}
-                      >
-                        {/* Vibrant glow overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-emerald-500/10 z-[1] pointer-events-none" />
-                        <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-emerald-500/20 rounded-full blur-2xl pointer-events-none z-[1]" />
-                        <div className="absolute -top-4 -left-4 w-20 h-20 bg-violet-500/15 rounded-full blur-2xl pointer-events-none z-[1]" />
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={campaignImageUrl || '/templates/campanha-base.jpg'}
-                          alt=""
-                          loading="eager"
-                          decoding="async"
-                          className="absolute inset-0 w-full h-full object-cover brightness-110 contrast-105 saturate-[1.2] group-hover/art:scale-110 transition-transform duration-500"
-                        />
-                        <div className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-black/50 backdrop-blur-sm opacity-0 group-hover/art:opacity-100 transition-opacity duration-200">
-                          <Maximize2 size={12} className="text-white/80" />
-                        </div>
-                        <div className="relative h-full min-h-[140px]" />
-                      </div>
-
-                      <CampaignModal
-                        open={modalOpen}
-                        onClose={() => setModalOpen(false)}
-                        frase={analysis.frase_comunicacao || ''}
-                        displayName={data.display_name || data.username}
-                        campaignImageUrl={campaignImageUrl}
-                      />
-                    </>
+                    <p className="text-base md:text-lg leading-relaxed text-zinc-100">
+                      <span className="font-bold text-white">{analysis.frase_comunicacao}</span>
+                    </p>
                   )}
                 </div>
+              </div>
             </div>
           )}
 
