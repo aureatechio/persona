@@ -165,33 +165,39 @@ export async function createVideoThumbnail(file: File): Promise<string> {
 
 /**
  * Transcribe video via Digital Ocean Python backend.
- * Flow: Browser → Supabase Storage → DO downloads by URL → FFmpeg → Whisper → transcript
- * Zero Vercel involvement — no body size limits, no function timeouts.
+ * Flow:
+ *   1. Browser gets signed upload URL (lightweight Vercel route, ~50ms)
+ *   2. Browser uploads video directly to Supabase Storage (no Vercel body limit)
+ *   3. Browser gets signed download URL (lightweight Vercel route, ~50ms)
+ *   4. Browser calls DO directly with the URL → DO downloads, FFmpeg, Whisper
+ *   5. Cleanup: delete temp file from Supabase
  */
 export async function transcribeVideoBackend(file: File): Promise<string | null> {
   const TIMEOUT_MS = 90_000;
   const BACKEND = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || 'https://arena-analysis-api-2puat.ondigitalocean.app';
 
-  // Dynamic import to avoid SSR issues
-  const { supabase } = await import('@/lib/supabase');
-
-  const ext = file.name.split('.').pop() || 'webm';
-  const storagePath = `temp-transcriptions/${crypto.randomUUID()}.${ext}`;
+  let storagePath = '';
 
   try {
-    // 1. Get signed upload URL (bypasses Vercel 4.5MB limit)
-    console.log(`[transcribeVideo] Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB to Supabase...`);
-    const { data: uploadData, error: uploadError } = await supabase
-      .storage.from('voice-models')
-      .createSignedUploadUrl(storagePath);
+    // 1. Get signed upload URL via lightweight API route (uses service role key)
+    console.log(`[transcribeVideo] Getting upload URL...`);
+    const urlRes = await fetch('/api/transcribe-video/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name }),
+    });
 
-    if (uploadError || !uploadData) {
-      console.error('[transcribeVideo] Failed to create upload URL:', uploadError);
+    if (!urlRes.ok) {
+      console.error('[transcribeVideo] Failed to get upload URL:', urlRes.status);
       return null;
     }
 
-    // 2. Upload directly to Supabase Storage (browser → Supabase, no Vercel)
-    const uploadRes = await fetch(uploadData.signedUrl, {
+    const { signedUrl: uploadUrl, path } = await urlRes.json();
+    storagePath = path;
+
+    // 2. Upload directly to Supabase Storage (browser → Supabase, no Vercel body limit)
+    console.log(`[transcribeVideo] Uploading ${(file.size / (1024 * 1024)).toFixed(1)}MB to Supabase...`);
+    const uploadRes = await fetch(uploadUrl, {
       method: 'PUT',
       headers: { 'Content-Type': file.type || 'video/webm' },
       body: file,
@@ -203,17 +209,21 @@ export async function transcribeVideoBackend(file: File): Promise<string | null>
     }
     console.log('[transcribeVideo] Upload OK');
 
-    // 3. Get signed download URL for DO to fetch (5 min expiry)
-    const { data: signedData, error: signedError } = await supabase
-      .storage.from('voice-models')
-      .createSignedUrl(storagePath, 300);
+    // 3. Get signed download URL for DO (lightweight Vercel route)
+    const dlRes = await fetch('/api/transcribe-video/download-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: storagePath }),
+    });
 
-    if (signedError || !signedData?.signedUrl) {
-      console.error('[transcribeVideo] Failed to create signed URL:', signedError);
+    if (!dlRes.ok) {
+      console.error('[transcribeVideo] Failed to get download URL:', dlRes.status);
       return null;
     }
 
-    // 4. Call DO directly with the Supabase URL (no Vercel proxy)
+    const { signedUrl: downloadUrl } = await dlRes.json();
+
+    // 4. Call DO directly with the Supabase URL (no Vercel proxy for heavy work)
     console.log('[transcribeVideo] Sending to DO for transcription...');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -222,7 +232,7 @@ export async function transcribeVideoBackend(file: File): Promise<string | null>
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        url: signedData.signedUrl,
+        url: downloadUrl,
         filename: file.name,
       }),
       signal: controller.signal,
@@ -252,7 +262,13 @@ export async function transcribeVideoBackend(file: File): Promise<string | null>
     return null;
   } finally {
     // 5. Cleanup: delete temp file from Supabase (fire-and-forget)
-    supabase.storage.from('voice-models').remove([storagePath]).catch(() => {});
+    if (storagePath) {
+      fetch('/api/transcribe-video/download-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: storagePath, action: 'delete' }),
+      }).catch(() => {});
+    }
   }
 }
 
