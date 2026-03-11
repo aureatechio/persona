@@ -145,7 +145,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     const quickMatch = detectQuickAnswer(q);
     if (quickMatch) {
       broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
-      broadcastToMonitor({ type: 'classify_result', data: { route: 'local', reason: 'Quick answer — coluna direta no banco', fields: [quickMatch.type] } });
+      broadcastToMonitor({ type: 'classify_result', data: { route: 'local', reason: `Quick answer — coluna "${quickMatch.column}" (${quickMatch.label})`, fields: [quickMatch.column] } });
       broadcastToMonitor({ type: 'local_start', data: { question: q } });
       const baseLiveData: ArenaLiveData = {
         question: q,
