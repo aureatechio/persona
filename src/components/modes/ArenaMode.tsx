@@ -31,15 +31,29 @@ interface ArenaModeProps {
   onProcessing: (processing: boolean) => void;
 }
 
-// BroadcastChannel to send events to /monitor page
+// Persistent BroadcastChannel to send events to /monitor page
 const MONITOR_CHANNEL = 'arena-monitor';
-function broadcastToMonitor(event: { type: string; data: any }) {
+let _monitorChannel: BroadcastChannel | null = null;
+function getMonitorChannel(): BroadcastChannel | null {
   try {
-    const ch = new BroadcastChannel(MONITOR_CHANNEL);
-    ch.postMessage(event);
-    ch.close();
+    if (!_monitorChannel) {
+      _monitorChannel = new BroadcastChannel(MONITOR_CHANNEL);
+    }
+    return _monitorChannel;
   } catch {
-    // BroadcastChannel not supported or error — ignore
+    return null;
+  }
+}
+function broadcastToMonitor(event: { type: string; data: any }) {
+  const ch = getMonitorChannel();
+  if (ch) {
+    try {
+      ch.postMessage(event);
+      console.log('[Arena→Monitor] 📡 Broadcast:', event.type);
+    } catch {
+      // Channel closed or error — recreate on next call
+      _monitorChannel = null;
+    }
   }
 }
 
@@ -130,6 +144,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // ── Quick Answer check ──────────────────────────────────────────────────
     const quickMatch = detectQuickAnswer(q);
     if (quickMatch) {
+      broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
+      broadcastToMonitor({ type: 'classify_result', data: { route: 'local', reason: 'Quick answer — coluna direta no banco', fields: [quickMatch.type] } });
+      broadcastToMonitor({ type: 'local_start', data: { question: q } });
       const baseLiveData: ArenaLiveData = {
         question: q,
         phase: 'streaming',

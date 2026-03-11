@@ -544,10 +544,12 @@ export function ArenaMonitor() {
 
   /* ── Listen to BroadcastChannel from main Arena page ─────── */
   useEffect(() => {
+    console.log('[Monitor] 🎧 Criando BroadcastChannel listener...');
     const channel = new BroadcastChannel(MONITOR_CHANNEL);
 
     channel.onmessage = (event) => {
       const payload = event.data;
+      console.log('[Monitor] 📩 Evento recebido:', payload?.type, payload);
       if (!payload || !payload.type) return;
 
       switch (payload.type) {
