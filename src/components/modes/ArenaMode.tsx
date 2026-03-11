@@ -141,6 +141,23 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     if (!q) return;
 
+    // ── Show collecting block IMMEDIATELY (zero delay) ──────────────────────
+    const immediateData: ArenaLiveData = {
+      question: q,
+      phase: 'collecting',
+      processedCount: 0,
+      totalCount: personaCache.count,
+      positive: 0,
+      negative: 0,
+      neutral: 0,
+      simulation: null,
+      totalPersonas: personaCache.count,
+      media: mediaPreviews,
+      mediaContext: enrichedContext || undefined,
+      collectingStatus: 'analyzing',
+    };
+    onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: immediateData });
+
     // ── Quick Answer check ──────────────────────────────────────────────────
     const quickMatch = detectQuickAnswer(q);
     if (quickMatch) {
@@ -162,11 +179,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         isQuickAnswer: true,
       };
 
-      if (processedAttachments?.length) {
-        emitLive(blockId, baseLiveData);
-      } else {
-        onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: baseLiveData });
-      }
+      // Block already created above — just update it to streaming
+      emitLive(blockId, baseLiveData);
 
       try {
         let pos = 0, neg = 0, neu = 0;
@@ -349,16 +363,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       mediaContext: enrichedContext || undefined,
     };
 
-    if (processedAttachments?.length) {
-      emitLive(blockId, baseLiveData);
-    } else {
-      // For Python path, start with collecting phase; for local, start streaming immediately
+    // Block already created above — just update phase
+    {
       const initialPhase = useLocalProcessing ? 'streaming' : 'collecting';
-      onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: {
+      emitLive(blockId, {
         ...baseLiveData,
         phase: initialPhase as ArenaLiveData['phase'],
         ...(initialPhase === 'collecting' ? { collectingStatus: 'analyzing' } : {}),
-      }});
+      });
     }
 
     // ── If local processing is sufficient, skip Python backend ──────────────
@@ -528,15 +540,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         commentAcc.addPersona(p, sentiment);
         personaIndex++;
       }
-      // Fire AI comments at ~25% of Python progress
-      const progress = pythonProcessed / pythonTotal;
-      if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
-        aiCommentsFired = true;
-        const selectedSnapshot = [...commentAcc.selectedPersonas];
-        generateAIComments(q, selectedSnapshot).then(aiComments => {
-          liveComments = aiComments;
-        }).catch(() => {});
-      }
+      // NOTE: We do NOT generate local AI comments for the Python path.
+      // The Python backend generates contextual comments with full persona profiles.
+      // Local generateAIComments lacks the context (e.g., who Vorcaro is) and produces wrong comments.
     };
 
     try {

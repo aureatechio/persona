@@ -120,6 +120,21 @@ def aggregate_results(
     education_data: dict[str, dict] = defaultdict(
         lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_intensity": 0.0}
     )
+    gender_data: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
+    )
+    religion_data: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
+    )
+    race_data: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
+    )
+    social_class_data: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
+    )
+    political_data: dict[str, dict] = defaultdict(
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
+    )
     intensity_data = [
         {"label": b["label"], "range": b["range"], "count": 0, "total_score": 0}
         for b in INTENSITY_BANDS
@@ -196,6 +211,37 @@ def aggregate_results(
         education_data[edu]["count"] += 1
         education_data[edu][sentiment] += 1
         education_data[edu]["total_intensity"] += (abs(eco) + abs(cost)) / 2
+
+        # Gender
+        gender = persona.get("gender_identity") or persona.get("gender") or "Outros"
+        gender_data[gender]["count"] += 1
+        gender_data[gender][sentiment] += 1
+
+        # Religion
+        religion = persona.get("macro_religion") or "Outros"
+        religion_data[religion]["count"] += 1
+        religion_data[religion][sentiment] += 1
+
+        # Race
+        race = persona.get("raca_cor") or "Não informado"
+        if not race or race == "Não informado":
+            demo_json = persona.get("demographic_json") or {}
+            if isinstance(demo_json, dict):
+                ident = demo_json.get("identidade_basica") or {}
+                if isinstance(ident, dict):
+                    race = ident.get("etnia") or "Não informado"
+        race_data[race]["count"] += 1
+        race_data[race][sentiment] += 1
+
+        # Social Class
+        sc = persona.get("social_class") or "Outros"
+        social_class_data[f"Classe {sc}" if sc != "Outros" else sc]["count"] += 1
+        social_class_data[f"Classe {sc}" if sc != "Outros" else sc][sentiment] += 1
+
+        # Political Leaning
+        pol = persona.get("political_leaning") or "Outros"
+        political_data[pol]["count"] += 1
+        political_data[pol][sentiment] += 1
 
         # Intensity bands
         magnitude = (abs(eco) + abs(cost)) / 2
@@ -399,6 +445,24 @@ def aggregate_results(
     for heap in _comment_heaps.values():
         best_comments.extend(item for _, _, item in sorted(heap, reverse=True))
 
+    # Build AllSegments (matches frontend AllSegments interface)
+    def _seg(d: dict[str, dict]) -> list[dict]:
+        return sorted(
+            [{"label": k, **v} for k, v in d.items() if v["count"] > 0],
+            key=lambda x: x["count"], reverse=True,
+        )
+
+    segments = {
+        "gender": _seg(gender_data),
+        "religion": _seg(religion_data),
+        "race": _seg(race_data),
+        "region": _seg(region_data),
+        "generation": _seg(generation_data),
+        "socialClass": _seg(social_class_data),
+        "education": _seg(education_data),
+        "politicalLeaning": _seg(political_data),
+    }
+
     return {
         "total": total,
         "positive": total_positive,
@@ -415,4 +479,5 @@ def aggregate_results(
         "educationLevels": education_levels,
         "politicalFigures": political_figures,
         "intensityBands": intensity_bands,
+        "segments": segments,
     }
