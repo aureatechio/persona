@@ -179,6 +179,42 @@ async def analyze(request: AnalyzeRequest):
                     if web_ctx.contexto:
                         context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
 
+                yield sse_event("web_complete", {
+                    "snippets_count": len(web_result.snippets),
+                    "sources_count": len(web_result.sources),
+                })
+
+                if request.verbose:
+                    yield sse_event("log", {
+                        "step": "web_research",
+                        "level": "info",
+                        "message": f"{len(web_result.snippets)} snippets (complementar à mídia)",
+                        "detail": {
+                            "queries": web_result.queries,
+                            "snippets": [s[:300] for s in web_result.snippets],
+                            "sources": web_result.sources,
+                        },
+                    })
+
+            # Emit context builder verbose log for the media context
+            yield sse_event("phase", {
+                "phase": "building_context",
+                "message": "Contexto de mídia recebido",
+            })
+
+            if request.verbose:
+                yield sse_event("log", {
+                    "step": "context_builder",
+                    "level": "info",
+                    "message": "Contexto construído a partir de mídia analisada",
+                    "detail": {
+                        "tema": context.tema,
+                        "contexto": context.contexto,
+                        "figuras": getattr(context, 'figuras', []) or [],
+                        "periodo": getattr(context, 'periodo', '') or '',
+                    },
+                })
+
         elif analysis.needs_research:
             # ── 1b. Web Research ─────────────────────────────────────
             yield sse_event("phase", {
@@ -278,6 +314,10 @@ async def analyze(request: AnalyzeRequest):
                     "step": "query_analyzer",
                     "level": "info",
                     "message": f"Research skipped: {analysis.reason}",
+                    "detail": {
+                        "needs_research": False,
+                        "reason": analysis.reason,
+                    },
                 })
 
         # ── 2. Aguardar personas (já carregando em paralelo) ──────────

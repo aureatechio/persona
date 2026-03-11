@@ -1024,10 +1024,12 @@ export function ArenaMonitor() {
           if (m) {
             m.completeNodes?.forEach(n => {
               setState(prev => {
-                // Transition running → complete, AND idle → complete
-                // (some steps complete without an explicit "running" notification)
-                if (prev.nodes[n] === 'running' || prev.nodes[n] === 'idle') {
+                if (prev.nodes[n] === 'running') {
                   return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
+                }
+                // idle → skipped (step never ran, don't show as complete)
+                if (prev.nodes[n] === 'idle') {
+                  return { ...prev, nodes: { ...prev.nodes, [n]: 'skipped' } };
                 }
                 return prev;
               });
