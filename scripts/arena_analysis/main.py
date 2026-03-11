@@ -672,69 +672,41 @@ async def transcribe_upload(file: UploadFile = FastAPIFile(...)):
 
             whisper_file = tmp_audio.name
 
-            # ── Try transcription providers in order ──────────────────────
+            # ── Send to OpenAI Whisper (try all keys) ─────────────────────
+            openai_keys = settings.openai_api_keys or ([settings.openai_api_key] if settings.openai_api_key else [])
+            if not openai_keys:
+                return JSONResponse({"error": "OPENAI_API_KEY nao configurada"}, status_code=500)
+
             transcript = None
-
-            # 1. Try Groq first (fast + generous free tier)
-            groq_key = settings.groq_api_key
-            if groq_key:
+            last_error = None
+            for key_idx, api_key in enumerate(openai_keys):
                 try:
-                    print("[Transcribe] Trying Groq Whisper...")
-                    groq_client = OpenAI(
-                        api_key=groq_key,
-                        base_url="https://api.groq.com/openai/v1",
-                    )
+                    print(f"[Transcribe] Trying OpenAI key {key_idx + 1}/{len(openai_keys)}...")
+                    client = OpenAI(api_key=api_key)
 
-                    def _call_groq(c=groq_client):
+                    def _call_whisper(c=client):
                         with open(whisper_file, "rb") as f:
                             return c.audio.transcriptions.create(
-                                model="whisper-large-v3-turbo",
+                                model="whisper-1",
                                 file=("audio.mp3", f),
                                 language="pt",
                                 response_format="text",
                             )
 
-                    result = await asyncio.to_thread(_call_groq)
+                    result = await asyncio.to_thread(_call_whisper)
                     transcript = result.strip() if isinstance(result, str) else str(result).strip()
-                    print(f"[Transcribe] Groq OK — {len(transcript)} chars")
-                except Exception as groq_err:
-                    print(f"[Transcribe] Groq failed: {groq_err}")
+                    print(f"[Transcribe] OpenAI key {key_idx + 1} OK — {len(transcript)} chars")
+                    break
+                except Exception as key_err:
+                    last_error = key_err
+                    print(f"[Transcribe] OpenAI key {key_idx + 1}/{len(openai_keys)} failed: {key_err}")
+                    if key_idx < len(openai_keys) - 1:
+                        continue
 
-            # 2. Fallback to OpenAI Whisper (try all keys)
             if transcript is None:
-                openai_keys = settings.openai_api_keys or ([settings.openai_api_key] if settings.openai_api_key else [])
-                if not openai_keys and not groq_key:
-                    return JSONResponse({"error": "Nenhuma API key configurada (GROQ_API_KEY ou OPENAI_API_KEY)"}, status_code=500)
-
-                last_error = None
-                for key_idx, api_key in enumerate(openai_keys):
-                    try:
-                        print(f"[Transcribe] Trying OpenAI key {key_idx + 1}/{len(openai_keys)}...")
-                        client = OpenAI(api_key=api_key)
-
-                        def _call_whisper(c=client):
-                            with open(whisper_file, "rb") as f:
-                                return c.audio.transcriptions.create(
-                                    model="whisper-1",
-                                    file=("audio.mp3", f),
-                                    language="pt",
-                                    response_format="text",
-                                )
-
-                        result = await asyncio.to_thread(_call_whisper)
-                        transcript = result.strip() if isinstance(result, str) else str(result).strip()
-                        print(f"[Transcribe] OpenAI OK — {len(transcript)} chars")
-                        break
-                    except Exception as key_err:
-                        last_error = key_err
-                        print(f"[Transcribe] OpenAI key {key_idx + 1}/{len(openai_keys)} failed: {key_err}")
-                        if key_idx < len(openai_keys) - 1:
-                            continue
-
-                if transcript is None:
-                    error_msg = str(last_error) if last_error else "Todas as chaves falharam"
-                    print(f"[Transcribe] All providers failed. Last error: {error_msg}")
-                    return JSONResponse({"error": "Falha na transcricao", "detail": error_msg}, status_code=500)
+                error_msg = str(last_error) if last_error else "Todas as chaves falharam"
+                print(f"[Transcribe] All keys failed. Last error: {error_msg}")
+                return JSONResponse({"error": "Falha na transcricao", "detail": error_msg}, status_code=500)
 
             print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars transcript")
             return JSONResponse({"transcript": transcript})
