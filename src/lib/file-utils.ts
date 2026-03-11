@@ -168,23 +168,16 @@ export async function createVideoThumbnail(file: File): Promise<string> {
  * Sends the raw file as base64; backend handles transcription server-side.
  * Returns the transcript text, or empty string if no speech detected.
  */
-const ARENA_BACKEND = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || '';
-
 /**
- * Result: transcript text, or null if transcription failed (not "no speech").
+ * Transcribe video via /api/transcribe-video (Next.js route → Whisper API).
+ * Returns transcript text, or null if transcription failed.
  * Empty string '' means Whisper ran successfully but found no speech.
  */
 export async function transcribeVideoBackend(file: File): Promise<string | null> {
-  const backendUrl = ARENA_BACKEND;
-  if (!backendUrl) {
-    console.warn('[transcribeVideoBackend] NEXT_PUBLIC_ARENA_BACKEND_URL not set');
-    return null;
-  }
-
   try {
     const base64 = await fileToBase64(file);
 
-    const res = await fetch(`${backendUrl}/api/transcribe`, {
+    const res = await fetch('/api/transcribe-video', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: base64, name: file.name, mimeType: file.type }),
@@ -192,18 +185,18 @@ export async function transcribeVideoBackend(file: File): Promise<string | null>
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.warn('[transcribeVideoBackend] Failed:', res.status, errText.slice(0, 300));
-      return null; // transcription FAILED — not "no speech"
+      console.warn('[transcribeVideo] Failed:', res.status, errText.slice(0, 300));
+      return null;
     }
 
     const json = await res.json();
     if (json.error) {
-      console.warn('[transcribeVideoBackend] Backend error:', json.error);
+      console.warn('[transcribeVideo] Backend error:', json.error);
       return null;
     }
     return json.transcript || '';
   } catch (err) {
-    console.warn('[transcribeVideoBackend] Network error:', err);
+    console.warn('[transcribeVideo] Network error:', err);
     return null;
   }
 }
