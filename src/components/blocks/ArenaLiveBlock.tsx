@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users, Zap, Eye, ChevronDown, ChevronUp, ChevronRight,
   Image, Film, Link, Sparkles, MapPin, GraduationCap,
   Activity, Church, Palette, Briefcase, Vote, FileText, X, Play,
-  BarChart3, MessageCircle, TrendingUp,
+  BarChart3, MessageCircle, TrendingUp, Search, Globe, Brain, UserCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult } from '@/lib/arena/types';
@@ -63,62 +63,175 @@ type TabKey = 'principal' | 'segmentos' | 'ideologia' | 'reacoes';
    ============================================================ */
 
 const COLLECTING_STEPS = [
-  { key: 'analyzing', label: 'Analisando pergunta', icon: '🔍' },
-  { key: 'researching', label: 'Pesquisando na web', icon: '🌐' },
-  { key: 'context', label: 'Construindo contexto', icon: '🧠' },
-  { key: 'loading', label: 'Carregando personas', icon: '👥' },
+  { key: 'analyzing', label: 'Analisando pergunta', icon: Search, color: 'violet' },
+  { key: 'researching', label: 'Pesquisando na web', icon: Globe, color: 'sky' },
+  { key: 'context', label: 'Construindo contexto', icon: Brain, color: 'amber' },
+  { key: 'loading', label: 'Carregando personas', icon: UserCheck, color: 'emerald' },
 ] as const;
 
 function CollectingPhase({ status }: { status?: string }) {
   const activeIndex = COLLECTING_STEPS.findIndex(s => status?.includes(s.key));
+  const [dots, setDots] = useState('');
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDots(d => d.length >= 3 ? '' : d + '.');
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="px-6 py-10 flex flex-col items-center justify-center gap-6">
+    <div className="relative px-6 py-14 flex flex-col items-center justify-center gap-8 overflow-hidden">
+      {/* Background glow orbs */}
+      <div className="absolute -top-20 -right-20 w-60 h-60 bg-violet-500/[0.07] rounded-full blur-3xl pointer-events-none animate-pulse" />
+      <div className="absolute -bottom-20 -left-20 w-60 h-60 bg-emerald-500/[0.05] rounded-full blur-3xl pointer-events-none animate-pulse" style={{ animationDelay: '1s' }} />
+
+      {/* Central icon with rotating ring */}
       <div className="relative">
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 border border-violet-500/20 flex items-center justify-center">
-          <Activity size={28} className="text-violet-400 animate-pulse" />
+        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-violet-500/20 via-fuchsia-500/10 to-emerald-500/10 border border-violet-500/20 flex items-center justify-center backdrop-blur-xl shadow-lg shadow-violet-500/10">
+          <Activity size={32} className="text-violet-400" style={{ animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
         </div>
-        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-violet-500 rounded-full ring-2 ring-black animate-pulse" />
+        {/* Spinning orbit ring */}
+        <div className="absolute inset-[-8px] rounded-3xl border border-violet-500/20" style={{ animation: 'spin 8s linear infinite' }} />
+        <div className="absolute inset-[-14px] rounded-3xl border border-dashed border-violet-500/10" style={{ animation: 'spin 12s linear infinite reverse' }} />
+        {/* Live dot */}
+        <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-violet-500 rounded-full ring-2 ring-black" style={{ animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
       </div>
-      <div className="text-center space-y-1.5">
-        <p className="text-sm font-semibold text-white">Coletando dados</p>
-        <p className="text-xs text-zinc-500">Preparando analise com IA — isso pode levar alguns minutos</p>
+
+      {/* Title and subtitle */}
+      <div className="text-center space-y-2">
+        <p className="text-base font-semibold text-white tracking-tight">
+          Coletando dados{dots}
+        </p>
+        <p className="text-xs text-zinc-500 max-w-xs">
+          Preparando analise com IA — isso pode levar alguns minutos
+        </p>
       </div>
-      <div className="w-full max-w-xs space-y-2.5">
+
+      {/* Steps */}
+      <div className="w-full max-w-sm space-y-3">
         {COLLECTING_STEPS.map((step, i) => {
           const isActive = i === activeIndex;
           const isDone = i < activeIndex;
           const isPending = i > activeIndex && activeIndex >= 0;
+          const StepIcon = step.icon;
+
+          const colorMap = {
+            violet: {
+              active: 'bg-violet-500/10 border-violet-500/25 shadow-lg shadow-violet-500/10',
+              icon: 'text-violet-400',
+              text: 'text-violet-300',
+              glow: 'bg-violet-400',
+            },
+            sky: {
+              active: 'bg-sky-500/10 border-sky-500/25 shadow-lg shadow-sky-500/10',
+              icon: 'text-sky-400',
+              text: 'text-sky-300',
+              glow: 'bg-sky-400',
+            },
+            amber: {
+              active: 'bg-amber-500/10 border-amber-500/25 shadow-lg shadow-amber-500/10',
+              icon: 'text-amber-400',
+              text: 'text-amber-300',
+              glow: 'bg-amber-400',
+            },
+            emerald: {
+              active: 'bg-emerald-500/10 border-emerald-500/25 shadow-lg shadow-emerald-500/10',
+              icon: 'text-emerald-400',
+              text: 'text-emerald-300',
+              glow: 'bg-emerald-400',
+            },
+          };
+          const colors = colorMap[step.color];
 
           return (
             <div
               key={step.key}
               className={cn(
-                'flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all duration-500',
+                'flex items-center gap-3.5 px-4 py-3 rounded-xl border transition-all duration-700 ease-out',
                 isActive
-                  ? 'bg-violet-500/10 border-violet-500/25 shadow-lg shadow-violet-500/5'
+                  ? colors.active
                   : isDone
-                    ? 'bg-emerald-500/5 border-emerald-500/15'
-                    : 'bg-white/[0.02] border-white/[0.04]',
+                    ? 'bg-emerald-500/[0.06] border-emerald-500/15'
+                    : 'bg-white/[0.02] border-white/[0.04] opacity-50',
+                isActive && 'scale-[1.02]',
               )}
+              style={{
+                animationDelay: `${i * 100}ms`,
+                ...(isActive ? { animation: 'fadeIn 0.5s ease-out' } : {}),
+              }}
             >
-              <span className="text-sm">{step.icon}</span>
+              <div className={cn(
+                'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-500',
+                isActive
+                  ? `bg-${step.color}-500/20`
+                  : isDone
+                    ? 'bg-emerald-500/15'
+                    : 'bg-white/[0.03]',
+              )}>
+                {isDone ? (
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" style={{ strokeDasharray: 24, strokeDashoffset: 0, animation: 'checkDraw 0.4s ease-out' }} />
+                  </svg>
+                ) : (
+                  <StepIcon size={16} className={cn(
+                    'transition-colors duration-500',
+                    isActive ? colors.icon : 'text-zinc-600',
+                    isActive && 'animate-pulse',
+                  )} />
+                )}
+              </div>
               <span className={cn(
-                'text-xs font-medium transition-colors duration-300',
-                isActive ? 'text-violet-300' : isDone ? 'text-emerald-400/70' : isPending ? 'text-zinc-600' : 'text-zinc-500',
+                'text-sm font-medium transition-all duration-500',
+                isActive ? colors.text : isDone ? 'text-emerald-400/80' : isPending ? 'text-zinc-600' : 'text-zinc-500',
               )}>
                 {step.label}
               </span>
               {isActive && (
-                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
+                <div className="ml-auto flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '0ms', background: 'currentColor' }}>
+                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}>
+                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}>
+                    <span className={cn('block w-full h-full rounded-full', colors.glow)} />
+                  </span>
+                </div>
               )}
               {isDone && (
-                <span className="ml-auto text-[10px] text-emerald-400">✓</span>
+                <span className="ml-auto text-[10px] text-emerald-400 font-medium">Pronto</span>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* Animated progress line */}
+      <div className="w-full max-w-sm">
+        <div className="h-0.5 bg-white/[0.04] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-violet-500 via-sky-500 to-emerald-500 rounded-full"
+            style={{
+              width: `${Math.max(5, ((activeIndex + 1) / COLLECTING_STEPS.length) * 100)}%`,
+              transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)',
+            }}
+          />
+        </div>
+      </div>
+
+      {/* CSS keyframes */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes checkDraw {
+          from { stroke-dashoffset: 24; }
+          to { stroke-dashoffset: 0; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -794,7 +907,12 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                 </span>
               )}
             </div>
-            <p className="text-base font-semibold text-white leading-relaxed">&ldquo;{question}&rdquo;</p>
+            <p className="text-base font-semibold text-white leading-relaxed">
+              {question === 'Analise este conteudo' && media?.length
+                ? <span className="flex items-center gap-2"><Film size={16} className="text-zinc-500" /> Analise de midia</span>
+                : <>&ldquo;{question}&rdquo;</>
+              }
+            </p>
             {isComplete && (
               <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
                 <span className="flex items-center gap-1">
@@ -815,21 +933,25 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
           {media && media.length > 0 && (
             <div className="shrink-0 flex flex-col items-end gap-2">
               <MediaHeaderInline media={media} />
-              <button
-                onClick={() => hasMediaContext && setShowMediaSummary(!showMediaSummary)}
-                disabled={!hasMediaContext}
-                className={cn(
-                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
-                  !hasMediaContext
-                    ? 'bg-white/[0.02] text-zinc-700 border border-white/[0.04] cursor-not-allowed'
-                    : showMediaSummary
+              {hasMediaContext ? (
+                <button
+                  onClick={() => setShowMediaSummary(!showMediaSummary)}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
+                    showMediaSummary
                       ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
                       : 'bg-white/[0.04] text-zinc-500 border border-white/[0.06] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
-                )}
-              >
-                <FileText size={11} />
-                {!hasMediaContext ? 'Processando...' : showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
-              </button>
+                  )}
+                >
+                  <FileText size={11} />
+                  {showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
+                </button>
+              ) : !isComplete ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.02] text-zinc-600 border border-white/[0.04]">
+                  <FileText size={11} className="animate-pulse" />
+                  Processando...
+                </span>
+              ) : null}
             </div>
           )}
         </div>

@@ -136,27 +136,34 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         console.error('[Arena] Media analysis failed, continuing without:', mediaErr);
       }
 
-      if (!q) q = 'O que voce acha deste conteudo?';
+      // If no question was provided and none was generated, use empty string
+      // (the question will be inferred from the media context by the backend)
+      if (!q) q = '';
     }
 
-    if (!q) return;
+    if (!q && !hasMedia) return;
+    // For media-only submissions where no question was generated, use a neutral question
+    if (!q && hasMedia) q = 'Analise este conteudo';
 
     // ── Show collecting block IMMEDIATELY (zero delay) ──────────────────────
-    const immediateData: ArenaLiveData = {
-      question: q,
-      phase: 'collecting',
-      processedCount: 0,
-      totalCount: personaCache.count,
-      positive: 0,
-      negative: 0,
-      neutral: 0,
-      simulation: null,
-      totalPersonas: personaCache.count,
-      media: mediaPreviews,
-      mediaContext: enrichedContext || undefined,
-      collectingStatus: 'analyzing',
-    };
-    onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: immediateData });
+    // Only add block if not already showing media-scanning (which uses same blockId)
+    if (!processedAttachments?.length) {
+      const immediateData: ArenaLiveData = {
+        question: q,
+        phase: 'collecting',
+        processedCount: 0,
+        totalCount: personaCache.count,
+        positive: 0,
+        negative: 0,
+        neutral: 0,
+        simulation: null,
+        totalPersonas: personaCache.count,
+        media: mediaPreviews,
+        mediaContext: enrichedContext || undefined,
+        collectingStatus: 'analyzing',
+      };
+      onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: immediateData });
+    }
 
     // ── Quick Answer check ──────────────────────────────────────────────────
     const quickMatch = detectQuickAnswer(q);
