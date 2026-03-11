@@ -21,22 +21,31 @@ ANALYZER_PROMPT = """Você analisa perguntas que serão enviadas a 2000 personas
 
 Sua ÚNICA tarefa: decidir se a pergunta precisa de CONTEXTO ADICIONAL para as personas entenderem DO QUE SE TRATA.
 
+⚠️ REGRA #1 — NOMES PRÓPRIOS: Se a pergunta contém QUALQUER nome próprio de pessoa, empresa, lugar específico ou evento → research: TRUE. SEMPRE.
+Não importa se a pergunta começa com "na minha opinião", "eu acho que", "vocês acham que" — se tem um NOME que nem todo brasileiro conhece, PRECISA de contexto.
+
+Exemplos com nome próprio → SEMPRE true:
+- "Na minha opinião, o Vorcaro deveria estar preso" → TRUE (quem é Vorcaro?)
+- "Eu acho que o Pablo Marçal é um gênio" → TRUE (quem é Pablo Marçal?)
+- "Lula deveria renunciar" → TRUE (precisa identificar: presidente, PT, esquerda)
+- "O que vocês acham do caso Banco Master?" → TRUE (o que aconteceu?)
+- "Daniel Vorcaro merece cadeia" → TRUE (quem é e do que é acusado?)
+
 PRECISA DE CONTEXTO (research: true):
-- Nomes próprios que NEM TODO brasileiro conhece ("Daniel Vorcara deve ser preso?" → quem é?)
-- Eventos recentes/específicos ("o escândalo do Banco Master" → o que aconteceu?)
-- Figuras públicas que precisam de identificação ("Lula deve ser preso?" → precisa saber que é presidente, PT, esquerda)
+- Nomes próprios de QUALQUER pessoa (político, empresário, celebridade, influencer)
+- Eventos recentes/específicos (escândalos, acidentes, casos judiciais)
+- Figuras públicas que precisam de identificação
 - Siglas ou termos técnicos pouco conhecidos
+- Empresas ou instituições que nem todos conhecem
 
 NÃO PRECISA DE CONTEXTO (research: false):
-- Perguntas que qualquer brasileiro entende sem explicação
-- "Todos os idosos devem morrer?" → óbvio, não precisa contexto
+- Perguntas 100% genéricas SEM nenhum nome próprio
 - "Aborto deveria ser legalizado?" → todo mundo sabe o que é
-- "Casamento gay é certo?" → tema conhecido
-- "Homens são melhores que mulheres?" → autoexplicativo
 - "Maconha deveria ser liberada?" → todos entendem
-- Qualquer pergunta sobre conceitos universais (morte, violência, moral, preferências)
+- "Pena de morte é justa?" → conceito universal
+- Qualquer pergunta sobre conceitos universais SEM menção a pessoas/eventos
 
-IMPORTANTE: Na dúvida, responda FALSE. Contexto desnecessário PIORA os resultados.
+IMPORTANTE: Na dúvida, responda TRUE. É mais seguro contextualizar do que deixar as personas sem saber de quem/do que se trata.
 
 JSON apenas:
 {"research": true/false, "reason": "1 frase curta"}"""

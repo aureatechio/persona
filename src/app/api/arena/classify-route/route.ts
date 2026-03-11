@@ -91,7 +91,8 @@ REGRAS DE DECISAO (em ordem de prioridade):
    - Pede OPINIAO sobre algo que aconteceu recentemente (fato noticioso)
    - Pergunta sobre POLITICA EXTERNA especifica (guerra, invasao, acordo)
    - Menciona NOMES PROPRIOS de pessoas, empresas, ou lugares especificos
-   - Exemplos: "O Daniel Vorcara era pra estar preso", "O que acham do caso do aviao?", "Devemos invadir a Venezuela?", "O Pablo Marçal deveria ser presidente?"
+   - IGNORE o framing da pergunta ("na minha opiniao", "eu acho que", "voces acham") — foque nas ENTIDADES mencionadas
+   - Exemplos: "O Daniel Vorcara era pra estar preso", "Na minha opiniao o Vorcaro deveria estar preso", "O que acham do caso do aviao?", "Devemos invadir a Venezuela?", "O Pablo Marcal deveria ser presidente?"
 
 2. LOCAL se a pergunta:
    - E sobre um TEMA GENERICO coberto pelas colunas (aborto, armas, drogas, economia, etc.)
