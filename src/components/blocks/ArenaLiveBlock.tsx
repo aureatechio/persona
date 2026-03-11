@@ -859,10 +859,10 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   return (
     <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
       {/* ─── Header ─── */}
-      <div className="px-6 py-5">
+      <div className="px-6 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
                 Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
               </p>
@@ -876,22 +876,22 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                   <Activity size={9} /> {isCollecting ? 'Preparando' : 'Ao vivo'}
                 </span>
               )}
-            </div>
-            {isComplete && (
-              <div className="flex items-center gap-4 mt-2 text-[10px] text-zinc-500">
-                <span className="flex items-center gap-1">
-                  <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
-                </span>
-                {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
-                  <span className="flex items-center gap-1">
-                    <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+              {isComplete && (
+                <>
+                  <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                    <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
                   </span>
-                )}
-                <span className="text-emerald-400 font-bold">
-                  {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
-                </span>
-              </div>
-            )}
+                  {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
+                    <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                      <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+                    </span>
+                  )}
+                  <span className="text-[10px] text-emerald-400 font-bold">
+                    {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
+                  </span>
+                </>
+              )}
+            </div>
           </div>
 
           {media && media.length > 0 && (

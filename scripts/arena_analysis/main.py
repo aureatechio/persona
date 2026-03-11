@@ -598,14 +598,10 @@ async def transcribe_upload(file: UploadFile = FastAPIFile(...)):
     """
     Robust multipart video transcription:
     1. Receives raw video file (no base64 overhead)
-    2. If >24MB, extracts audio via FFmpeg (video→mp3 at 64kbps mono 16kHz)
-    3. Sends audio to Whisper API
+    2. ALWAYS extracts audio via FFmpeg (video→mp3 at 64kbps mono 16kHz)
+    3. Tries Groq Whisper first (fast + free), falls back to OpenAI Whisper
     4. Returns {"transcript": "..."} or {"error": "..."}
     """
-    openai_key = settings.openai_api_key
-    if not openai_key:
-        return JSONResponse({"error": "OPENAI_API_KEY not configured"}, status_code=500)
-
     async with _transcribe_semaphore:
         tmp_input = None
         tmp_audio = None
@@ -633,80 +629,113 @@ async def transcribe_upload(file: UploadFile = FastAPIFile(...)):
 
             print(f"[Transcribe] Received {original_name} ({total_size / (1024*1024):.1f}MB)")
 
-            whisper_file = tmp_input.name
-            whisper_name = original_name
+            # ALWAYS extract audio via FFmpeg — ensures clean audio + small file size
+            tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            tmp_audio.close()
 
-            # If file > 24MB, extract audio with FFmpeg
-            if total_size > WHISPER_MAX_SIZE:
-                print(f"[Transcribe] File too large for Whisper ({total_size / (1024*1024):.1f}MB), extracting audio...")
-                tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-                tmp_audio.close()
+            print(f"[Transcribe] Extracting audio via FFmpeg...")
+            ffmpeg_result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "ffmpeg", "-i", tmp_input.name,
+                    "-vn",                    # no video
+                    "-acodec", "libmp3lame",  # mp3 encoding
+                    "-ab", "64k",             # 64kbps bitrate
+                    "-ar", "16000",           # 16kHz sample rate (Whisper optimal)
+                    "-ac", "1",               # mono
+                    "-y",                     # overwrite output
+                    tmp_audio.name,
+                ],
+                capture_output=True,
+                timeout=120,
+            )
 
-                ffmpeg_result = await asyncio.to_thread(
-                    subprocess.run,
-                    [
-                        "ffmpeg", "-i", tmp_input.name,
-                        "-vn",                    # no video
-                        "-acodec", "libmp3lame",  # mp3 encoding
-                        "-ab", "64k",             # 64kbps bitrate
-                        "-ar", "16000",           # 16kHz sample rate (Whisper optimal)
-                        "-ac", "1",               # mono
-                        "-y",                     # overwrite output
-                        tmp_audio.name,
-                    ],
-                    capture_output=True,
-                    timeout=120,
+            if ffmpeg_result.returncode != 0:
+                stderr = ffmpeg_result.stderr.decode(errors="replace")[:500]
+                print(f"[Transcribe] FFmpeg failed: {stderr}")
+                return JSONResponse(
+                    {"error": "Falha ao extrair audio do video", "detail": stderr},
+                    status_code=500,
                 )
 
-                if ffmpeg_result.returncode != 0:
-                    stderr = ffmpeg_result.stderr.decode(errors="replace")[:500]
-                    print(f"[Transcribe] FFmpeg failed: {stderr}")
-                    return JSONResponse(
-                        {"error": "Falha ao extrair audio do video", "detail": stderr},
-                        status_code=500,
-                    )
+            audio_size = os.path.getsize(tmp_audio.name)
+            print(f"[Transcribe] Audio extracted: {audio_size / (1024*1024):.1f}MB (from {total_size / (1024*1024):.1f}MB video)")
 
-                audio_size = os.path.getsize(tmp_audio.name)
-                print(f"[Transcribe] Audio extracted: {audio_size / (1024*1024):.1f}MB (from {total_size / (1024*1024):.1f}MB)")
+            if audio_size > 25 * 1024 * 1024:
+                return JSONResponse(
+                    {"error": "Audio extraido ainda muito grande. Tente um video mais curto."},
+                    status_code=413,
+                )
+            if audio_size == 0:
+                print("[Transcribe] Audio extraction produced empty file — no audio track?")
+                return JSONResponse({"transcript": ""})
 
-                if audio_size > 25 * 1024 * 1024:
-                    return JSONResponse(
-                        {"error": "Audio extraido ainda muito grande. Tente um video mais curto."},
-                        status_code=413,
-                    )
-                if audio_size == 0:
-                    print("[Transcribe] Audio extraction produced empty file — no audio track?")
-                    return JSONResponse({"transcript": ""})
+            whisper_file = tmp_audio.name
 
-                whisper_file = tmp_audio.name
-                whisper_name = "audio.mp3"
+            # ── Try transcription providers in order ──────────────────────
+            transcript = None
 
-            # Send to Whisper API — try all available OpenAI keys
-            all_keys = settings.openai_api_keys or [openai_key]
-            last_error = None
-
-            for key_idx, api_key in enumerate(all_keys):
+            # 1. Try Groq first (fast + generous free tier)
+            groq_key = settings.groq_api_key
+            if groq_key:
                 try:
-                    client = OpenAI(api_key=api_key)
+                    print("[Transcribe] Trying Groq Whisper...")
+                    groq_client = OpenAI(
+                        api_key=groq_key,
+                        base_url="https://api.groq.com/openai/v1",
+                    )
 
-                    def _call_whisper(c=client):
+                    def _call_groq(c=groq_client):
                         with open(whisper_file, "rb") as f:
                             return c.audio.transcriptions.create(
-                                model="whisper-1",
-                                file=(whisper_name, f),
+                                model="whisper-large-v3-turbo",
+                                file=("audio.mp3", f),
                                 language="pt",
                                 response_format="text",
                             )
 
-                    result = await asyncio.to_thread(_call_whisper)
+                    result = await asyncio.to_thread(_call_groq)
                     transcript = result.strip() if isinstance(result, str) else str(result).strip()
-                    break  # success
-                except Exception as key_err:
-                    last_error = key_err
-                    print(f"[Transcribe] Key {key_idx + 1}/{len(all_keys)} failed: {key_err}")
-                    if key_idx < len(all_keys) - 1:
-                        continue
-                    raise last_error
+                    print(f"[Transcribe] Groq OK — {len(transcript)} chars")
+                except Exception as groq_err:
+                    print(f"[Transcribe] Groq failed: {groq_err}")
+
+            # 2. Fallback to OpenAI Whisper (try all keys)
+            if transcript is None:
+                openai_keys = settings.openai_api_keys or ([settings.openai_api_key] if settings.openai_api_key else [])
+                if not openai_keys and not groq_key:
+                    return JSONResponse({"error": "Nenhuma API key configurada (GROQ_API_KEY ou OPENAI_API_KEY)"}, status_code=500)
+
+                last_error = None
+                for key_idx, api_key in enumerate(openai_keys):
+                    try:
+                        print(f"[Transcribe] Trying OpenAI key {key_idx + 1}/{len(openai_keys)}...")
+                        client = OpenAI(api_key=api_key)
+
+                        def _call_whisper(c=client):
+                            with open(whisper_file, "rb") as f:
+                                return c.audio.transcriptions.create(
+                                    model="whisper-1",
+                                    file=("audio.mp3", f),
+                                    language="pt",
+                                    response_format="text",
+                                )
+
+                        result = await asyncio.to_thread(_call_whisper)
+                        transcript = result.strip() if isinstance(result, str) else str(result).strip()
+                        print(f"[Transcribe] OpenAI OK — {len(transcript)} chars")
+                        break
+                    except Exception as key_err:
+                        last_error = key_err
+                        print(f"[Transcribe] OpenAI key {key_idx + 1}/{len(openai_keys)} failed: {key_err}")
+                        if key_idx < len(openai_keys) - 1:
+                            continue
+
+                if transcript is None:
+                    error_msg = str(last_error) if last_error else "Todas as chaves falharam"
+                    print(f"[Transcribe] All providers failed. Last error: {error_msg}")
+                    return JSONResponse({"error": "Falha na transcricao", "detail": error_msg}, status_code=500)
+
             print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars transcript")
             return JSONResponse({"transcript": transcript})
 

@@ -67,6 +67,11 @@ class Settings:
     )
     openai_model: str = "gpt-4o-mini"
 
+    # Groq (Whisper fallback — free/cheap transcription)
+    groq_api_key: str = field(
+        default_factory=lambda: os.environ.get("GROQ_API_KEY", "")
+    )
+
     # Web search
     tavily_api_key: str = field(
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")

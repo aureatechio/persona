@@ -80,15 +80,29 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     const blockId = crypto.randomUUID();
 
-    // Process attachments to base64
-    const processedAttachments = hasMedia
-      ? await processAttachmentsForUpload(attachments)
-      : undefined;
-
     let enrichedContext = contextText || '';
 
     const mediaPreviews = hasMedia
       ? attachments.map(a => ({ type: a.type, preview: a.preview, name: a.name }))
+      : undefined;
+
+    // Show immediate feedback for media uploads BEFORE processing
+    if (hasMedia) {
+      const hasVideo = attachments.some(a => a.type === 'video');
+      onAddBlock({
+        id: blockId,
+        type: 'media-scanning',
+        timestamp: new Date(),
+        data: {
+          previews: mediaPreviews,
+          phase: hasVideo ? 'Transcrevendo video...' : 'Processando midia...',
+        },
+      });
+    }
+
+    // Process attachments (transcription happens here — can take time)
+    const processedAttachments = hasMedia
+      ? await processAttachmentsForUpload(attachments)
       : undefined;
 
     const scannerPreviews = hasMedia && processedAttachments
@@ -101,7 +115,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     // ── Media analysis ──────────────────────────────────────────────────────
     if (processedAttachments?.length) {
-      onAddBlock({
+      // Update phase — transcription done, now analyzing with Claude
+      onReplaceBlock(blockId, {
         id: blockId,
         type: 'media-scanning',
         timestamp: new Date(),

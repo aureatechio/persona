@@ -164,51 +164,53 @@ export async function createVideoThumbnail(file: File): Promise<string> {
 }
 
 /**
- * Transcribe a video file via the Python backend (Whisper on Digital Ocean).
- * Sends the raw file as base64; backend handles transcription server-side.
- * Returns the transcript text, or empty string if no speech detected.
- */
-/**
  * Transcribe video via Python backend (FFmpeg audio extraction + Whisper).
  * Sends raw file as multipart FormData (no base64 overhead).
- * Retries up to 2 times on server errors.
- *
- * Returns transcript text, or null if transcription failed.
- * Empty string '' means Whisper ran successfully but found no speech.
+ * Retries once on transient 500 errors. Fails fast on 4xx (quota, bad request).
+ * 60-second timeout per attempt.
  */
-const MAX_RETRIES = 2;
-
 export async function transcribeVideoBackend(file: File): Promise<string | null> {
+  const MAX_RETRIES = 1;
+  const TIMEOUT_MS = 60_000;
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const formData = new FormData();
       formData.append('file', file, file.name);
 
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
       const res = await fetch('/api/transcribe-video', {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timer);
 
       if (!res.ok) {
         const errText = await res.text().catch(() => '');
-        console.warn(`[transcribeVideo] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, res.status, errText.slice(0, 300));
-        if (attempt < MAX_RETRIES && res.status >= 500) continue;
-        return null;
+        console.warn(`[transcribeVideo] Attempt ${attempt + 1} failed:`, res.status, errText.slice(0, 300));
+        // Don't retry on 4xx (quota, bad request) — only on 500+ transient errors
+        if (res.status < 500 || attempt >= MAX_RETRIES) return null;
+        continue;
       }
 
       const json = await res.json();
       if (json.error) {
-        console.warn(`[transcribeVideo] Backend error (attempt ${attempt + 1}):`, json.error);
-        if (attempt < MAX_RETRIES) continue;
+        console.warn(`[transcribeVideo] Backend error:`, json.error);
         return null;
       }
 
       console.log(`[transcribeVideo] OK — ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(json.transcript?.length || 0)} chars`);
       return json.transcript || '';
-    } catch (err) {
-      console.warn(`[transcribeVideo] Network error (attempt ${attempt + 1}):`, err);
-      if (attempt < MAX_RETRIES) continue;
-      return null;
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        console.warn(`[transcribeVideo] Timeout after ${TIMEOUT_MS / 1000}s (attempt ${attempt + 1})`);
+      } else {
+        console.warn(`[transcribeVideo] Network error (attempt ${attempt + 1}):`, err);
+      }
+      if (attempt >= MAX_RETRIES) return null;
     }
   }
   return null;
