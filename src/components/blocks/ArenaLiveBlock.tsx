@@ -893,75 +893,73 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
 
   return (
     <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
-      {/* ─── Header row: title + tabs left, media right ─── */}
-      <div className="px-6 pt-4 pb-2">
-        {/* Top line: ARENA label + status badges */}
-        <div className="flex items-center gap-2 flex-wrap mb-3">
-          <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
-            Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
-          </p>
-          {isQuickAnswer && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400">
-              <Zap size={9} /> Instantaneo
-            </span>
-          )}
-          {(isCollecting || isStreaming) && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
-              <Activity size={9} /> {isCollecting ? 'Preparando' : 'Ao vivo'}
-            </span>
-          )}
-          {isComplete && (
-            <>
-              <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
+      {/* ─── Header ─── */}
+      <div className="px-6 pt-4 pb-3 flex items-start justify-between gap-4">
+        {/* Left column: label + tabs */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3">
+          {/* ARENA label + status badges */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+              Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
+            </p>
+            {isQuickAnswer && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400">
+                <Zap size={9} /> Instantaneo
               </span>
-              {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
+            )}
+            {(isCollecting || isStreaming) && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
+                <Activity size={9} /> {isCollecting ? 'Preparando' : 'Ao vivo'}
+              </span>
+            )}
+            {isComplete && (
+              <>
                 <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                  <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+                  <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
                 </span>
-              )}
-              <span className="text-[10px] text-emerald-400 font-bold">
-                {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Tabs + Media side by side */}
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Tab Bar inline */}
-          <div className="flex-1 min-w-0">
-            {!isCollecting && <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} inline />}
+                {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
+                  <span className="text-[10px] text-zinc-500 flex items-center gap-1">
+                    <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+                  </span>
+                )}
+                <span className="text-[10px] text-emerald-400 font-bold">
+                  {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
+                </span>
+              </>
+            )}
           </div>
 
-          {/* Right: Media + Ver Resumo */}
-          {media && media.length > 0 && (
-            <div className="shrink-0 flex flex-col items-end gap-1.5">
-              <MediaHeaderInline media={media} />
-              {hasMediaContext ? (
-                <button
-                  onClick={() => setShowMediaSummary(!showMediaSummary)}
-                  className={cn(
-                    'w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
-                    showMediaSummary
-                      ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
-                      : 'bg-white/[0.04] text-zinc-500 border border-white/[0.06] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
-                  )}
-                >
-                  <FileText size={11} />
-                  {showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
-                </button>
-              ) : !isComplete ? (
-                <span className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.02] text-zinc-600 border border-white/[0.04]">
-                  <FileText size={11} className="animate-pulse" />
-                  Processando...
-                </span>
-              ) : null}
-            </div>
-          )}
+          {/* Tab Bar */}
+          {!isCollecting && <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} inline />}
+
+          <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
         </div>
 
-        <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
+        {/* Right column: Media + Ver Resumo */}
+        {media && media.length > 0 && (
+          <div className="shrink-0 flex flex-col items-end gap-1.5">
+            <MediaHeaderInline media={media} />
+            {hasMediaContext ? (
+              <button
+                onClick={() => setShowMediaSummary(!showMediaSummary)}
+                className={cn(
+                  'w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-200',
+                  showMediaSummary
+                    ? 'bg-violet-500/15 text-violet-300 border border-violet-500/25 shadow-lg shadow-violet-500/10'
+                    : 'bg-white/[0.04] text-zinc-500 border border-white/[0.06] hover:bg-violet-500/10 hover:text-violet-300 hover:border-violet-500/20',
+                )}
+              >
+                <FileText size={11} />
+                {showMediaSummary ? 'Fechar resumo' : 'Ver Resumo'}
+              </button>
+            ) : !isComplete ? (
+              <span className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-white/[0.02] text-zinc-600 border border-white/[0.04]">
+                <FileText size={11} className="animate-pulse" />
+                Processando...
+              </span>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* ─── Collecting Phase (before metrics) ─── */}
