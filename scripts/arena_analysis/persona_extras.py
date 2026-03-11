@@ -4,50 +4,149 @@ from __future__ import annotations
 from typing import Any
 
 
+def _add_fields(parts: list[str], p: dict[str, Any], fields: list[tuple[str, str]]) -> None:
+    """Add non-empty field values to parts list."""
+    for field, label in fields:
+        v = p.get(field)
+        if v is not None and v != "" and v != "Não respondeu":
+            parts.append(f"{label}:{v}")
+
+
+def _add_sim_only(prefix: str, p: dict[str, Any], fields: list[tuple[str, str]]) -> str | None:
+    """Collect fields where value is 'Sim' into a compact bracket notation."""
+    sim = [label for field, label in fields if p.get(field) == "Sim"]
+    return f"{prefix}[{','.join(sim)}]" if sim else None
+
+
 def build_persona_extras(p: dict[str, Any]) -> str:
     """
-    Build compact extra persona data string for arena prompt lines.
-    Includes: electoral, temas, questionnaire-key, confiança, tabu, vivências.
+    Build COMPLETE persona data string for arena prompt lines.
+    Sends ALL opinion/questionnaire fields so the AI has the full profile.
     Returns pipe-separated string, or empty string if no data.
     """
     parts: list[str] = []
 
-    # Electoral
-    voto22 = p.get("voto_2022")
-    aprov = p.get("aprovacao_lula")
-    voto26 = p.get("voto_2026")
-    if voto22:
-        parts.append(f"Voto22:{voto22}")
-    if aprov:
-        parts.append(f"AprovLula:{aprov}")
-    if voto26:
-        parts.append(f"Voto26:{voto26}")
+    # ── Electoral ──────────────────────────────────────────────
+    _add_fields(parts, p, [
+        ("voto_2022", "Voto22"),
+        ("aprovacao_lula", "AprovLula"),
+        ("voto_2026", "Voto26"),
+        ("q_avaliacao_bolsonaro", "AvalBolso"),
+        ("q_reeleicao", "Reeleição"),
+    ])
 
-    # Temas polêmicos
-    for field, label in [
+    # ── Temas polêmicos ───────────────────────────────────────
+    _add_fields(parts, p, [
         ("tema_aborto", "Aborto"),
         ("tema_armas", "Armas"),
         ("tema_maconha", "Maconha"),
         ("tema_privatizacoes", "Privat"),
         ("tema_cotas_raciais", "Cotas"),
         ("tema_casamento_gay", "CasGay"),
-    ]:
-        v = p.get(field)
-        if v:
-            parts.append(f"{label}:{v}")
+    ])
 
-    # Questionnaire key fields
-    for field, label in [
-        ("q_maior_problema", "Problema"),
-        ("q_avaliacao_bolsonaro", "AvalBolso"),
+    # ── Político/Social ───────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_pena_morte", "PenaMorte"),
+        ("q_familia_tradicional", "FamTradi"),
+        ("q_racismo_estrutural", "RacismoEstr"),
+        ("q_meritocracia", "Meritocr"),
+        ("q_religiao_politica", "ReligPol"),
+        ("q_feminismo_bom", "Feminismo"),
+        ("q_democracia_importante", "Democracia"),
+        ("q_intervencao_militar", "IntervMil"),
+        ("q_impeachment_lula", "ImpeachLula"),
+        ("q_corrupcao_problema", "Corrupção"),
+        ("q_fake_news_problema", "FakeNews"),
+        ("q_redes_sociais_censuradas", "CensuraRedes"),
+        ("q_sistema_eleitoral_confiavel", "SistEleit"),
+        ("q_pt_comunista", "PTComun"),
+        ("q_bolsonaro_ditador", "BolsoDitador"),
+    ])
+
+    # ── Direitos / Costumes ───────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_direitos_lgbt", "DirLGBT"),
+        ("q_adocao_homoafetiva", "AdoçãoHomo"),
+        ("q_linguagem_neutra", "LingNeutra"),
+        ("q_genero_biologico", "GênBiol"),
+        ("q_homeschooling", "HomeSchool"),
+        ("q_voto_obrigatorio", "VotoObrig"),
+    ])
+
+    # ── Segurança / Justiça ───────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_policia_violenta", "PolViolenta"),
+        ("q_crack_internar_forcado", "InternForçada"),
+        ("q_seguranca_prioridade", "SegPrior"),
+        ("q_camera_facial_aceita", "CamFacial"),
+        ("q_justica_funciona", "JustiçaFunc"),
+        ("q_prisao_perpetua", "PrisãoPerp"),
+        ("q_maioridade_penal_16", "Maior16"),
+        ("q_drogas_descriminalizar", "DescrimDrogas"),
+        ("q_prostituicao_legalizar", "LegalProst"),
+    ])
+
+    # ── Economia ──────────────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_salario_minimo_aumentar", "SalMin"),
+        ("q_reforma_tributaria", "RefTrib"),
+        ("q_imposto_ricos", "ImpRicos"),
+        ("q_estado_tamanho", "TamEstado"),
+        ("q_teto_gastos", "TetoGastos"),
+        ("q_previdencia_reforma", "RefPrev"),
+        ("q_bitcoin_confiar", "Bitcoin"),
+        ("q_banco_central_independente", "BCIndep"),
+        ("q_auxilio_emergencial_voltar", "AuxEmerg"),
+        ("q_desemprego_principal", "Desemprego"),
+        ("q_inflacao_controle", "Inflação"),
+        ("q_13_salario_manter", "13Sal"),
         ("q_situacao_economica", "SitEcon"),
         ("q_perspectiva_futuro", "Futuro"),
-    ]:
-        v = p.get(field)
-        if v:
-            parts.append(f"{label}:{v}")
+        ("q_maior_problema", "Problema"),
+    ])
 
-    # Confiança institucional
+    # ── Saúde / Ciência ──────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_mudanca_climatica_real", "MudClima"),
+        ("q_sus_funciona", "SUS"),
+        ("q_vacinas_confiar", "Vacinas"),
+        ("q_ciencia_importante", "Ciência"),
+        ("q_terra_plana", "TerraPlana"),
+        ("q_medicina_publica_boa", "MedPub"),
+        ("q_plano_saude_tem", "PlanoSaúde"),
+    ])
+
+    # ── Educação ─────────────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_universidade_publica_gratuita", "UniGratis"),
+        ("q_ensino_distancia", "EAD"),
+        ("q_escola_particular_melhor", "EscParticular"),
+        ("q_enem_justo", "ENEM"),
+    ])
+
+    # ── Social / Assistência ─────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_bolsa_familia_bom", "BolsaFam"),
+        ("q_amazonia_preservar", "Amazônia"),
+        ("q_energia_renovavel", "EnergRenov"),
+        ("q_agronegocio_desmata", "AgroDesmata"),
+        ("q_queimadas_criminosas", "Queimadas"),
+    ])
+
+    # ── Internacional ────────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_china_ameaca", "China"),
+        ("q_eua_aliado", "EUA"),
+        ("q_imigracao", "Imigração"),
+    ])
+
+    # ── Mídia ────────────────────────────────────────────────
+    _add_fields(parts, p, [
+        ("q_whatsapp_noticias", "WhatsNews"),
+    ])
+
+    # ── Confiança institucional (escala 1-10) ────────────────
     conf_parts = []
     for field, label in [
         ("q_confianca_stf", "STF"),
@@ -63,9 +162,8 @@ def build_persona_extras(p: dict[str, Any]) -> str:
     if conf_parts:
         parts.append(f"Conf[{','.join(conf_parts)}]")
 
-    # Tabu implícito (only "Sim")
-    tabu_sim = []
-    for f, d in [
+    # ── Tabu implícito (só "Sim") ────────────────────────────
+    tabu = _add_sim_only("VIESES", p, [
         ("q_ti_racismo_latente", "RacismoLat"),
         ("q_ti_nao_contrataria_negro_chefia", "NaoContratNegro"),
         ("q_ti_vizinho_negro_incomoda", "VizNegro"),
@@ -86,15 +184,12 @@ def build_persona_extras(p: dict[str, Any]) -> str:
         ("q_ti_compraria_produto_roubado", "CompraRoubado"),
         ("q_ti_menor14_sabe_o_que_faz", "Menor14Ok"),
         ("q_ti_nepotismo_concurso", "Nepotismo"),
-    ]:
-        if p.get(f) == "Sim":
-            tabu_sim.append(d)
-    if tabu_sim:
-        parts.append(f"VIESES[{','.join(tabu_sim)}]")
+    ])
+    if tabu:
+        parts.append(tabu)
 
-    # Vivências (only "Sim")
-    viv_sim = []
-    for f, d in [
+    # ── Vivências (só "Sim") ─────────────────────────────────
+    viv = _add_sim_only("VIVENCIAS", p, [
         ("q_vi_passou_fome", "Fome"),
         ("q_vi_ja_foi_assaltado", "Assaltado"),
         ("q_vi_desempregado_1ano", "Desempreg"),
@@ -113,10 +208,8 @@ def build_persona_extras(p: dict[str, Any]) -> str:
         ("q_vi_ja_dormiu_na_rua", "DormiuRua"),
         ("q_vi_nao_completou_estudo", "NaoEstudou"),
         ("q_vi_enchente_desastre", "Enchente"),
-    ]:
-        if p.get(f) == "Sim":
-            viv_sim.append(d)
-    if viv_sim:
-        parts.append(f"VIVENCIAS[{','.join(viv_sim)}]")
+    ])
+    if viv:
+        parts.append(viv)
 
     return " | ".join(parts)
