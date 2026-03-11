@@ -169,36 +169,49 @@ export async function createVideoThumbnail(file: File): Promise<string> {
  * Returns the transcript text, or empty string if no speech detected.
  */
 /**
- * Transcribe video via /api/transcribe-video (Next.js route → Whisper API).
+ * Transcribe video via Python backend (FFmpeg audio extraction + Whisper).
+ * Sends raw file as multipart FormData (no base64 overhead).
+ * Retries up to 2 times on server errors.
+ *
  * Returns transcript text, or null if transcription failed.
  * Empty string '' means Whisper ran successfully but found no speech.
  */
+const MAX_RETRIES = 2;
+
 export async function transcribeVideoBackend(file: File): Promise<string | null> {
-  try {
-    const base64 = await fileToBase64(file);
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
 
-    const res = await fetch('/api/transcribe-video', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ data: base64, name: file.name, mimeType: file.type }),
-    });
+      const res = await fetch('/api/transcribe-video', {
+        method: 'POST',
+        body: formData,
+      });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.warn('[transcribeVideo] Failed:', res.status, errText.slice(0, 300));
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        console.warn(`[transcribeVideo] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, res.status, errText.slice(0, 300));
+        if (attempt < MAX_RETRIES && res.status >= 500) continue;
+        return null;
+      }
+
+      const json = await res.json();
+      if (json.error) {
+        console.warn(`[transcribeVideo] Backend error (attempt ${attempt + 1}):`, json.error);
+        if (attempt < MAX_RETRIES) continue;
+        return null;
+      }
+
+      console.log(`[transcribeVideo] OK — ${(file.size / (1024 * 1024)).toFixed(1)}MB → ${(json.transcript?.length || 0)} chars`);
+      return json.transcript || '';
+    } catch (err) {
+      console.warn(`[transcribeVideo] Network error (attempt ${attempt + 1}):`, err);
+      if (attempt < MAX_RETRIES) continue;
       return null;
     }
-
-    const json = await res.json();
-    if (json.error) {
-      console.warn('[transcribeVideo] Backend error:', json.error);
-      return null;
-    }
-    return json.transcript || '';
-  } catch (err) {
-    console.warn('[transcribeVideo] Network error:', err);
-    return null;
   }
+  return null;
 }
 
 export async function processAttachmentsForUpload(attachments: Attachment[]): Promise<ProcessedAttachment[]> {

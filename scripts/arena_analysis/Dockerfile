@@ -2,6 +2,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# FFmpeg for extracting audio from large videos before Whisper transcription
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+
 COPY scripts/arena_analysis/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

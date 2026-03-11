@@ -581,85 +581,141 @@ async def electoral_analyze(request: ElectoralRequest):
     )
 
 
-# ── Video Transcription via Whisper ───────────────────────────────────────────
+# ── Video Transcription via Whisper (robust, with FFmpeg audio extraction) ────
 
-MIME_TO_EXT = {
-    "video/webm": "webm",
-    "video/mp4": "mp4",
-    "video/quicktime": "mov",
-    "audio/mpeg": "mp3",
-    "audio/wav": "wav",
-    "audio/ogg": "ogg",
-    "audio/webm": "webm",
-}
+import subprocess
+from fastapi import UploadFile, File as FastAPIFile
+
+# Semaphore: limit concurrent FFmpeg/Whisper to avoid OOM on 1GB instance
+_transcribe_semaphore = asyncio.Semaphore(2)
+
+WHISPER_MAX_SIZE = 24 * 1024 * 1024  # 24MB (safe margin below Whisper's 25MB)
+UPLOAD_MAX_SIZE = 500 * 1024 * 1024  # 500MB hard limit
 
 
-@app.post("/api/transcribe")
-async def transcribe(request: Request):
+@app.post("/api/transcribe-upload")
+async def transcribe_upload(file: UploadFile = FastAPIFile(...)):
     """
-    Accept base64 video/audio, transcribe via Whisper API, return transcript.
-    Whisper accepts video files natively (mp4, webm, mov, etc.).
+    Robust multipart video transcription:
+    1. Receives raw video file (no base64 overhead)
+    2. If >24MB, extracts audio via FFmpeg (video→mp3 at 64kbps mono 16kHz)
+    3. Sends audio to Whisper API
+    4. Returns {"transcript": "..."} or {"error": "..."}
     """
     openai_key = settings.openai_api_key
     if not openai_key:
         return JSONResponse({"error": "OPENAI_API_KEY not configured"}, status_code=500)
 
-    body = await request.json()
-    data: str = body.get("data", "")
-    name: str = body.get("name", "recording")
-    mime_type: str = body.get("mimeType", "video/mp4")
+    async with _transcribe_semaphore:
+        tmp_input = None
+        tmp_audio = None
+        try:
+            # Determine extension from filename
+            original_name = file.filename or "recording.mp4"
+            ext = os.path.splitext(original_name)[1] or ".mp4"
 
-    if not data:
-        return JSONResponse({"error": "No data provided"}, status_code=400)
+            # Stream-write to temp file (memory-efficient for large files)
+            tmp_input = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+            total_size = 0
+            while True:
+                chunk = await file.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > UPLOAD_MAX_SIZE:
+                    tmp_input.close()
+                    return JSONResponse(
+                        {"error": f"Arquivo muito grande ({total_size // (1024*1024)}MB). Maximo 500MB."},
+                        status_code=413,
+                    )
+                tmp_input.write(chunk)
+            tmp_input.close()
 
-    # Strip data URI prefix if present
-    raw_b64 = data
-    if data.startswith("data:"):
-        parts = data.split(";base64,", 1)
-        if len(parts) == 2:
-            mime_type = parts[0].replace("data:", "")
-            raw_b64 = parts[1]
+            print(f"[Transcribe] Received {original_name} ({total_size / (1024*1024):.1f}MB)")
 
-    try:
-        file_bytes = base64.b64decode(raw_b64)
-    except Exception:
-        return JSONResponse({"error": "Invalid base64 data"}, status_code=400)
+            whisper_file = tmp_input.name
+            whisper_name = original_name
 
-    if len(file_bytes) > 25 * 1024 * 1024:
-        return JSONResponse({"error": "Arquivo muito grande. Maximo 25MB."}, status_code=413)
+            # If file > 24MB, extract audio with FFmpeg
+            if total_size > WHISPER_MAX_SIZE:
+                print(f"[Transcribe] File too large for Whisper ({total_size / (1024*1024):.1f}MB), extracting audio...")
+                tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                tmp_audio.close()
 
-    ext = MIME_TO_EXT.get(mime_type, "mp4")
-    base_name = os.path.splitext(name)[0]
-    file_name = f"{base_name}.{ext}"
-
-    tmp = None
-    try:
-        tmp = tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False)
-        tmp.write(file_bytes)
-        tmp.close()
-
-        client = OpenAI(api_key=openai_key)
-
-        def _transcribe():
-            with open(tmp.name, "rb") as f:
-                return client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=(file_name, f),
-                    language="pt",
-                    response_format="text",
+                ffmpeg_result = await asyncio.to_thread(
+                    subprocess.run,
+                    [
+                        "ffmpeg", "-i", tmp_input.name,
+                        "-vn",                    # no video
+                        "-acodec", "libmp3lame",  # mp3 encoding
+                        "-ab", "64k",             # 64kbps bitrate
+                        "-ar", "16000",           # 16kHz sample rate (Whisper optimal)
+                        "-ac", "1",               # mono
+                        "-y",                     # overwrite output
+                        tmp_audio.name,
+                    ],
+                    capture_output=True,
+                    timeout=120,
                 )
 
-        result = await asyncio.to_thread(_transcribe)
-        transcript = result.strip() if isinstance(result, str) else str(result).strip()
-        print(f"[Transcribe] OK — {len(file_bytes)} bytes → {len(transcript)} chars")
-        return JSONResponse({"transcript": transcript})
+                if ffmpeg_result.returncode != 0:
+                    stderr = ffmpeg_result.stderr.decode(errors="replace")[:500]
+                    print(f"[Transcribe] FFmpeg failed: {stderr}")
+                    return JSONResponse(
+                        {"error": "Falha ao extrair audio do video", "detail": stderr},
+                        status_code=500,
+                    )
 
-    except Exception as e:
-        print(f"[Transcribe] Error: {e}")
-        return JSONResponse({"error": "Falha na transcricao", "detail": str(e)}, status_code=500)
-    finally:
-        if tmp and os.path.exists(tmp.name):
-            os.unlink(tmp.name)
+                audio_size = os.path.getsize(tmp_audio.name)
+                print(f"[Transcribe] Audio extracted: {audio_size / (1024*1024):.1f}MB (from {total_size / (1024*1024):.1f}MB)")
+
+                if audio_size > 25 * 1024 * 1024:
+                    return JSONResponse(
+                        {"error": "Audio extraido ainda muito grande. Tente um video mais curto."},
+                        status_code=413,
+                    )
+                if audio_size == 0:
+                    print("[Transcribe] Audio extraction produced empty file — no audio track?")
+                    return JSONResponse({"transcript": ""})
+
+                whisper_file = tmp_audio.name
+                whisper_name = "audio.mp3"
+
+            # Send to Whisper API
+            client = OpenAI(api_key=openai_key)
+
+            def _call_whisper():
+                with open(whisper_file, "rb") as f:
+                    return client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=(whisper_name, f),
+                        language="pt",
+                        response_format="text",
+                    )
+
+            result = await asyncio.to_thread(_call_whisper)
+            transcript = result.strip() if isinstance(result, str) else str(result).strip()
+            print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars transcript")
+            return JSONResponse({"transcript": transcript})
+
+        except subprocess.TimeoutExpired:
+            print("[Transcribe] FFmpeg timed out (120s)")
+            return JSONResponse({"error": "Extracao de audio demorou demais. Tente um video menor."}, status_code=504)
+        except Exception as e:
+            print(f"[Transcribe] Error: {e}")
+            import traceback
+            traceback.print_exc()
+            return JSONResponse({"error": "Falha na transcricao", "detail": str(e)}, status_code=500)
+        finally:
+            for path in [
+                tmp_input.name if tmp_input else None,
+                tmp_audio.name if tmp_audio else None,
+            ]:
+                if path and os.path.exists(path):
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
