@@ -246,6 +246,20 @@ async def analyze(request: AnalyzeRequest):
                     feedback=validation.corrections,
                 )
                 total_tokens += context.prompt_tokens + context.output_tokens
+
+                if request.verbose:
+                    yield sse_event("log", {
+                        "step": "context_builder",
+                        "level": "info",
+                        "message": "Context revised after validation",
+                        "detail": {
+                            "tema": context.tema,
+                            "contexto": context.contexto,
+                            "figuras": context.figuras,
+                            "periodo": context.periodo,
+                            "revised": True,
+                        },
+                    })
         else:
             print(f"[Pipeline] Pesquisa pulada: {analysis.reason}")
             if request.verbose:

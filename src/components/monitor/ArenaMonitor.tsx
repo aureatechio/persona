@@ -149,11 +149,11 @@ const NODE_LABELS: Record<string, string> = {
 };
 
 const NODE_DESCRIPTIONS: Record<string, string> = {
-  classifier: 'GPT-4o-mini decide: Python IA ou Banco Local',
-  queryAnalyzer: 'Claude Haiku decide se precisa pesquisa web',
+  classifier: 'Claude Sonnet 4 decide: Python IA ou Banco Local',
+  queryAnalyzer: 'Claude Sonnet 4 decide se precisa pesquisa web',
   webResearch: 'Tavily busca 3 queries na web em paralelo',
-  contextBuilder: 'Claude Haiku cria contexto factual neutro',
-  contextValidator: 'Claude Haiku valida precisao e neutralidade',
+  contextBuilder: 'Claude Sonnet 4 cria contexto factual neutro',
+  contextValidator: 'Claude Sonnet 4 valida precisao e neutralidade',
   personaLoader: 'Carrega 20.000 personas do Supabase',
   personaLoop: 'Processa batches em paralelo com Claude + GPT',
   aggregator: 'Agrega sentimentos, segmentos e comentarios',
@@ -391,7 +391,7 @@ function WebResearchPanel({ data }: { data: WebResearchData }) {
 function ContextPanel({ data }: { data: ContextData }) {
   return (
     <div className="space-y-3">
-      <SectionHeader icon={<Brain size={14} />} title="Contexto Gerado" subtitle="Claude Haiku construiu este contexto" />
+      <SectionHeader icon={<Brain size={14} />} title="Contexto Gerado" subtitle="Claude Sonnet 4 construiu este contexto" />
 
       {data.tema && (
         <div className="px-3 py-2.5 rounded-xl bg-violet-500/5 border border-violet-500/20">
@@ -433,11 +433,11 @@ function ContextPanel({ data }: { data: ContextData }) {
 }
 
 function ValidatorPanel({ data }: { data: ValidatorData }) {
-  const isValid = data.verdict?.toUpperCase() === 'VALID';
+  const isValid = data.verdict?.toUpperCase() === 'PASS' || data.verdict?.toUpperCase() === 'VALID';
 
   return (
     <div className="space-y-3">
-      <SectionHeader icon={<ShieldCheck size={14} />} title="Validacao de Contexto" subtitle="Claude Haiku verificou precisao e neutralidade" />
+      <SectionHeader icon={<ShieldCheck size={14} />} title="Validacao de Contexto" subtitle="Claude Sonnet 4 verificou precisao e neutralidade" />
 
       <div className={cn(
         'rounded-xl border p-4',
@@ -784,10 +784,14 @@ function StepDetailView({ nodeKey, stepDetails, classifierDecision, batches }: {
     );
   }
 
-  if (nodeKey === 'contextValidator' && stepDetails.validator) {
+  if (nodeKey === 'contextValidator') {
     return (
-      <div className="p-4">
-        <ValidatorPanel data={stepDetails.validator} />
+      <div className="p-4 space-y-4">
+        {stepDetails.context && <ContextPanel data={stepDetails.context} />}
+        {stepDetails.validator && <ValidatorPanel data={stepDetails.validator} />}
+        {!stepDetails.context && !stepDetails.validator && (
+          <p className="text-[10px] text-zinc-600 text-center py-4">Aguardando validacao...</p>
+        )}
       </div>
     );
   }
