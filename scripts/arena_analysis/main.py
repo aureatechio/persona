@@ -681,20 +681,32 @@ async def transcribe_upload(file: UploadFile = FastAPIFile(...)):
                 whisper_file = tmp_audio.name
                 whisper_name = "audio.mp3"
 
-            # Send to Whisper API
-            client = OpenAI(api_key=openai_key)
+            # Send to Whisper API — try all available OpenAI keys
+            all_keys = settings.openai_api_keys or [openai_key]
+            last_error = None
 
-            def _call_whisper():
-                with open(whisper_file, "rb") as f:
-                    return client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=(whisper_name, f),
-                        language="pt",
-                        response_format="text",
-                    )
+            for key_idx, api_key in enumerate(all_keys):
+                try:
+                    client = OpenAI(api_key=api_key)
 
-            result = await asyncio.to_thread(_call_whisper)
-            transcript = result.strip() if isinstance(result, str) else str(result).strip()
+                    def _call_whisper(c=client):
+                        with open(whisper_file, "rb") as f:
+                            return c.audio.transcriptions.create(
+                                model="whisper-1",
+                                file=(whisper_name, f),
+                                language="pt",
+                                response_format="text",
+                            )
+
+                    result = await asyncio.to_thread(_call_whisper)
+                    transcript = result.strip() if isinstance(result, str) else str(result).strip()
+                    break  # success
+                except Exception as key_err:
+                    last_error = key_err
+                    print(f"[Transcribe] Key {key_idx + 1}/{len(all_keys)} failed: {key_err}")
+                    if key_idx < len(all_keys) - 1:
+                        continue
+                    raise last_error
             print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars transcript")
             return JSONResponse({"transcript": transcript})
 
