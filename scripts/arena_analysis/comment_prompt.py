@@ -62,17 +62,31 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
    Gen X: Pouca abreviação, reticências..., "rsrs"
    Boomer: TUDO MAIÚSCULA, sem abreviações, "!!!", "???", 🙏👍, "HAHAHAHA"
 
-5. SENTIMENTO — RELATIVO À PERGUNTA:
-   positive = CONCORDA com o que a pergunta diz/propõe
-   negative = DISCORDA do que a pergunta diz/propõe
-   neutral = indeciso, dividido, tanto faz
+5. SENTIMENTO — RELATIVO À POSIÇÃO FINAL DO COMENTÁRIO:
+   positive = a CONCLUSÃO do comentário CONCORDA com o que a pergunta diz/propõe
+   negative = a CONCLUSÃO do comentário DISCORDA do que a pergunta diz/propõe
+   neutral = genuinamente indeciso, dividido, tanto faz
 
-   EXEMPLO: Pergunta "idosos devem morrer?"
-   → "concordo tem q tirar esses velho" = positive (CONCORDA com a pergunta)
-   → "q absurdo respeita os velhos" = negative (DISCORDA da pergunta)
-   → "sei la cara complicado" = neutral
+   ⚠️⚠️⚠️ REGRA MAIS IMPORTANTE DE SENTIMENTO ⚠️⚠️⚠️
+   O sentiment é definido pela POSIÇÃO FINAL, NÃO pelo tom emocional.
+   Brasileiro ADORA concordar com cinismo, resignação, ironia ou raiva.
+   Se o comentário CONCORDA com a pergunta mas reclama, xinga, ou duvida que vai acontecer → É POSITIVE.
 
-   ⚠️ O sentiment DEVE ser coerente com o comentário. Se o comentário DEFENDE idosos, o sentiment é NEGATIVE (discorda da pergunta). NUNCA marque positive se o comentário contradiz a pergunta.
+   EXEMPLOS CRÍTICOS — Pergunta "Fulano deveria estar preso?"
+   → "ah sei la milionario sempre se livra ne mas sim deveria ta preso" = ⚠️ POSITIVE (concorda! só é cínico)
+   → "claro q sim porra ladrão tem q se fuder memo q nunca vai preso nesse país" = POSITIVE (concorda, tom de raiva/resignação)
+   → "deveria mas a gente sabe q rico não vai preso né kkkk" = POSITIVE (concorda, cinismo sobre o sistema)
+   → "pra mim nao, o cara nao fez nada de errado" = NEGATIVE (discorda)
+   → "sei la nem sei quem e esse kkkk" = NEUTRAL (não sabe, não opina)
+
+   EXEMPLO — Pergunta "idosos devem morrer?"
+   → "concordo tem q tirar esses velho" = POSITIVE (concorda)
+   → "q absurdo respeita os velhos" = NEGATIVE (discorda)
+   → "sei la cara complicado" = NEUTRAL
+
+   🔑 TESTE FINAL: Pergunte "essa pessoa CONCORDA que [pergunta]?"
+   Se sim → positive. Se não → negative. Se não dá pra saber → neutral.
+   IGNORE o tom (raiva, cinismo, ironia, resignação). Foque na POSIÇÃO.
 
 6. CLASSE SOCIAL:
    D/E: fome, gás, emprego, visceral. "eu que trabalho o dia inteiro pra ganhar uma mixaria"
@@ -254,9 +268,11 @@ PERFIS:
 FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
 {{"results": [{{"id": 1, "sentiment": "positive|negative|neutral", "comment": "..."}}, ...]}}
 
-⚠️ REGRA CRÍTICA DE COERÊNCIA:
-- positive = o comentário CONCORDA/APOIA o que a pergunta diz
-- negative = o comentário DISCORDA/CRITICA o que a pergunta diz
-- O sentiment e o comentário DEVEM ser coerentes entre si
-- Se o comentário defende o oposto da pergunta → sentiment = negative
-- Releia cada comentário antes de definir o sentiment"""
+⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
+- positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
+- negative = a CONCLUSÃO do comentário DISCORDA da pergunta
+- ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
+- "deveria sim mas nunca vai preso nesse pais de merda" = POSITIVE (concorda, tom cínico)
+- "claro porra tem q prender esse ladrão" = POSITIVE (concorda, tom raivoso)
+- "nao acho que deveria nao" = NEGATIVE (discorda)
+- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative"""
