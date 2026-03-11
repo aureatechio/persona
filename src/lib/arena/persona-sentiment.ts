@@ -312,6 +312,76 @@ function detectMoralConsensus(normQuestion: string): ConsensusResult | null {
   return null;
 }
 
+// ── Conviction Score (how sure is this persona about their position?) ─────
+
+/**
+ * Computes how CONVICTED a persona is about a topic.
+ * Uses their ideological scores, political leaning, and profile coherence.
+ *
+ * Returns 0.0 (very undecided/ambivalent) to 1.0 (extremely convicted).
+ *
+ * Low conviction → higher chance of being neutral even on yes/no topics.
+ * This is what generates the ~5-15% neutrals in local route processing.
+ */
+function computeConviction(
+  persona: Record<string, any>,
+  normQuestion: string,
+): number {
+  const scoreEco = persona.score_economico ?? 0;
+  const scoreCost = persona.score_costumes ?? 0;
+
+  // 1. Ideological intensity — personas near center are less convicted
+  const ecoIntensity = Math.abs(scoreEco);   // 0..1
+  const costIntensity = Math.abs(scoreCost);  // 0..1
+
+  // Determine which axis matters more for this question
+  const SOCIAL_WORDS = [
+    'aborto', 'arma', 'maconha', 'gay', 'lgbt', 'casamento', 'familia',
+    'genero', 'feminism', 'religiao', 'droga', 'pena de morte', 'prisao',
+    'policia', 'seguranca', 'homeschool', 'linguagem neutra', 'transgen',
+  ];
+  const ECONOMIC_WORDS = [
+    'privatiz', 'salario', 'imposto', 'estado', 'econom', 'bolsa',
+    'auxilio', 'emprego', 'mercado', 'empresa', 'reforma', 'previdencia',
+    'bitcoin', 'inflacao', 'desemprego', 'teto', 'banco central',
+  ];
+
+  const isSocial = SOCIAL_WORDS.some(w => normQuestion.includes(w));
+  const isEconomic = ECONOMIC_WORDS.some(w => normQuestion.includes(w));
+
+  let relevantIntensity: number;
+  if (isSocial && !isEconomic) {
+    relevantIntensity = costIntensity * 0.7 + ecoIntensity * 0.3;
+  } else if (isEconomic && !isSocial) {
+    relevantIntensity = ecoIntensity * 0.7 + costIntensity * 0.3;
+  } else {
+    relevantIntensity = (ecoIntensity + costIntensity) / 2;
+  }
+
+  // 2. Political leaning — pure Centro is less convicted
+  const leaning = norm(String(persona.political_leaning || ''));
+  let leaningModifier = 0;
+  if (leaning === 'centro') {
+    leaningModifier = -0.15;
+  } else if (leaning.includes('centro') && (leaning.includes('esquerda') || leaning.includes('direita'))) {
+    // Centro-Esquerda / Centro-Direita — slightly less convicted than extremes
+    leaningModifier = -0.05;
+  }
+
+  // 3. Education — higher education = slightly more nuance on political topics
+  const edu = norm(String(persona.education_level || ''));
+  let eduModifier = 0;
+  if (edu.includes('pos') || edu.includes('mestrado') || edu.includes('doutorado')) {
+    eduModifier = -0.08;
+  } else if (edu.includes('superior completo')) {
+    eduModifier = -0.04;
+  }
+
+  // Final conviction: base from ideological intensity + modifiers
+  // Clamp to [0, 1]
+  return Math.max(0, Math.min(1, relevantIntensity + leaningModifier + eduModifier));
+}
+
 // ── Holistic Profile Analysis ─────────────────────────────────────────────────
 
 /**
@@ -617,7 +687,24 @@ export function computePersonaSentiment(
   if (directMatches.length > 0) {
     const avgScore = directMatches.reduce((a, b) => a + b, 0) / directMatches.length;
 
-    // Small noise for natural variance (people don't always respond consistently)
+    // Compute conviction — how sure is this persona about their position?
+    // Low conviction (center ideology, moderate scores) → chance of neutral
+    const conviction = computeConviction(persona, normQuestion);
+
+    // Neutral chance inversely proportional to conviction:
+    //   conviction 0.0 → ~18% neutral (very undecided persona, e.g. Centro puro)
+    //   conviction 0.3 → ~12% neutral
+    //   conviction 0.5 → ~9% neutral
+    //   conviction 0.7 → ~5% neutral
+    //   conviction 1.0 → ~0% neutral (extremely convicted persona)
+    // Target: ~5-15% neutrals overall across 20K personas
+    const neutralChance = 0.18 * (1 - conviction);
+
+    if (neutralChance > 0 && Math.random() < neutralChance) {
+      return 'neutral';
+    }
+
+    // Standard noise for natural variance
     const noise = (Math.random() - 0.5) * 0.3;
     const finalScore = avgScore + noise;
 
