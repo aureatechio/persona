@@ -69,11 +69,19 @@ interface ValidatorData {
   corrections: string;
 }
 
+interface PromptSampleData {
+  system_prompt: string;
+  user_prompt: string;
+  persona_count: number;
+  note: string;
+}
+
 interface StepDetails {
   queryAnalyzer: QueryAnalyzerData | null;
   webResearch: WebResearchData | null;
   context: ContextData | null;
   validator: ValidatorData | null;
+  promptSample: PromptSampleData | null;
 }
 
 interface PipelineState {
@@ -95,6 +103,7 @@ const initialStepDetails: StepDetails = {
   webResearch: null,
   context: null,
   validator: null,
+  promptSample: null,
 };
 
 const initialState: PipelineState = {
@@ -481,6 +490,44 @@ function ValidatorPanel({ data }: { data: ValidatorData }) {
   );
 }
 
+function PromptSamplePanel({ data }: { data: PromptSampleData }) {
+  const [showSystem, setShowSystem] = useState(false);
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader icon={<FileText size={14} />} title="Prompt Enviado as Personas" subtitle={`Amostra do 1o batch — ${data.persona_count} personas`} />
+
+      <div className="px-3 py-2 rounded-lg bg-sky-500/5 border border-sky-500/15">
+        <p className="text-[9px] text-sky-400/80">{data.note}</p>
+      </div>
+
+      {/* System Prompt (collapsible) */}
+      <div>
+        <button
+          onClick={() => setShowSystem(!showSystem)}
+          className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-zinc-600 hover:text-zinc-400 transition-colors duration-200 mb-2 px-1"
+        >
+          {showSystem ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+          System Prompt (instrucoes da IA)
+        </button>
+        {showSystem && (
+          <div className="px-4 py-3 rounded-xl bg-zinc-900/60 border border-white/[0.04] max-h-60 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+            <pre className="text-[10px] text-zinc-500 leading-relaxed whitespace-pre-wrap font-mono">{data.system_prompt}</pre>
+          </div>
+        )}
+      </div>
+
+      {/* User Prompt (full — this is what matters) */}
+      <div>
+        <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">User Prompt (contexto + perfis das personas)</p>
+        <div className="px-4 py-3 rounded-xl bg-zinc-900/60 border border-white/[0.04] max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+          <pre className="text-[10px] text-zinc-300 leading-relaxed whitespace-pre-wrap font-mono">{data.user_prompt}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SectionHeader({ icon, title, subtitle }: { icon: React.ReactNode; title: string; subtitle: string }) {
   return (
     <div className="flex items-center gap-2.5 pb-2 border-b border-white/[0.04]">
@@ -796,8 +843,30 @@ function StepDetailView({ nodeKey, stepDetails, classifierDecision, batches }: {
     );
   }
 
-  if (nodeKey === 'personaLoop' && batches.length > 0) {
-    return <BatchInspector batches={batches} />;
+  if (nodeKey === 'personaLoop') {
+    const hasPrompt = stepDetails.promptSample !== null;
+    const hasBatches = batches.length > 0;
+    if (!hasPrompt && !hasBatches) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center p-8">
+          <div className="w-12 h-12 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-3">
+            <Cpu size={20} className="text-zinc-700" />
+          </div>
+          <p className="text-[11px] text-zinc-500 font-medium">Processamento de Personas</p>
+          <p className="text-[9px] text-zinc-700 mt-1.5 max-w-xs leading-relaxed">Aguardando inicio do processamento...</p>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        {hasPrompt && (
+          <div className="p-4">
+            <PromptSamplePanel data={stepDetails.promptSample!} />
+          </div>
+        )}
+        {hasBatches && <BatchInspector batches={batches} />}
+      </div>
+    );
   }
 
   return (
@@ -1064,13 +1133,30 @@ export function ArenaMonitor() {
           break;
 
         case 'batch_detail':
-          setState(prev => ({
-            ...prev,
-            batches: [...prev.batches, payload.data],
-          }));
-          addLog('personaLoop', 'debug',
-            `Lote ${payload.data.model}: ${payload.data.persona_count} personas → ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'positive').length} a favor, ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'negative').length} contra`,
-          );
+          // Check if this is a prompt sample (first event before actual batches)
+          if (payload.data.type === 'prompt_sample') {
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                promptSample: {
+                  system_prompt: payload.data.system_prompt || '',
+                  user_prompt: payload.data.user_prompt || '',
+                  persona_count: payload.data.persona_count || 0,
+                  note: payload.data.note || '',
+                },
+              },
+            }));
+            addLog('personaLoop', 'info', `Prompt montado — ${payload.data.persona_count} personas no batch de amostra`);
+          } else {
+            setState(prev => ({
+              ...prev,
+              batches: [...prev.batches, payload.data],
+            }));
+            addLog('personaLoop', 'debug',
+              `Lote ${payload.data.model}: ${payload.data.persona_count} personas → ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'positive').length} a favor, ${payload.data.personas_summary?.filter((p: any) => p.sentiment === 'negative').length} contra`,
+            );
+          }
           break;
 
         case 'results':

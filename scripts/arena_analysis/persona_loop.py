@@ -357,6 +357,22 @@ class PersonaLoop:
         negative = 0
         neutral = 0
 
+        # Emit the full prompt of the first batch as sample (verbose only)
+        if verbose and batches:
+            sample_prompt = build_batch_prompt(question, context, batches[0])
+            yield BatchProgress(
+                processed=0, total=total,
+                positive=0, negative=0, neutral=0,
+                results=[],
+                batch_meta={
+                    "type": "prompt_sample",
+                    "system_prompt": ARENA_SYSTEM_PROMPT[:500] + "..." if len(ARENA_SYSTEM_PROMPT) > 500 else ARENA_SYSTEM_PROMPT,
+                    "user_prompt": sample_prompt,
+                    "persona_count": len(batches[0]),
+                    "note": "Prompt completo do 1o batch (amostra). Todos os batches seguem o mesmo formato.",
+                },
+            )
+
         all_tasks = []
         for key_id, group in enumerate(claude_groups):
             client = self._claude_clients[key_id]
