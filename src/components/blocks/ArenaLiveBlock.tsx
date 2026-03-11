@@ -48,6 +48,8 @@ export interface ArenaLiveData {
     politicalFigures: PoliticalFigureDetection[];
   };
   liveComments?: CommentResult[];
+  /** State-level sentiment breakdown for Brazil heat map */
+  stateBreakdown?: Record<string, { count: number; positive: number; negative: number; neutral: number }>;
   /** Status message during collecting phase */
   collectingStatus?: string;
 }

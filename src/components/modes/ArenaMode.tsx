@@ -14,6 +14,7 @@ import {
   IdeologyAccumulator,
   LiveCommentAccumulator,
   classifyQuickPersona,
+  StateAccumulator,
 } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
@@ -68,6 +69,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       timestamp: new Date(),
       data,
     });
+    // Broadcast full ArenaLiveData to presentation screens
+    broadcastToMonitor({ type: 'arena-live-update', data });
   }, [onReplaceBlock]);
 
   const handleSubmit = useCallback(async (value: string, contextText?: string, attachments?: Attachment[]) => {
@@ -221,6 +224,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
+        const stateAcc = new StateAccumulator();
         const BATCH = 100;
         let liveComments: import('@/lib/arena/types').CommentResult[] = [];
         let aiCommentsFired = false;
@@ -240,6 +244,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segAcc.addPersona(p, sentiment);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
+            stateAcc.addPersona(p, sentiment);
           }
           emitLive(blockId, {
             ...baseLiveData,
@@ -253,6 +258,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
             liveComments,
+            stateBreakdown: stateAcc.toStateBreakdown(),
           });
         };
 
@@ -294,6 +300,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         // Final complete state
         const qaResult = runQuickAnswer(quickMatch, allData, q);
         const qaSegments = segAcc.toSegments();
+        const qaStateBreakdown = stateAcc.toStateBreakdown();
 
         emitLive(blockId, {
           ...baseLiveData,
@@ -307,6 +314,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           segments: qaSegments,
           quickAnswer: qaResult,
           liveComments,
+          stateBreakdown: qaStateBreakdown,
         });
 
         onProcessing(false);
@@ -329,6 +337,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               segments: qaSegments,
               quickAnswer: qaResult,
               simulation: { ...enhanced, comments: [] },
+              stateBreakdown: qaStateBreakdown,
             });
 
             // Generate full AI comments with all personas if not already done
@@ -348,6 +357,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               segments: qaSegments,
               quickAnswer: qaResult,
               simulation: { ...enhanced, comments: claudeComments },
+              stateBreakdown: qaStateBreakdown,
             });
           } catch (err) {
             console.warn('[Arena] Quick answer enrichment failed:', err);
@@ -420,6 +430,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
+        const stateAcc = new StateAccumulator();
         const BATCH = 100;
         let liveComments: import('@/lib/arena/types').CommentResult[] = [];
         let aiCommentsFired = false;
@@ -459,6 +470,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segAcc.addPersona(p, sentiment);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
+            stateAcc.addPersona(p, sentiment);
           }
 
           emitLive(blockId, {
@@ -472,6 +484,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
             liveComments,
+            stateBreakdown: stateAcc.toStateBreakdown(),
           });
 
           // Fire AI comment generation at ~25% with selected personas
@@ -503,6 +516,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
           liveComments,
+          stateBreakdown: stateAcc.toStateBreakdown(),
         });
         onProcessing(false);
 
@@ -523,6 +537,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           simulation: sim,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
+          stateBreakdown: stateAcc.toStateBreakdown(),
         });
         return;
       } catch (localErr) {
@@ -551,6 +566,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // ── Progressive accumulators fed by Python progress events ──────────
     const ideoAcc = new IdeologyAccumulator(q);
     const commentAcc = new LiveCommentAccumulator(q);
+    const stateAcc = new StateAccumulator();
     let liveComments: import('@/lib/arena/types').CommentResult[] = [];
     let aiCommentsFired = false;
 
@@ -576,6 +592,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const sentiment = computePersonaSentiment(p, queryForLocal);
         ideoAcc.addPersona(p, sentiment);
         commentAcc.addPersona(p, sentiment);
+        stateAcc.addPersona(p, sentiment);
         personaIndex++;
       }
       // NOTE: We do NOT generate local AI comments for the Python path.
@@ -704,6 +721,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     ...(payload.data.segments ? { segments: payload.data.segments } : {}),
                     liveIdeology: ideoAcc.toResults(),
                     liveComments,
+                    stateBreakdown: stateAcc.toStateBreakdown(),
                   });
                   simulation = {
                     total: payload.data.total,
@@ -876,6 +894,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
+        const stateAccFb = new StateAccumulator();
         const BATCH = 100;
         let liveComments: import('@/lib/arena/types').CommentResult[] = [];
         let aiCommentsFired = false;
@@ -915,6 +934,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segAcc.addPersona(p, sentiment);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
+            stateAccFb.addPersona(p, sentiment);
           }
 
           emitLive(blockId, {
@@ -928,6 +948,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
             liveComments,
+            stateBreakdown: stateAccFb.toStateBreakdown(),
           });
 
           // Fire AI comment generation at ~25% with selected personas
@@ -959,6 +980,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
           liveComments,
+          stateBreakdown: stateAccFb.toStateBreakdown(),
         });
         onProcessing(false);
 
@@ -979,6 +1001,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           simulation: sim,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
+          stateBreakdown: stateAccFb.toStateBreakdown(),
         });
       } catch (fallbackErr) {
         console.error('[Arena] Fallback failed:', fallbackErr);

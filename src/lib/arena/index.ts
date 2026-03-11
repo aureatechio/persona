@@ -86,3 +86,7 @@ export type { QuickAnswerMatch, QuickAnswerResult } from './quick-answer';
 // Segment breakdowns
 export { computeAllSegments, SegmentAccumulator } from './segments';
 export type { SegmentItem, AllSegments } from './segments';
+
+// State-level accumulator (Brazil heat map)
+export { StateAccumulator } from './state-accumulator';
+export type { StateSentiment, StateBreakdown } from './state-accumulator';
