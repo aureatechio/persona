@@ -527,6 +527,60 @@ function analyzeVotingData(
   for (const k of supWords) { if (normQuestion.includes(k)) sup++; }
   const isAdversarial = adv > sup && adv > 0;
 
+  // ── COMPARISON: when BOTH names appear, detect who is the SUBJECT ──
+  // "Lula é melhor que Bolsonaro" → subject = Lula (appears BEFORE "melhor"/"pior")
+  // "Bolsonaro é melhor que Lula" → subject = Bolsonaro
+  // The subject is the one being praised/criticized — route to their block
+  if (hasLula && hasBolsonaro) {
+    const comparisonWords = ['melhor', 'pior', 'mais', 'menos', 'superior', 'inferior'];
+    const lulaPos = normQuestion.indexOf('lula');
+    const bolsoPos = normQuestion.indexOf('bolsonaro');
+
+    // Find the first comparison word position
+    let compPos = normQuestion.length;
+    for (const w of comparisonWords) {
+      const idx = normQuestion.indexOf(w);
+      if (idx !== -1 && idx < compPos) compPos = idx;
+    }
+
+    // The name that appears BEFORE the comparison word is the subject
+    // "lula e melhor que bolsonaro" → lula(0) < melhor(7) → subject is Lula
+    // "bolsonaro e melhor que lula" → bolsonaro(0) < melhor(14) → subject is Bolsonaro
+    const lulaIsSubject = lulaPos < bolsoPos;
+
+    // For comparison questions, we use a head-to-head approach:
+    // "X é melhor que Y?" → supporters of X = positive, supporters of Y = negative
+    const voto22 = norm(String(persona.voto_2022 || ''));
+    const voto26 = norm(String(persona.voto_2026 || ''));
+    const aprovLula = norm(String(persona.aprovacao_lula || ''));
+    const avalBolso = norm(String(persona.q_avaliacao_bolsonaro || ''));
+
+    // Determine who the persona supports
+    const supportsLula =
+      aprovLula.includes('aprova') || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
+      voto22.includes('lula') || voto26.includes('lula');
+    const supportsBolsonaro =
+      avalBolso.includes('bom') || avalBolso.includes('otimo') || avalBolso.includes('excelente') ||
+      voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
+
+    let stance: Sentiment = 'neutral';
+    if (lulaIsSubject) {
+      // "Lula é melhor que Bolsonaro" → Lula supporters agree, Bolsonaro supporters disagree
+      if (supportsLula && !supportsBolsonaro) stance = 'positive';
+      else if (supportsBolsonaro && !supportsLula) stance = 'negative';
+      else if (supportsLula && supportsBolsonaro) stance = 'neutral'; // conflicted
+    } else {
+      // "Bolsonaro é melhor que Lula" → Bolsonaro supporters agree, Lula supporters disagree
+      if (supportsBolsonaro && !supportsLula) stance = 'positive';
+      else if (supportsLula && !supportsBolsonaro) stance = 'negative';
+      else if (supportsLula && supportsBolsonaro) stance = 'neutral'; // conflicted
+    }
+
+    // 85% follow their data, 15% noise
+    if (Math.random() > 0.15) return stance;
+    return null;
+  }
+
   if (hasLula) {
     // Use ACTUAL data: aprovacao_lula, voto_2022, voto_2026
     const aprovacao = persona.aprovacao_lula;
