@@ -187,13 +187,18 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
 ⚠️ VOCÊ ESTÁ REAGINDO AO CONTEÚDO ACIMA. Leia os FATOS, ARGUMENTOS e DADOS apresentados. Sua opinião deve refletir como SEU PERFIL reagiria ao ver esse conteúdo numa rede social. Seja ESPECÍFICO — mencione pontos concretos do conteúdo."""
         else:
-            context_block = f"""PERGUNTA: "{question}"
+            context_block = f"""═══ PERGUNTA CENTRAL (é sobre ISSO que você deve opinar) ═══
+"{question}"
 
-QUEM/O QUE É (apenas para você saber de quem se trata, NÃO mude sua opinião por causa disso):
+═══ CONTEXTO (leia para entender de quem/do que se trata) ═══
 {context.contexto}
 {f"FIGURAS: {figuras_text}" if figuras_text else ""}
 
-⚠️ RESPONDA SOBRE A PERGUNTA ACIMA. O contexto serve APENAS para identificar pessoas/eventos. Sua opinião deve vir do SEU PERFIL, não do contexto."""
+⚠️ INSTRUÇÕES:
+1. LEIA o contexto para entender QUEM É a pessoa ou O QUE aconteceu
+2. RESPONDA À PERGUNTA CENTRAL baseado no SEU PERFIL (idade, classe, ideologia, região)
+3. O contexto te informa os FATOS — sua OPINIÃO vem do seu perfil
+4. Se a pergunta é "deveria estar preso?" → opine sobre ISSO, usando os fatos do contexto"""
     else:
         context_block = f'PERGUNTA: "{question}"'
 

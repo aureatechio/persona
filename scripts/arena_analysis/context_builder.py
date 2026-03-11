@@ -30,28 +30,34 @@ class ContextResult:
     output_tokens: int = 0
 
 
-CONTEXT_BUILDER_PROMPT = """Você cria FICHAS DE IDENTIFICAÇÃO curtas para um sistema de pesquisa social.
+CONTEXT_BUILDER_PROMPT = """Você cria FICHAS DE CONTEXTUALIZAÇÃO para um sistema de pesquisa social.
 
-A pergunta será enviada a 2000 personas brasileiras. Seu contexto serve APENAS para que elas saibam DE QUEM ou DO QUE se trata. NADA MAIS.
+A pergunta será enviada a 2000 personas brasileiras. Seu contexto serve para que elas saibam:
+1. DE QUEM ou DO QUE se trata
+2. POR QUE essa pergunta está sendo feita (o fato, escândalo, polêmica)
 
-REGRAS ABSOLUTAS:
-1. MÁXIMO 2-3 frases no contexto. Seja TELEGRÁFICO.
-2. Só identifique: QUEM é, QUAL cargo, QUAL partido/posição política
-3. NUNCA adicione análise, história detalhada, opinião ou julgamento
-4. NUNCA adicione informação que possa influenciar a resposta
-5. O objetivo é que a persona saiba se a figura é de esquerda/direita, qual cargo tem — só isso
-6. Se a pergunta já é clara, o contexto deve ser MÍNIMO
+Sem isso, a persona não consegue opinar com propriedade.
+
+REGRAS:
+1. MÁXIMO 3-5 frases. Seja conciso mas COMPLETO.
+2. Identifique: QUEM é + QUAL cargo + O QUE FEZ/ACONTECEU que gerou a pergunta
+3. Seja FACTUAL e NEUTRO — descreva os fatos sem julgamento
+4. NUNCA diga se é culpado ou inocente — só o que é público (investigação, acusação, denúncia)
+5. NUNCA omita o MOTIVO da polêmica — sem ele a persona não entende a pergunta
+6. Se a pergunta é sobre punição/prisão → OBRIGATÓRIO explicar DO QUE a pessoa é acusada
+7. Se a pergunta já é autoexplicativa (temas genéricos) → contexto mínimo
 
 EXEMPLOS:
-- "Lula deve ser preso?" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda)."
-- "Daniel Vorcara deve ser preso?" → contexto: "Daniel Vorcaro, presidente do Banco Master, investigado por suposta corrupção."
-- "Brizola foi bom?" → contexto: "Leonel Brizola (1922-2004), político de esquerda, governador do RJ e RS."
+- "Lula deve ser preso?" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda). Foi condenado na Lava-Jato por corrupção e lavagem de dinheiro, preso em 2018, solto em 2019 após decisão do STF. Condenações foram anuladas por questão de foro."
+- "Daniel Vorcara deve ser preso?" → contexto: "Daniel Vorcaro, presidente do Banco Master. O banco é alvo de investigações por operações financeiras suspeitas, emissão irregular de CDBs e possíveis fraudes contábeis. O caso ganhou repercussão após revelações sobre o tamanho da exposição do FGC."
+- "Brizola foi bom?" → contexto: "Leonel Brizola (1922-2004), político de esquerda (PDT), governador do RJ e RS. Conhecido pelos CIEPs (escolas de tempo integral) e por posições nacionalistas."
+- "Aborto deveria ser legalizado?" → contexto mínimo: não precisa explicar o que é aborto.
 
 JSON válido:
 {
   "tema": "Título curto",
-  "contexto": "1-3 frases MÁXIMO. Só identificação.",
-  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "posição política"}],
+  "contexto": "3-5 frases factuais. QUEM É + O QUE FEZ/ACONTECEU.",
+  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "posição política ou papel no caso"}],
   "periodo": "período relevante"
 }"""
 
