@@ -170,29 +170,42 @@ export async function createVideoThumbnail(file: File): Promise<string> {
  */
 const ARENA_BACKEND = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || '';
 
-export async function transcribeVideoBackend(file: File): Promise<string> {
-  const base64 = await fileToBase64(file);
-
+/**
+ * Result: transcript text, or null if transcription failed (not "no speech").
+ * Empty string '' means Whisper ran successfully but found no speech.
+ */
+export async function transcribeVideoBackend(file: File): Promise<string | null> {
   const backendUrl = ARENA_BACKEND;
   if (!backendUrl) {
     console.warn('[transcribeVideoBackend] NEXT_PUBLIC_ARENA_BACKEND_URL not set');
-    return '';
+    return null;
   }
 
-  const res = await fetch(`${backendUrl}/api/transcribe`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: base64, name: file.name, mimeType: file.type }),
-  });
+  try {
+    const base64 = await fileToBase64(file);
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    console.warn('[transcribeVideoBackend] Failed:', res.status, errText.slice(0, 300));
-    return '';
+    const res = await fetch(`${backendUrl}/api/transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: base64, name: file.name, mimeType: file.type }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.warn('[transcribeVideoBackend] Failed:', res.status, errText.slice(0, 300));
+      return null; // transcription FAILED — not "no speech"
+    }
+
+    const json = await res.json();
+    if (json.error) {
+      console.warn('[transcribeVideoBackend] Backend error:', json.error);
+      return null;
+    }
+    return json.transcript || '';
+  } catch (err) {
+    console.warn('[transcribeVideoBackend] Network error:', err);
+    return null;
   }
-
-  const { transcript } = await res.json();
-  return transcript || '';
 }
 
 export async function processAttachmentsForUpload(attachments: Attachment[]): Promise<ProcessedAttachment[]> {
@@ -205,9 +218,15 @@ export async function processAttachmentsForUpload(attachments: Attachment[]): Pr
       const base64 = await compressImage(att.file);
       results.push({ type: 'image', data: base64, name: att.name });
     } else if (att.type === 'video' && att.file) {
-      // Transcribe via Python backend (Whisper) — returns transcript text
+      // Transcribe via Python backend (Whisper)
+      // null = transcription failed, '' = no speech, string = transcript
       const transcript = await transcribeVideoBackend(att.file);
-      results.push({ type: 'video', data: transcript, name: att.name });
+      if (transcript === null) {
+        // Transcription failed — mark with special prefix so analyze-media knows
+        results.push({ type: 'video', data: '__TRANSCRIPTION_FAILED__', name: att.name });
+      } else {
+        results.push({ type: 'video', data: transcript, name: att.name });
+      }
     }
   }
 

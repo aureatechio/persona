@@ -98,9 +98,15 @@ export async function POST(request: Request) {
       } else if (att.type === 'url') {
         content.push({ type: 'text', text: `\n\nURL para contexto: ${att.data}` });
       } else if (att.type === 'video') {
-        // Video transcripts arrive pre-resolved as { type:'video', data:'transcript text' }
-        // from the frontend (transcribed via Python backend before calling this route)
-        if (att.data) {
+        // Video transcripts arrive pre-resolved from frontend (transcribed via Python Whisper)
+        if (att.data === '__TRANSCRIPTION_FAILED__') {
+          // Transcription service failed — skip video entirely, don't mislead Claude
+          console.warn(`[Analyze Media] Transcription failed for ${att.name}, skipping`);
+          content.push({
+            type: 'text',
+            text: `\n\n[Video "${att.name}": transcricao indisponivel — servico de audio temporariamente fora. Ignore este anexo.]`,
+          });
+        } else if (att.data) {
           content.push({
             type: 'text',
             text: `\n\n--- TRANSCRICAO DO VIDEO "${att.name}" ---\n${att.data}\n--- FIM DA TRANSCRICAO ---`,
