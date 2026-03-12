@@ -21,6 +21,16 @@ function norm(str: string): string {
   return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+/** Check if string contains "aprova" but NOT "desaprova" */
+function hasAprova(s: string): boolean {
+  return s.includes('aprova') && !s.includes('desaprova');
+}
+
+/** Check if string contains "desaprova" */
+function hasDesaprova(s: string): boolean {
+  return s.includes('desaprova');
+}
+
 // ── Question → Persona Field Mapping ──────────────────────────────────────────
 
 interface FieldMapping {
@@ -557,7 +567,7 @@ function analyzeVotingData(
 
     // Determine who the persona supports
     const supportsLula =
-      aprovLula.includes('aprova') || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
+      hasAprova(aprovLula) || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
       voto22.includes('lula') || voto26.includes('lula');
     const supportsBolsonaro =
       avalBolso.includes('bom') || avalBolso.includes('otimo') || avalBolso.includes('excelente') ||
@@ -591,10 +601,10 @@ function analyzeVotingData(
 
     // Check approval
     const aprov = aprovacao ? norm(String(aprovacao)) : '';
-    if (aprov.includes('aprova') || aprov.includes('bom') || aprov.includes('otimo')) {
-      stance = 'positive';
-    } else if (aprov.includes('desaprova') || aprov.includes('ruim') || aprov.includes('pessim')) {
+    if (hasDesaprova(aprov) || aprov.includes('ruim') || aprov.includes('pessim')) {
       stance = 'negative';
+    } else if (hasAprova(aprov) || aprov.includes('bom') || aprov.includes('otimo')) {
+      stance = 'positive';
     }
 
     // Check voting history for stronger signal
@@ -624,10 +634,10 @@ function analyzeVotingData(
     let stance: Sentiment = 'neutral';
 
     const aval = avaliacao ? norm(String(avaliacao)) : '';
-    if (aval.includes('bom') || aval.includes('otimo') || aval.includes('excelente') || aval.includes('aprova')) {
-      stance = 'positive';
-    } else if (aval.includes('ruim') || aval.includes('pessim') || aval.includes('horrivel') || aval.includes('desaprova')) {
+    if (aval.includes('ruim') || aval.includes('pessim') || aval.includes('horrivel') || hasDesaprova(aval)) {
       stance = 'negative';
+    } else if (aval.includes('bom') || aval.includes('otimo') || aval.includes('excelente') || hasAprova(aval)) {
+      stance = 'positive';
     }
 
     if (stance === 'neutral') {

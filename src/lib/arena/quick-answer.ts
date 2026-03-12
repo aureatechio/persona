@@ -120,6 +120,9 @@ function isYes(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'number') return value >= 7;
   const v = norm(String(value));
+  // Check negative forms FIRST to avoid "desaprova" matching "aprova"
+  if (v.includes('desaprova') || v.includes('contra') || v.includes('discordo')
+    || v.includes('ruim') || v.includes('pessim')) return false;
   return v === 'sim' || v === 'yes' || v.includes('a favor') || v.includes('concordo')
     || v.includes('apoio') || v.includes('aprova') || v.includes('bom') || v.includes('otimo');
 }
