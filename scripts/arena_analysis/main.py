@@ -628,6 +628,85 @@ async def electoral_analyze(request: ElectoralRequest):
     )
 
 
+# ── YouTube Transcript Extraction ─────────────────────────────────────────────
+
+import re
+
+YOUTUBE_ID_RE = re.compile(
+    r"(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})"
+)
+MAX_TRANSCRIPT_CHARS = 10_000
+
+
+class YouTubeTranscriptRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/youtube-transcript")
+async def youtube_transcript(req: YouTubeTranscriptRequest):
+    """
+    Extract YouTube video transcript (auto-generated or manual captions).
+    Uses youtube-transcript-api which handles PoToken internally.
+    """
+    m = YOUTUBE_ID_RE.search(req.url)
+    if not m:
+        return JSONResponse({"error": "URL do YouTube invalida"}, status_code=400)
+
+    video_id = m.group(1)
+
+    # Fetch metadata via oEmbed (lightweight, no key needed)
+    title = ""
+    author = ""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            oembed_url = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+            meta_res = await client.get(oembed_url)
+            if meta_res.status_code == 200:
+                meta = meta_res.json()
+                title = meta.get("title", "")
+                author = meta.get("author_name", "")
+    except Exception:
+        pass  # Metadata is optional
+
+    # Fetch transcript
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+
+        ytt = YouTubeTranscriptApi()
+
+        def _fetch():
+            try:
+                return ytt.fetch(video_id, languages=["pt", "pt-BR", "en"])
+            except Exception:
+                # Fallback: try any available language
+                return ytt.fetch(video_id)
+
+        transcript_obj = await asyncio.to_thread(_fetch)
+        snippets = transcript_obj.snippets
+        if not snippets:
+            return JSONResponse(
+                {"error": "Legendas nao disponiveis para este video"},
+                status_code=422,
+            )
+
+        full_text = " ".join(s.text for s in snippets)
+
+        # Truncate long transcripts
+        if len(full_text) > MAX_TRANSCRIPT_CHARS:
+            full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+
+        print(f"[YouTube] OK — {video_id} | {len(snippets)} segments | {len(full_text)} chars")
+        return JSONResponse({"transcript": full_text, "title": title, "author": author})
+
+    except Exception as e:
+        error_msg = str(e)
+        print(f"[YouTube] Error for {video_id}: {error_msg}")
+        return JSONResponse(
+            {"error": "Legendas nao disponiveis para este video"},
+            status_code=422,
+        )
+
+
 # ── Video Transcription via Whisper (robust, with FFmpeg audio extraction) ────
 
 import subprocess

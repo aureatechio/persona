@@ -18,7 +18,7 @@ import {
 } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
-import { processAttachmentsForUpload, type Attachment } from '@/lib/file-utils';
+import { processAttachmentsForUpload, isYouTubeUrl, type Attachment } from '@/lib/file-utils';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 
 interface ArenaModeProps {
@@ -87,6 +87,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     onProcessing(true);
 
+    // Reset presentation screens (dashboard/map) immediately
+    broadcastToMonitor({ type: 'arena-reset', data: null });
+
     const blockId = crypto.randomUUID();
 
     let enrichedContext = contextText || '';
@@ -99,14 +102,17 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // Show immediate feedback for media uploads BEFORE processing
     if (hasMedia) {
       const hasVideo = attachments.some(a => a.type === 'video');
+      const hasYouTube = attachments.some(a => a.type === 'url' && a.url && isYouTubeUrl(a.url));
+      const phase = hasYouTube
+        ? 'Buscando legenda do YouTube...'
+        : hasVideo
+          ? 'Transcrevendo video...'
+          : 'Processando midia...';
       onAddBlock({
         id: blockId,
         type: 'media-scanning',
         timestamp: new Date(),
-        data: {
-          previews: mediaPreviews,
-          phase: hasVideo ? 'Transcrevendo video...' : 'Processando midia...',
-        },
+        data: { previews: mediaPreviews, phase },
       });
     }
 
@@ -570,6 +576,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let simulation: any = null;
 
     // ── Progressive accumulators fed by Python progress events ──────────
+    const segAcc = new SegmentAccumulator();
     const ideoAcc = new IdeologyAccumulator(q);
     const commentAcc = new LiveCommentAccumulator(q);
     const stateAcc = new StateAccumulator();
@@ -596,6 +603,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       while (personaIndex < targetIndex) {
         const p = allPersonas[personaIndex];
         const sentiment = computePersonaSentiment(p, queryForLocal);
+        segAcc.addPersona(p, sentiment);
         ideoAcc.addPersona(p, sentiment);
         commentAcc.addPersona(p, sentiment);
         stateAcc.addPersona(p, sentiment);
@@ -724,7 +732,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     positive: payload.data.positive,
                     negative: payload.data.negative,
                     neutral: payload.data.neutral,
-                    ...(payload.data.segments ? { segments: payload.data.segments } : {}),
+                    segments: payload.data.segments || segAcc.toSegments(),
                     liveIdeology: ideoAcc.toResults(),
                     liveComments,
                     stateBreakdown: stateAcc.toStateBreakdown(),
@@ -768,6 +776,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   feedAccumulators(payload.data.total_personas || simulation?.total || allPersonas.length, payload.data.total_personas || simulation?.total || allPersonas.length);
                   const doneTotal = payload.data.total_personas || simulation?.total || 0;
                   const doneSegments = (simulation as any)?._backendSegments;
+                  const liveIdeo = ideoAcc.toResults();
                   emitLive(blockId, {
                     ...baseLiveData,
                     phase: 'complete',
@@ -779,6 +788,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     simulation,
                     totalPersonas: doneTotal,
                     ...(doneSegments ? { segments: doneSegments } : {}),
+                    liveIdeology: liveIdeo,
                     liveComments,
                   });
                   onProcessing(false);
@@ -798,6 +808,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       simulation,
                       totalPersonas: doneTotal,
                       segments: segs,
+                      liveIdeology: liveIdeo,
                     });
                   }
 
@@ -818,6 +829,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       simulation,
                       totalPersonas: doneTotal,
                       ...(doneSegments ? { segments: doneSegments } : {}),
+                      liveIdeology: liveIdeo,
                     });
                   }
                   break;
@@ -846,6 +858,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           neutral: simulation?.neutral || 0,
           simulation,
           totalPersonas: total,
+          liveIdeology: ideoAcc.toResults(),
           liveComments,
         });
         onProcessing(false);
@@ -865,6 +878,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           totalPersonas: total,
+          liveIdeology: ideoAcc.toResults(),
           liveComments,
         });
         onProcessing(false);
@@ -1042,6 +1056,20 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     window.addEventListener('arena-rich-submit', handler);
     return () => window.removeEventListener('arena-rich-submit', handler);
   }, [handleSubmit]);
+
+  // Listen for "Novo Chat" — abort running simulation + broadcast reset to presentation screens
+  useEffect(() => {
+    const handler = () => {
+      // Abort any running Python backend request
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+      broadcastToMonitor({ type: 'arena-reset', data: null });
+    };
+    window.addEventListener('arena-new-chat', handler);
+    return () => window.removeEventListener('arena-new-chat', handler);
+  }, []);
 
   return null; // Logic-only component
 }

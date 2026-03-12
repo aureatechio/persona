@@ -9,6 +9,7 @@ import {
   Paperclip,
   Camera,
   Globe,
+  Play,
 } from 'lucide-react';
 import { VideoRecorder } from './VideoRecorder';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,7 @@ import {
   canAddAttachment,
   createImagePreview,
   createVideoThumbnail,
+  isYouTubeUrl,
 } from '@/lib/file-utils';
 
 /** Detect if a string is (or contains) a URL */
@@ -229,6 +231,8 @@ export function BottomInput({
                       <img src={att.preview} alt="" className="w-6 h-6 rounded-lg object-cover" />
                     ) : att.type === 'video' ? (
                       <Video size={12} className="text-violet-400" />
+                    ) : att.type === 'url' && att.url && isYouTubeUrl(att.url) ? (
+                      <Play size={12} className="text-red-400" />
                     ) : (
                       <Globe size={12} className="text-sky-400" />
                     )}
@@ -240,7 +244,10 @@ export function BottomInput({
                       {att.type === 'image' && (
                         <span className="text-[9px] text-emerald-400/70 leading-tight">Contexto sera extraido</span>
                       )}
-                      {att.type === 'url' && (
+                      {att.type === 'url' && att.url && isYouTubeUrl(att.url) && (
+                        <span className="text-[9px] text-red-400/70 leading-tight">Legenda sera transcrita</span>
+                      )}
+                      {att.type === 'url' && !(att.url && isYouTubeUrl(att.url)) && (
                         <span className="text-[9px] text-sky-400/70 leading-tight">Conteudo sera analisado</span>
                       )}
                     </div>

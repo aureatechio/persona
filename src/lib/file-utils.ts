@@ -25,6 +25,11 @@ export function isVideoFile(file: File): boolean {
   return file.type.startsWith('video/');
 }
 
+const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+export function isYouTubeUrl(url: string): boolean {
+  return YOUTUBE_REGEX.test(url);
+}
+
 export function canAddAttachment(current: Attachment[]): boolean {
   return current.length < MAX_ATTACHMENTS;
 }
@@ -277,6 +282,27 @@ export async function processAttachmentsForUpload(attachments: Attachment[]): Pr
 
   for (const att of attachments) {
     if (att.type === 'url' && att.url) {
+      // YouTube URLs: fetch transcript and treat as video content
+      if (isYouTubeUrl(att.url)) {
+        try {
+          const res = await fetch('/api/youtube-transcript', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: att.url }),
+          });
+          if (res.ok) {
+            const { transcript, title, author } = await res.json();
+            const header = [title, author].filter(Boolean).join(' — ');
+            const fullTranscript = header
+              ? `[YouTube: ${header}]\n\n${transcript}`
+              : transcript;
+            results.push({ type: 'video', data: fullTranscript, name: title || att.name });
+            continue;
+          }
+        } catch {
+          // Fallback to raw URL below
+        }
+      }
       results.push({ type: 'url', data: att.url, name: att.name });
     } else if (att.type === 'image' && att.file) {
       const base64 = await compressImage(att.file);
