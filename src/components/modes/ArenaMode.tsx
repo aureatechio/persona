@@ -70,7 +70,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       data,
     });
     // Broadcast full ArenaLiveData to presentation screens
-    broadcastToMonitor({ type: 'arena-live-update', data });
+    // Use JSON parse/stringify to ensure structured-cloneable data
+    try {
+      const cloneable = JSON.parse(JSON.stringify(data));
+      broadcastToMonitor({ type: 'arena-live-update', data: cloneable });
+    } catch (e) {
+      console.warn('[Arena] Failed to broadcast ArenaLiveData:', e);
+    }
   }, [onReplaceBlock]);
 
   const handleSubmit = useCallback(async (value: string, contextText?: string, attachments?: Attachment[]) => {

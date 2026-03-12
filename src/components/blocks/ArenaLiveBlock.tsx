@@ -834,6 +834,12 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   const hasMediaContext = cleanedMediaContext.length > 0;
   const blockRef = useRef<HTMLDivElement>(null);
 
+  // Check if presentation mode is active (via URL param)
+  const isPresentationMode = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).has('apresentacao');
+  }, []);
+
   const isCollecting = phase === 'collecting';
   const isStreaming = phase === 'streaming' || phase === 'aggregating';
   const isComplete = phase === 'complete';
@@ -889,6 +895,83 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
       <div className="bg-white/[0.03] border border-red-500/20 rounded-2xl p-6 text-center">
         <p className="text-sm text-red-400">{data.error}</p>
         <p className="text-xs text-zinc-600 mt-2">&ldquo;{question}&rdquo;</p>
+      </div>
+    );
+  }
+
+  // ── Presentation Mode: show only progress bar + hero sentiment ─────
+  if (isPresentationMode) {
+    const pctPos = finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0;
+    const pctNeg = finalTotal > 0 ? Math.round((finalNegative / finalTotal) * 100) : 0;
+    const pctNeu = finalTotal > 0 ? Math.round((finalNeutral / finalTotal) * 100) : 0;
+    const progress = totalCount > 0 ? (processedCount / totalCount) * 100 : 0;
+
+    return (
+      <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
+        <div className="p-6 space-y-5">
+          {/* Status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
+                Arena • Apresentacao
+              </p>
+              {(isCollecting || isStreaming) && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400 animate-pulse">
+                  <Activity size={9} /> Ao vivo
+                </span>
+              )}
+              {isComplete && (
+                <span className="text-[10px] text-emerald-400 font-bold">Completo</span>
+              )}
+            </div>
+            <span className="text-xs text-zinc-500">
+              {processedCount.toLocaleString()} / {totalCount.toLocaleString()} personas
+            </span>
+          </div>
+
+          {/* Collecting phase */}
+          {isCollecting && <CollectingPhase status={data.collectingStatus} />}
+
+          {/* Progress bar */}
+          {!isCollecting && !isComplete && (
+            <div className="space-y-2">
+              <div className="h-2 bg-zinc-900/80 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <p className="text-xs text-zinc-500 text-center">{progress.toFixed(0)}% processado</p>
+            </div>
+          )}
+
+          {/* Hero sentiment bar (always show when we have data) */}
+          {!isCollecting && finalTotal > 0 && (
+            <div>
+              <HeroSentimentBar
+                positive={finalPositive}
+                negative={finalNegative}
+                neutral={finalNeutral}
+                total={finalTotal}
+              />
+              {/* Big numbers */}
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="bg-white/[0.03] border border-emerald-500/20 rounded-xl p-4 text-center">
+                  <span className="text-3xl font-black text-emerald-400">{pctPos}%</span>
+                  <p className="text-[10px] uppercase tracking-wider text-emerald-500/60 mt-1">A Favor</p>
+                </div>
+                <div className="bg-white/[0.03] border border-rose-500/20 rounded-xl p-4 text-center">
+                  <span className="text-3xl font-black text-rose-400">{pctNeg}%</span>
+                  <p className="text-[10px] uppercase tracking-wider text-rose-500/60 mt-1">Contra</p>
+                </div>
+                <div className="bg-white/[0.03] border border-amber-500/20 rounded-xl p-4 text-center">
+                  <span className="text-3xl font-black text-amber-400">{pctNeu}%</span>
+                  <p className="text-[10px] uppercase tracking-wider text-amber-500/60 mt-1">Neutros</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
