@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
  * Stutter-free: tracks actual current value in a ref (not stale React state)
  * so mid-animation target changes blend seamlessly.
  */
-export function useAnimatedValue(target: number, duration = 8000): number {
+export function useAnimatedValue(target: number, duration = 16000): number {
   const [display, setDisplay] = useState(target);
   const currentRef = useRef(target);       // actual displayed value (always up to date)
   const startValRef = useRef(target);
@@ -71,7 +71,7 @@ export function useAnimatedValue(target: number, duration = 8000): number {
  */
 export function AnimatedNumber({
   value,
-  duration = 8000,
+  duration = 16000,
   suffix = '',
   format,
 }: {

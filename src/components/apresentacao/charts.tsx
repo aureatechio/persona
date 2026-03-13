@@ -43,7 +43,7 @@ function UnifiedStatCard({ value, label, count, color, glow, border, isDominant 
   isDominant: boolean;
 }) {
   const animatedValue = useAnimatedValue(value);
-  const animatedCount = useAnimatedValue(count, 10000);
+  const animatedCount = useAnimatedValue(count, 20000);
   const c = COLOR_MAP[color];
 
   return (
@@ -170,13 +170,13 @@ export const SentimentBar = memo(function SentimentBar({ positive, negative, neu
   return (
     <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
       <div className="h-[36px] rounded-xl overflow-hidden flex bg-white/[0.03] border border-white/[0.04]">
-        <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[3s] flex items-center justify-center" style={{ width: `${pctPos}%` }}>
+        <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[6s] flex items-center justify-center" style={{ width: `${pctPos}%` }}>
           {pctPos > 6 && <span className="text-sm font-black text-black/80">{animPos}%</span>}
         </div>
-        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-[3s] flex items-center justify-center" style={{ width: `${Math.max(pctNeu, 3)}%` }}>
+        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-[6s] flex items-center justify-center" style={{ width: `${Math.max(pctNeu, 3)}%` }}>
           <span className="text-sm font-black text-black/80">{animNeu}%</span>
         </div>
-        <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[3s] flex-1 flex items-center justify-center">
+        <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[6s] flex-1 flex items-center justify-center">
           {pctNeg > 6 && <span className="text-sm font-black text-black/80">{animNeg}%</span>}
         </div>
       </div>
@@ -260,7 +260,7 @@ export const DonutCard = memo(function DonutCard({
         <div className="shrink-0 flex items-center justify-center w-[35%] overflow-hidden">
           <div className="relative w-full aspect-square max-w-[140px] max-h-full">
             <div
-              className="w-full h-full rounded-full transition-all duration-1000"
+              className="w-full h-full rounded-full transition-all duration-[4s]"
               style={{ background: hasData ? `conic-gradient(${stops.join(', ')})` : 'rgba(255,255,255,0.04)' }}
             />
             <div className="absolute inset-[22%] rounded-full bg-[#0a0a0b] flex flex-col items-center justify-center">
@@ -299,9 +299,9 @@ export const DonutCard = memo(function DonutCard({
                     <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
                   </div>
                   <div className="w-full h-[4px] rounded-full overflow-hidden flex mt-0.5">
-                    <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
-                    <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
-                    <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
+                    <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${favPct}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${neuPct}%` }} />
+                    <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${conPct}%` }} />
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="text-[9px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
@@ -383,9 +383,9 @@ export const HBarChart = memo(function HBarChart({
                 {item.label}
               </span>
               <div className="flex-1 h-[14px] rounded-full overflow-hidden flex bg-white/[0.03]">
-                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
-                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
-                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
+                <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${favPct}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${neuPct}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${conPct}%` }} />
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <span className="text-[10px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
@@ -537,7 +537,7 @@ export function SpectrumGauge({
               return (
                 <div
                   key={b.label}
-                  className="absolute flex items-center justify-center transition-all duration-1000"
+                  className="absolute flex items-center justify-center transition-all duration-[4s]"
                   style={{
                     left: `${leftPos}%`,
                     transform: 'translateX(-50%)',
@@ -578,9 +578,9 @@ export function SpectrumGauge({
             return (
               <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
                 <div className="w-full h-[4px] rounded-full overflow-hidden flex">
-                  <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${bFav}%` }} />
-                  <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${bNeu}%` }} />
-                  <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${bCon}%` }} />
+                  <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${bFav}%` }} />
+                  <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${bNeu}%` }} />
+                  <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${bCon}%` }} />
                 </div>
                 <div className="flex items-center gap-0.5">
                   <span className="text-[9px] font-black tabular-nums text-emerald-400"><AnimatedNumber value={bFav} suffix="%" /></span>
@@ -667,9 +667,9 @@ export function QuadrantGrid({
                 {q.label}
               </p>
               <div className="w-full h-[5px] rounded-full overflow-hidden flex">
-                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
-                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
-                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
+                <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${favPct}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${neuPct}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${conPct}%` }} />
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>

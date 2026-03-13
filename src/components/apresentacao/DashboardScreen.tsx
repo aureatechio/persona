@@ -114,9 +114,9 @@ export const SegmentRanking = memo(function SegmentRanking({
 
                 <div className="flex-1 min-w-0 relative flex flex-col justify-center gap-1.5">
                   <div className="h-[6px] rounded-full overflow-hidden flex">
-                    <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${pctFav}%` }} />
-                    <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${pctNeu}%` }} />
-                    <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${pctCon}%` }} />
+                    <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctFav}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeu}%` }} />
+                    <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctCon}%` }} />
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
@@ -178,9 +178,9 @@ export const SegmentRanking = memo(function SegmentRanking({
                 {item.label}
               </span>
               <div className="flex-1 h-[8px] rounded-full overflow-hidden flex">
-                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${pctFav}%` }} />
-                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${pctNeu}%` }} />
-                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${pctCon}%` }} />
+                <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctFav}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeu}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctCon}%` }} />
               </div>
               <span className="text-[10px] font-bold tabular-nums text-emerald-400 shrink-0"><AnimatedNumber value={pctFav} suffix="%" /></span>
               <span className="text-[10px] font-bold tabular-nums text-amber-400 shrink-0"><AnimatedNumber value={pctNeu} suffix="%" /></span>

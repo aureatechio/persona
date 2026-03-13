@@ -39,9 +39,9 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
           </p>
         </div>
         <div className="h-[8px] rounded-full overflow-hidden flex">
-          <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${pctSupport}%` }} />
-          <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${pctNeutral}%` }} />
-          <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${pctAttack}%` }} />
+          <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctSupport}%` }} />
+          <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeutral}%` }} />
+          <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctAttack}%` }} />
         </div>
       </div>
     </div>
@@ -220,7 +220,7 @@ export function UnifiedScreen() {
           ) : (
             <div className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[3s] ease-out" style={{ width: `${progress}%` }} />
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[6s] ease-out" style={{ width: `${progress}%` }} />
               </div>
               <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
               <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
