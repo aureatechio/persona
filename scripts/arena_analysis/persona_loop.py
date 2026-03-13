@@ -249,11 +249,11 @@ def _fallback_single(persona: dict[str, Any]) -> PersonaResult:
 
 class PersonaLoop:
     """
-    Processa TODAS as personas INDIVIDUALMENTE (1 por chamada de API).
-    Cada persona recebe 100% da atenção do modelo.
+    Processa personas em BATCHES com concorrência controlada por semaphore.
 
-    Distribui entre Claude Sonnet (N chaves) + GPT-4o (N chaves) em paralelo
-    com rate limiting por chave.
+    batch_size=10: 20k personas → 2000 API calls (10x fewer connections).
+    Semaphore(40): max 40 concurrent HTTPS connections (safe for 1vCPU/1GB).
+    Distribui entre Claude Sonnet + GPT-4o com rate limiting por chave.
     """
 
     def __init__(self):
@@ -264,7 +264,7 @@ class PersonaLoop:
         ]
         self._has_claude = len(self._claude_clients) > 0
 
-        # Rate limiters — 1 por chave Claude (45 RPM com margem vs 50 RPM limit)
+        # Rate limiters — 1 por chave Claude
         self._claude_limiters: list[KeyRateLimiter] = [
             KeyRateLimiter(rpm=45) for _ in self._claude_clients
         ]
@@ -276,113 +276,117 @@ class PersonaLoop:
         ]
         self._has_openai = len(self._openai_clients) > 0
 
-        # Rate limiters — 1 por chave OpenAI (450 RPM com margem vs 500 RPM limit)
+        # Rate limiters — 1 por chave OpenAI
         self._openai_limiters: list[KeyRateLimiter] = [
             KeyRateLimiter(rpm=450) for _ in self._openai_clients
         ]
 
-    # ── Claude — 1 persona ─────────────────────────────────────────────────
-    async def _process_claude_single(
+    # ── Claude — batch of personas ────────────────────────────────────────
+    async def _process_claude_batch(
         self,
         question: str,
         context: ContextResult,
-        persona: dict[str, Any],
+        personas: list[dict[str, Any]],
         rate_limiter: KeyRateLimiter,
         client: anthropic.AsyncAnthropic,
+        semaphore: asyncio.Semaphore,
         key_id: int = 0,
-    ) -> tuple[PersonaResult, str, dict[str, Any]]:
+    ) -> list[PersonaResult]:
         tag = f"Claude-{key_id+1}"
         max_retries = settings.max_retries
-        user_prompt = build_single_prompt(question, context, persona)
+        user_prompt = build_batch_prompt(question, context, personas)
 
-        for attempt in range(max_retries + 1):
-            await rate_limiter.acquire()
-            try:
-                response = await client.messages.create(
-                    model=settings.model,
-                    max_tokens=settings.max_tokens_per_batch,
-                    system=ARENA_SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": user_prompt}],
-                    temperature=1.0,
-                )
-                text_block = next(
-                    (b for b in response.content if b.type == "text"), None
-                )
-                if not text_block:
-                    raise ValueError("No text block in response")
-                return (_parse_single_response(text_block.text, persona, tag), tag, persona)
+        async with semaphore:
+            for attempt in range(max_retries + 1):
+                await rate_limiter.acquire()
+                try:
+                    response = await client.messages.create(
+                        model=settings.model,
+                        max_tokens=settings.max_tokens_per_batch,
+                        system=ARENA_SYSTEM_PROMPT,
+                        messages=[{"role": "user", "content": user_prompt}],
+                        temperature=1.0,
+                    )
+                    text_block = next(
+                        (b for b in response.content if b.type == "text"), None
+                    )
+                    if not text_block:
+                        raise ValueError("No text block in response")
+                    return _parse_response(text_block.text, personas, tag)
 
-            except json.JSONDecodeError:
-                if attempt < max_retries:
-                    print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
-                    await asyncio.sleep(1)
-                    continue
-                print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                return (_fallback_single(persona), tag, persona)
+                except json.JSONDecodeError:
+                    if attempt < max_retries:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                        await asyncio.sleep(1)
+                        continue
+                    print(f"[{tag}] JSON error after retries, fallback")
+                    return _fallback_results(personas)
 
-            except Exception as e:
-                is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
-                max_r = 3 if is_rate else max_retries
-                if attempt < max_r:
-                    wait = (attempt + 1) * 5 if is_rate else 2
-                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
-                    await asyncio.sleep(wait)
-                    continue
-                print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                return (_fallback_single(persona), tag, persona)
+                except Exception as e:
+                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
+                    max_r = 3 if is_rate else max_retries
+                    if attempt < max_r:
+                        wait = (attempt + 1) * 5 if is_rate else 2
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:80]}")
+                        await asyncio.sleep(wait)
+                        continue
+                    print(f"[{tag}] Error after retries, fallback: {str(e)[:150]}")
+                    return _fallback_results(personas)
 
-        return (_fallback_single(persona), tag, persona)
+            return _fallback_results(personas)
 
-    # ── OpenAI — 1 persona ─────────────────────────────────────────────────
-    async def _process_openai_single(
+    # ── OpenAI — batch of personas ────────────────────────────────────────
+    async def _process_openai_batch(
         self,
         question: str,
         context: ContextResult,
-        persona: dict[str, Any],
+        personas: list[dict[str, Any]],
         rate_limiter: KeyRateLimiter,
         client: openai.AsyncOpenAI,
+        semaphore: asyncio.Semaphore,
         key_id: int = 0,
-    ) -> tuple[PersonaResult, str, dict[str, Any]]:
+    ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
         max_retries = settings.max_retries
-        user_prompt = build_single_prompt(question, context, persona)
+        user_prompt = build_batch_prompt(question, context, personas)
 
-        for attempt in range(max_retries + 1):
-            await rate_limiter.acquire()
-            try:
-                response = await client.chat.completions.create(
-                    model=settings.openai_model,
-                    max_tokens=settings.max_tokens_per_batch,
-                    messages=[
-                        {"role": "system", "content": ARENA_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=1.0,
-                    response_format={"type": "json_object"},
-                )
-                raw = response.choices[0].message.content or ""
-                return (_parse_single_response(raw, persona, tag), tag, persona)
+        async with semaphore:
+            for attempt in range(max_retries + 1):
+                await rate_limiter.acquire()
+                try:
+                    response = await client.chat.completions.create(
+                        model=settings.openai_model,
+                        max_tokens=settings.max_tokens_per_batch,
+                        messages=[
+                            {"role": "system", "content": ARENA_SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=1.0,
+                        response_format={"type": "json_object"},
+                    )
+                    raw = response.choices[0].message.content or ""
+                    return _parse_response(raw, personas, tag)
 
-            except json.JSONDecodeError:
-                if attempt < max_retries:
-                    print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
-                    await asyncio.sleep(1)
-                    continue
-                print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                return (_fallback_single(persona), tag, persona)
+                except json.JSONDecodeError:
+                    if attempt < max_retries:
+                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                        await asyncio.sleep(1)
+                        continue
+                    print(f"[{tag}] JSON error after retries, fallback")
+                    return _fallback_results(personas)
 
-            except Exception as e:
-                is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
-                max_r = 3 if is_rate else max_retries
-                if attempt < max_r:
-                    wait = (attempt + 1) * 3 if is_rate else 2
-                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
-                    await asyncio.sleep(wait)
-                    continue
-                print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                return (_fallback_single(persona), tag, persona)
+                except Exception as e:
+                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
+                    max_r = 3 if is_rate else max_retries
+                    if attempt < max_r:
+                        wait = (attempt + 1) * 3 if is_rate else 2
+                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:80]}")
+                        await asyncio.sleep(wait)
+                        continue
+                    print(f"[{tag}] Error after retries, fallback: {str(e)[:150]}")
+                    return _fallback_results(personas)
 
-        return (_fallback_single(persona), tag, persona)
+            return _fallback_results(personas)
 
     # ── Run principal ────────────────────────────────────────────────────
     async def run(
@@ -393,11 +397,12 @@ class PersonaLoop:
         verbose: bool = False,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
-        Processa CADA persona individualmente (1 por chamada de API).
-        Distribui round-robin entre chaves Claude e GPT.
-        Yield BatchProgress a cada ~50 personas para não sobrecarregar SSE.
+        Processa personas em BATCHES (batch_size por chamada).
+        Semaphore limita conexões simultâneas para não sobrecarregar o servidor.
+        Yield BatchProgress a cada batch completado.
         """
         total = len(personas)
+        batch_size = settings.batch_size
         num_claude_keys = len(self._claude_clients)
         num_gpt_keys = len(self._openai_clients)
 
@@ -410,103 +415,71 @@ class PersonaLoop:
             claude_personas = personas
             gpt_personas = []
 
+        # Chunk into batches
+        claude_batches = _chunk_list(claude_personas, batch_size)
+        gpt_batches = _chunk_list(gpt_personas, batch_size)
+        total_calls = len(claude_batches) + len(gpt_batches)
+
         print(
-            f"[PersonaLoop] {total} personas (1 por chamada) | "
-            f"Claude Sonnet: {len(claude_personas)} ({num_claude_keys} keys, 45 RPM/key) | "
-            f"GPT-4o: {len(gpt_personas)} ({num_gpt_keys} keys, 450 RPM/key)"
+            f"[PersonaLoop] {total} personas | batch_size={batch_size} → {total_calls} API calls | "
+            f"Claude: {len(claude_batches)} calls ({num_claude_keys} keys) | "
+            f"GPT: {len(gpt_batches)} calls ({num_gpt_keys} keys)"
         )
 
-        # Emit sample prompt (verbose only)
-        if verbose and personas:
-            sample_prompt = build_single_prompt(question, context, personas[0])
-            yield BatchProgress(
-                processed=0, total=total,
-                positive=0, negative=0, neutral=0,
-                results=[],
-                batch_meta={
-                    "type": "prompt_sample",
-                    "system_prompt": ARENA_SYSTEM_PROMPT[:500] + "..." if len(ARENA_SYSTEM_PROMPT) > 500 else ARENA_SYSTEM_PROMPT,
-                    "user_prompt": sample_prompt,
-                    "persona_count": 1,
-                    "note": "Prompt de 1 persona (modo qualidade máxima). Cada persona recebe atenção 100% dedicada.",
-                },
-            )
+        # Semaphores to limit concurrent connections (safe for 1vCPU/1GB)
+        claude_sem = asyncio.Semaphore(min(settings.max_parallel_claude, len(claude_batches) or 1))
+        gpt_sem = asyncio.Semaphore(min(settings.max_parallel_openai, len(gpt_batches) or 1))
 
-        # Criar todas as tasks — round-robin por chave
+        # Create all tasks — round-robin by key
         all_tasks = []
-        for i, persona in enumerate(claude_personas):
+        for i, batch in enumerate(claude_batches):
             key_id = i % num_claude_keys
             all_tasks.append(
-                self._process_claude_single(
-                    question, context, persona,
+                self._process_claude_batch(
+                    question, context, batch,
                     self._claude_limiters[key_id],
-                    self._claude_clients[key_id], key_id,
+                    self._claude_clients[key_id],
+                    claude_sem, key_id,
                 )
             )
-        for i, persona in enumerate(gpt_personas):
+        for i, batch in enumerate(gpt_batches):
             key_id = i % num_gpt_keys
             all_tasks.append(
-                self._process_openai_single(
-                    question, context, persona,
+                self._process_openai_batch(
+                    question, context, batch,
                     self._openai_limiters[key_id],
-                    self._openai_clients[key_id], key_id,
+                    self._openai_clients[key_id],
+                    gpt_sem, key_id,
                 )
             )
 
-        # Processar e emitir progresso a cada emit_every personas
-        emit_every = max(50, total // 100)  # ~100 progress events no máximo
+        # Process and emit progress as batches complete
         processed = 0
         positive = 0
         negative = 0
         neutral = 0
-        pending_results: list[PersonaResult] = []
-        pending_meta: list[dict] = []
 
         for coro in asyncio.as_completed(all_tasks):
-            result, model_tag, persona_data = await coro
+            batch_results = await coro
 
-            processed += 1
-            if result.sentiment == "positive":
-                positive += 1
-            elif result.sentiment == "negative":
-                negative += 1
-            else:
-                neutral += 1
+            for r in batch_results:
+                processed += 1
+                if r.sentiment == "positive":
+                    positive += 1
+                elif r.sentiment == "negative":
+                    negative += 1
+                else:
+                    neutral += 1
 
-            pending_results.append(result)
-
-            if verbose:
-                pending_meta.append({
-                    "id": result.persona_id,
-                    "name": str(persona_data.get("name", result.persona_id)),
-                    "state": str(persona_data.get("state", "")),
-                    "age": persona_data.get("age", 0),
-                    "sentiment": result.sentiment,
-                    "comment": result.comment[:200] if result.comment else "",
-                    "model": model_tag,
-                })
-
-            # Emitir progresso a cada emit_every ou no final
-            if len(pending_results) >= emit_every or processed == total:
-                meta = None
-                if verbose:
-                    meta = {
-                        "model": "mixed",
-                        "persona_count": len(pending_results),
-                        "personas_summary": pending_meta,
-                    }
-
-                yield BatchProgress(
-                    processed=processed,
-                    total=total,
-                    positive=positive,
-                    negative=negative,
-                    neutral=neutral,
-                    results=pending_results,
-                    batch_meta=meta,
-                )
-                pending_results = []
-                pending_meta = []
+            yield BatchProgress(
+                processed=processed,
+                total=total,
+                positive=positive,
+                negative=negative,
+                neutral=neutral,
+                results=batch_results,
+                batch_meta=None,
+            )
 
         print(
             f"[PersonaLoop] Concluido: {processed}/{total} personas. "

@@ -73,12 +73,12 @@ class Settings:
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")
     )
 
-    # Batching — 1 persona por chamada (máxima qualidade individual)
-    batch_size: int = 1  # 1 persona por chamada = atenção 100% dedicada
+    # Batching — 10 personas por chamada (20k personas → 2000 calls)
+    batch_size: int = 10
     max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
-    max_parallel_openai: int = 80  # 2 keys × 40 parallel
+    max_parallel_openai: int = 40  # semaphore-controlled, safe for 1vCPU/1GB
     claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
-    max_tokens_per_batch: int = 1024  # só 1 comentário (~50-150 tokens)
+    max_tokens_per_batch: int = 4096  # 10 personas × ~150 tokens each + overhead
 
     # Web search
     max_web_results: int = 5
