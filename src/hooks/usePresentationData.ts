@@ -21,6 +21,12 @@ export function usePresentationData() {
       console.log('[Presentation] BroadcastChannel connected');
 
       channel.onmessage = (event) => {
+        // Reset presentation screens when a new question starts
+        if (event.data?.type === 'arena-reset') {
+          setData(null);
+          return;
+        }
+
         if (event.data?.type === 'arena-live-update') {
           const incoming = event.data.data as ArenaLiveData;
 

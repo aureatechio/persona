@@ -30,6 +30,135 @@ export function isYouTubeUrl(url: string): boolean {
   return YOUTUBE_REGEX.test(url);
 }
 
+function extractYouTubeVideoId(url: string): string | null {
+  const match = url.match(YOUTUBE_REGEX);
+  return match ? match[1] : null;
+}
+
+const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+const MAX_TRANSCRIPT_CHARS = 10_000;
+
+/**
+ * Try fetching YouTube transcript directly from the browser (residential IP).
+ * Falls back to server-side route, then to oEmbed metadata.
+ */
+async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string; title: string; author: string } | null> {
+  const videoId = extractYouTubeVideoId(url);
+  if (!videoId) return null;
+
+  // Strategy 1: Client-side innertube call (browser IP = residential, not blocked)
+  try {
+    const playerRes = await fetch(
+      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
+          videoId,
+        }),
+      },
+    );
+
+    if (playerRes.ok) {
+      const playerData = await playerRes.json();
+      const playStatus = playerData?.playabilityStatus?.status;
+
+      if (playStatus === 'OK' || !playStatus) {
+        const captions = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+        if (captions && captions.length > 0) {
+          const track =
+            captions.find((c: any) => c.languageCode === 'pt') ||
+            captions.find((c: any) => c.languageCode === 'pt-BR') ||
+            captions.find((c: any) => c.languageCode === 'en') ||
+            captions[0];
+
+          let captionUrl: string = track.baseUrl;
+          captionUrl = captionUrl.replace('&fmt=srv3', '');
+
+          if (!captionUrl.includes('&exp=xpe')) {
+            const captionRes = await fetch(captionUrl);
+            if (captionRes.ok) {
+              const xml = await captionRes.text();
+              const transcript = parseTranscriptXml(xml);
+              if (transcript) {
+                return {
+                  transcript,
+                  title: playerData?.videoDetails?.title || '',
+                  author: playerData?.videoDetails?.author || '',
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // CORS or network error — fall through to server-side
+    console.log('[youtube] Client-side innertube blocked (likely CORS), trying server...');
+  }
+
+  // Strategy 2: Server-side route (works from dev, may work from some Vercel regions)
+  try {
+    const res = await fetch('/api/youtube-transcript', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.transcript) return data;
+    }
+  } catch {
+    console.log('[youtube] Server-side transcript also failed');
+  }
+
+  // Strategy 3: oEmbed metadata fallback (always works from any IP)
+  try {
+    const oembedRes = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
+    );
+    if (oembedRes.ok) {
+      const meta = await oembedRes.json();
+      return {
+        transcript: `[Transcrição indisponível — legendas não puderam ser extraídas do servidor]\n\nURL: ${url}`,
+        title: meta.title || '',
+        author: meta.author_name || '',
+      };
+    }
+  } catch {
+    // Even oEmbed failed
+  }
+
+  return null;
+}
+
+function parseTranscriptXml(xml: string): string | null {
+  if (!xml || xml.length === 0) return null;
+
+  const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
+  const texts: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = textRegex.exec(xml)) !== null) {
+    const decoded = match[1]
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<[^>]+>/g, '');
+    if (decoded.trim()) texts.push(decoded.trim());
+  }
+
+  if (texts.length === 0) return null;
+
+  let transcript = texts.join(' ');
+  if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+    transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '... [transcrição truncada]';
+  }
+  return transcript;
+}
+
 export function canAddAttachment(current: Attachment[]): boolean {
   return current.length < MAX_ATTACHMENTS;
 }
@@ -282,25 +411,16 @@ export async function processAttachmentsForUpload(attachments: Attachment[]): Pr
 
   for (const att of attachments) {
     if (att.type === 'url' && att.url) {
-      // YouTube URLs: fetch transcript and treat as video content
+      // YouTube URLs: fetch transcript (client-side → server → oEmbed fallback)
       if (isYouTubeUrl(att.url)) {
-        try {
-          const res = await fetch('/api/youtube-transcript', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: att.url }),
-          });
-          if (res.ok) {
-            const { transcript, title, author } = await res.json();
-            const header = [title, author].filter(Boolean).join(' — ');
-            const fullTranscript = header
-              ? `[YouTube: ${header}]\n\n${transcript}`
-              : transcript;
-            results.push({ type: 'video', data: fullTranscript, name: title || att.name });
-            continue;
-          }
-        } catch {
-          // Fallback to raw URL below
+        const yt = await fetchYouTubeTranscript(att.url);
+        if (yt) {
+          const header = [yt.title, yt.author].filter(Boolean).join(' — ');
+          const fullTranscript = header
+            ? `[YouTube: ${header}]\n\n${yt.transcript}`
+            : yt.transcript;
+          results.push({ type: 'video', data: fullTranscript, name: yt.title || att.name });
+          continue;
         }
       }
       results.push({ type: 'url', data: att.url, name: att.name });

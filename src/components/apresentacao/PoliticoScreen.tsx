@@ -1,0 +1,183 @@
+'use client';
+
+import { cn } from '@/lib/utils';
+import { usePresentationData } from '@/hooks/usePresentationData';
+import { Users, Vote } from 'lucide-react';
+import { Waiting } from './DashboardScreen';
+import { TrendHero, DonutCard, SpectrumGauge, QuadrantGrid } from './charts';
+import type { SegmentItem } from '@/lib/arena/segments';
+import type { QuadrantResult, PoliticalFigureDetection } from '@/lib/arena/types';
+
+/* ════════════════════════════════════════════════════════════════════
+   FigureGaugeCompact — Fits in hero zone (~140px height)
+   ════════════════════════════════════════════════════════════════════ */
+
+function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
+  const total = figure.supportCount + figure.attackCount + figure.neutralCount;
+  if (total === 0) return null;
+  const pctSupport = Math.round((figure.supportCount / total) * 100);
+  const pctAttack = Math.round((figure.attackCount / total) * 100);
+  const pctNeutral = Math.round((figure.neutralCount / total) * 100);
+
+  const isPositive = pctSupport > pctAttack;
+
+  return (
+    <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl flex flex-col flex-1 min-w-[180px]">
+      <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none bg-violet-500/8" />
+
+      {/* Header */}
+      <div className="px-3 py-1.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-violet-400" />
+        <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
+      </div>
+
+      {/* Body */}
+      <div className="flex-1 flex flex-col justify-center px-4 py-2 gap-2">
+        {/* Big number */}
+        <div className="text-center">
+          <p className={cn(
+            'text-3xl font-black tabular-nums leading-none',
+            isPositive ? 'text-emerald-400' : 'text-rose-400',
+          )}>
+            {isPositive ? pctSupport : pctAttack}%
+          </p>
+          <p className={cn(
+            'text-xs font-bold mt-0.5',
+            isPositive ? 'text-emerald-400/70' : 'text-rose-400/70',
+          )}>
+            {isPositive ? 'Aprovacao' : 'Rejeicao'}
+          </p>
+        </div>
+
+        {/* Mini bar */}
+        <div className="h-[10px] rounded-full overflow-hidden flex">
+          <div className="h-full bg-emerald-400 transition-all duration-[1.5s]" style={{ width: `${pctSupport}%` }} />
+          <div className="h-full bg-amber-400 transition-all duration-[1.5s]" style={{ width: `${pctNeutral}%` }} />
+          <div className="h-full bg-rose-400 transition-all duration-[1.5s]" style={{ width: `${pctAttack}%` }} />
+        </div>
+
+        {/* Stats row */}
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-xs font-bold text-emerald-400 tabular-nums">{pctSupport}% Apoiam</span>
+          <span className="text-zinc-700 text-xs">·</span>
+          <span className="text-xs font-bold text-amber-400 tabular-nums">{pctNeutral}%</span>
+          <span className="text-zinc-700 text-xs">·</span>
+          <span className="text-xs font-bold text-rose-400 tabular-nums">{pctAttack}% Rejeitam</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Helpers
+   ════════════════════════════════════════════════════════════════════ */
+
+function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentItem[] | undefined {
+  if (!quadrants || quadrants.length === 0) return undefined;
+  return quadrants.map(q => ({
+    label: q.label,
+    count: q.count,
+    positive: q.positive,
+    negative: q.negative,
+    neutral: q.neutral,
+  }));
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   POLITICO SCREEN — TV 16:9
+   ════════════════════════════════════════════════════════════════════ */
+
+export function PoliticoScreen() {
+  const data = usePresentationData();
+  if (!data) return <Waiting />;
+
+  const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
+  const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
+  const isLive = data.phase !== 'complete';
+
+  const quadrantItems = quadrantsToSegments(data.liveIdeology?.quadrants || data.simulation?.quadrants);
+
+  // Political figures
+  const figures = data.liveIdeology?.politicalFigures || data.simulation?.politicalFigures || [];
+  const lula = figures.find(f => f.figure === 'lula');
+  const bolsonaro = figures.find(f => f.figure === 'bolsonaro');
+
+  return (
+    <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
+
+      <div className="absolute top-0 right-1/4 w-[400px] h-[200px] bg-violet-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-0 left-1/4 w-[400px] h-[200px] bg-sky-500/[0.03] rounded-full blur-[100px] pointer-events-none" />
+
+      {/* ═══ TOP BAR ═══ */}
+      <div className="shrink-0 flex items-center gap-4 px-6 h-[48px] border-b border-white/[0.04] bg-white/[0.01]">
+        {isLive ? (
+          <span className="flex items-center gap-2 shrink-0">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500" />
+            </span>
+            <span className="text-xs font-black text-violet-400 uppercase tracking-widest">Ao vivo</span>
+          </span>
+        ) : (
+          <span className="text-xs font-black text-violet-400 uppercase tracking-widest">Completo</span>
+        )}
+        <div className="h-4 w-px bg-white/[0.08]" />
+        <Vote size={14} className="text-zinc-500" />
+        <span className="text-xs font-black text-zinc-500 uppercase tracking-widest">Painel Politico</span>
+        <div className="h-4 w-px bg-white/[0.08]" />
+        <p className="text-sm text-zinc-200 font-semibold truncate flex-1">{data.question}</p>
+        <Users size={14} className="text-zinc-500" />
+        <span className="text-sm font-bold text-zinc-200 tabular-nums">{isLive ? `${progress}%` : total.toLocaleString('pt-BR')}</span>
+      </div>
+
+      {/* ═══ HERO ZONE — Trend + Figure Gauges ═══ */}
+      <TrendHero
+        positive={data.positive || 0}
+        negative={data.negative || 0}
+        neutral={data.neutral || 0}
+        rightSlot={
+          <div className="flex items-stretch gap-3 flex-1">
+            {lula ? <FigureGaugeCompact figure={lula} /> : (
+              <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center min-w-[180px]">
+                <p className="text-xs text-zinc-700">Lula — sem dados</p>
+              </div>
+            )}
+            {bolsonaro ? <FigureGaugeCompact figure={bolsonaro} /> : (
+              <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center min-w-[180px]">
+                <p className="text-xs text-zinc-700">Bolsonaro — sem dados</p>
+              </div>
+            )}
+          </div>
+        }
+      />
+
+      {/* ═══ MAIN GRID — Uniform 3x2 ═══ */}
+      <div className="flex-1 flex flex-col gap-2.5 p-2.5 min-h-0 overflow-hidden">
+
+        {/* Row 1 — Electoral Donuts */}
+        <div className="flex-1 grid grid-cols-3 gap-2.5 min-h-0">
+          <DonutCard items={data.segments?.voto2022}          title="Voto 2022"        accentColor="violet" />
+          <DonutCard items={data.segments?.voto2026}          title="Intencao 2026"    accentColor="emerald" />
+          <DonutCard items={data.segments?.politicalLeaning}  title="Pos. Politica"    accentColor="sky" />
+        </div>
+
+        {/* Row 2 — Ideological Axes */}
+        <div className="flex-1 grid grid-cols-3 gap-2.5 min-h-0">
+          <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Economico"      accentColor="sky"  leftLabel="Esquerda" rightLabel="Direita" />
+          <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comportamental"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />
+          <QuadrantGrid  items={quadrantItems}            title="Quadrante Ideologico"     accentColor="cyan" />
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {isLive && (
+        <div className="absolute bottom-0 left-0 right-0 z-10">
+          <div className="h-[3px] bg-zinc-900">
+            <div className="h-full bg-gradient-to-r from-violet-500 to-sky-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

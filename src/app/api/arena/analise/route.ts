@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
   const pctNeg = total > 0 ? ((negative / total) * 100).toFixed(1) : '0';
   const pctNeu = total > 0 ? ((neutral / total) * 100).toFixed(1) : '0';
 
-  // Build segments summary
   let segmentsSummary = '';
   if (segments) {
     const formatSeg = (items: any[]) =>
@@ -29,26 +28,30 @@ Regiao: ${formatSeg(segments.region)}
 Geracao: ${formatSeg(segments.generation)}
 Classe Social: ${formatSeg(segments.socialClass)}
 Escolaridade: ${formatSeg(segments.education)}
-Posicao Politica: ${formatSeg(segments.politicalLeaning)}`;
+Posicao Politica: ${formatSeg(segments.politicalLeaning)}
+Voto 2022: ${formatSeg(segments.voto2022)}
+Intencao 2026: ${formatSeg(segments.voto2026)}`;
   }
 
-  const isPartial = phase !== 'complete';
+  const systemPrompt = `Voce e um consultor politico e de comunicacao estrategica de altissimo nivel. Analise os resultados da pesquisa sintetica com ${totalPersonas?.toLocaleString() || 'milhares de'} personas digitais e produza uma analise estruturada.
 
-  const systemPrompt = `Voce e um consultor politico e de comunicacao estrategica de altissimo nivel. Voce esta analisando os resultados de uma pesquisa sintetica com ${totalPersonas?.toLocaleString() || 'milhares de'} personas digitais que representam o eleitorado brasileiro.
+FORMATO OBRIGATORIO — use exatamente estes headers markdown:
 
-Seu papel e dar um PARECER ESTRATEGICO claro e direto sobre como o publico reagiu ao conteudo/pergunta apresentado.
+## Acertos
+(3-5 bullets com dados especificos: por que o publico aprovou, quais grupos demograficos, porcentagens)
+
+## Erros
+(3-5 bullets com dados especificos: por que houve rejeicao, quais grupos rejeitaram, porcentagens)
+
+## Sugestoes
+(3-4 sugestoes concretas e acionaveis de como melhorar a aceitacao, baseadas nos erros identificados)
 
 REGRAS:
-- Fale em portugues brasileiro, tom profissional mas acessivel
-- Seja DIRETO e ESTRATEGICO — nada de enrolacao
-- Identifique os PONTOS CRITICOS: o que causou rejeicao e o que gerou aprovacao
-- De RECOMENDACOES CONCRETAS de como melhorar a aceitacao
-- Destaque grupos demograficos chave (quem aprova, quem rejeita e por que)
-- ${isPartial ? 'Esta e uma analise PRELIMINAR com dados parciais. Indique isso brevemente no inicio.' : 'Esta e a analise FINAL com todos os dados processados.'}
-- IMPORTANTE: Cada secao deve ter NO MAXIMO 2-3 frases curtas. Seja extremamente conciso.
-- Maximo 4 secoes curtas (cada uma com 2-3 frases apenas)
-- Use dados especificos (porcentagens, grupos) para embasar suas conclusoes
-- FORMATACAO: Use ## para titulo de cada secao (ex: ## PANORAMA GERAL). NAO use ### ou ####. NAO use marcadores # dentro do texto corrido. Apenas ## no inicio de cada secao.`;
+- Portugues brasileiro, tom profissional
+- Cada bullet deve citar dados especificos (grupos, porcentagens)
+- Bullets devem comecar com "- " (markdown list)
+- Seja direto e estrategico, sem enrolacao
+- Use ** para destacar termos chave`;
 
   const userMessage = `CONTEUDO ANALISADO: "${question}"
 
@@ -56,12 +59,12 @@ RESULTADO GERAL:
 - A Favor: ${pctPos}% (${positive?.toLocaleString()} personas)
 - Contra: ${pctNeg}% (${negative?.toLocaleString()} personas)
 - Neutros: ${pctNeu}% (${neutral?.toLocaleString()} personas)
-- Total: ${total?.toLocaleString()} personas analisadas${isPartial ? ' (parcial)' : ''}
+- Total: ${total?.toLocaleString()} personas analisadas
 
 BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
 
-Faca seu parecer estrategico.`;
+Produza a analise estruturada com Acertos, Erros e Sugestoes.`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -69,7 +72,7 @@ Faca seu parecer estrategico.`;
       try {
         const response = await anthropic.messages.create({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 700,
+          max_tokens: 1000,
           stream: true,
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage }],
@@ -83,7 +86,7 @@ Faca seu parecer estrategico.`;
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
       } catch (err) {
-        console.error('[Locutor] Error:', err);
+        console.error('[Analise] Error:', err);
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Falha na analise' })}\n\n`));
         controller.close();
       }

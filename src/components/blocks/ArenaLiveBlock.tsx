@@ -1,20 +1,18 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Users, Zap, Eye, ChevronDown, ChevronUp, ChevronRight,
   Image, Film, Link, Sparkles, MapPin, GraduationCap,
   Activity, Church, Palette, Briefcase, Vote, FileText, X, Play,
   BarChart3, MessageCircle, TrendingUp, Search, Globe, Brain, UserCheck, Check,
+  Shield, Target, AlertTriangle, Lightbulb, Crosshair, HeartHandshake,
+  type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult } from '@/lib/arena/types';
 import type { QuickAnswerResult } from '@/lib/arena/quick-answer';
 import type { AllSegments, SegmentItem } from '@/lib/arena/segments';
-import { HeroSentimentBar } from '@/components/arena/HeroSentimentBar';
-import { IdeologyPanel } from '@/components/arena/IdeologyPanel';
-import { CommentBubble } from '@/components/arena/CommentBubble';
-import { PoliticalFigurePanel } from '@/components/arena/PoliticalFigurePanel';
 
 /* ============================================================
    Types
@@ -53,12 +51,6 @@ export interface ArenaLiveData {
   /** Status message during collecting phase */
   collectingStatus?: string;
 }
-
-/* ============================================================
-   Tab type
-   ============================================================ */
-
-type TabKey = 'principal' | 'segmentos' | 'ideologia' | 'reacoes';
 
 /* ============================================================
    Collecting Phase (pre-processing)
@@ -221,7 +213,7 @@ function LiveProgressBar({ processed, total, phase }: { processed: number; total
       : 'Avaliando personas...';
 
   return (
-    <div className="mb-4">
+    <div className="px-5 py-4 md:px-6">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
@@ -257,193 +249,229 @@ function LiveProgressBar({ processed, total, phase }: { processed: number; total
 }
 
 /* ============================================================
-   Sentiment Summary
+   Markdown Renderer (for locutor analysis)
    ============================================================ */
 
-function SentimentSummary({ positive, negative, neutral, total }: { positive: number; negative: number; neutral: number; total: number }) {
-  const pct = (n: number) => total > 0 ? Math.round((n / total) * 100) : 0;
-  const pctPos = pct(positive);
-  const pctNeg = pct(negative);
-  const pctNeu = pct(neutral);
+/** Parse markdown into sections — handles ## headers, # headers, AND bold-prefixed lines like **CENÁRIO GERAL:** */
+function parseMarkdownSections(text: string): { title: string; body: string }[] {
+  const lines = text.split('\n');
+  const sections: { title: string; body: string }[] = [];
+  let currentTitle = '';
+  let currentBody: string[] = [];
 
-  // Determine dominant sentiment
-  const dominant = pctPos >= pctNeg && pctPos >= pctNeu ? 'positive' : pctNeg >= pctPos && pctNeg >= pctNeu ? 'negative' : 'neutral';
-  const dominantLabel = dominant === 'positive' ? 'A Favor' : dominant === 'negative' ? 'Contra' : 'Neutros';
-  const dominantPct = dominant === 'positive' ? pctPos : dominant === 'negative' ? pctNeg : pctNeu;
+  // Regex: line starts with **SOME TITLE:** or **SOME TITLE**: (bold label followed by colon)
+  const boldSectionRe = /^\*\*([^*]+?)\s*:?\*\*\s*:?\s*(.*)/;
 
-  const cardBg = dominant === 'positive' ? 'bg-emerald-500/[0.04] border-emerald-500/15'
-    : dominant === 'negative' ? 'bg-rose-500/[0.04] border-rose-500/15'
-    : 'bg-amber-500/[0.04] border-amber-500/15';
-  const pctColor = dominant === 'positive' ? 'text-emerald-400'
-    : dominant === 'negative' ? 'text-rose-400'
-    : 'text-amber-400';
-  const labelColor = dominant === 'positive' ? 'text-emerald-400/80'
-    : dominant === 'negative' ? 'text-rose-400/80'
-    : 'text-amber-400/80';
+  const flush = () => {
+    if (currentTitle || currentBody.length > 0) {
+      sections.push({ title: currentTitle, body: currentBody.join('\n').trim() });
+    }
+    currentTitle = '';
+    currentBody = [];
+  };
 
+  for (const line of lines) {
+    // Match any markdown header (# , ## , ### , #### , etc.)
+    const headerMatch = line.match(/^(#{1,6})\s+(.*)/);
+    if (headerMatch) {
+      flush();
+      currentTitle = headerMatch[2].replace(/\*\*/g, '').trim();
+    } else {
+      // Check if line starts with a bold section label
+      const boldMatch = line.match(boldSectionRe);
+      if (boldMatch) {
+        const label = boldMatch[1].trim();
+        const rest = boldMatch[2].trim();
+        // Only treat as section if the label looks like a title (mostly uppercase or known keywords)
+        const isTitle = label === label.toUpperCase() ||
+          /cenar|grupo|ponto|recomend|estrateg|apoio|rejei|critic|vulnerab|panorama|visao|analise|resumo/i.test(label);
+        if (isTitle) {
+          flush();
+          currentTitle = label;
+          if (rest) currentBody.push(rest);
+          continue;
+        }
+      }
+      currentBody.push(line);
+    }
+  }
+  flush();
+  return sections.filter(s => s.title && s.body);
+}
+
+function RenderInlineMarkdown({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Left: Dominant Insight */}
-      <div className={cn(
-        'lg:col-span-1 p-5 rounded-2xl border text-center lg:text-left flex flex-col justify-center transition-all duration-500',
-        cardBg,
-      )}>
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-2">Tendencia dominante</p>
-        <p className={cn('text-5xl lg:text-6xl font-black tabular-nums tracking-tight', pctColor)}>{dominantPct}%</p>
-        <p className={cn('text-sm font-bold mt-1', labelColor)}>{dominantLabel}</p>
-        <p className="text-[10px] text-zinc-600 mt-2">de {total.toLocaleString('pt-BR')} personas simuladas</p>
-      </div>
-
-      {/* Right: 3 stat cards */}
-      <div className="lg:col-span-2 grid grid-cols-3 gap-3">
-        <div className="p-5 rounded-xl bg-zinc-950/80 border border-emerald-500/10 text-center transition-all duration-500 flex flex-col justify-center">
-          <p className="text-3xl font-black text-emerald-400 tabular-nums">{pctPos}%</p>
-          <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400/80 mt-1.5">A Favor</p>
-          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{positive.toLocaleString('pt-BR')}</p>
-        </div>
-        <div className="p-5 rounded-xl bg-zinc-950/80 border border-rose-500/10 text-center transition-all duration-500 flex flex-col justify-center">
-          <p className="text-3xl font-black text-rose-400 tabular-nums">{pctNeg}%</p>
-          <p className="text-[10px] font-black uppercase tracking-widest text-rose-400/80 mt-1.5">Contra</p>
-          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{negative.toLocaleString('pt-BR')}</p>
-        </div>
-        <div className="p-5 rounded-xl bg-zinc-950/80 border border-amber-500/10 text-center transition-all duration-500 flex flex-col justify-center">
-          <p className="text-3xl font-black text-amber-400 tabular-nums">{pctNeu}%</p>
-          <p className="text-[10px] font-black uppercase tracking-widest text-amber-400/80 mt-1.5">Neutros</p>
-          <p className="text-[10px] text-zinc-600 tabular-nums mt-1">{neutral.toLocaleString('pt-BR')}</p>
-        </div>
-      </div>
-    </div>
+    <>
+      {parts.map((part, j) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          const inner = part.slice(2, -2);
+          if (inner.toLowerCase().match(/rejeic|negativ|contra|devastador|critic/)) {
+            return <span key={j} className="font-bold text-rose-400">{inner}</span>;
+          }
+          if (inner.toLowerCase().match(/favor|positiv|aprovac|oportunidade/)) {
+            return <span key={j} className="font-bold text-emerald-400">{inner}</span>;
+          }
+          if (inner.toLowerCase().match(/recomend|estrateg|urgente|sugest/)) {
+            return <span key={j} className="font-bold text-amber-400">{inner}</span>;
+          }
+          return <span key={j} className="font-semibold text-white">{inner}</span>;
+        }
+        return part;
+      })}
+    </>
   );
 }
 
-/* ============================================================
-   Sidebar Segment Card
-   ============================================================ */
+/* ── Section theming: icon, colors, glow per section type ── */
 
-function SegmentCard({ item, index }: { item: SegmentItem; index: number }) {
-  const [expanded, setExpanded] = useState(false);
-  const pct = (n: number) => item.count > 0 ? Math.round((n / item.count) * 100) : 0;
-  const pctPos = pct(item.positive);
-  const pctNeg = pct(item.negative);
-  const pctNeu = pct(item.neutral);
+interface SectionTheme {
+  icon: LucideIcon;
+  border: string;
+  text: string;
+  bg: string;
+  glow: string;
+  iconBg: string;
+  dot: string;
+}
+
+function getSectionTheme(title: string, index: number): SectionTheme {
+  const t = title.toLowerCase();
+
+  if (t.includes('recomend') || t.includes('estrateg') || t.includes('sugest') || t.includes('caminho'))
+    return {
+      icon: Lightbulb, border: 'border-amber-500/20', text: 'text-amber-400',
+      bg: 'bg-amber-500/[0.04]', glow: 'bg-amber-500/10', iconBg: 'bg-amber-500/15 border-amber-500/25',
+      dot: 'bg-amber-400',
+    };
+  if (t.includes('rejei') || t.includes('critic') || t.includes('risco') || t.includes('ponto') || t.includes('vulnerab'))
+    return {
+      icon: AlertTriangle, border: 'border-rose-500/20', text: 'text-rose-400',
+      bg: 'bg-rose-500/[0.04]', glow: 'bg-rose-500/10', iconBg: 'bg-rose-500/15 border-rose-500/25',
+      dot: 'bg-rose-400',
+    };
+  if (t.includes('apoio') || t.includes('favor') || t.includes('grupo') || t.includes('base'))
+    return {
+      icon: HeartHandshake, border: 'border-emerald-500/20', text: 'text-emerald-400',
+      bg: 'bg-emerald-500/[0.04]', glow: 'bg-emerald-500/10', iconBg: 'bg-emerald-500/15 border-emerald-500/25',
+      dot: 'bg-emerald-400',
+    };
+  if (t.includes('cenar') || t.includes('panorama') || t.includes('geral') || t.includes('visao'))
+    return {
+      icon: Globe, border: 'border-sky-500/20', text: 'text-sky-400',
+      bg: 'bg-sky-500/[0.04]', glow: 'bg-sky-500/10', iconBg: 'bg-sky-500/15 border-sky-500/25',
+      dot: 'bg-sky-400',
+    };
+
+  // Cycle through themes for unrecognized sections
+  const fallbacks: SectionTheme[] = [
+    { icon: Crosshair, border: 'border-violet-500/20', text: 'text-violet-400', bg: 'bg-violet-500/[0.04]', glow: 'bg-violet-500/10', iconBg: 'bg-violet-500/15 border-violet-500/25', dot: 'bg-violet-400' },
+    { icon: Target, border: 'border-cyan-500/20', text: 'text-cyan-400', bg: 'bg-cyan-500/[0.04]', glow: 'bg-cyan-500/10', iconBg: 'bg-cyan-500/15 border-cyan-500/25', dot: 'bg-cyan-400' },
+    { icon: Shield, border: 'border-fuchsia-500/20', text: 'text-fuchsia-400', bg: 'bg-fuchsia-500/[0.04]', glow: 'bg-fuchsia-500/10', iconBg: 'bg-fuchsia-500/15 border-fuchsia-500/25', dot: 'bg-fuchsia-400' },
+  ];
+  return fallbacks[index % fallbacks.length];
+}
+
+/* ── Animated section card ── */
+
+function AnalysisCard({ section, index }: { section: { title: string; body: string }; index: number }) {
+  const theme = getSectionTheme(section.title, index);
+  const Icon = theme.icon;
+  // Join body into sentences, split by ". " for cleaner paragraphs
+  const bodyText = section.body.replace(/\n+/g, ' ').trim();
 
   return (
     <div
-      className="rounded-xl bg-white/[0.03] border border-white/[0.06] overflow-hidden transition-all duration-300 hover:border-white/[0.12] animate-fade-in-up"
-      style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
-    >
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full text-left p-3.5 hover:bg-white/[0.02] transition-colors duration-200"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-zinc-200 truncate">{item.label}</span>
-          <span className="text-[10px] text-zinc-600 tabular-nums shrink-0 ml-2">{item.count.toLocaleString('pt-BR')}</span>
-        </div>
-        <div className="h-2 rounded-full overflow-hidden flex bg-zinc-900/80">
-          <div className="h-full bg-emerald-500 transition-all duration-[1200ms] ease-out rounded-l-full" style={{ width: `${pctPos}%` }} />
-          <div className="h-full bg-amber-500 transition-all duration-[1200ms] ease-out" style={{ width: `${pctNeu}%` }} />
-          <div className="h-full bg-rose-500 transition-all duration-[1200ms] ease-out rounded-r-full" style={{ width: `${pctNeg}%` }} />
-        </div>
-        <div className="flex items-center justify-between mt-1.5">
-          <div className="flex items-center gap-3 text-[10px] font-bold tabular-nums">
-            <span className="text-emerald-400">{pctPos}%</span>
-            <span className="text-rose-400">{pctNeg}%</span>
-          </div>
-          <ChevronRight
-            size={10}
-            className={cn('text-zinc-700 transition-transform duration-200', expanded && 'rotate-90')}
-          />
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="px-3 pb-3 border-t border-white/[0.04] pt-2 animate-fade-in-up">
-          <div className="grid grid-cols-3 gap-1.5">
-            <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-center">
-              <p className="text-sm font-black text-emerald-400 tabular-nums">{pctPos}%</p>
-              <p className="text-[8px] text-emerald-400/60 font-bold uppercase">Favor</p>
-            </div>
-            <div className="p-2 rounded-lg bg-rose-500/5 border border-rose-500/10 text-center">
-              <p className="text-sm font-black text-rose-400 tabular-nums">{pctNeg}%</p>
-              <p className="text-[8px] text-rose-400/60 font-bold uppercase">Contra</p>
-            </div>
-            <div className="p-2 rounded-lg bg-amber-500/5 border border-amber-500/10 text-center">
-              <p className="text-sm font-black text-amber-400 tabular-nums">{pctNeu}%</p>
-              <p className="text-[8px] text-amber-400/60 font-bold uppercase">Neutro</p>
-            </div>
-          </div>
-        </div>
+      className={cn(
+        'group relative overflow-hidden rounded-2xl border backdrop-blur-xl',
+        'transition-all duration-500 ease-out',
+        'hover:shadow-2xl hover:shadow-black/40',
+        theme.border, theme.bg,
       )}
+      style={{ animationDelay: `${index * 100}ms` }}
+    >
+      {/* Glow orb */}
+      <div className={cn(
+        'absolute -top-12 -right-12 w-32 h-32 rounded-full blur-3xl pointer-events-none opacity-50 group-hover:opacity-80 transition-opacity duration-500',
+        theme.glow,
+      )} />
+
+      {/* Header: icon + title + accent line */}
+      <div className="relative px-5 pt-5 pb-3 flex items-center gap-3">
+        <div className={cn(
+          'w-10 h-10 rounded-xl border flex items-center justify-center shrink-0',
+          'transition-transform duration-300 group-hover:scale-110',
+          theme.iconBg,
+        )}>
+          <Icon size={18} className={theme.text} />
+        </div>
+        <div className="flex-1 min-w-0">
+          {section.title && (
+            <h3 className={cn(
+              'text-sm font-black uppercase tracking-[0.08em] leading-tight',
+              theme.text,
+            )}>
+              {section.title}
+            </h3>
+          )}
+        </div>
+      </div>
+
+      {/* Accent divider */}
+      <div className="mx-5">
+        <div className={cn('h-px opacity-30', theme.dot)} />
+      </div>
+
+      {/* Body text — readable size */}
+      <div className="relative px-5 pb-5 pt-3">
+        <p className="text-sm text-zinc-300 leading-relaxed">
+          <RenderInlineMarkdown text={bodyText} />
+        </p>
+      </div>
     </div>
   );
 }
 
-/* ============================================================
-   Sidebar Segment Group
-   ============================================================ */
+function RenderMarkdown({ text }: { text: string }) {
+  const sections = parseMarkdownSections(text);
 
-function SegmentGroupSkeleton({ title, icon, count = 2 }: { title: string; icon: React.ReactNode; count?: number }) {
-  return (
-    <div className="mb-5">
-      <div className="flex items-center gap-2 mb-2.5 px-1">
-        {icon}
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500 flex-1 text-left">{title}</p>
-        <div className="w-4 h-2 bg-zinc-800/50 rounded animate-pulse" />
-      </div>
-      <div className="space-y-2.5">
-        {[...Array(count)].map((_, i) => (
-          <div key={i} className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3.5 animate-pulse">
-            <div className="flex items-center justify-between mb-2">
-              <div className="h-3 w-20 bg-zinc-800/40 rounded" />
-              <div className="h-2 w-8 bg-zinc-800/30 rounded" />
-            </div>
-            <div className="h-2 rounded-full bg-zinc-900/60" />
-          </div>
+  // 2+ sections → rich card grid
+  if (sections.length >= 2) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {sections.map((section, i) => (
+          <AnalysisCard key={i} section={section} index={i} />
         ))}
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function SegmentGroup({
-  title,
-  icon,
-  items,
-  startIndex = 0,
-  defaultOpen = true,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  items: SegmentItem[];
-  startIndex?: number;
-  defaultOpen?: boolean;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
+  // Fallback: single section — still use a card
+  if (sections.length === 1 && sections[0].title) {
+    return <AnalysisCard section={sections[0]} index={0} />;
+  }
 
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mb-5">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 mb-2.5 px-1 hover:opacity-80 transition-opacity duration-200 w-full"
-      >
-        {icon}
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-zinc-500 flex-1 text-left">{title}</p>
-        <span className="text-[10px] text-zinc-700 font-bold">{items.length}</span>
-        {open ? <ChevronUp size={12} className="text-zinc-700" /> : <ChevronDown size={12} className="text-zinc-700" />}
-      </button>
-
-      {open && (
-        <div className="space-y-2.5">
-          {items.map((item, idx) => (
-            <SegmentCard key={item.label} item={item} index={startIndex + idx} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+  // Raw text without headers
+  const lines = text.split('\n');
+  const elements: React.ReactNode[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === '') continue;
+    if (/^#{1,6}\s+/.test(line)) {
+      elements.push(
+        <h2 key={i} className="text-lg font-bold text-white tracking-tight mb-2">
+          {line.replace(/^#+\s*/, '').replace(/\*\*/g, '')}
+        </h2>
+      );
+    } else {
+      elements.push(
+        <p key={i} className="text-sm text-zinc-300 leading-relaxed mb-1.5">
+          <RenderInlineMarkdown text={line} />
+        </p>
+      );
+    }
+  }
+  return <>{elements}</>;
 }
 
 /* ============================================================
@@ -561,261 +589,7 @@ function MediaSummaryPanel({ cleanedContext, open, onClose }: { cleanedContext: 
 }
 
 /* ============================================================
-   Tab Bar
-   ============================================================ */
-
-interface TabDef {
-  key: TabKey;
-  label: string;
-  icon: React.ReactNode;
-  badge?: string | number;
-  available: boolean;
-}
-
-function TabBar({ tabs, active, onChange, inline }: { tabs: TabDef[]; active: TabKey; onChange: (t: TabKey) => void; inline?: boolean }) {
-  return (
-    <div className={cn(
-      'flex items-center gap-1 overflow-x-auto scrollbar-none',
-      inline ? 'py-0' : 'px-5 py-2 border-b border-white/[0.04]',
-    )}>
-      {tabs.filter(t => t.available).map(tab => {
-        const isActive = active === tab.key;
-        return (
-          <button
-            key={tab.key}
-            onClick={() => onChange(tab.key)}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all duration-200 shrink-0 active:scale-[0.97]',
-              isActive
-                ? 'bg-white/[0.08] border-white/[0.15] text-white shadow-lg shadow-black/20'
-                : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04]',
-            )}
-          >
-            {tab.icon}
-            {tab.label}
-            {tab.badge !== undefined && (
-              <span className={cn(
-                'ml-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold',
-                isActive ? 'bg-white/[0.1] text-zinc-300' : 'bg-white/[0.04] text-zinc-600',
-              )}>
-                {tab.badge}
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/* ============================================================
-   Tab: Principal
-   ============================================================ */
-
-function TabPrincipal({
-  isStreaming, phase, processedCount, totalCount,
-  finalPositive, finalNegative, finalNeutral, finalTotal,
-}: {
-  isStreaming: boolean;
-  phase: string;
-  processedCount: number;
-  totalCount: number;
-  finalPositive: number;
-  finalNegative: number;
-  finalNeutral: number;
-  finalTotal: number;
-}) {
-  return (
-    <div className="p-5 lg:p-8">
-      {isStreaming && (
-        <LiveProgressBar processed={processedCount} total={totalCount} phase={phase} />
-      )}
-
-      {finalTotal > 0 && (
-        <div className="mb-6">
-          <HeroSentimentBar
-            positive={finalPositive}
-            negative={finalNegative}
-            neutral={finalNeutral}
-            total={finalTotal}
-          />
-        </div>
-      )}
-
-      <SentimentSummary
-        positive={finalPositive}
-        negative={finalNegative}
-        neutral={finalNeutral}
-        total={finalTotal}
-      />
-    </div>
-  );
-}
-
-/* ============================================================
-   Tab: Segmentos (3-col layout with sidebars)
-   ============================================================ */
-
-function TabSegmentos({ segments, hasSegments }: { segments?: AllSegments; hasSegments: boolean }) {
-  return (
-    <div className="flex flex-col lg:flex-row">
-      {/* LEFT: Identidade */}
-      <div className="lg:border-r border-white/[0.04] p-5 lg:p-6 lg:w-1/2 shrink-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Identidade</p>
-        {hasSegments ? (
-          <>
-            <SegmentGroup title="Genero" icon={<Users size={11} className="text-violet-400/70" />} items={segments!.gender} startIndex={0} defaultOpen={true} />
-            <SegmentGroup title="Religiao" icon={<Church size={11} className="text-amber-400/70" />} items={segments!.religion} startIndex={10} defaultOpen={false} />
-            <SegmentGroup title="Raca/Etnia" icon={<Palette size={11} className="text-cyan-400/70" />} items={segments!.race} startIndex={20} defaultOpen={false} />
-            <SegmentGroup title="Posicao Politica" icon={<Vote size={11} className="text-rose-400/70" />} items={segments!.politicalLeaning} startIndex={30} defaultOpen={false} />
-          </>
-        ) : (
-          <>
-            <SegmentGroupSkeleton title="Genero" icon={<Users size={11} className="text-violet-400/70" />} count={2} />
-            <SegmentGroupSkeleton title="Religiao" icon={<Church size={11} className="text-amber-400/70" />} count={3} />
-            <SegmentGroupSkeleton title="Raca/Etnia" icon={<Palette size={11} className="text-cyan-400/70" />} count={3} />
-          </>
-        )}
-      </div>
-
-      {/* RIGHT: Socioeconomico */}
-      <div className="lg:border-l border-white/[0.04] p-5 lg:p-6 lg:w-1/2 shrink-0">
-        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-600 mb-4">Socioeconomico</p>
-        {hasSegments ? (
-          <>
-            <SegmentGroup title="Regiao" icon={<MapPin size={11} className="text-cyan-400/70" />} items={segments!.region} startIndex={40} defaultOpen={true} />
-            <SegmentGroup title="Geracao" icon={<Users size={11} className="text-amber-400/70" />} items={segments!.generation} startIndex={50} defaultOpen={false} />
-            <SegmentGroup title="Classe Social" icon={<Briefcase size={11} className="text-violet-400/70" />} items={segments!.socialClass} startIndex={60} defaultOpen={false} />
-            <SegmentGroup title="Escolaridade" icon={<GraduationCap size={11} className="text-emerald-400/70" />} items={segments!.education} startIndex={70} defaultOpen={false} />
-          </>
-        ) : (
-          <>
-            <SegmentGroupSkeleton title="Regiao" icon={<MapPin size={11} className="text-cyan-400/70" />} count={5} />
-            <SegmentGroupSkeleton title="Geracao" icon={<Users size={11} className="text-amber-400/70" />} count={4} />
-            <SegmentGroupSkeleton title="Classe Social" icon={<Briefcase size={11} className="text-violet-400/70" />} count={3} />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   Tab: Ideologia
-   ============================================================ */
-
-function TabIdeologia({
-  quadrants, clusters, total, figures,
-}: {
-  quadrants: QuadrantResult[];
-  clusters: ClusterResult[];
-  total: number;
-  figures: PoliticalFigureDetection[];
-}) {
-  return (
-    <div className="p-5 lg:p-8 space-y-6">
-      {(quadrants.length > 0 || clusters.length > 0) && (
-        <IdeologyPanel quadrants={quadrants} clusterResults={clusters} total={total} />
-      )}
-      {figures.length > 0 && (
-        <PoliticalFigurePanel figures={figures} />
-      )}
-      {quadrants.length === 0 && clusters.length === 0 && figures.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
-            <Sparkles size={28} className="text-zinc-600" />
-          </div>
-          <p className="text-zinc-500 text-sm">Dados ideologicos ainda nao disponiveis</p>
-          <p className="text-zinc-600 text-xs mt-1">Aguarde a conclusao da analise</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   Tab: Reacoes (Comments)
-   ============================================================ */
-
-function TabReacoes({
-  comments,
-  commentFilter,
-  setCommentFilter,
-  commentsToShow,
-  setCommentsToShow,
-}: {
-  comments: CommentResult[];
-  commentFilter: 'all' | Sentiment;
-  setCommentFilter: (f: 'all' | Sentiment) => void;
-  commentsToShow: number;
-  setCommentsToShow: (fn: (prev: number) => number) => void;
-}) {
-  const filteredComments = commentFilter === 'all'
-    ? comments
-    : comments.filter(c => c.sentiment === commentFilter);
-  const visibleComments = filteredComments.slice(0, commentsToShow);
-
-  if (comments.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
-          <MessageCircle size={28} className="text-zinc-600" />
-        </div>
-        <p className="text-zinc-500 text-sm">Reacoes ainda nao disponiveis</p>
-        <p className="text-zinc-600 text-xs mt-1">As personas estao sendo avaliadas</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-5 lg:p-8">
-      {/* Filter chips */}
-      <div className="flex items-center gap-1.5 mb-5 flex-wrap">
-        {([
-          { key: 'all' as const, label: 'Todos', active: 'bg-white/10 text-white border-white/20' },
-          { key: 'positive' as const, label: 'A Favor', active: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' },
-          { key: 'neutral' as const, label: 'Neutros', active: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
-          { key: 'negative' as const, label: 'Contra', active: 'bg-rose-500/10 text-rose-400 border-rose-500/20' },
-        ]).map(({ key, label, active }) => {
-          const count = key === 'all' ? comments.length : comments.filter(c => c.sentiment === key).length;
-          return (
-            <button
-              key={key}
-              onClick={() => { setCommentFilter(key); setCommentsToShow(() => 10); }}
-              className={cn(
-                'px-3 py-1.5 rounded-xl text-xs font-bold border transition-all duration-200',
-                commentFilter === key ? active : 'text-zinc-500 border-zinc-800/50 hover:text-zinc-300 hover:border-zinc-700/50',
-              )}
-            >
-              {label} ({count.toLocaleString('pt-BR')})
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Comments grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {visibleComments.map((comment, idx) => (
-          <CommentBubble key={`comment-${commentFilter}-${idx}`} comment={comment} index={idx} />
-        ))}
-      </div>
-
-      {filteredComments.length > commentsToShow && (
-        <div className="text-center mt-5">
-          <button
-            onClick={() => setCommentsToShow(prev => prev + 30)}
-            className="px-6 py-2.5 rounded-xl bg-zinc-900/80 border border-zinc-800/50 text-sm font-bold text-zinc-400 hover:text-white hover:border-zinc-700/50 transition-all duration-200"
-          >
-            Carregar mais {Math.min(30, filteredComments.length - commentsToShow)}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ============================================================
-   Main Component: ArenaLiveBlock — Tab layout
+   Main Component: ArenaLiveBlock — Input + Locutor Analysis
    ============================================================ */
 
 export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
@@ -823,22 +597,24 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
     question, phase, processedCount, totalCount,
     positive, negative, neutral,
     simulation, totalPersonas, media, mediaContext,
-    isQuickAnswer, quickAnswer, segments, liveIdeology, liveComments,
+    isQuickAnswer, quickAnswer, segments,
   } = data;
 
-  const [activeTab, setActiveTab] = useState<TabKey>('principal');
-  const [commentsToShow, setCommentsToShow] = useState(10);
-  const [commentFilter, setCommentFilter] = useState<'all' | Sentiment>('all');
   const [showMediaSummary, setShowMediaSummary] = useState(false);
   const cleanedMediaContext = useMemo(() => mediaContext ? cleanMediaContext(mediaContext) : '', [mediaContext]);
   const hasMediaContext = cleanedMediaContext.length > 0;
   const blockRef = useRef<HTMLDivElement>(null);
 
-  // Check if presentation mode is active (via URL param)
-  const isPresentationMode = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    return new URLSearchParams(window.location.search).has('apresentacao');
-  }, []);
+  // Locutor analysis state
+  const [analysisText, setAnalysisText] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [displayedText, setDisplayedText] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const hasCalledAnalysis = useRef(false);
+  const lastQuestion = useRef('');
+  const charIndex = useRef(0);
+  const typingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const isCollecting = phase === 'collecting';
   const isStreaming = phase === 'streaming' || phase === 'aggregating';
@@ -849,45 +625,123 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   const finalNeutral = isComplete ? (quickAnswer?.neutral ?? simulation?.neutral ?? neutral) : neutral;
   const finalTotal = isComplete ? (quickAnswer?.total ?? simulation?.total ?? totalCount) : totalCount;
 
-  const hasSegments = !!segments && Object.values(segments).some(arr => arr.length > 0);
+  // Reset when new question arrives
+  useEffect(() => {
+    if (question && question !== lastQuestion.current) {
+      lastQuestion.current = question;
+      hasCalledAnalysis.current = false;
+      setAnalysisText('');
+      setDisplayedText('');
+      charIndex.current = 0;
+      if (typingTimer.current) clearInterval(typingTimer.current);
+      if (abortRef.current) abortRef.current.abort();
+    }
+  }, [question]);
 
-  const comments = (simulation?.comments?.length ?? 0) > 0
-    ? simulation!.comments
-    : liveComments ?? [];
+  // Call locutor API — ONLY when complete
+  const callLocutor = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-  const quadrants = simulation?.quadrants ?? liveIdeology?.quadrants ?? [];
-  const clusters = simulation?.clusterResults ?? liveIdeology?.clusterResults ?? [];
-  const figures = simulation?.politicalFigures ?? liveIdeology?.politicalFigures ?? [];
-  const hasIdeology = quadrants.length > 0 || clusters.length > 0 || figures.length > 0;
+    setIsAnalyzing(true);
+    setAnalysisText('');
+    setDisplayedText('');
+    charIndex.current = 0;
+    if (typingTimer.current) clearInterval(typingTimer.current);
 
-  // Tab definitions
-  const tabs: TabDef[] = [
-    {
-      key: 'principal',
-      label: 'Principal',
-      icon: <TrendingUp size={13} />,
-      available: true,
-    },
-    {
-      key: 'segmentos',
-      label: 'Segmentos',
-      icon: <BarChart3 size={13} />,
-      available: true,
-    },
-    {
-      key: 'ideologia',
-      label: 'Ideologia',
-      icon: <Sparkles size={13} />,
-      available: hasIdeology || (isStreaming && !isCollecting),
-    },
-    {
-      key: 'reacoes',
-      label: 'Reacoes',
-      icon: <MessageCircle size={13} />,
-      badge: comments.length > 0 ? comments.length : undefined,
-      available: true,
-    },
-  ];
+    let accumulated = '';
+
+    try {
+      const res = await fetch('/api/arena/locutor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          positive: finalPositive,
+          negative: finalNegative,
+          neutral: finalNeutral,
+          totalPersonas: totalPersonas || finalTotal,
+          segments,
+          phase: 'complete',
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) throw new Error('Failed');
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+          const payload = trimmed.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.text) {
+              accumulated += parsed.text;
+              setAnalysisText(accumulated);
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') console.error('[Locutor] Error:', err);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [question, finalPositive, finalNegative, finalNeutral, totalPersonas, finalTotal, segments]);
+
+  // Trigger analysis ONLY when complete
+  useEffect(() => {
+    if (!isComplete || hasCalledAnalysis.current) return;
+    if (segments) {
+      hasCalledAnalysis.current = true;
+      callLocutor();
+    }
+  }, [isComplete, segments, callLocutor]);
+
+  // Typing animation
+  useEffect(() => {
+    if (!analysisText) return;
+    if (typingTimer.current) clearInterval(typingTimer.current);
+
+    typingTimer.current = setInterval(() => {
+      if (charIndex.current < analysisText.length) {
+        const charsToAdd = Math.min(3, analysisText.length - charIndex.current);
+        charIndex.current += charsToAdd;
+        setDisplayedText(analysisText.slice(0, charIndex.current));
+      } else {
+        if (typingTimer.current) clearInterval(typingTimer.current);
+      }
+    }, 15);
+
+    return () => { if (typingTimer.current) clearInterval(typingTimer.current); };
+  }, [analysisText]);
+
+  // Auto-scroll as text appears
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [displayedText]);
+
+  // Check if presentation mode is active (via URL param)
+  const isPresentationMode = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).has('apresentacao');
+  }, []);
 
   // Error state
   if (data.error && !simulation && !quickAnswer) {
@@ -906,7 +760,6 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
     return (
       <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
         <div className="p-6 space-y-4">
-          {/* Minimal status */}
           <div className="flex items-center gap-2">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
               Arena • Apresentacao
@@ -922,41 +775,37 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
               </span>
             )}
           </div>
-
-          {/* Collecting phase */}
           {isCollecting && <CollectingPhase status={data.collectingStatus} />}
-
-          {/* Progress bar only */}
           {!isCollecting && !isComplete && (
             <div className="space-y-2">
               <div className="h-2 bg-zinc-900/80 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
+                <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-full transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
               </div>
               <p className="text-xs text-zinc-500 text-center">{progress.toFixed(0)}% processado</p>
             </div>
           )}
-
-          {/* Complete state — just a checkmark */}
           {isComplete && (
-            <p className="text-xs text-zinc-500 text-center">
-              {finalTotal.toLocaleString()} personas processadas
-            </p>
+            <p className="text-xs text-zinc-500 text-center">{finalTotal.toLocaleString()} personas processadas</p>
           )}
         </div>
       </div>
     );
   }
 
+  // ── Normal Mode: Collecting + Progress + Analysis ──────────────────
+  const total = finalPositive + finalNegative + finalNeutral;
+  const pctPos = total > 0 ? Math.round((finalPositive / total) * 100) : 0;
+  const pctNeg = total > 0 ? Math.round((finalNegative / total) * 100) : 0;
+  const pctNeu = total > 0 ? Math.round((finalNeutral / total) * 100) : 0;
+
+  const showAnalysis = isComplete && (displayedText || isAnalyzing);
+  const waitingForAnalysis = isComplete && !displayedText && !isAnalyzing && !analysisText;
+
   return (
     <div ref={blockRef} className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden">
       {/* ─── Header ─── */}
       <div className="px-6 pt-4 pb-3 flex items-start justify-between gap-4">
-        {/* Left column: label + tabs */}
-        <div className="flex-1 min-w-0 flex flex-col gap-3">
-          {/* ARENA label + status badges */}
+        <div className="flex-1 min-w-0 flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
               Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
@@ -981,15 +830,32 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                     <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
                   </span>
                 )}
-                <span className="text-[10px] text-emerald-400 font-bold">
-                  {finalTotal > 0 ? Math.round((finalPositive / finalTotal) * 100) : 0}% a favor
-                </span>
               </>
+            )}
+            {isAnalyzing && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
+                <Sparkles size={9} /> Analisando
+              </span>
             )}
           </div>
 
-          {/* Tab Bar */}
-          {!isCollecting && <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} inline />}
+          {/* Sentiment bar + pills when complete */}
+          {isComplete && total > 0 && (
+            <div className="flex flex-col gap-2">
+              {/* Stacked sentiment bar */}
+              <div className="h-2.5 rounded-full overflow-hidden flex bg-zinc-900/80">
+                <div className="h-full bg-emerald-500 transition-all duration-[2000ms]" style={{ width: `${pctPos}%` }} />
+                <div className="h-full bg-amber-500 transition-all duration-[2000ms]" style={{ width: `${pctNeu}%` }} />
+                <div className="h-full bg-rose-500 transition-all duration-[2000ms]" style={{ width: `${pctNeg}%` }} />
+              </div>
+              {/* Percentage pills below the bar */}
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">{pctPos}% Favor</span>
+                <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">{pctNeg}% Contra</span>
+                <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}% Neutros</span>
+              </div>
+            </div>
+          )}
 
           <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
         </div>
@@ -1021,48 +887,59 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
         )}
       </div>
 
-      {/* ─── Collecting Phase (before metrics) ─── */}
-      {isCollecting && <CollectingPhase status={data.collectingStatus} />}
-
       {/* Divider */}
       {!isCollecting && <div className="h-px bg-gradient-to-r from-transparent via-zinc-800/50 to-transparent" />}
 
-      {/* ─── Tab Content ─── */}
-      {!isCollecting && activeTab === 'principal' && (
-        <TabPrincipal
-          isStreaming={isStreaming}
-          phase={phase}
-          processedCount={processedCount}
-          totalCount={totalCount}
-          finalPositive={finalPositive}
-          finalNegative={finalNegative}
-          finalNeutral={finalNeutral}
-          finalTotal={finalTotal}
-        />
+      {/* ─── Collecting Phase ─── */}
+      {isCollecting && <CollectingPhase status={data.collectingStatus} />}
+
+      {/* ─── Streaming Progress + "analyzing" teaser ─── */}
+      {isStreaming && (
+        <>
+          <LiveProgressBar processed={processedCount} total={totalCount} phase={phase} />
+          <div className="px-6 pb-14 pt-10 flex flex-col items-center justify-center gap-6">
+            <div className="relative w-24 h-24">
+              <div className="absolute inset-0 rounded-full border-2 border-violet-500/30" style={{ animation: 'spin 4s linear infinite' }} />
+              <div className="absolute inset-3 rounded-full border-2 border-dashed border-emerald-500/25" style={{ animation: 'spin 7s linear infinite reverse' }} />
+              <div className="absolute inset-[-10px] rounded-full border border-violet-500/10" style={{ animation: 'spin 12s linear infinite' }} />
+              <div className="absolute inset-[-18px] rounded-full border border-dashed border-fuchsia-500/[0.07]" style={{ animation: 'spin 16s linear infinite reverse' }} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Sparkles size={36} className="text-violet-400 animate-pulse" />
+              </div>
+            </div>
+            <div className="text-center space-y-2">
+              <p className="text-2xl font-bold text-violet-400 tracking-tight">Analisando opiniões</p>
+              <p className="text-base text-zinc-500">O parecer estratégico será gerado ao final</p>
+            </div>
+          </div>
+        </>
       )}
 
-      {activeTab === 'segmentos' && (
-        <TabSegmentos segments={segments} hasSegments={hasSegments} />
+      {/* ─── Complete: Waiting for analysis ─── */}
+      {waitingForAnalysis && (
+        <div className="px-6 py-8 flex flex-col items-center gap-4">
+          <div className="relative w-16 h-16">
+            <div className="absolute inset-0 rounded-full border-2 border-violet-500/20" style={{ animation: 'spin 6s linear infinite' }} />
+            <div className="absolute inset-3 rounded-full border-2 border-dashed border-emerald-500/15" style={{ animation: 'spin 10s linear infinite reverse' }} />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Sparkles size={24} className="text-violet-400/60 animate-pulse" />
+            </div>
+          </div>
+          <p className="text-sm text-zinc-500">Preparando analise...</p>
+        </div>
       )}
 
-      {activeTab === 'ideologia' && (
-        <TabIdeologia
-          quadrants={quadrants}
-          clusters={clusters}
-          total={simulation?.total ?? finalTotal}
-          figures={figures}
-        />
+      {/* ─── Complete: Analysis text (compact card grid, no scroll) ─── */}
+      {showAnalysis && (
+        <div ref={scrollRef} className="px-5 py-4">
+          <RenderMarkdown text={displayedText} />
+          {(isAnalyzing || charIndex.current < analysisText.length) && (
+            <span className="inline-block w-0.5 h-4 bg-violet-400 ml-1 animate-pulse" />
+          )}
+        </div>
       )}
 
-      {activeTab === 'reacoes' && (
-        <TabReacoes
-          comments={comments}
-          commentFilter={commentFilter}
-          setCommentFilter={setCommentFilter}
-          commentsToShow={commentsToShow}
-          setCommentsToShow={setCommentsToShow}
-        />
-      )}
+      {/* No bottom bar during streaming — only progress + teaser above */}
     </div>
   );
 }

@@ -427,6 +427,9 @@ export class IdeologyAccumulator {
 
   constructor(question: string) {
     this.figures = detectPoliticalFigures(question);
+    // Always track both major figures for the Político dashboard
+    if (!this.figures.includes('lula')) this.figures.push('lula');
+    if (!this.figures.includes('bolsonaro')) this.figures.push('bolsonaro');
     for (const fig of this.figures) {
       this.figureMap.set(fig, {
         supportCount: 0, attackCount: 0, neutralCount: 0,
@@ -564,8 +567,10 @@ export function runEnhancedSimulation(
   // 7. Education analysis
   const educationLevels = analyzeEducation(personas, topicScores, question);
 
-  // 8. Political figure detection
+  // 8. Political figure detection — always include both major figures
   const detectedFigures = detectPoliticalFigures(question);
+  if (!detectedFigures.includes('lula')) detectedFigures.push('lula');
+  if (!detectedFigures.includes('bolsonaro')) detectedFigures.push('bolsonaro');
   const politicalFigures = analyzePoliticalFigures(personas, detectedFigures);
 
   // 9. Intensity correlation

@@ -22,6 +22,14 @@ export interface AllSegments {
   socialClass: SegmentItem[];
   education: SegmentItem[];
   politicalLeaning: SegmentItem[];
+  // ── New: political / ideological segments ──
+  voto2022: SegmentItem[];
+  aprovacaoLula: SegmentItem[];
+  voto2026: SegmentItem[];
+  archetype: SegmentItem[];
+  clusterMacro: SegmentItem[];
+  scoreEco: SegmentItem[];
+  scoreCost: SegmentItem[];
 }
 
 type SentimentGetter = (persona: Record<string, any>) => Sentiment;
@@ -46,11 +54,40 @@ function mapToSegments(
     .sort((a, b) => b.count - a.count);
 }
 
-/**
- * Compute all demographic segment breakdowns from persona data.
- * @param personas Array of persona records
- * @param getSentiment Function that returns the sentiment for each persona
- */
+/* ── Helpers for bucketing continuous scores ── */
+
+function bucketEco(score: number): string {
+  if (score <= -0.5) return 'Esquerda Forte';
+  if (score <= -0.1) return 'Centro-Esquerda';
+  if (score <= 0.1) return 'Centro';
+  if (score <= 0.5) return 'Centro-Direita';
+  return 'Direita Forte';
+}
+
+function bucketCost(score: number): string {
+  if (score <= -0.5) return 'Progressista Forte';
+  if (score <= -0.1) return 'Progressista';
+  if (score <= 0.1) return 'Centro';
+  if (score <= 0.5) return 'Conservador';
+  return 'Conservador Forte';
+}
+
+const CLUSTER_MACRO: Record<string, string> = {
+  P: 'Progressista', M: 'Moderado', C: 'Conservador', T: 'Transversal',
+};
+
+/** Normalize voto_2022 free-text to canonical labels */
+function normalizeVoto(raw: string): string {
+  const v = raw.toLowerCase().trim();
+  if (/lula|13|pt/.test(v)) return 'Lula';
+  if (/bolsonaro|22|pl/.test(v)) return 'Bolsonaro';
+  if (/nulo|branco|nenhum/.test(v)) return 'Nulo/Branco';
+  if (/n[aã]o\s*vot|abst/.test(v)) return 'Não votou';
+  if (/ciro|12/.test(v)) return 'Ciro';
+  if (/simone|tebet|15/.test(v)) return 'Tebet';
+  return raw; // keep as-is if unrecognized
+}
+
 /**
  * Incremental segment accumulator.
  * Call addPersona() for each persona, then call toSegments() to get results.
@@ -64,6 +101,14 @@ export class SegmentAccumulator {
   private classMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
   private eduMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
   private politicalMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  // New maps
+  private voto2022Map = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private aprovLulaMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private voto2026Map = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private archetypeMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private clusterMacroMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private scoreEcoMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
+  private scoreCostMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
 
   addPersona(p: Record<string, any>, sentiment: Sentiment) {
     accumulate(this.genderMap, p.gender_identity || p.gender || 'Outros', sentiment);
@@ -74,6 +119,15 @@ export class SegmentAccumulator {
     accumulate(this.classMap, p.social_class ? `Classe ${p.social_class}` : 'Outros', sentiment);
     accumulate(this.eduMap, p.education_level || 'Outros', sentiment);
     accumulate(this.politicalMap, p.political_leaning || 'Outros', sentiment);
+    // New segments
+    if (p.voto_2022) accumulate(this.voto2022Map, normalizeVoto(p.voto_2022), sentiment);
+    if (p.aprovacao_lula) accumulate(this.aprovLulaMap, p.aprovacao_lula, sentiment);
+    if (p.voto_2026) accumulate(this.voto2026Map, p.voto_2026, sentiment);
+    if (p.archetype_primary) accumulate(this.archetypeMap, p.archetype_primary, sentiment);
+    const cid = p.cluster_id || '';
+    if (cid && CLUSTER_MACRO[cid[0]]) accumulate(this.clusterMacroMap, CLUSTER_MACRO[cid[0]], sentiment);
+    if (typeof p.score_economico === 'number') accumulate(this.scoreEcoMap, bucketEco(p.score_economico), sentiment);
+    if (typeof p.score_costumes === 'number') accumulate(this.scoreCostMap, bucketCost(p.score_costumes), sentiment);
   }
 
   toSegments(): AllSegments {
@@ -86,6 +140,13 @@ export class SegmentAccumulator {
       socialClass: mapToSegments(this.classMap),
       education: mapToSegments(this.eduMap),
       politicalLeaning: mapToSegments(this.politicalMap),
+      voto2022: mapToSegments(this.voto2022Map),
+      aprovacaoLula: mapToSegments(this.aprovLulaMap),
+      voto2026: mapToSegments(this.voto2026Map),
+      archetype: mapToSegments(this.archetypeMap),
+      clusterMacro: mapToSegments(this.clusterMacroMap),
+      scoreEco: mapToSegments(this.scoreEcoMap),
+      scoreCost: mapToSegments(this.scoreCostMap),
     };
   }
 }
@@ -94,36 +155,9 @@ export function computeAllSegments(
   personas: Record<string, any>[],
   getSentiment: SentimentGetter,
 ): AllSegments {
-  const genderMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const religionMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const raceMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const regionMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const genMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const classMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const eduMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-  const politicalMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
-
+  const acc = new SegmentAccumulator();
   for (const p of personas) {
-    const sentiment = getSentiment(p);
-
-    accumulate(genderMap, p.gender_identity || p.gender || 'Outros', sentiment);
-    accumulate(religionMap, p.macro_religion || 'Outros', sentiment);
-    accumulate(raceMap, p.raca_cor || p.demographic_json?.identidade_basica?.etnia || 'Não informado', sentiment);
-    accumulate(regionMap, p.region_br || 'Outros', sentiment);
-    accumulate(genMap, p.generation || 'Outros', sentiment);
-    accumulate(classMap, p.social_class ? `Classe ${p.social_class}` : 'Outros', sentiment);
-    accumulate(eduMap, p.education_level || 'Outros', sentiment);
-    accumulate(politicalMap, p.political_leaning || 'Outros', sentiment);
+    acc.addPersona(p, getSentiment(p));
   }
-
-  return {
-    gender: mapToSegments(genderMap),
-    religion: mapToSegments(religionMap),
-    race: mapToSegments(raceMap),
-    region: mapToSegments(regionMap),
-    generation: mapToSegments(genMap),
-    socialClass: mapToSegments(classMap),
-    education: mapToSegments(eduMap),
-    politicalLeaning: mapToSegments(politicalMap),
-  };
+  return acc.toSegments();
 }

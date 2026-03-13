@@ -39,6 +39,8 @@ export function UnifiedShell() {
   const handleNewChat = useCallback(() => {
     clearAll();
     setIsProcessing(false);
+    // Tell ArenaMode to broadcast reset via its persistent BroadcastChannel
+    window.dispatchEvent(new CustomEvent('arena-new-chat'));
   }, [clearAll]);
 
   const renderBlock = useCallback((block: ConversationBlock) => {
@@ -91,6 +93,10 @@ export function UnifiedShell() {
 
         <BottomInput
           onSubmit={(value) => {
+            // Clear previous blocks + abort any running simulation + reset presentation screens
+            clearAll();
+            setIsProcessing(false);
+            window.dispatchEvent(new CustomEvent('arena-new-chat'));
             window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: 'arena' } }));
           }}
           isProcessing={isProcessing}
