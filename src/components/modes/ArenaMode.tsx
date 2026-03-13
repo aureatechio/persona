@@ -60,9 +60,12 @@ function broadcastToMonitor(event: { type: string; data: any }) {
 
 export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessing }: ArenaModeProps) {
   const abortRef = useRef<AbortController | null>(null);
+  const currentBlockIdRef = useRef<string | null>(null);
+  const cancelledBlocksRef = useRef<Set<string>>(new Set());
 
   /** Helper to build and replace an arena-live block */
   const emitLive = useCallback((blockId: string, data: ArenaLiveData) => {
+    if (cancelledBlocksRef.current.has(blockId)) return;
     onReplaceBlock(blockId, {
       id: blockId,
       type: 'arena-live',
@@ -91,6 +94,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     broadcastToMonitor({ type: 'arena-reset', data: null });
 
     const blockId = crypto.randomUUID();
+    currentBlockIdRef.current = blockId;
 
     let enrichedContext = contextText || '';
     let mediaCorePoint = '';
@@ -292,6 +296,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         commentAcc.setTotal(total);
 
         for (let offset = 0; offset < total; offset += BATCH) {
+          if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
           const batch = toProcess.slice(offset, offset + BATCH);
           const processed = Math.min(offset + BATCH, total);
           processBatch(batch, processed, total);
@@ -302,12 +307,15 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             aiCommentsFired = true;
             const selectedSnapshot = [...commentAcc.selectedPersonas];
             generateAIComments(q, selectedSnapshot).then(aiComments => {
+              if (cancelledBlocksRef.current.has(blockId)) return;
               liveComments = aiComments;
             }).catch(() => {});
           }
 
           await new Promise(r => setTimeout(r, getDelay(progress)));
         }
+
+        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
 
         // Final complete state
         const qaResult = runQuickAnswer(quickMatch, allData, q);
@@ -334,9 +342,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         // Enrich with full simulation in background
         (async () => {
           try {
+            if (cancelledBlocksRef.current.has(blockId)) return;
             const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
             const enhanced = runEnhancedSimulation(queryForAnalysis, total, allData);
 
+            if (cancelledBlocksRef.current.has(blockId)) return;
             emitLive(blockId, {
               ...baseLiveData,
               phase: 'complete',
@@ -353,10 +363,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             });
 
             // Generate full AI comments with all personas if not already done
+            if (cancelledBlocksRef.current.has(blockId)) return;
             const topicScores = detectTopics(queryForAnalysis);
             const personasForAI = buildPersonasForAI(q, allData, topicScores);
             const claudeComments = await generateAIComments(q, personasForAI);
 
+            if (cancelledBlocksRef.current.has(blockId)) return;
             emitLive(blockId, {
               ...baseLiveData,
               phase: 'complete',
@@ -471,6 +483,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         commentAcc.setTotal(effectiveCount);
 
         for (let offset = 0; offset < effectiveCount; offset += BATCH) {
+          if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
           const batch = toProcess.slice(offset, offset + BATCH);
           const processed = Math.min(offset + BATCH, effectiveCount);
 
@@ -505,6 +518,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             aiCommentsFired = true;
             const selectedSnapshot = [...commentAcc.selectedPersonas];
             generateAIComments(q, selectedSnapshot).then(aiComments => {
+              if (cancelledBlocksRef.current.has(blockId)) return;
               liveComments = aiComments;
             }).catch(() => {});
           }
@@ -512,9 +526,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           await new Promise(r => setTimeout(r, getDelay(progress)));
         }
 
+        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
+
         // Enrichment: simulation
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
 
+        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
         const simWithoutComments = { ...enhanced, comments: [] as any[] };
         emitLive(blockId, {
           ...baseLiveData,
@@ -533,10 +550,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         onProcessing(false);
 
         // Generate full AI comments with all personas
+        if (cancelledBlocksRef.current.has(blockId)) return;
         const topicScores = detectTopics(q);
         const personasForAI = buildPersonasForAI(q, allData, topicScores);
         const claudeComments = await generateAIComments(q, personasForAI);
 
+        if (cancelledBlocksRef.current.has(blockId)) return;
         const sim = { ...enhanced, comments: claudeComments };
         emitLive(blockId, {
           ...baseLiveData,
@@ -802,7 +821,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   onProcessing(false);
 
                   // Compute segments locally if backend didn't provide them
-                  if (!doneSegments && allPersonas.length > 0) {
+                  if (!doneSegments && allPersonas.length > 0 && !cancelledBlocksRef.current.has(blockId)) {
                     const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
                     const segs = computeAllSegments(allPersonas, (p) => computePersonaSentiment(p, queryForSeg));
                     completeBase.segments = segs;
@@ -810,10 +829,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   }
 
                   // Generate full AI comments if not already available
-                  if (!simulation?.comments?.length) {
+                  if (!simulation?.comments?.length && !cancelledBlocksRef.current.has(blockId)) {
                     const topicScores = detectTopics(enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q);
                     const personasForAI = buildPersonasForAI(q, allPersonas.length > 0 ? allPersonas : await personaCache.loadAll(), topicScores);
                     const claudeComments = await generateAIComments(q, personasForAI);
+                    if (cancelledBlocksRef.current.has(blockId)) break;
                     simulation = { ...simulation, comments: claudeComments };
                     completeBase.simulation = simulation;
                     emitLive(blockId, completeBase);
@@ -936,6 +956,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         commentAcc.setTotal(effectiveCount);
 
         for (let offset = 0; offset < effectiveCount; offset += BATCH) {
+          if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
           const batch = toProcess.slice(offset, offset + BATCH);
           const processed = Math.min(offset + BATCH, effectiveCount);
 
@@ -970,6 +991,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             aiCommentsFired = true;
             const selectedSnapshot = [...commentAcc.selectedPersonas];
             generateAIComments(q, selectedSnapshot).then(aiComments => {
+              if (cancelledBlocksRef.current.has(blockId)) return;
               liveComments = aiComments;
             }).catch(() => {});
           }
@@ -977,9 +999,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           await new Promise(r => setTimeout(r, getDelay(progress)));
         }
 
+        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
+
         // Enrichment: simulation
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
 
+        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
         const simWithoutComments = { ...enhanced, comments: [] as any[] };
         emitLive(blockId, {
           ...baseLiveData,
@@ -998,10 +1023,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         onProcessing(false);
 
         // Generate full AI comments with all personas
+        if (cancelledBlocksRef.current.has(blockId)) return;
         const topicScores = detectTopics(q);
         const personasForAI = buildPersonasForAI(q, allData, topicScores);
         const claudeComments = await generateAIComments(q, personasForAI);
 
+        if (cancelledBlocksRef.current.has(blockId)) return;
         const sim = { ...enhanced, comments: claudeComments };
         emitLive(blockId, {
           ...baseLiveData,
@@ -1053,6 +1080,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
   // Listen for "Novo Chat" — abort running simulation + broadcast reset to presentation screens
   useEffect(() => {
     const handler = () => {
+      // Cancel the current processing block (local loops check this flag)
+      if (currentBlockIdRef.current) {
+        cancelledBlocksRef.current.add(currentBlockIdRef.current);
+        currentBlockIdRef.current = null;
+      }
       // Abort any running Python backend request
       if (abortRef.current) {
         abortRef.current.abort();

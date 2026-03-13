@@ -122,7 +122,7 @@ function WaitingScreen() {
 /* ─── Main Locutor Screen ───────────────────────────────────────────── */
 
 export function LocutorScreen() {
-  const data = usePresentationData();
+  const { data, hasEverReceived } = usePresentationData();
   const [text, setText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [displayedText, setDisplayedText] = useState('');
@@ -149,7 +149,7 @@ export function LocutorScreen() {
   }, [data?.question]);
 
   const callLocutor = useCallback(async (phase: string) => {
-    if (!data) return;
+    if (!hasEverReceived) return;
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -260,7 +260,7 @@ export function LocutorScreen() {
   }, [displayedText]);
 
   // No data yet — animated waiting
-  if (!data) return <WaitingScreen />;
+  if (!hasEverReceived) return <WaitingScreen />;
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const pctPos = total > 0 ? Math.round((data.positive / total) * 100) : 0;

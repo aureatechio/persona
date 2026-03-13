@@ -108,7 +108,7 @@ function WaitingScreen() {
 /* ─── Main Analise Screen ───────────────────────────────────────────── */
 
 export function AnaliseScreen() {
-  const data = usePresentationData();
+  const { data, hasEverReceived } = usePresentationData();
   const [text, setText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [displayedText, setDisplayedText] = useState('');
@@ -132,7 +132,7 @@ export function AnaliseScreen() {
   }, [data?.question]);
 
   const callAnalise = useCallback(async () => {
-    if (!data) return;
+    if (!hasEverReceived) return;
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -224,7 +224,7 @@ export function AnaliseScreen() {
   }, [text]);
 
   // No data yet
-  if (!data) return <WaitingScreen />;
+  if (!hasEverReceived) return <WaitingScreen />;
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const pctPos = total > 0 ? Math.round((data.positive / total) * 100) : 0;

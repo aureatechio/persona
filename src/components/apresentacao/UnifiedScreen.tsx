@@ -48,43 +48,6 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   LoadingCard — Skeleton placeholder
-   ════════════════════════════════════════════════════════════════════ */
-
-function LoadingCard({ title, accentColor }: { title: string; accentColor: string }) {
-  const colorMap: Record<string, { text: string; label: string }> = {
-    emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80' },
-    amber:   { text: 'text-amber-400',   label: 'text-amber-400/80' },
-    violet:  { text: 'text-violet-400',  label: 'text-violet-400/80' },
-    cyan:    { text: 'text-cyan-400',    label: 'text-cyan-400/80' },
-    sky:     { text: 'text-sky-400',     label: 'text-sky-400/80' },
-    rose:    { text: 'text-rose-400',    label: 'text-rose-400/80' },
-    fuchsia: { text: 'text-fuchsia-400', label: 'text-fuchsia-400/80' },
-    orange:  { text: 'text-orange-400',  label: 'text-orange-400/80' },
-    pink:    { text: 'text-pink-400',    label: 'text-pink-400/80' },
-    indigo:  { text: 'text-indigo-400',  label: 'text-indigo-400/80' },
-  };
-  const c = colorMap[accentColor] || colorMap.emerald;
-
-  return (
-    <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
-      <div className="px-4 py-2 border-b border-white/[0.04] shrink-0 flex items-center gap-2">
-        <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
-        <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
-      </div>
-      <div className="flex-1 flex flex-col justify-center items-center gap-3 px-4">
-        <div className="space-y-2 w-full">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-[14px] bg-zinc-900/50 rounded-lg animate-pulse" style={{ width: `${90 - i * 15}%` }} />
-          ))}
-        </div>
-        <p className="text-[10px] text-zinc-700">Aguardando...</p>
-      </div>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════════════════
    Comment Card + Ticker
    ════════════════════════════════════════════════════════════════════ */
 
@@ -177,8 +140,8 @@ function clustersToSegments(clusters: ClusterResult[] | undefined): SegmentItem[
    ════════════════════════════════════════════════════════════════════ */
 
 export function UnifiedScreen() {
-  const data = usePresentationData();
-  if (!data) return <Waiting />;
+  const { data, hasEverReceived } = usePresentationData();
+  if (!hasEverReceived) return <Waiting />;
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
@@ -254,29 +217,29 @@ export function UnifiedScreen() {
 
           {/* Row 1 — Demografico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            {data.segments?.gender     ? <SegmentRanking items={data.segments.gender}     title="Genero"       accentColor="violet" /> : <LoadingCard title="Genero"       accentColor="violet" />}
-            {data.segments?.race       ? <DonutCard      items={data.segments.race}       title="Etnia"        accentColor="cyan" />   : <LoadingCard title="Etnia"        accentColor="cyan" />}
-            {data.segments?.generation ? <SegmentRanking items={data.segments.generation} title="Faixa Etaria" accentColor="sky" />    : <LoadingCard title="Faixa Etaria" accentColor="sky" />}
-            {data.segments?.religion   ? <HBarChart      items={data.segments.religion}   title="Religiao"     accentColor="amber" />  : <LoadingCard title="Religiao"     accentColor="amber" />}
-            {data.segments?.region     ? <HBarChart      items={data.segments.region}     title="Regiao"       accentColor="emerald" />: <LoadingCard title="Regiao"       accentColor="emerald" />}
+            <SegmentRanking items={data.segments?.gender}     title="Genero"       accentColor="violet" />
+            <DonutCard      items={data.segments?.race}       title="Etnia"        accentColor="cyan" />
+            <SegmentRanking items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" />
+            <HBarChart      items={data.segments?.religion}   title="Religiao"     accentColor="amber" />
+            <HBarChart      items={data.segments?.region}     title="Regiao"       accentColor="emerald" />
           </div>
 
           {/* Row 2 — Socioeconomico + Eleitoral */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            {data.segments?.socialClass      ? <HBarChart items={data.segments.socialClass}      title="Classe Social"  accentColor="rose" />    : <LoadingCard title="Classe Social"  accentColor="rose" />}
-            {data.segments?.education        ? <HBarChart items={data.segments.education}        title="Escolaridade"   accentColor="fuchsia" /> : <LoadingCard title="Escolaridade"   accentColor="fuchsia" />}
-            {data.segments?.voto2022         ? <DonutCard items={data.segments.voto2022}         title="Voto 2022"      accentColor="violet" />  : <LoadingCard title="Voto 2022"      accentColor="violet" />}
-            {data.segments?.voto2026         ? <DonutCard items={data.segments.voto2026}         title="Intencao 2026"  accentColor="emerald" /> : <LoadingCard title="Intencao 2026"  accentColor="emerald" />}
-            {data.segments?.politicalLeaning ? <DonutCard items={data.segments.politicalLeaning} title="Pos. Politica"  accentColor="sky" />     : <LoadingCard title="Pos. Politica"  accentColor="sky" />}
+            <HBarChart items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" />
+            <HBarChart items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" />
+            <DonutCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" />
+            <DonutCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" />
+            <DonutCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" />
           </div>
 
           {/* Row 3 — Ideologico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            {data.segments?.scoreEco  ? <SpectrumGauge items={data.segments.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" />      : <LoadingCard title="Espectro Eco"   accentColor="sky" />}
-            {data.segments?.scoreCost ? <SpectrumGauge items={data.segments.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />   : <LoadingCard title="Espectro Comp"  accentColor="pink" />}
-            {quadrantItems            ? <QuadrantGrid  items={quadrantItems}           title="Quadrante"      accentColor="cyan" />       : <LoadingCard title="Quadrante"      accentColor="cyan" />}
-            {archetypeItems && archetypeItems.length > 0 ? <SegmentRanking items={archetypeItems} title="Arquetipos" accentColor="orange" /> : <LoadingCard title="Arquetipos" accentColor="orange" />}
-            {clusterItems && clusterItems.length > 0   ? <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" /> : <LoadingCard title="Cluster Macro" accentColor="indigo" />}
+            <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" />
+            <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />
+            <QuadrantGrid  items={quadrantItems}            title="Quadrante"      accentColor="cyan" />
+            <SegmentRanking items={archetypeItems} title="Arquetipos" accentColor="orange" />
+            <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" />
           </div>
         </div>
 

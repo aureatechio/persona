@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult } from '@/lib/arena/types';
@@ -13,7 +13,19 @@ import { TrendHero, SentimentBar, DonutCard, HBarChart } from './charts';
    (EXPORTED for reuse in PoliticoScreen)
    ════════════════════════════════════════════════════════════════════ */
 
-export function SegmentRanking({
+function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((item, i) =>
+    item.label === b[i].label &&
+    item.count === b[i].count &&
+    item.positive === b[i].positive &&
+    item.negative === b[i].negative &&
+    item.neutral === b[i].neutral
+  );
+}
+
+export const SegmentRanking = memo(function SegmentRanking({
   items,
   title,
   accentColor,
@@ -22,8 +34,7 @@ export function SegmentRanking({
   title: string;
   accentColor: string;
 }) {
-  if (!items || items.length === 0) return null;
-  const sorted = [...items].sort((a, b) => b.count - a.count);
+  const sorted = items && items.length > 0 ? [...items].sort((a, b) => b.count - a.count) : [];
 
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -38,6 +49,28 @@ export function SegmentRanking({
     pink:    { glow: 'bg-pink-500/8',     text: 'text-pink-400',    label: 'text-pink-400/80' },
   };
   const c = colorMap[accentColor] || colorMap.emerald;
+
+  // ── Empty state — card shell with header while awaiting data ──
+  if (sorted.length === 0) {
+    return (
+      <div className={cn(
+        'relative overflow-hidden',
+        'bg-white/[0.03] backdrop-blur-xl',
+        'border border-white/[0.06]',
+        'rounded-2xl',
+        'flex flex-col h-full',
+      )}>
+        <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
+        <div className="px-4 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
+          <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
+          <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-zinc-700">Aguardando...</p>
+        </div>
+      </div>
+    );
+  }
 
   // ── Gender layout (≤2 items) — two full halves with icons ──
   if (sorted.length <= 2) {
@@ -155,43 +188,11 @@ export function SegmentRanking({
       </div>
     </div>
   );
-}
-
-/* ════════════════════════════════════════════════════════════════════
-   Loading Card — skeleton placeholder while data streams in
-   ════════════════════════════════════════════════════════════════════ */
-
-function LoadingCard({ title, accentColor }: { title: string; accentColor: string }) {
-  const colorMap: Record<string, { text: string; label: string }> = {
-    emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80' },
-    amber:   { text: 'text-amber-400',   label: 'text-amber-400/80' },
-    violet:  { text: 'text-violet-400',  label: 'text-violet-400/80' },
-    cyan:    { text: 'text-cyan-400',    label: 'text-cyan-400/80' },
-    sky:     { text: 'text-sky-400',     label: 'text-sky-400/80' },
-    rose:    { text: 'text-rose-400',    label: 'text-rose-400/80' },
-    fuchsia: { text: 'text-fuchsia-400', label: 'text-fuchsia-400/80' },
-    orange:  { text: 'text-orange-400',  label: 'text-orange-400/80' },
-    pink:    { text: 'text-pink-400',    label: 'text-pink-400/80' },
-  };
-  const c = colorMap[accentColor] || colorMap.emerald;
-
-  return (
-    <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
-      <div className="px-4 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
-        <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
-        <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
-      </div>
-      <div className="flex-1 flex flex-col justify-center items-center gap-3 px-4">
-        <div className="space-y-2 w-full">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-[18px] bg-zinc-900/50 rounded-lg animate-pulse" style={{ width: `${90 - i * 15}%` }} />
-          ))}
-        </div>
-        <p className="text-xs text-zinc-700">Aguardando...</p>
-      </div>
-    </div>
-  );
-}
+}, (prev, next) => {
+  return prev.title === next.title &&
+    prev.accentColor === next.accentColor &&
+    shallowEqualSegments(prev.items, next.items);
+});
 
 /* ════════════════════════════════════════════════════════════════════
    Comment Card + Ticker
@@ -313,17 +314,29 @@ function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): Segmen
    ════════════════════════════════════════════════════════════════════ */
 
 export function DashboardScreen() {
-  const data = usePresentationData();
-  if (!data) return <Waiting />;
+  const { data, hasEverReceived } = usePresentationData();
+  if (!hasEverReceived) return <Waiting />;
 
-  const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
+  const positive = data.positive || 0;
+  const negative = data.negative || 0;
+  const neutral = data.neutral || 0;
+  const total = positive + negative + neutral;
   const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
   const isLive = data.phase !== 'complete';
 
-  const comments = (data.simulation?.comments?.length ?? 0) > 0
-    ? data.simulation!.comments : data.liveComments ?? [];
+  const comments = useMemo(() => (
+    (data.simulation?.comments?.length ?? 0) > 0
+      ? data.simulation!.comments : data.liveComments ?? []
+  ), [data.simulation?.comments, data.liveComments]);
 
-  const archetypeItems = archetypesToSegments(data.simulation?.archetypes)?.slice(0, 6);
+  const archetypeItems = useMemo(
+    () => archetypesToSegments(data.simulation?.archetypes)?.slice(0, 6),
+    [data.simulation?.archetypes],
+  );
+
+  const sentimentBar = useMemo(() => (
+    <SentimentBar positive={positive} negative={negative} neutral={neutral} />
+  ), [positive, negative, neutral]);
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
@@ -352,16 +365,10 @@ export function DashboardScreen() {
 
       {/* ═══ HERO ZONE ═══ */}
       <TrendHero
-        positive={data.positive || 0}
-        negative={data.negative || 0}
-        neutral={data.neutral || 0}
-        rightSlot={
-          <SentimentBar
-            positive={data.positive || 0}
-            negative={data.negative || 0}
-            neutral={data.neutral || 0}
-          />
-        }
+        positive={positive}
+        negative={negative}
+        neutral={neutral}
+        rightSlot={sentimentBar}
       />
 
       {/* ═══ MAIN GRID: 2 rows × 4 cols + sidebar ═══ */}
@@ -373,18 +380,14 @@ export function DashboardScreen() {
             <SegmentRanking items={data.segments?.gender}     title="Genero"         accentColor="violet" />
             <DonutCard items={data.segments?.race}            title="Etnia"          accentColor="cyan" />
             <SegmentRanking items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" />
-            {archetypeItems ? (
-              <SegmentRanking items={archetypeItems}          title="Arquetipos"     accentColor="orange" />
-            ) : (
-              <LoadingCard title="Arquetipos" accentColor="orange" />
-            )}
+            <SegmentRanking items={archetypeItems}            title="Arquetipos"     accentColor="orange" />
           </div>
           {/* Row 2 — HBarCharts (dense data) */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            {data.segments?.religion  ? <HBarChart items={data.segments.religion}    title="Religiao"       accentColor="amber" />   : <LoadingCard title="Religiao"      accentColor="amber" />}
-            {data.segments?.region    ? <HBarChart items={data.segments.region}      title="Regiao"         accentColor="emerald" /> : <LoadingCard title="Regiao"        accentColor="emerald" />}
-            {data.segments?.socialClass ? <HBarChart items={data.segments.socialClass} title="Classe Social" accentColor="rose" />   : <LoadingCard title="Classe Social" accentColor="rose" />}
-            {data.segments?.education ? <HBarChart items={data.segments.education}   title="Escolaridade"   accentColor="fuchsia" /> : <LoadingCard title="Escolaridade"  accentColor="fuchsia" />}
+            <HBarChart items={data.segments?.religion}    title="Religiao"       accentColor="amber" />
+            <HBarChart items={data.segments?.region}      title="Regiao"         accentColor="emerald" />
+            <HBarChart items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" />
+            <HBarChart items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" />
           </div>
         </div>
 

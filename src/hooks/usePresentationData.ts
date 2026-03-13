@@ -3,12 +3,38 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 
+const EMPTY_SEGMENTS = {
+  gender: [], religion: [], race: [], region: [],
+  generation: [], socialClass: [], education: [], politicalLeaning: [],
+  voto2022: [], aprovacaoLula: [], voto2026: [],
+  archetype: [], clusterMacro: [], scoreEco: [], scoreCost: [],
+};
+
+function makeZeroedData(question = ''): ArenaLiveData {
+  return {
+    question,
+    phase: 'collecting',
+    processedCount: 0,
+    totalCount: 0,
+    positive: 0,
+    negative: 0,
+    neutral: 0,
+    simulation: null,
+    totalPersonas: 0,
+    segments: { ...EMPTY_SEGMENTS },
+    liveComments: [],
+    stateBreakdown: {},
+  };
+}
+
 /**
  * Hook that listens to BroadcastChannel for real-time ArenaLiveData
  * from the main input screen. Used by all presentation screens.
  */
-export function usePresentationData() {
-  const [data, setData] = useState<ArenaLiveData | null>(null);
+export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: boolean } {
+  const [data, setData] = useState<ArenaLiveData>(() => makeZeroedData());
+  const hasEverReceivedRef = useRef(false);
+  const [hasEverReceived, setHasEverReceived] = useState(false);
   const throttleRef = useRef(false);
   const pendingRef = useRef<ArenaLiveData | null>(null);
 
@@ -21,14 +47,21 @@ export function usePresentationData() {
       console.log('[Presentation] BroadcastChannel connected');
 
       channel.onmessage = (event) => {
-        // Reset presentation screens when a new question starts
+        // Reset: keep dashboard mounted with zeroed data instead of null
         if (event.data?.type === 'arena-reset') {
-          setData(null);
+          setData(makeZeroedData(event.data.data?.question || ''));
+          pendingRef.current = null;
           return;
         }
 
         if (event.data?.type === 'arena-live-update') {
           const incoming = event.data.data as ArenaLiveData;
+
+          // Mark that we've received real data at least once
+          if (!hasEverReceivedRef.current) {
+            hasEverReceivedRef.current = true;
+            setHasEverReceived(true);
+          }
 
           // Throttle to ~15fps using setTimeout (works in background tabs unlike rAF)
           if (!throttleRef.current) {
@@ -57,5 +90,5 @@ export function usePresentationData() {
     };
   }, []);
 
-  return data;
+  return { data, hasEverReceived };
 }

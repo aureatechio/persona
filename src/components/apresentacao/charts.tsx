@@ -1,15 +1,106 @@
 'use client';
 
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { ReactNode } from 'react';
+
+/* ════════════════════════════════════════════════════════════════════
+   Helpers
+   ════════════════════════════════════════════════════════════════════ */
+
+function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((item, i) =>
+    item.label === b[i].label &&
+    item.count === b[i].count &&
+    item.positive === b[i].positive &&
+    item.negative === b[i].negative &&
+    item.neutral === b[i].neutral
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   UNIFIED STAT CARD — single component for both dominant and normal
+   Transitions smoothly between states via CSS instead of unmount/mount
+   ════════════════════════════════════════════════════════════════════ */
+
+const COLOR_MAP = {
+  emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
+  amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
+  rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
+} as const;
+
+function UnifiedStatCard({ value, label, count, color, glow, border, isDominant }: {
+  value: number;
+  label: string;
+  count: number;
+  color: 'emerald' | 'amber' | 'rose';
+  glow: string;
+  border: string;
+  isDominant: boolean;
+}) {
+  const animatedValue = useAnimatedValue(value);
+  const animatedCount = useAnimatedValue(count, 800);
+  const c = COLOR_MAP[color];
+
+  return (
+    <div className={cn(
+      'relative overflow-hidden shrink-0',
+      'bg-white/[0.03] backdrop-blur-xl rounded-2xl',
+      'flex flex-col items-center justify-center',
+      'transition-all duration-500 ease-out',
+      isDominant
+        ? cn('w-[220px] border px-5 py-3', border)
+        : 'w-[110px] border border-white/[0.06] px-4 py-2',
+    )}>
+      {/* Glow — fades in/out */}
+      <div className={cn(
+        'absolute inset-0 bg-gradient-to-br pointer-events-none transition-opacity duration-500',
+        isDominant ? 'opacity-40' : 'opacity-0',
+        glow,
+      )} />
+
+      {/* "Tendencia" label — fades in/out */}
+      <p className={cn(
+        'font-black uppercase tracking-[0.2em] text-zinc-500 relative transition-all duration-500 overflow-hidden',
+        isDominant ? 'text-[10px] max-h-6 opacity-100 mb-0' : 'text-[10px] max-h-0 opacity-0',
+      )}>
+        Tendencia
+      </p>
+
+      {/* Animated percentage */}
+      <p className={cn(
+        'font-black tabular-nums leading-none relative transition-all duration-500',
+        isDominant ? 'text-5xl' : 'text-3xl',
+        c.text,
+      )}>
+        {animatedValue}%
+      </p>
+
+      <p className={cn(
+        'font-bold relative transition-all duration-500',
+        isDominant ? 'text-sm mt-1' : 'text-xs uppercase tracking-wider mt-1',
+        c.sub,
+      )}>
+        {label}
+      </p>
+
+      <p className="text-xs text-zinc-600 tabular-nums relative">
+        {animatedCount.toLocaleString('pt-BR')}
+      </p>
+    </div>
+  );
+}
 
 /* ════════════════════════════════════════════════════════════════════
    TREND HERO — Giant trend number + stat cards + flexible right slot
    Shared between Dashboard and Político screens
    ════════════════════════════════════════════════════════════════════ */
 
-export function TrendHero({
+export const TrendHero = memo(function TrendHero({
   positive,
   negative,
   neutral,
@@ -25,22 +116,28 @@ export function TrendHero({
   const pctNeg = total > 0 ? Math.round((negative / total) * 100) : 0;
   const pctNeu = total > 0 ? Math.round((neutral / total) * 100) : 0;
 
-  // Build the 3 stat items, marking which is dominant (= Tendência)
-  const stats: { key: string; value: number; label: string; count: number; color: 'emerald' | 'amber' | 'rose'; glow: string; border: string }[] = [
-    { key: 'pos', value: pctPos, label: 'Concordam', count: positive, color: 'emerald', glow: 'from-emerald-500/20 to-emerald-500/0', border: 'border-emerald-500/20' },
-    { key: 'neu', value: pctNeu, label: 'Neutros',   count: neutral,  color: 'amber',   glow: 'from-amber-500/20 to-amber-500/0',   border: 'border-amber-500/20' },
-    { key: 'neg', value: pctNeg, label: 'Discordam',  count: negative, color: 'rose',    glow: 'from-rose-500/20 to-rose-500/0',     border: 'border-rose-500/20' },
+  const stats = [
+    { key: 'pos', value: pctPos, label: 'Concordam', count: positive, color: 'emerald' as const, glow: 'from-emerald-500/20 to-emerald-500/0', border: 'border-emerald-500/20' },
+    { key: 'neu', value: pctNeu, label: 'Neutros',   count: neutral,  color: 'amber' as const,   glow: 'from-amber-500/20 to-amber-500/0',   border: 'border-amber-500/20' },
+    { key: 'neg', value: pctNeg, label: 'Discordam',  count: negative, color: 'rose' as const,    glow: 'from-rose-500/20 to-rose-500/0',     border: 'border-rose-500/20' },
   ];
   const dominantIdx = stats.reduce((maxI, s, i) => s.value > stats[maxI].value ? i : maxI, 0);
 
   return (
     <div className="shrink-0 flex items-stretch gap-3 px-5 py-4 border-b border-white/[0.04]">
-      {/* ── 3 Stat Cards — dominant is large with "Tendência" ── */}
+      {/* ── 3 Stat Cards — same component type, isDominant toggles visual state ── */}
       <div className="flex items-stretch gap-3 shrink-0">
         {stats.map((s, i) => (
-          i === dominantIdx
-            ? <DominantStatCard key={s.key} value={s.value} label={s.label} count={s.count} color={s.color} glow={s.glow} border={s.border} />
-            : <StatCard key={s.key} value={s.value} label={s.label} count={s.count} color={s.color} />
+          <UnifiedStatCard
+            key={s.key}
+            value={s.value}
+            label={s.label}
+            count={s.count}
+            color={s.color}
+            glow={s.glow}
+            border={s.border}
+            isDominant={i === dominantIdx}
+          />
         ))}
       </div>
 
@@ -52,60 +149,13 @@ export function TrendHero({
       )}
     </div>
   );
-}
-
-function DominantStatCard({ value, label, count, color, glow, border }: {
-  value: number; label: string; count: number; color: 'emerald' | 'amber' | 'rose'; glow: string; border: string;
-}) {
-  const colorMap = {
-    emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
-    amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
-    rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
-  };
-  const c = colorMap[color];
-
-  return (
-    <div className={cn(
-      'relative overflow-hidden w-[220px] shrink-0',
-      'bg-white/[0.03] backdrop-blur-xl rounded-2xl',
-      'border', border,
-      'flex flex-col items-center justify-center px-5 py-3',
-    )}>
-      <div className={cn('absolute inset-0 bg-gradient-to-br opacity-40 pointer-events-none', glow)} />
-      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 relative">Tendencia</p>
-      <p className={cn('text-5xl font-black tabular-nums leading-none relative', c.text)}>
-        {value}%
-      </p>
-      <p className={cn('text-sm font-bold relative mt-1', c.sub)}>{label}</p>
-      <p className="text-xs text-zinc-600 tabular-nums relative">{count.toLocaleString('pt-BR')}</p>
-    </div>
-  );
-}
-
-function StatCard({ value, label, count, color }: {
-  value: number; label: string; count: number; color: 'emerald' | 'amber' | 'rose';
-}) {
-  const colorMap = {
-    emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
-    amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
-    rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
-  };
-  const c = colorMap[color];
-
-  return (
-    <div className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2 flex flex-col items-center justify-center min-w-[110px]">
-      <p className={cn('text-3xl font-black tabular-nums leading-none', c.text)}>{value}%</p>
-      <p className={cn('text-xs font-bold uppercase tracking-wider mt-1', c.sub)}>{label}</p>
-      <p className="text-xs text-zinc-600 tabular-nums">{count.toLocaleString('pt-BR')}</p>
-    </div>
-  );
-}
+});
 
 /* ════════════════════════════════════════════════════════════════════
    SENTIMENT BAR — Stacked bar with legend (used in TrendHero rightSlot)
    ════════════════════════════════════════════════════════════════════ */
 
-export function SentimentBar({ positive, negative, neutral }: {
+export const SentimentBar = memo(function SentimentBar({ positive, negative, neutral }: {
   positive: number; negative: number; neutral: number;
 }) {
   const total = positive + negative + neutral;
@@ -113,17 +163,21 @@ export function SentimentBar({ positive, negative, neutral }: {
   const pctNeu = total > 0 ? Math.round((neutral / total) * 100) : 0;
   const pctNeg = total > 0 ? (100 - pctPos - pctNeu) : 0;
 
+  const animPos = useAnimatedValue(pctPos);
+  const animNeu = useAnimatedValue(pctNeu);
+  const animNeg = useAnimatedValue(pctNeg);
+
   return (
     <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
       <div className="h-[36px] rounded-xl overflow-hidden flex bg-white/[0.03] border border-white/[0.04]">
         <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[2s] flex items-center justify-center" style={{ width: `${pctPos}%` }}>
-          {pctPos > 6 && <span className="text-sm font-black text-black/80">{pctPos}%</span>}
+          {pctPos > 6 && <span className="text-sm font-black text-black/80">{animPos}%</span>}
         </div>
         <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-[2s] flex items-center justify-center" style={{ width: `${Math.max(pctNeu, 3)}%` }}>
-          <span className="text-sm font-black text-black/80">{pctNeu}%</span>
+          <span className="text-sm font-black text-black/80">{animNeu}%</span>
         </div>
         <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[2s] flex-1 flex items-center justify-center">
-          {pctNeg > 6 && <span className="text-sm font-black text-black/80">{pctNeg}%</span>}
+          {pctNeg > 6 && <span className="text-sm font-black text-black/80">{animNeg}%</span>}
         </div>
       </div>
       <div className="flex items-center gap-5">
@@ -133,7 +187,7 @@ export function SentimentBar({ positive, negative, neutral }: {
       </div>
     </div>
   );
-}
+});
 
 /* ════════════════════════════════════════════════════════════════════
    DONUT CARD v2 — Larger donut + dual-metric legend
@@ -150,7 +204,7 @@ const DONUT_COLORS = [
   { bg: 'bg-fuchsia-400', hex: '#e879f9', text: 'text-fuchsia-400' },
 ];
 
-export function DonutCard({
+export const DonutCard = memo(function DonutCard({
   items,
   title,
   accentColor,
@@ -159,21 +213,6 @@ export function DonutCard({
   title: string;
   accentColor: string;
 }) {
-  if (!items || items.length === 0) return null;
-  const sorted = [...items].sort((a, b) => b.count - a.count);
-  const totalCount = sorted.reduce((s, i) => s + i.count, 0);
-  if (totalCount === 0) return null;
-
-  // Build conic-gradient stops
-  let accumulated = 0;
-  const stops: string[] = [];
-  sorted.forEach((item, idx) => {
-    const pct = (item.count / totalCount) * 100;
-    const color = DONUT_COLORS[idx % DONUT_COLORS.length].hex;
-    stops.push(`${color} ${accumulated}% ${accumulated + pct}%`);
-    accumulated += pct;
-  });
-
   const accentMap: Record<string, { text: string; label: string }> = {
     emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80' },
     amber:   { text: 'text-amber-400',   label: 'text-amber-400/80' },
@@ -188,8 +227,24 @@ export function DonutCard({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  const topItem = sorted[0];
-  const topPct = Math.round((topItem.count / totalCount) * 100);
+  const sorted = items && items.length > 0 ? [...items].sort((a, b) => b.count - a.count) : [];
+  const totalCount = sorted.reduce((s, i) => s + i.count, 0);
+  const hasData = totalCount > 0;
+
+  // Build conic-gradient stops
+  let accumulated = 0;
+  const stops: string[] = [];
+  if (hasData) {
+    sorted.forEach((item, idx) => {
+      const pct = (item.count / totalCount) * 100;
+      const color = DONUT_COLORS[idx % DONUT_COLORS.length].hex;
+      stops.push(`${color} ${accumulated}% ${accumulated + pct}%`);
+      accumulated += pct;
+    });
+  }
+
+  const topItem = hasData ? sorted[0] : null;
+  const topPct = topItem ? Math.round((topItem.count / totalCount) * 100) : 0;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
@@ -206,57 +261,66 @@ export function DonutCard({
           <div className="relative w-full aspect-square max-w-[140px] max-h-full">
             <div
               className="w-full h-full rounded-full transition-all duration-1000"
-              style={{ background: `conic-gradient(${stops.join(', ')})` }}
+              style={{ background: hasData ? `conic-gradient(${stops.join(', ')})` : 'rgba(255,255,255,0.04)' }}
             />
             <div className="absolute inset-[22%] rounded-full bg-[#0a0a0b] flex flex-col items-center justify-center">
-              <span className="text-2xl font-black text-white tabular-nums leading-none">{topPct}%</span>
+              <span className="text-2xl font-black text-white tabular-nums leading-none transition-all duration-700">{topPct}%</span>
               <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5 text-center px-1 truncate max-w-full">
-                {topItem.label}
+                {topItem?.label || '—'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Mini-card grid — fills remaining space */}
-        <div className={cn(
-          'flex-1 grid gap-1 min-w-0 auto-rows-fr',
-          sorted.length <= 4 ? 'grid-cols-2' : 'grid-cols-2',
-        )}>
-          {sorted.slice(0, 6).map((item, idx) => {
-            const sharePct = Math.round((item.count / totalCount) * 100);
-            const tot = item.positive + item.negative + item.neutral;
-            const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-            const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
-            const isFavor = favPct >= conPct;
-            const sentPct = isFavor ? favPct : conPct;
-            const sentColor = isFavor ? 'text-emerald-400' : 'text-rose-400';
-            const dotColor = DONUT_COLORS[idx % DONUT_COLORS.length];
+        {hasData ? (
+          <div className={cn(
+            'flex-1 grid gap-1 min-w-0 auto-rows-fr grid-cols-2',
+          )}>
+            {sorted.slice(0, 6).map((item, idx) => {
+              const sharePct = Math.round((item.count / totalCount) * 100);
+              const tot = item.positive + item.negative + item.neutral;
+              const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
+              const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
+              const isFavor = favPct >= conPct;
+              const sentPct = isFavor ? favPct : conPct;
+              const sentColor = isFavor ? 'text-emerald-400' : 'text-rose-400';
+              const dotColor = DONUT_COLORS[idx % DONUT_COLORS.length];
 
-            return (
-              <div key={item.label} className="bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 py-1 flex flex-col items-center justify-center gap-0.5 overflow-hidden transition-colors duration-200 hover:bg-white/[0.06]">
-                <div className="flex items-center gap-1 w-full min-w-0">
-                  <div className={cn('w-1.5 h-1.5 rounded-sm shrink-0', dotColor.bg)} />
-                  <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
+              return (
+                <div key={item.label} className="bg-white/[0.04] border border-white/[0.06] rounded-lg px-2 py-1 flex flex-col items-center justify-center gap-0.5 overflow-hidden transition-colors duration-200 hover:bg-white/[0.06]">
+                  <div className="flex items-center gap-1 w-full min-w-0">
+                    <div className={cn('w-1.5 h-1.5 rounded-sm shrink-0', dotColor.bg)} />
+                    <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
+                  </div>
+                  <span className={cn('text-base font-black tabular-nums leading-none', sentColor)}>{sentPct}%</span>
+                  <span className={cn('text-[10px] font-bold leading-none', sentColor)}>
+                    {isFavor ? 'Favor' : 'Contra'}
+                  </span>
+                  <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate">{sharePct}%</span>
                 </div>
-                <span className={cn('text-base font-black tabular-nums leading-none', sentColor)}>{sentPct}%</span>
-                <span className={cn('text-[10px] font-bold leading-none', sentColor)}>
-                  {isFavor ? 'Favor' : 'Contra'}
-                </span>
-                <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate">{sharePct}%</span>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-zinc-700">Aguardando...</p>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  return prev.title === next.title &&
+    prev.accentColor === next.accentColor &&
+    shallowEqualSegments(prev.items, next.items);
+});
 
 /* ════════════════════════════════════════════════════════════════════
    HBAR CHART v2 — Bars show distribution, badge shows sentiment
    ════════════════════════════════════════════════════════════════════ */
 
-export function HBarChart({
+export const HBarChart = memo(function HBarChart({
   items,
   title,
   accentColor,
@@ -265,9 +329,9 @@ export function HBarChart({
   title: string;
   accentColor: string;
 }) {
-  if (!items || items.length === 0) return null;
-  const sorted = [...items].sort((a, b) => b.count - a.count).slice(0, 7);
+  const sorted = items && items.length > 0 ? [...items].sort((a, b) => b.count - a.count).slice(0, 7) : [];
   const maxCount = sorted[0]?.count || 1;
+  const hasData = sorted.length > 0;
 
   const accentMap: Record<string, { glow: string; text: string; label: string; bar: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80', bar: 'from-emerald-600 to-emerald-400' },
@@ -293,7 +357,7 @@ export function HBarChart({
       </div>
 
       <div className="flex-1 px-4 py-2 flex flex-col justify-evenly overflow-hidden">
-        {sorted.map((item) => {
+        {hasData ? sorted.map((item) => {
           const tot = item.positive + item.negative + item.neutral;
           const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
           const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
@@ -319,11 +383,19 @@ export function HBarChart({
               </span>
             </div>
           );
-        })}
+        }) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-zinc-700">Aguardando...</p>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+}, (prev, next) => {
+  return prev.title === next.title &&
+    prev.accentColor === next.accentColor &&
+    shallowEqualSegments(prev.items, next.items);
+});
 
 /* ════════════════════════════════════════════════════════════════════
    SPECTRUM GAUGE v2 — Horizontal scale with distribution markers

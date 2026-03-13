@@ -89,8 +89,8 @@ function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentIt
    ════════════════════════════════════════════════════════════════════ */
 
 export function PoliticoScreen() {
-  const data = usePresentationData();
-  if (!data) return <Waiting />;
+  const { data, hasEverReceived } = usePresentationData();
+  if (!hasEverReceived) return <Waiting />;
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;

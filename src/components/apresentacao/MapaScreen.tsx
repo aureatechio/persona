@@ -163,7 +163,7 @@ function MapWaiting() {
 /* ─── Main Map Screen ───────────────────────────────────────────────── */
 
 export function MapaScreen() {
-  const data = usePresentationData();
+  const { data, hasEverReceived } = usePresentationData();
   const [geoData, setGeoData] = useState<GeoFeature[] | null>(null);
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [hoveredState, setHoveredState] = useState<string | null>(null);
@@ -194,7 +194,7 @@ export function MapaScreen() {
     }
   }, [selectedState]);
 
-  if (!data) return <MapWaiting />;
+  if (!hasEverReceived) return <MapWaiting />;
 
   const total = globalTotal;
 
