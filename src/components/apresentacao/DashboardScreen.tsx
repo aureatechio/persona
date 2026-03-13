@@ -222,6 +222,8 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
   const [offset, setOffset] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const itemHeight = useRef(0);
+  const tickCount = useRef(0);
+  const MAX_TICKS = 5;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -230,8 +232,17 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
   }, [comments.length]);
 
   useEffect(() => {
+    tickCount.current = 0;
+  }, [comments.length]);
+
+  useEffect(() => {
     if (comments.length <= 5) return;
     const timer = setInterval(() => {
+      if (tickCount.current >= MAX_TICKS) {
+        clearInterval(timer);
+        return;
+      }
+      tickCount.current++;
       setIsTransitioning(true);
       setOffset(prev => (prev + 1 >= comments.length ? 0 : prev + 1));
     }, 3500);

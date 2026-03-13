@@ -723,12 +723,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       stateBreakdown: stateAcc.toStateBreakdown(),
                     });
                   } else if (pythonPhase === 'processing_personas') {
-                    // Transition from collecting to streaming
+                    // Stay in collecting until first real progress event arrives
+                    // This avoids showing 0% streaming for 10-15 seconds
                     emitLive(blockId, {
                       ...baseLiveData,
-                      phase: 'streaming',
-                      processedCount: 0,
-                      totalCount: baseLiveData.totalCount,
+                      phase: 'collecting',
+                      collectingStatus: 'loading',
                     });
                   } else if (pythonPhase !== 'processing_personas') {
                     // Map Python phases to collecting status

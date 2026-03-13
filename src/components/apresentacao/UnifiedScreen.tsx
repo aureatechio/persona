@@ -75,6 +75,8 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
   const [offset, setOffset] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const itemHeight = useRef(0);
+  const tickCount = useRef(0);
+  const MAX_TICKS = 5;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -82,9 +84,19 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
     if (firstItem) itemHeight.current = firstItem.getBoundingClientRect().height;
   }, [comments.length]);
 
+  // Reset tick count when new comments arrive (new search)
+  useEffect(() => {
+    tickCount.current = 0;
+  }, [comments.length]);
+
   useEffect(() => {
     if (comments.length <= 5) return;
     const timer = setInterval(() => {
+      if (tickCount.current >= MAX_TICKS) {
+        clearInterval(timer);
+        return;
+      }
+      tickCount.current++;
       setIsTransitioning(true);
       setOffset(prev => (prev + 1 >= comments.length ? 0 : prev + 1));
     }, 3500);
@@ -195,19 +207,19 @@ export function UnifiedScreen() {
         <Users size={14} className="text-zinc-500" />
         {isLive ? (
           data.phase === 'collecting' ? (
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="flex items-center gap-3 flex-1 max-w-md shrink-0">
+              <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
               </div>
-              <span className="text-xs font-medium text-zinc-400">Preparando analise...</span>
+              <span className="text-xs font-medium text-zinc-400 shrink-0">Preparando analise...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
+            <div className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
+              <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[3s] ease-out" style={{ width: `${progress}%` }} />
               </div>
-              <span className="text-xs font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
-              <span className="text-sm font-black text-emerald-400 tabular-nums">{progress}%</span>
+              <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
+              <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
             </div>
           )
         ) : (
@@ -308,7 +320,7 @@ function CompactStatCard({ value, label, count, color, glow, border, isDominant 
   color: 'emerald' | 'amber' | 'rose'; glow: string; border: string; isDominant: boolean;
 }) {
   const animatedValue = useAnimatedValue(value);
-  const animatedCount = useAnimatedValue(count, 6000);
+  const animatedCount = useAnimatedValue(count, 10000);
   const colorMap = {
     emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
     amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
