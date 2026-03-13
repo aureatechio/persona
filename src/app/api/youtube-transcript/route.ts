@@ -59,15 +59,20 @@ export async function POST(req: NextRequest) {
 
     // Check playability
     const playStatus = playerData?.playabilityStatus?.status;
+    const playReason = playerData?.playabilityStatus?.reason || '';
+    console.log(`[youtube-transcript] Player status=${playStatus} reason="${playReason}" captions=${!!playerData?.captions}`);
+
     if (playStatus === 'LOGIN_REQUIRED') {
-      const reason = playerData?.playabilityStatus?.reason || '';
-      if (reason.includes('bot')) {
-        return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor' }, { status: 429 });
+      if (playReason.includes('bot')) {
+        return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor', debug: { status: playStatus, reason: playReason } }, { status: 429 });
       }
-      return NextResponse.json({ error: 'Video requer login' }, { status: 403 });
+      return NextResponse.json({ error: 'Video requer login', debug: { status: playStatus, reason: playReason } }, { status: 403 });
     }
     if (playStatus === 'ERROR') {
-      return NextResponse.json({ error: 'Video indisponivel' }, { status: 404 });
+      return NextResponse.json({ error: 'Video indisponivel', debug: { status: playStatus, reason: playReason } }, { status: 404 });
+    }
+    if (playStatus !== 'OK' && !playerData?.captions) {
+      return NextResponse.json({ error: 'Player status inesperado', debug: { status: playStatus, reason: playReason } }, { status: 502 });
     }
 
     // Extract caption tracks
