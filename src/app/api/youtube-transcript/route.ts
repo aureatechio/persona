@@ -3,6 +3,9 @@ import { NextRequest, NextResponse } from 'next/server';
 const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 const MAX_TRANSCRIPT_CHARS = 10_000;
 
+// The innertube API key is public and stable — no need to scrape it from the page
+const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+
 function extractVideoId(url: string): string | null {
   const match = url.match(YOUTUBE_ID_REGEX);
   return match ? match[1] : null;
@@ -11,10 +14,10 @@ function extractVideoId(url: string): string | null {
 /**
  * Fetch YouTube transcript using the ANDROID innertube client.
  *
- * The key insight (from youtube-transcript-api Python package):
- * - The WEB client returns caption URLs with `&exp=xpe` that require PoToken
- * - The ANDROID client returns caption URLs WITHOUT that restriction
- * - Caption XML from ANDROID URLs works from any IP (server or browser)
+ * Key insight (from youtube-transcript-api Python package):
+ * - The ANDROID client returns caption URLs that work WITHOUT PoToken
+ * - No need to fetch the watch page (which gets blocked by reCAPTCHA on cloud IPs)
+ * - The innertube /player API is not blocked even from AWS/cloud IPs
  */
 export async function POST(req: NextRequest) {
   try {
@@ -28,37 +31,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    // Step 1: Fetch the watch page to get the API key
-    const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        'Accept-Language': 'en-US',
-        'Cookie': 'CONSENT=YES+1',
-      },
-      signal: AbortSignal.timeout(8_000),
-    });
-
-    if (!pageRes.ok) {
-      return NextResponse.json({ error: 'Falha ao acessar YouTube' }, { status: 502 });
-    }
-
-    const html = await pageRes.text();
-
-    // Check for IP block
-    if (html.includes('class="g-recaptcha"')) {
-      return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor' }, { status: 429 });
-    }
-
-    // Extract API key
-    const apiKeyMatch = html.match(/"INNERTUBE_API_KEY":\s*"([a-zA-Z0-9_-]+)"/);
-    if (!apiKeyMatch) {
-      return NextResponse.json({ error: 'Falha ao extrair API key do YouTube' }, { status: 500 });
-    }
-    const apiKey = apiKeyMatch[1];
-
-    // Step 2: Use ANDROID client to get player data with caption URLs
-    // (ANDROID client returns URLs that work without PoToken)
+    // Step 1: Call innertube /player API with ANDROID client directly
+    // (skips the watch page entirely — avoids reCAPTCHA on cloud IPs)
     const playerRes = await fetch(
-      `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`,
+      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,7 +47,7 @@ export async function POST(req: NextRequest) {
           },
           videoId,
         }),
-        signal: AbortSignal.timeout(8_000),
+        signal: AbortSignal.timeout(10_000),
       },
     );
 
@@ -117,9 +93,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Legendas requerem PoToken (nao suportado)' }, { status: 422 });
     }
 
-    // Step 3: Fetch the caption XML
+    // Step 2: Fetch the caption XML
     const captionRes = await fetch(captionUrl, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!captionRes.ok) {
@@ -132,7 +108,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Legendas vazias' }, { status: 422 });
     }
 
-    // Step 4: Parse XML text segments
+    // Step 3: Parse XML text segments
     const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
     const texts: string[] = [];
     let match: RegExpExecArray | null;
@@ -158,7 +134,7 @@ export async function POST(req: NextRequest) {
       transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '... [transcricao truncada]';
     }
 
-    // Extract metadata
+    // Extract metadata from player response
     const title = playerData?.videoDetails?.title || '';
     const author = playerData?.videoDetails?.author || '';
 
