@@ -602,10 +602,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let liveComments: import('@/lib/arena/types').CommentResult[] = [];
     let aiCommentsFired = false;
 
-    // Pre-load persona data for accumulators (fast, from cache)
+    // Pre-load persona data for accumulators (populate incrementally as batches arrive)
     let allPersonas: any[] = [];
     let personaIndex = 0; // tracks how many personas we've fed to accumulators
-    const personaLoadPromise = personaCache.loadAll().then(data => {
+    const personaLoadPromise = personaCache.loadAll((loaded, total, batch) => {
+      allPersonas = [...allPersonas, ...batch];
+      commentAcc.setTotal(total);
+    }).then(data => {
+      // Final sync — ensure we have the complete set
       allPersonas = data;
       commentAcc.setTotal(data.length);
     }).catch(() => {});
