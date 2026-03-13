@@ -171,8 +171,6 @@ export function UnifiedScreen() {
     : clustersToSegments(data.liveIdeology?.clusterResults || data.simulation?.clusterResults)
   )?.slice(0, 6), [data.segments?.clusterMacro, data.liveIdeology?.clusterResults, data.simulation?.clusterResults]);
 
-  if (!hasEverReceived) return <Waiting />;
-
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
       {/* Background orbs */}

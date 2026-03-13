@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 
 /**
  * Smoothly interpolates a number from current display value to target.
@@ -57,4 +57,23 @@ export function useAnimatedValue(target: number, duration = 600): number {
   }, [target, duration]);
 
   return display;
+}
+
+/**
+ * Component wrapper for useAnimatedValue — can be used inside .map() loops.
+ * Renders the animated number as text, with optional suffix.
+ */
+export function AnimatedNumber({
+  value,
+  duration = 600,
+  suffix = '',
+  format,
+}: {
+  value: number;
+  duration?: number;
+  suffix?: string;
+  format?: (n: number) => string;
+}) {
+  const animated = useAnimatedValue(value, duration);
+  return <>{format ? format(animated) : animated}{suffix}</>;
 }

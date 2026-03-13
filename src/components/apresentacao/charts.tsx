@@ -2,7 +2,7 @@
 
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
-import { useAnimatedValue } from '@/hooks/useAnimatedValue';
+import { useAnimatedValue, AnimatedNumber } from '@/hooks/useAnimatedValue';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { ReactNode } from 'react';
 
@@ -264,7 +264,7 @@ export const DonutCard = memo(function DonutCard({
               style={{ background: hasData ? `conic-gradient(${stops.join(', ')})` : 'rgba(255,255,255,0.04)' }}
             />
             <div className="absolute inset-[22%] rounded-full bg-[#0a0a0b] flex flex-col items-center justify-center">
-              <span className="text-2xl font-black text-white tabular-nums leading-none transition-all duration-700">{topPct}%</span>
+              <span className="text-2xl font-black text-white tabular-nums leading-none transition-all duration-700"><AnimatedNumber value={topPct} suffix="%" /></span>
               <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider mt-0.5 text-center px-1 truncate max-w-full">
                 {topItem?.label || '—'}
               </span>
@@ -293,11 +293,11 @@ export const DonutCard = memo(function DonutCard({
                     <div className={cn('w-1.5 h-1.5 rounded-sm shrink-0', dotColor.bg)} />
                     <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
                   </div>
-                  <span className={cn('text-base font-black tabular-nums leading-none transition-colors duration-500', sentColor)}>{sentPct}%</span>
+                  <span className={cn('text-base font-black tabular-nums leading-none transition-colors duration-500', sentColor)}><AnimatedNumber value={sentPct} suffix="%" /></span>
                   <span className={cn('text-[10px] font-bold leading-none transition-colors duration-500', sentColor)}>
                     {hasData ? (isFavor ? 'Favor' : 'Contra') : '—'}
                   </span>
-                  <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate">{sharePct}%</span>
+                  <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate"><AnimatedNumber value={sharePct} suffix="%" /></span>
                 </div>
               );
             })}
@@ -379,7 +379,7 @@ export const HBarChart = memo(function HBarChart({
                 />
               </div>
               <span className={cn('text-xs font-bold tabular-nums shrink-0 w-[72px] text-right transition-colors duration-500', sentColor)}>
-                {sentPct}% {sentLabel}
+                <AnimatedNumber value={sentPct} suffix="%" /> {sentLabel}
               </span>
             </div>
           );
@@ -468,7 +468,7 @@ export function SpectrumGauge({
           return (
             <div className="text-center">
               <p className={cn('text-3xl font-black tabular-nums leading-none transition-colors duration-500', hasData ? (dIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
-                {hasData ? `${dIsFavor ? dFav : dCon}% ${dIsFavor ? 'Favor' : 'Contra'}` : '0%'}
+                {hasData ? <><AnimatedNumber value={dIsFavor ? dFav : dCon} suffix="%" /> {dIsFavor ? 'Favor' : 'Contra'}</> : '0%'}
               </p>
               <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
             </div>
@@ -532,7 +532,7 @@ export function SpectrumGauge({
             return (
               <div key={b.label} className="flex-1 text-center min-w-0">
                 <p className={cn('text-sm font-black tabular-nums leading-none transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
-                  {bSent}%
+                  <AnimatedNumber value={bSent} suffix="%" />
                 </p>
                 <p className={cn('text-[9px] font-bold leading-tight mt-0.5 transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400/60' : 'text-rose-400/60') : 'text-zinc-700')}>
                   {bIsFavor ? 'Fav' : 'Con'}
@@ -608,7 +608,7 @@ export function QuadrantGrid({
               )}
             >
               <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
-              <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}>{pct}%</p>
+              <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={pct} suffix="%" /></p>
               <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
                 {q.label}
               </p>
@@ -617,7 +617,7 @@ export function QuadrantGrid({
                 'text-sm font-bold tabular-nums',
                 isFavor ? 'text-emerald-400' : 'text-rose-400',
               )}>
-                {isFavor ? `${favPct}% Favor` : `${conPct}% Contra`}
+                {isFavor ? <><AnimatedNumber value={favPct} suffix="%" /> Favor</> : <><AnimatedNumber value={conPct} suffix="%" /> Contra</>}
               </p>
             </div>
           );

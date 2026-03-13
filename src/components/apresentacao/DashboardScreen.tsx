@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
+import { AnimatedNumber } from '@/hooks/useAnimatedValue';
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
@@ -120,15 +121,15 @@ export const SegmentRanking = memo(function SegmentRanking({
                   <div className="flex items-center gap-1.5">
                     <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
                       <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-500/60">Favor</p>
-                      <p className="text-sm font-black tabular-nums text-emerald-400 leading-tight">{pctFav}%</p>
+                      <p className="text-sm font-black tabular-nums text-emerald-400 leading-tight"><AnimatedNumber value={pctFav} suffix="%" /></p>
                     </div>
                     <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
                       <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500/60">Neutro</p>
-                      <p className="text-sm font-black tabular-nums text-amber-400 leading-tight">{pctNeu}%</p>
+                      <p className="text-sm font-black tabular-nums text-amber-400 leading-tight"><AnimatedNumber value={pctNeu} suffix="%" /></p>
                     </div>
                     <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
                       <p className="text-[9px] font-bold uppercase tracking-wider text-rose-500/60">Contra</p>
-                      <p className="text-sm font-black tabular-nums text-rose-400 leading-tight">{pctCon}%</p>
+                      <p className="text-sm font-black tabular-nums text-rose-400 leading-tight"><AnimatedNumber value={pctCon} suffix="%" /></p>
                     </div>
                   </div>
                 </div>
@@ -179,9 +180,9 @@ export const SegmentRanking = memo(function SegmentRanking({
                 <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[1.5s]" style={{ width: `${pctFav}%` }} />
                 <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[1.5s]" style={{ width: `${pctCon}%` }} />
               </div>
-              <span className="text-xs font-bold tabular-nums text-emerald-400 shrink-0">{pctFav}% Favor</span>
+              <span className="text-xs font-bold tabular-nums text-emerald-400 shrink-0"><AnimatedNumber value={pctFav} suffix="%" /> Favor</span>
               <span className="text-zinc-700 text-xs shrink-0">·</span>
-              <span className="text-xs font-bold tabular-nums text-rose-400 shrink-0">{pctCon}% Contra</span>
+              <span className="text-xs font-bold tabular-nums text-rose-400 shrink-0"><AnimatedNumber value={pctCon} suffix="%" /> Contra</span>
             </div>
           );
         })}
@@ -336,8 +337,6 @@ export function DashboardScreen() {
   const sentimentBar = useMemo(() => (
     <SentimentBar positive={positive} negative={negative} neutral={neutral} />
   ), [positive, negative, neutral]);
-
-  if (!hasEverReceived) return <Waiting />;
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
