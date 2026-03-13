@@ -191,21 +191,25 @@ export function UnifiedScreen() {
 
       {/* ═══ TOP BAR ═══ */}
       <div className="shrink-0 flex items-center gap-4 px-5 h-[44px] border-b border-white/[0.04] bg-white/[0.01]">
-        {isLive ? (
-          <span className="flex items-center gap-2 shrink-0">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+        {data.question ? (
+          isLive ? (
+            <span className="flex items-center gap-2 shrink-0">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Ao vivo</span>
             </span>
-            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Ao vivo</span>
-          </span>
+          ) : (
+            <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Completo</span>
+          )
         ) : (
-          <span className="text-xs font-black text-emerald-400 uppercase tracking-widest">Completo</span>
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Aguardando</span>
         )}
         <div className="h-4 w-px bg-white/[0.08]" />
         <p className="text-sm text-zinc-200 font-semibold truncate flex-1">{data.question}</p>
-        <Users size={14} className="text-zinc-500" />
-        {isLive ? (
+        {data.question && <Users size={14} className="text-zinc-500" />}
+        {isLive && data.question ? (
           data.phase === 'collecting' ? (
             <div className="flex items-center gap-3 flex-1 max-w-md shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
@@ -222,9 +226,9 @@ export function UnifiedScreen() {
               <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
             </div>
           )
-        ) : (
+        ) : total > 0 ? (
           <span className="text-sm font-bold text-zinc-200 tabular-nums">{total.toLocaleString('pt-BR')}</span>
-        )}
+        ) : null}
       </div>
 
       {/* ═══ HERO ZONE (compact) ═══ */}
@@ -300,7 +304,7 @@ export function UnifiedScreen() {
       </div>
 
       {/* Progress bar — only when actively streaming */}
-      {isLive && data.phase !== 'collecting' && (
+      {isLive && data.question && data.phase !== 'collecting' && (
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="h-[3px] bg-zinc-900">
             <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />

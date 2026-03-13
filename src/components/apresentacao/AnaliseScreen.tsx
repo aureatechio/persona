@@ -261,7 +261,7 @@ export function AnaliseScreen() {
               <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}%</span>
             </div>
           )}
-          {data.phase !== 'complete' && (() => {
+          {data.question && data.phase !== 'complete' && (() => {
             const isCollecting = data.phase === 'collecting';
             const anlProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
             return (
