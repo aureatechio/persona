@@ -51,9 +51,9 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
 
         {/* Mini bar */}
         <div className="h-[10px] rounded-full overflow-hidden flex">
-          <div className="h-full bg-emerald-400 transition-all duration-[1.5s]" style={{ width: `${pctSupport}%` }} />
-          <div className="h-full bg-amber-400 transition-all duration-[1.5s]" style={{ width: `${pctNeutral}%` }} />
-          <div className="h-full bg-rose-400 transition-all duration-[1.5s]" style={{ width: `${pctAttack}%` }} />
+          <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${pctSupport}%` }} />
+          <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${pctNeutral}%` }} />
+          <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${pctAttack}%` }} />
         </div>
 
         {/* Stats row */}

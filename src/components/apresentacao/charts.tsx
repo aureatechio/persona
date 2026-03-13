@@ -170,13 +170,13 @@ export const SentimentBar = memo(function SentimentBar({ positive, negative, neu
   return (
     <div className="flex-1 flex flex-col justify-center gap-2 min-w-0">
       <div className="h-[36px] rounded-xl overflow-hidden flex bg-white/[0.03] border border-white/[0.04]">
-        <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[2s] flex items-center justify-center" style={{ width: `${pctPos}%` }}>
+        <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[3s] flex items-center justify-center" style={{ width: `${pctPos}%` }}>
           {pctPos > 6 && <span className="text-sm font-black text-black/80">{animPos}%</span>}
         </div>
-        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-[2s] flex items-center justify-center" style={{ width: `${Math.max(pctNeu, 3)}%` }}>
+        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400 transition-all duration-[3s] flex items-center justify-center" style={{ width: `${Math.max(pctNeu, 3)}%` }}>
           <span className="text-sm font-black text-black/80">{animNeu}%</span>
         </div>
-        <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[2s] flex-1 flex items-center justify-center">
+        <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[3s] flex-1 flex items-center justify-center">
           {pctNeg > 6 && <span className="text-sm font-black text-black/80">{animNeg}%</span>}
         </div>
       </div>
@@ -374,7 +374,7 @@ export const HBarChart = memo(function HBarChart({
               </span>
               <div className="flex-1 h-[18px] rounded-lg overflow-hidden bg-white/[0.03] relative">
                 <div
-                  className={cn('h-full rounded-lg bg-gradient-to-r transition-all duration-[1.5s]', c.bar)}
+                  className={cn('h-full rounded-lg bg-gradient-to-r transition-all duration-[3s]', c.bar)}
                   style={{ width: `${barWidth}%`, opacity: 0.8 }}
                 />
               </div>
@@ -414,7 +414,7 @@ export function SpectrumGauge({
   leftLabel: string;
   rightLabel: string;
 }) {
-  if (!items || items.length === 0) return null;
+  const safeItems = items && items.length > 0 ? items : [];
 
   const accentMap: Record<string, { text: string; label: string }> = {
     emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -430,7 +430,7 @@ export function SpectrumGauge({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  const totalCount = items.reduce((s, i) => s + i.count, 0);
+  const totalCount = safeItems.reduce((s, i) => s + i.count, 0);
   const hasData = totalCount > 0;
 
   const positionMap: Record<string, number> = {
@@ -441,11 +441,35 @@ export function SpectrumGauge({
     'Direita Forte': 4, 'Conservador Forte': 4,
   };
 
-  const buckets = items.map(item => ({
+  const buckets = safeItems.map(item => ({
     ...item,
     pos: positionMap[item.label] ?? 2,
     pct: hasData ? Math.round((item.count / totalCount) * 100) : 0,
   })).sort((a, b) => a.pos - b.pos);
+
+  // If no items at all, show empty card shell
+  if (buckets.length === 0) {
+    return (
+      <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
+        <div className="px-4 py-2 border-b border-white/[0.04] shrink-0 flex items-center gap-2 min-w-0">
+          <div className={cn('w-2 h-2 rounded-full shrink-0', c.text.replace('text-', 'bg-'))} />
+          <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
+        </div>
+        <div className="flex-1 flex flex-col justify-center px-5 py-3 gap-3">
+          <div className="text-center">
+            <p className="text-3xl font-black tabular-nums leading-none text-zinc-600">0%</p>
+            <p className="text-sm font-bold text-zinc-500 mt-1">—</p>
+          </div>
+          <div className="h-[16px] rounded-full overflow-hidden" style={{ background: `linear-gradient(to right, #ef4444, #f97316, #a855f7, #38bdf8, #3b82f6)`, opacity: 0.15 }} />
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-red-400/40 uppercase tracking-wider">{leftLabel}</span>
+            <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider">Centro</span>
+            <span className="text-xs font-bold text-blue-400/40 uppercase tracking-wider">{rightLabel}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const dominant = buckets.reduce((max, b) => b.count > max.count ? b : max, buckets[0]);
 
@@ -558,6 +582,13 @@ const QUADRANT_COLOR_MAP: Record<string, { bg: string; border: string; text: str
 };
 const QUADRANT_COLOR_FALLBACK = { bg: 'bg-zinc-500/20', border: 'border-zinc-500/30', text: 'text-zinc-400', glow: 'bg-zinc-500/10' };
 
+const DEFAULT_QUADRANTS = [
+  { label: 'Direita + Conservador', count: 0, positive: 0, negative: 0, neutral: 0 },
+  { label: 'Direita + Progressista', count: 0, positive: 0, negative: 0, neutral: 0 },
+  { label: 'Esquerda + Progressista', count: 0, positive: 0, negative: 0, neutral: 0 },
+  { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0 },
+];
+
 export function QuadrantGrid({
   items,
   title,
@@ -567,9 +598,8 @@ export function QuadrantGrid({
   title: string;
   accentColor: string;
 }) {
-  if (!items || items.length === 0) return null;
-
-  const totalCount = items.reduce((s, i) => s + i.count, 0);
+  const quads = (items && items.length > 0 ? items : DEFAULT_QUADRANTS).slice(0, 4);
+  const totalCount = quads.reduce((s, i) => s + i.count, 0);
   const hasQData = totalCount > 0;
 
   const accentMap: Record<string, { text: string; label: string }> = {
@@ -581,8 +611,6 @@ export function QuadrantGrid({
   };
   const c = accentMap[accentColor] || accentMap.cyan;
 
-  const quads = items.slice(0, 4);
-
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
       <div className="px-4 py-2 border-b border-white/[0.04] shrink-0 flex items-center gap-2 min-w-0">
@@ -591,7 +619,7 @@ export function QuadrantGrid({
       </div>
 
       <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1.5 p-2.5 min-h-0">
-        {quads.map((q, idx) => {
+        {quads.map((q) => {
           const qc = QUADRANT_COLOR_MAP[q.label] || QUADRANT_COLOR_FALLBACK;
           const pct = hasQData ? Math.round((q.count / totalCount) * 100) : 0;
           const tot = q.positive + q.negative + q.neutral;
@@ -612,12 +640,13 @@ export function QuadrantGrid({
               <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
                 {q.label}
               </p>
-              {/* Sentiment label */}
               <p className={cn(
                 'text-sm font-bold tabular-nums',
-                isFavor ? 'text-emerald-400' : 'text-rose-400',
+                hasQData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600',
               )}>
-                {isFavor ? <><AnimatedNumber value={favPct} suffix="%" /> Favor</> : <><AnimatedNumber value={conPct} suffix="%" /> Contra</>}
+                {hasQData
+                  ? (isFavor ? <><AnimatedNumber value={favPct} suffix="%" /> Favor</> : <><AnimatedNumber value={conPct} suffix="%" /> Contra</>)
+                  : '0%'}
               </p>
             </div>
           );
