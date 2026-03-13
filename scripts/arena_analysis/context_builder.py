@@ -124,7 +124,15 @@ class ContextBuilder:
                 raw = re.sub(r"^```json?\n?", "", raw)
                 raw = re.sub(r"\n?```$", "", raw)
 
-            parsed = json.loads(raw)
+            # Haiku sometimes appends extra text after JSON — extract first JSON object
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                try:
+                    parsed = json.loads(json_match.group())
+                except json.JSONDecodeError:
+                    parsed = json.loads(raw)
+            else:
+                parsed = json.loads(raw)
             result.tema = parsed.get("tema", "")
             result.contexto = parsed.get("contexto", "")
             result.figuras = parsed.get("figuras", [])

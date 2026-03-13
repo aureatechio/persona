@@ -269,9 +269,9 @@ class PersonaLoop:
             KeyRateLimiter(rpm=45) for _ in self._claude_clients
         ]
 
-        # OpenAI async clients — 1 por chave (with explicit timeout to prevent hangs)
+        # OpenAI async clients — 1 por chave
         self._openai_clients: list[openai.AsyncOpenAI] = [
-            openai.AsyncOpenAI(api_key=key, timeout=30.0)
+            openai.AsyncOpenAI(api_key=key)
             for key in settings.openai_api_keys
         ]
         self._has_openai = len(self._openai_clients) > 0
@@ -280,10 +280,6 @@ class PersonaLoop:
         self._openai_limiters: list[KeyRateLimiter] = [
             KeyRateLimiter(rpm=450) for _ in self._openai_clients
         ]
-
-        # Semaphores to limit concurrent connections (prevents connection flood/timeouts)
-        self._claude_semaphore = asyncio.Semaphore(settings.max_parallel_claude)
-        self._openai_semaphore = asyncio.Semaphore(settings.max_parallel_openai)
 
     # ── Claude — 1 persona ─────────────────────────────────────────────────
     async def _process_claude_single(
@@ -299,44 +295,43 @@ class PersonaLoop:
         max_retries = settings.max_retries
         user_prompt = build_single_prompt(question, context, persona)
 
-        async with self._claude_semaphore:
-            for attempt in range(max_retries + 1):
-                await rate_limiter.acquire()
-                try:
-                    response = await client.messages.create(
-                        model=settings.model,
-                        max_tokens=settings.max_tokens_per_batch,
-                        system=ARENA_SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": user_prompt}],
-                        temperature=1.0,
-                    )
-                    text_block = next(
-                        (b for b in response.content if b.type == "text"), None
-                    )
-                    if not text_block:
-                        raise ValueError("No text block in response")
-                    return (_parse_single_response(text_block.text, persona, tag), tag, persona)
+        for attempt in range(max_retries + 1):
+            await rate_limiter.acquire()
+            try:
+                response = await client.messages.create(
+                    model=settings.model,
+                    max_tokens=settings.max_tokens_per_batch,
+                    system=ARENA_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": user_prompt}],
+                    temperature=1.0,
+                )
+                text_block = next(
+                    (b for b in response.content if b.type == "text"), None
+                )
+                if not text_block:
+                    raise ValueError("No text block in response")
+                return (_parse_single_response(text_block.text, persona, tag), tag, persona)
 
-                except json.JSONDecodeError:
-                    if attempt < max_retries:
-                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
-                        await asyncio.sleep(1)
-                        continue
-                    print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                    return (_fallback_single(persona), tag, persona)
+            except json.JSONDecodeError:
+                if attempt < max_retries:
+                    print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                    await asyncio.sleep(1)
+                    continue
+                print(f"[{tag}] JSON error after {max_retries} retries, fallback")
+                return (_fallback_single(persona), tag, persona)
 
-                except Exception as e:
-                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
-                    max_r = 3 if is_rate else max_retries
-                    if attempt < max_r:
-                        wait = (attempt + 1) * 5 if is_rate else 2
-                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
-                        await asyncio.sleep(wait)
-                        continue
-                    print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                    return (_fallback_single(persona), tag, persona)
+            except Exception as e:
+                is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
+                max_r = 3 if is_rate else max_retries
+                if attempt < max_r:
+                    wait = (attempt + 1) * 5 if is_rate else 2
+                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
+                    await asyncio.sleep(wait)
+                    continue
+                print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
+                return (_fallback_single(persona), tag, persona)
 
-            return (_fallback_single(persona), tag, persona)
+        return (_fallback_single(persona), tag, persona)
 
     # ── OpenAI — 1 persona ─────────────────────────────────────────────────
     async def _process_openai_single(
@@ -352,43 +347,42 @@ class PersonaLoop:
         max_retries = settings.max_retries
         user_prompt = build_single_prompt(question, context, persona)
 
-        async with self._openai_semaphore:
-            for attempt in range(max_retries + 1):
-                await rate_limiter.acquire()
-                try:
-                    response = await client.chat.completions.create(
-                        model=settings.openai_model,
-                        max_tokens=settings.max_tokens_per_batch,
-                        messages=[
-                            {"role": "system", "content": ARENA_SYSTEM_PROMPT},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        temperature=1.0,
-                        response_format={"type": "json_object"},
-                    )
-                    raw = response.choices[0].message.content or ""
-                    return (_parse_single_response(raw, persona, tag), tag, persona)
+        for attempt in range(max_retries + 1):
+            await rate_limiter.acquire()
+            try:
+                response = await client.chat.completions.create(
+                    model=settings.openai_model,
+                    max_tokens=settings.max_tokens_per_batch,
+                    messages=[
+                        {"role": "system", "content": ARENA_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=1.0,
+                    response_format={"type": "json_object"},
+                )
+                raw = response.choices[0].message.content or ""
+                return (_parse_single_response(raw, persona, tag), tag, persona)
 
-                except json.JSONDecodeError:
-                    if attempt < max_retries:
-                        print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
-                        await asyncio.sleep(1)
-                        continue
-                    print(f"[{tag}] JSON error after {max_retries} retries, fallback")
-                    return (_fallback_single(persona), tag, persona)
+            except json.JSONDecodeError:
+                if attempt < max_retries:
+                    print(f"[{tag}] JSON error, retry {attempt+1}/{max_retries}...")
+                    await asyncio.sleep(1)
+                    continue
+                print(f"[{tag}] JSON error after {max_retries} retries, fallback")
+                return (_fallback_single(persona), tag, persona)
 
-                except Exception as e:
-                    is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
-                    max_r = 3 if is_rate else max_retries
-                    if attempt < max_r:
-                        wait = (attempt + 1) * 3 if is_rate else 2
-                        print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
-                        await asyncio.sleep(wait)
-                        continue
-                    print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
-                    return (_fallback_single(persona), tag, persona)
+            except Exception as e:
+                is_rate = "rate_limit" in str(e).lower() or "429" in str(e)
+                max_r = 3 if is_rate else max_retries
+                if attempt < max_r:
+                    wait = (attempt + 1) * 3 if is_rate else 2
+                    print(f"[{tag}] {'Rate limit' if is_rate else 'Error'}, retry {attempt+1}/{max_r} in {wait}s: {str(e)[:100]}")
+                    await asyncio.sleep(wait)
+                    continue
+                print(f"[{tag}] Error after retries, fallback: {str(e)[:200]}")
+                return (_fallback_single(persona), tag, persona)
 
-            return (_fallback_single(persona), tag, persona)
+        return (_fallback_single(persona), tag, persona)
 
     # ── Run principal ────────────────────────────────────────────────────
     async def run(

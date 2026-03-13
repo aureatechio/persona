@@ -66,7 +66,7 @@ class Settings:
     openai_api_keys: list[str] = field(
         default_factory=lambda: _collect_keys("OPENAI_API_KEY")
     )
-    openai_model: str = "gpt-4o-mini"  # gpt-4o-mini: 3-4x faster, sufficient for sentiment classification
+    openai_model: str = "gpt-4o"
 
     # Web search
     tavily_api_key: str = field(
@@ -76,7 +76,7 @@ class Settings:
     # Batching — 1 persona por chamada (máxima qualidade individual)
     batch_size: int = 1  # 1 persona por chamada = atenção 100% dedicada
     max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
-    max_parallel_openai: int = 25  # reduced from 80 — prevents connection flood/timeouts on DO
+    max_parallel_openai: int = 80  # 2 keys × 40 parallel
     claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
     max_tokens_per_batch: int = 1024  # só 1 comentário (~50-150 tokens)
 
