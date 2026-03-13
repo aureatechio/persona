@@ -20,7 +20,7 @@ const EMPTY_SEGMENTS = {
   voto2022: [z('Lula'), z('Bolsonaro'), z('Nulo/Branco'), z('Ciro'), z('Tebet')],
   aprovacaoLula: [z('Aprova'), z('Desaprova'), z('Neutro')],
   voto2026: [z('Lula'), z('Bolsonaro'), z('Outros'), z('Indeciso')],
-  archetype: [z('Conservador Religioso'), z('Progressista Urbano'), z('Empreendedor Pragmatico'), z('Trabalhador Tradicional'), z('Jovem Digital'), z('Moderado Independente')],
+  archetype: [z('O Cidadão Comum'), z('O Governante'), z('O Cuidador'), z('O Herói'), z('O Rebelde'), z('O Sábio')],
   clusterMacro: [z('Progressista'), z('Moderado'), z('Conservador'), z('Transversal')],
   scoreEco: [z('Esquerda Forte'), z('Centro-Esquerda'), z('Centro'), z('Centro-Direita'), z('Direita Forte')],
   scoreCost: [z('Progressista Forte'), z('Progressista'), z('Centro'), z('Conservador'), z('Conservador Forte')],

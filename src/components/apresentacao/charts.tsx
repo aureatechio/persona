@@ -303,10 +303,11 @@ export const DonutCard = memo(function DonutCard({
                     <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
                     <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
                   </div>
-                  <span className={cn('text-sm font-black tabular-nums leading-none transition-colors duration-500', dominantColor)}><AnimatedNumber value={dominant} suffix="%" /></span>
-                  <span className={cn('text-[9px] font-bold leading-none transition-colors duration-500', dominantColor)}>
-                    {dominantLabel}
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
+                    <span className="text-[9px] font-bold tabular-nums text-amber-400"><AnimatedNumber value={neuPct} suffix="%" /></span>
+                    <span className="text-[9px] font-bold tabular-nums text-rose-400"><AnimatedNumber value={conPct} suffix="%" /></span>
+                  </div>
                 </div>
               );
             })}
@@ -386,9 +387,11 @@ export const HBarChart = memo(function HBarChart({
                 <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
                 <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
               </div>
-              <span className={cn('text-xs font-black tabular-nums shrink-0 transition-colors duration-500', dominantColor)}>
-                <AnimatedNumber value={favPct} suffix="%" />
-              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-[10px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
+                <span className="text-[10px] font-bold tabular-nums text-amber-400"><AnimatedNumber value={neuPct} suffix="%" /></span>
+                <span className="text-[10px] font-bold tabular-nums text-rose-400"><AnimatedNumber value={conPct} suffix="%" /></span>
+              </div>
             </div>
           );
         }) : (
@@ -579,9 +582,11 @@ export function SpectrumGauge({
                   <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${bNeu}%` }} />
                   <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${bCon}%` }} />
                 </div>
-                <p className={cn('text-[10px] font-black tabular-nums leading-none transition-colors duration-500', bColor)}>
-                  <AnimatedNumber value={bFav} suffix="%" />
-                </p>
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[9px] font-black tabular-nums text-emerald-400"><AnimatedNumber value={bFav} suffix="%" /></span>
+                  <span className="text-[9px] font-black tabular-nums text-amber-400"><AnimatedNumber value={bNeu} suffix="%" /></span>
+                  <span className="text-[9px] font-black tabular-nums text-rose-400"><AnimatedNumber value={bCon} suffix="%" /></span>
+                </div>
               </div>
             );
           })}

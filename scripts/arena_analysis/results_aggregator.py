@@ -461,6 +461,7 @@ def aggregate_results(
         "socialClass": _seg(social_class_data),
         "education": _seg(education_data),
         "politicalLeaning": _seg(political_data),
+        "archetype": _seg(archetype_data),
     }
 
     return {
