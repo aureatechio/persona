@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force Edge Runtime — runs on Vercel's edge network (Cloudflare-like PoPs)
+// instead of AWS Lambda. Edge IPs are less likely to be blocked by YouTube.
+export const runtime = 'edge';
+
 const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
 const MAX_TRANSCRIPT_CHARS = 10_000;
-
-// The innertube API key is public and stable — no need to scrape it from the page
 const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 
 function extractVideoId(url: string): string | null {
@@ -13,11 +15,7 @@ function extractVideoId(url: string): string | null {
 
 /**
  * Fetch YouTube transcript using the ANDROID innertube client.
- *
- * Key insight (from youtube-transcript-api Python package):
- * - The ANDROID client returns caption URLs that work WITHOUT PoToken
- * - No need to fetch the watch page (which gets blocked by reCAPTCHA on cloud IPs)
- * - The innertube /player API is not blocked even from AWS/cloud IPs
+ * Runs on Vercel Edge Runtime to avoid AWS IP blocks.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -31,8 +29,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    // Step 1: Call innertube /player API with ANDROID client directly
-    // (skips the watch page entirely — avoids reCAPTCHA on cloud IPs)
+    // Call innertube /player API with ANDROID client
     const playerRes = await fetch(
       `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
       {
@@ -47,7 +44,6 @@ export async function POST(req: NextRequest) {
           },
           videoId,
         }),
-        signal: AbortSignal.timeout(10_000),
       },
     );
 
@@ -60,19 +56,15 @@ export async function POST(req: NextRequest) {
     // Check playability
     const playStatus = playerData?.playabilityStatus?.status;
     const playReason = playerData?.playabilityStatus?.reason || '';
-    console.log(`[youtube-transcript] Player status=${playStatus} reason="${playReason}" captions=${!!playerData?.captions}`);
 
     if (playStatus === 'LOGIN_REQUIRED') {
-      if (playReason.includes('bot')) {
-        return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor', debug: { status: playStatus, reason: playReason } }, { status: 429 });
-      }
-      return NextResponse.json({ error: 'Video requer login', debug: { status: playStatus, reason: playReason } }, { status: 403 });
+      return NextResponse.json(
+        { error: playReason.includes('bot') ? 'YouTube bloqueou o IP do servidor' : 'Video requer login' },
+        { status: playReason.includes('bot') ? 429 : 403 },
+      );
     }
     if (playStatus === 'ERROR') {
-      return NextResponse.json({ error: 'Video indisponivel', debug: { status: playStatus, reason: playReason } }, { status: 404 });
-    }
-    if (playStatus !== 'OK' && !playerData?.captions) {
-      return NextResponse.json({ error: 'Player status inesperado', debug: { status: playStatus, reason: playReason } }, { status: 502 });
+      return NextResponse.json({ error: 'Video indisponivel' }, { status: 404 });
     }
 
     // Extract caption tracks
@@ -81,7 +73,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Legendas nao disponiveis para este video' }, { status: 422 });
     }
 
-    // Pick best track (prefer pt, then en, then any)
+    // Pick best track
     const track =
       captions.find((c: any) => c.languageCode === 'pt') ||
       captions.find((c: any) => c.languageCode === 'pt-BR') ||
@@ -89,19 +81,14 @@ export async function POST(req: NextRequest) {
       captions[0];
 
     let captionUrl: string = track.baseUrl;
-
-    // Remove srv3 format if present (we want default XML)
     captionUrl = captionUrl.replace('&fmt=srv3', '');
 
-    // Check for PoToken requirement
     if (captionUrl.includes('&exp=xpe')) {
-      return NextResponse.json({ error: 'Legendas requerem PoToken (nao suportado)' }, { status: 422 });
+      return NextResponse.json({ error: 'Legendas requerem PoToken' }, { status: 422 });
     }
 
-    // Step 2: Fetch the caption XML
-    const captionRes = await fetch(captionUrl, {
-      signal: AbortSignal.timeout(10_000),
-    });
+    // Fetch caption XML
+    const captionRes = await fetch(captionUrl);
 
     if (!captionRes.ok) {
       return NextResponse.json({ error: 'Falha ao buscar legendas' }, { status: 502 });
@@ -113,7 +100,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Legendas vazias' }, { status: 422 });
     }
 
-    // Step 3: Parse XML text segments
+    // Parse XML text segments
     const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
     const texts: string[] = [];
     let match: RegExpExecArray | null;
@@ -133,17 +120,13 @@ export async function POST(req: NextRequest) {
     }
 
     let transcript = texts.join(' ');
-
-    // Truncate long transcripts
     if (transcript.length > MAX_TRANSCRIPT_CHARS) {
       transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '... [transcricao truncada]';
     }
 
-    // Extract metadata from player response
     const title = playerData?.videoDetails?.title || '';
     const author = playerData?.videoDetails?.author || '';
 
-    console.log(`[youtube-transcript] OK — ${videoId} | ${texts.length} segments | ${transcript.length} chars`);
     return NextResponse.json({ transcript, title, author });
   } catch (err: any) {
     if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {
