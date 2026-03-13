@@ -261,6 +261,17 @@ export function AnaliseScreen() {
               <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}%</span>
             </div>
           )}
+          {data.phase !== 'complete' && data.totalCount > 0 && (() => {
+            const anlProgress = Math.round((data.processedCount / data.totalCount) * 100);
+            return (
+              <div className="flex items-center gap-2 shrink-0 ml-1">
+                <div className="w-20 h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${anlProgress}%` }} />
+                </div>
+                <span className="text-xs font-bold text-zinc-400 tabular-nums">{data.processedCount}/{data.totalCount}</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

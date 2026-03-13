@@ -360,7 +360,17 @@ export function DashboardScreen() {
         <div className="h-4 w-px bg-white/[0.08]" />
         <p className="text-sm text-zinc-200 font-semibold truncate flex-1">{data.question}</p>
         <Users size={14} className="text-zinc-500" />
-        <span className="text-sm font-bold text-zinc-200 tabular-nums">{isLive ? `${progress}%` : total.toLocaleString('pt-BR')}</span>
+        {isLive ? (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <div className="w-28 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
+            </div>
+            <span className="text-xs font-bold text-zinc-300 tabular-nums w-[70px]">{data.processedCount}/{data.totalCount}</span>
+            <span className="text-xs font-black text-emerald-400 tabular-nums">{progress}%</span>
+          </div>
+        ) : (
+          <span className="text-sm font-bold text-zinc-200 tabular-nums">{total.toLocaleString('pt-BR')}</span>
+        )}
       </div>
 
       {/* ═══ HERO ZONE ═══ */}

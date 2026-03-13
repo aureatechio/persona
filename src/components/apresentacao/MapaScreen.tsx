@@ -208,12 +208,19 @@ export function MapaScreen() {
         <div className="flex-1 bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl px-5 py-3">
           <p className="text-base text-zinc-300 font-medium truncate">{data.question}</p>
         </div>
-        {data.phase !== 'complete' && (
-          <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
-            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span className="text-xs font-medium text-emerald-400">{data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0}%</span>
-          </div>
-        )}
+        {data.phase !== 'complete' && (() => {
+          const mapProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
+          return (
+            <div className="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <div className="w-24 h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${mapProgress}%` }} />
+              </div>
+              <span className="text-xs font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
+              <span className="text-xs font-black text-emerald-400 tabular-nums">{mapProgress}%</span>
+            </div>
+          );
+        })()}
         {selectedState && (
           <button onClick={() => { setSelectedState(null); setZoom({ scale: 1, x: 0, y: 0 }); }}
             className="px-4 py-2.5 bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] rounded-xl text-sm text-zinc-300 font-medium transition-all duration-200">

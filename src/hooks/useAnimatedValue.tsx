@@ -1,14 +1,18 @@
 'use client';
 
-import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * Smoothly interpolates a number from current display value to target.
  * Uses rAF when tab is visible, setTimeout fallback when hidden (TV display).
- * Duration: 600ms ease-out cubic by default.
+ * Duration: 1500ms ease-out quintic by default — slow, cinematic ramp.
+ *
+ * Stutter-free: tracks actual current value in a ref (not stale React state)
+ * so mid-animation target changes blend seamlessly.
  */
-export function useAnimatedValue(target: number, duration = 600): number {
+export function useAnimatedValue(target: number, duration = 1500): number {
   const [display, setDisplay] = useState(target);
+  const currentRef = useRef(target);       // actual displayed value (always up to date)
   const startValRef = useRef(target);
   const startTimeRef = useRef(0);
   const frameRef = useRef<number | null>(null);
@@ -20,7 +24,8 @@ export function useAnimatedValue(target: number, duration = 600): number {
     if (prevTargetRef.current === target) return;
     prevTargetRef.current = target;
 
-    startValRef.current = display;
+    // Start from whatever value is currently displayed (ref, not stale state)
+    startValRef.current = currentRef.current;
     startTimeRef.current = Date.now();
 
     const cleanup = () => {
@@ -33,11 +38,12 @@ export function useAnimatedValue(target: number, duration = 600): number {
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current;
       const progress = Math.min(elapsed / duration, 1);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
+      // ease-out quintic — much slower deceleration than cubic
+      const eased = 1 - Math.pow(1 - progress, 5);
       const current = Math.round(
         startValRef.current + (target - startValRef.current) * eased,
       );
+      currentRef.current = current;
       setDisplay(current);
 
       if (progress < 1) {
@@ -65,7 +71,7 @@ export function useAnimatedValue(target: number, duration = 600): number {
  */
 export function AnimatedNumber({
   value,
-  duration = 600,
+  duration = 1500,
   suffix = '',
   format,
 }: {

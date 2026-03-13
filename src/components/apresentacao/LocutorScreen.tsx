@@ -288,7 +288,7 @@ export function LocutorScreen() {
           </div>
           <p className="text-lg text-zinc-300 font-medium flex-1 truncate">{data.question}</p>
 
-          {/* Live sentiment pills */}
+          {/* Live sentiment pills + progress */}
           {total > 0 && (
             <div className="flex items-center gap-2 shrink-0">
               <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">{pctPos}%</span>
@@ -296,6 +296,17 @@ export function LocutorScreen() {
               <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}%</span>
             </div>
           )}
+          {data.phase !== 'complete' && data.totalCount > 0 && (() => {
+            const locProgress = Math.round((data.processedCount / data.totalCount) * 100);
+            return (
+              <div className="flex items-center gap-2 shrink-0 ml-1">
+                <div className="w-20 h-[5px] rounded-full bg-white/[0.06] overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-violet-500 to-emerald-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${locProgress}%` }} />
+                </div>
+                <span className="text-xs font-bold text-zinc-400 tabular-nums">{data.processedCount}/{data.totalCount}</span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
