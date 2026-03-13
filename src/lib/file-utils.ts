@@ -93,9 +93,9 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
         }
       }
     }
-  } catch {
+  } catch (e: any) {
     // CORS or network error — fall through to server-side
-    console.log('[youtube] Client-side innertube blocked (likely CORS), trying server...');
+    console.log('[youtube] Client-side innertube failed:', e?.message || 'unknown error');
   }
 
   // Strategy 2: Server-side route (works from dev, may work from some Vercel regions)
@@ -107,13 +107,38 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
     });
     if (res.ok) {
       const data = await res.json();
-      if (data.transcript) return data;
+      if (data.transcript) {
+        console.log('[youtube] Edge route succeeded');
+        return data;
+      }
+    } else {
+      const errBody = await res.text().catch(() => '');
+      console.warn('[youtube] Edge route failed:', res.status, errBody.slice(0, 200));
     }
   } catch {
-    console.log('[youtube] Server-side transcript also failed');
+    console.log('[youtube] Edge route network error, trying Python backend...');
   }
 
-  // Strategy 3: oEmbed metadata fallback (always works from any IP)
+  // Strategy 3: Python backend on Digital Ocean (different IP, uses youtube-transcript-api)
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || 'https://arena-analysis-api-2puat.ondigitalocean.app';
+    const res = await fetch(`${backendUrl}/api/youtube-transcript`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.transcript) {
+        console.log('[youtube] Python backend succeeded');
+        return data;
+      }
+    }
+  } catch {
+    console.log('[youtube] Python backend also failed');
+  }
+
+  // Strategy 4: oEmbed metadata fallback (always works from any IP)
   try {
     const oembedRes = await fetch(
       `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`,
