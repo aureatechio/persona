@@ -315,7 +315,6 @@ function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): Segmen
 
 export function DashboardScreen() {
   const { data, hasEverReceived } = usePresentationData();
-  if (!hasEverReceived) return <Waiting />;
 
   const positive = data.positive || 0;
   const negative = data.negative || 0;
@@ -337,6 +336,8 @@ export function DashboardScreen() {
   const sentimentBar = useMemo(() => (
     <SentimentBar positive={positive} negative={negative} neutral={neutral} />
   ), [positive, negative, neutral]);
+
+  if (!hasEverReceived) return <Waiting />;
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">

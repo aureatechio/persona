@@ -142,7 +142,6 @@ function clustersToSegments(clusters: ClusterResult[] | undefined): SegmentItem[
 
 export function UnifiedScreen() {
   const { data, hasEverReceived } = usePresentationData();
-  if (!hasEverReceived) return <Waiting />;
 
   const positive = data.positive || 0;
   const negative = data.negative || 0;
@@ -171,6 +170,8 @@ export function UnifiedScreen() {
     data.segments?.clusterMacro?.length ? data.segments.clusterMacro
     : clustersToSegments(data.liveIdeology?.clusterResults || data.simulation?.clusterResults)
   )?.slice(0, 6), [data.segments?.clusterMacro, data.liveIdeology?.clusterResults, data.simulation?.clusterResults]);
+
+  if (!hasEverReceived) return <Waiting />;
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
