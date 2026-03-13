@@ -308,7 +308,7 @@ function CompactStatCard({ value, label, count, color, glow, border, isDominant 
   color: 'emerald' | 'amber' | 'rose'; glow: string; border: string; isDominant: boolean;
 }) {
   const animatedValue = useAnimatedValue(value);
-  const animatedCount = useAnimatedValue(count, 2000);
+  const animatedCount = useAnimatedValue(count, 6000);
   const colorMap = {
     emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
     amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },

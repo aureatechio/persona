@@ -20,7 +20,7 @@ const EMPTY_SEGMENTS = {
   voto2022: [z('Lula'), z('Bolsonaro'), z('Nulo/Branco'), z('Ciro'), z('Tebet')],
   aprovacaoLula: [z('Aprova'), z('Desaprova'), z('Neutro')],
   voto2026: [z('Lula'), z('Bolsonaro'), z('Outros'), z('Indeciso')],
-  archetype: [] as { label: string; count: number; positive: number; negative: number; neutral: number }[],
+  archetype: [z('Conservador Religioso'), z('Progressista Urbano'), z('Empreendedor Pragmatico'), z('Trabalhador Tradicional'), z('Jovem Digital'), z('Moderado Independente')],
   clusterMacro: [z('Progressista'), z('Moderado'), z('Conservador'), z('Transversal')],
   scoreEco: [z('Esquerda Forte'), z('Centro-Esquerda'), z('Centro'), z('Centro-Direita'), z('Direita Forte')],
   scoreCost: [z('Progressista Forte'), z('Progressista'), z('Centro'), z('Conservador'), z('Conservador Forte')],
@@ -72,6 +72,21 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
 
         if (event.data?.type === 'arena-live-update') {
           const incoming = event.data.data as ArenaLiveData;
+
+          // Ensure segments always have pre-seeded labels (never lose structure)
+          if (!incoming.segments || Object.keys(incoming.segments).length === 0) {
+            incoming.segments = { ...EMPTY_SEGMENTS };
+          } else {
+            // Merge: keep incoming data but fill missing segment keys with empty labels
+            const merged = { ...EMPTY_SEGMENTS } as any;
+            for (const key of Object.keys(incoming.segments)) {
+              const seg = (incoming.segments as any)[key];
+              if (Array.isArray(seg) && seg.length > 0) {
+                merged[key] = seg;
+              }
+            }
+            incoming.segments = merged;
+          }
 
           // Mark that we've received real data at least once
           if (!hasEverReceivedRef.current) {

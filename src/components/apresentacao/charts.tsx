@@ -43,7 +43,7 @@ function UnifiedStatCard({ value, label, count, color, glow, border, isDominant 
   isDominant: boolean;
 }) {
   const animatedValue = useAnimatedValue(value);
-  const animatedCount = useAnimatedValue(count, 2000);
+  const animatedCount = useAnimatedValue(count, 6000);
   const c = COLOR_MAP[color];
 
   return (
