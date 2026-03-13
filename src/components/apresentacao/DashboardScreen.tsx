@@ -380,12 +380,12 @@ export function DashboardScreen() {
               <span className="text-xs font-medium text-zinc-400">Preparando analise...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-56 h-4 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
               </div>
-              <span className="text-xs font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
-              <span className="text-sm font-black text-emerald-400 tabular-nums">{progress}%</span>
+              <span className="text-sm font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
+              <span className="text-base font-black text-emerald-400 tabular-nums">{progress}%</span>
             </div>
           )
         ) : (
