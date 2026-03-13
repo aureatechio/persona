@@ -375,7 +375,7 @@ export function DashboardScreen() {
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Aguardando</span>
         )}
         <div className="h-4 w-px bg-white/[0.08]" />
-        <p className="text-sm text-zinc-200 font-semibold truncate flex-1">{data.question}</p>
+        <div className="flex-1" />
         {data.question && <Users size={14} className="text-zinc-500" />}
         {isLive && data.question ? (
           data.phase === 'collecting' ? (

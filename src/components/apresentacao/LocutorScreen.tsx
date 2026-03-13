@@ -286,7 +286,7 @@ export function LocutorScreen() {
           )}>
             <Sparkles size={20} className={cn(isTyping ? 'text-violet-400 animate-pulse' : 'text-zinc-500')} />
           </div>
-          <p className="text-lg text-zinc-300 font-medium flex-1 truncate">{data.question}</p>
+          <div className="flex-1" />
 
           {/* Live sentiment pills + progress */}
           {total > 0 && (

@@ -205,9 +205,7 @@ export function MapaScreen() {
 
       {/* Top bar */}
       <div className="shrink-0 px-6 pt-6 pb-3 flex items-center gap-4 z-10">
-        <div className="flex-1 bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl px-5 py-3">
-          <p className="text-base text-zinc-300 font-medium truncate">{data.question}</p>
-        </div>
+        <div className="flex-1" />
         {data.question && data.phase !== 'complete' && (() => {
           const mapProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
           const isCollecting = data.phase === 'collecting';

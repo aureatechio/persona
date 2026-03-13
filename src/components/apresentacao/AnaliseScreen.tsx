@@ -252,7 +252,7 @@ export function AnaliseScreen() {
           )}>
             <Sparkles size={20} className={cn(isTyping ? 'text-emerald-400 animate-pulse' : 'text-zinc-500')} />
           </div>
-          <p className="text-lg text-zinc-300 font-medium flex-1 truncate">{data.question}</p>
+          <div className="flex-1" />
 
           {total > 0 && (
             <div className="flex items-center gap-2 shrink-0">
