@@ -610,6 +610,21 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       commentAcc.setTotal(data.length);
     }).catch(() => {});
 
+    /** Merge backend segments with local accumulator data for fields the backend doesn't provide */
+    const mergeSegments = (backendSegs: Partial<AllSegments> | undefined): AllSegments => {
+      const local = segAcc.toSegments();
+      if (!backendSegs) return local;
+      return {
+        ...local,
+        ...backendSegs,
+        // Always use local data for fields the Python backend doesn't compute
+        archetype: backendSegs.archetype?.length ? backendSegs.archetype : local.archetype,
+        clusterMacro: backendSegs.clusterMacro?.length ? backendSegs.clusterMacro : local.clusterMacro,
+        scoreEco: backendSegs.scoreEco?.length ? backendSegs.scoreEco : local.scoreEco,
+        scoreCost: backendSegs.scoreCost?.length ? backendSegs.scoreCost : local.scoreCost,
+      };
+    };
+
     /** Feed next N personas to ideology/comment accumulators based on Python progress */
     const feedAccumulators = (pythonProcessed: number, pythonTotal: number) => {
       if (allPersonas.length === 0) return;
@@ -753,7 +768,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     positive: payload.data.positive,
                     negative: payload.data.negative,
                     neutral: payload.data.neutral,
-                    segments: payload.data.segments || segAcc.toSegments(),
+                    segments: mergeSegments(payload.data.segments),
                     liveIdeology: ideoAcc.toResults(),
                     liveComments,
                     stateBreakdown: stateAcc.toStateBreakdown(),
@@ -811,7 +826,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     neutral: simulation?.neutral || 0,
                     simulation,
                     totalPersonas: doneTotal,
-                    segments: doneSegments || segAcc.toSegments(),
+                    segments: mergeSegments(doneSegments),
                     liveIdeology: liveIdeo,
                     liveComments,
                     stateBreakdown: doneStateBreakdown,
