@@ -668,7 +668,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
     except Exception:
         pass  # Metadata is optional
 
-    # Fetch transcript
+    # Strategy 1: youtube-transcript-api library
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -683,28 +683,80 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
 
         transcript_obj = await asyncio.to_thread(_fetch)
         snippets = transcript_obj.snippets
-        if not snippets:
-            return JSONResponse(
-                {"error": "Legendas nao disponiveis para este video"},
-                status_code=422,
-            )
-
-        full_text = " ".join(s.text for s in snippets)
-
-        # Truncate long transcripts
-        if len(full_text) > MAX_TRANSCRIPT_CHARS:
-            full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
-
-        print(f"[YouTube] OK — {video_id} | {len(snippets)} segments | {len(full_text)} chars")
-        return JSONResponse({"transcript": full_text, "title": title, "author": author})
+        if snippets:
+            full_text = " ".join(s.text for s in snippets)
+            if len(full_text) > MAX_TRANSCRIPT_CHARS:
+                full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+            print(f"[YouTube] OK via library — {video_id} | {len(snippets)} segments | {len(full_text)} chars")
+            return JSONResponse({"transcript": full_text, "title": title, "author": author})
 
     except Exception as e:
-        error_msg = str(e)
-        print(f"[YouTube] Error for {video_id}: {error_msg}")
-        return JSONResponse(
-            {"error": "Legendas nao disponiveis para este video"},
-            status_code=422,
-        )
+        print(f"[YouTube] Library failed for {video_id}: {e}")
+
+    # Strategy 2: Direct innertube API (ANDROID client, works even when library is blocked)
+    try:
+        import re as _re
+
+        INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        async with httpx.AsyncClient(timeout=10) as client:
+            player_res = await client.post(
+                f"https://www.youtube.com/youtubei/v1/player?key={INNERTUBE_KEY}",
+                json={
+                    "context": {"client": {"clientName": "ANDROID", "clientVersion": "20.10.38"}},
+                    "videoId": video_id,
+                },
+            )
+            if player_res.status_code == 200:
+                player_data = player_res.json()
+                captions = (
+                    player_data.get("captions", {})
+                    .get("playerCaptionsTracklistRenderer", {})
+                    .get("captionTracks", [])
+                )
+                if captions:
+                    # Pick best track: pt > pt-BR > en > first
+                    track = next((c for c in captions if c.get("languageCode") == "pt"), None)
+                    track = track or next((c for c in captions if c.get("languageCode") == "pt-BR"), None)
+                    track = track or next((c for c in captions if c.get("languageCode") == "en"), None)
+                    track = track or captions[0]
+
+                    caption_url = track["baseUrl"].replace("&fmt=srv3", "")
+                    if "&exp=xpe" not in caption_url:
+                        caption_res = await client.get(caption_url)
+                        if caption_res.status_code == 200:
+                            xml_text = caption_res.text
+                            # Parse XML text segments
+                            texts = [
+                                _re.sub(r"<[^>]+>", "", seg)
+                                .replace("&amp;", "&")
+                                .replace("&lt;", "<")
+                                .replace("&gt;", ">")
+                                .replace("&quot;", '"')
+                                .replace("&#39;", "'")
+                                .strip()
+                                for seg in _re.findall(r"<text[^>]*>([\s\S]*?)</text>", xml_text)
+                            ]
+                            texts = [t for t in texts if t]
+                            if texts:
+                                full_text = " ".join(texts)
+                                if len(full_text) > MAX_TRANSCRIPT_CHARS:
+                                    full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+                                # Fill title/author from innertube if missing
+                                if not title:
+                                    title = player_data.get("videoDetails", {}).get("title", "")
+                                if not author:
+                                    author = player_data.get("videoDetails", {}).get("author", "")
+                                print(f"[YouTube] OK via innertube — {video_id} | {len(texts)} segments | {len(full_text)} chars")
+                                return JSONResponse({"transcript": full_text, "title": title, "author": author})
+
+    except Exception as e:
+        print(f"[YouTube] Innertube also failed for {video_id}: {e}")
+
+    print(f"[YouTube] All strategies failed for {video_id}")
+    return JSONResponse(
+        {"error": "Legendas nao disponiveis para este video"},
+        status_code=422,
+    )
 
 
 # ── Video Transcription via Whisper (robust, with FFmpeg audio extraction) ────
