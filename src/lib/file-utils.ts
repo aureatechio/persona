@@ -46,56 +46,45 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
   const videoId = extractYouTubeVideoId(url);
   if (!videoId) return null;
 
-  // Strategy 1: Client-side innertube call (browser IP = residential, not blocked)
+  // Strategy 1: Hybrid — server gets caption URLs (innertube), browser fetches XML (residential IP)
+  // YouTube blocks cloud IPs but allows CORS on timedtext URLs from any origin
   try {
-    const playerRes = await fetch(
-      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
-          videoId,
-        }),
-      },
-    );
+    const urlsRes = await fetch('/api/youtube-caption-urls', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    if (urlsRes.ok) {
+      const { tracks, title, author } = await urlsRes.json();
+      if (tracks && tracks.length > 0) {
+        // Pick best track: pt > pt-BR > en > first
+        const track =
+          tracks.find((t: any) => t.lang === 'pt') ||
+          tracks.find((t: any) => t.lang === 'pt-BR') ||
+          tracks.find((t: any) => t.lang === 'en') ||
+          tracks[0];
 
-    if (playerRes.ok) {
-      const playerData = await playerRes.json();
-      const playStatus = playerData?.playabilityStatus?.status;
-
-      if (playStatus === 'OK' || !playStatus) {
-        const captions = playerData?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-        if (captions && captions.length > 0) {
-          const track =
-            captions.find((c: any) => c.languageCode === 'pt') ||
-            captions.find((c: any) => c.languageCode === 'pt-BR') ||
-            captions.find((c: any) => c.languageCode === 'en') ||
-            captions[0];
-
-          let captionUrl: string = track.baseUrl;
-          captionUrl = captionUrl.replace('&fmt=srv3', '');
-
-          if (!captionUrl.includes('&exp=xpe')) {
-            const captionRes = await fetch(captionUrl);
-            if (captionRes.ok) {
-              const xml = await captionRes.text();
-              const transcript = parseTranscriptXml(xml);
-              if (transcript) {
-                return {
-                  transcript,
-                  title: playerData?.videoDetails?.title || '',
-                  author: playerData?.videoDetails?.author || '',
-                };
-              }
+        if (!track.url.includes('&exp=xpe')) {
+          // Browser fetches caption XML directly (residential IP, CORS allowed)
+          const captionRes = await fetch(track.url);
+          if (captionRes.ok) {
+            const xml = await captionRes.text();
+            const transcript = parseTranscriptXml(xml);
+            if (transcript) {
+              console.log('[youtube] Hybrid strategy succeeded (server URLs + client fetch)');
+              return { transcript, title: title || '', author: author || '' };
             }
+          } else {
+            console.warn('[youtube] Client caption fetch failed:', captionRes.status);
           }
         }
       }
+    } else {
+      const errBody = await urlsRes.text().catch(() => '');
+      console.warn('[youtube] Caption URLs route failed:', urlsRes.status, errBody.slice(0, 200));
     }
   } catch (e: any) {
-    // CORS or network error — fall through to server-side
-    console.log('[youtube] Client-side innertube failed:', e?.message || 'unknown error');
+    console.log('[youtube] Hybrid strategy failed:', e?.message || 'unknown error');
   }
 
   // Strategy 2: Server-side route (works from dev, may work from some Vercel regions)
