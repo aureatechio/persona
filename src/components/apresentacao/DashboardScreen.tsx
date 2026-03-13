@@ -163,7 +163,8 @@ export const SegmentRanking = memo(function SegmentRanking({
         {display.map((item, i) => {
           const tot = item.positive + item.negative + item.neutral;
           const pctFav = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-          const pctCon = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
+          const pctNeu = tot > 0 ? Math.round((item.neutral / tot) * 100) : 0;
+          const pctCon = tot > 0 ? (100 - pctFav - pctNeu) : 0;
 
           return (
             <div key={item.label} className="flex items-center gap-2 group">
@@ -177,12 +178,13 @@ export const SegmentRanking = memo(function SegmentRanking({
                 {item.label}
               </span>
               <div className="flex-1 h-[8px] rounded-full overflow-hidden flex">
-                <div className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-[3s]" style={{ width: `${pctFav}%` }} />
-                <div className="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-[3s]" style={{ width: `${pctCon}%` }} />
+                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${pctFav}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${pctNeu}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${pctCon}%` }} />
               </div>
-              <span className="text-xs font-bold tabular-nums text-emerald-400 shrink-0"><AnimatedNumber value={pctFav} suffix="%" /> Favor</span>
-              <span className="text-zinc-700 text-xs shrink-0">·</span>
-              <span className="text-xs font-bold tabular-nums text-rose-400 shrink-0"><AnimatedNumber value={pctCon} suffix="%" /> Contra</span>
+              <span className="text-[10px] font-bold tabular-nums text-emerald-400 shrink-0"><AnimatedNumber value={pctFav} suffix="%" /></span>
+              <span className="text-[10px] font-bold tabular-nums text-amber-400 shrink-0"><AnimatedNumber value={pctNeu} suffix="%" /></span>
+              <span className="text-[10px] font-bold tabular-nums text-rose-400 shrink-0"><AnimatedNumber value={pctCon} suffix="%" /></span>
             </div>
           );
         })}
@@ -373,11 +375,11 @@ export function DashboardScreen() {
         <Users size={14} className="text-zinc-500" />
         {isLive ? (
           data.phase === 'collecting' ? (
-            <div className="flex items-center gap-2.5 shrink-0">
-              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="w-56 h-4 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
               </div>
-              <span className="text-xs font-medium text-zinc-400">Preparando analise...</span>
+              <span className="text-sm font-medium text-zinc-400">Preparando analise...</span>
             </div>
           ) : (
             <div className="flex items-center gap-3 shrink-0">
