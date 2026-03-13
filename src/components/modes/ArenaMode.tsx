@@ -679,8 +679,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       positive: simulation?.positive || 0,
                       negative: simulation?.negative || 0,
                       neutral: simulation?.neutral || 0,
+                      segments: segAcc.toSegments(),
                       liveIdeology: ideoAcc.toResults(),
                       liveComments,
+                      stateBreakdown: stateAcc.toStateBreakdown(),
                     });
                   } else if (pythonPhase === 'processing_personas') {
                     // Transition from collecting to streaming
@@ -777,9 +779,12 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   const doneTotal = payload.data.total_personas || simulation?.total || 0;
                   const doneSegments = (simulation as any)?._backendSegments;
                   const liveIdeo = ideoAcc.toResults();
-                  emitLive(blockId, {
+                  const doneStateBreakdown = stateAcc.toStateBreakdown();
+
+                  // Build complete snapshot — all subsequent emissions extend this
+                  const completeBase = {
                     ...baseLiveData,
-                    phase: 'complete',
+                    phase: 'complete' as const,
                     processedCount: doneTotal,
                     totalCount: doneTotal,
                     positive: simulation?.positive || 0,
@@ -787,29 +792,21 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     neutral: simulation?.neutral || 0,
                     simulation,
                     totalPersonas: doneTotal,
-                    ...(doneSegments ? { segments: doneSegments } : {}),
+                    segments: doneSegments || segAcc.toSegments(),
                     liveIdeology: liveIdeo,
                     liveComments,
-                  });
+                    stateBreakdown: doneStateBreakdown,
+                  };
+
+                  emitLive(blockId, completeBase);
                   onProcessing(false);
 
                   // Compute segments locally if backend didn't provide them
                   if (!doneSegments && allPersonas.length > 0) {
                     const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
                     const segs = computeAllSegments(allPersonas, (p) => computePersonaSentiment(p, queryForSeg));
-                    emitLive(blockId, {
-                      ...baseLiveData,
-                      phase: 'complete',
-                      processedCount: doneTotal,
-                      totalCount: doneTotal,
-                      positive: simulation?.positive || 0,
-                      negative: simulation?.negative || 0,
-                      neutral: simulation?.neutral || 0,
-                      simulation,
-                      totalPersonas: doneTotal,
-                      segments: segs,
-                      liveIdeology: liveIdeo,
-                    });
+                    completeBase.segments = segs;
+                    emitLive(blockId, completeBase);
                   }
 
                   // Generate full AI comments if not already available
@@ -818,19 +815,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     const personasForAI = buildPersonasForAI(q, allPersonas.length > 0 ? allPersonas : await personaCache.loadAll(), topicScores);
                     const claudeComments = await generateAIComments(q, personasForAI);
                     simulation = { ...simulation, comments: claudeComments };
-                    emitLive(blockId, {
-                      ...baseLiveData,
-                      phase: 'complete',
-                      processedCount: doneTotal,
-                      totalCount: doneTotal,
-                      positive: simulation?.positive || 0,
-                      negative: simulation?.negative || 0,
-                      neutral: simulation?.neutral || 0,
-                      simulation,
-                      totalPersonas: doneTotal,
-                      ...(doneSegments ? { segments: doneSegments } : {}),
-                      liveIdeology: liveIdeo,
-                    });
+                    completeBase.simulation = simulation;
+                    emitLive(blockId, completeBase);
                   }
                   break;
                 }
@@ -858,8 +844,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           neutral: simulation?.neutral || 0,
           simulation,
           totalPersonas: total,
+          segments: segAcc.toSegments(),
           liveIdeology: ideoAcc.toResults(),
           liveComments,
+          stateBreakdown: stateAcc.toStateBreakdown(),
         });
         onProcessing(false);
       } else if (!streamDone && !hasResults) {
@@ -878,8 +866,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           totalPersonas: total,
+          segments: segAcc.toSegments(),
           liveIdeology: ideoAcc.toResults(),
           liveComments,
+          stateBreakdown: stateAcc.toStateBreakdown(),
         });
         onProcessing(false);
         return;
@@ -896,7 +886,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           totalPersonas: total,
+          segments: segAcc.toSegments(),
+          liveIdeology: ideoAcc.toResults(),
           liveComments,
+          stateBreakdown: stateAcc.toStateBreakdown(),
         });
         onProcessing(false);
         return;
