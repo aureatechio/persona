@@ -118,9 +118,9 @@ export function AnaliseScreen() {
   const charIndex = useRef(0);
   const typingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reset when new question arrives
+  // Reset when new question arrives (or question clears on "novo chat")
   useEffect(() => {
-    if (data?.question && data.question !== lastQuestion.current) {
+    if (data.question !== lastQuestion.current) {
       lastQuestion.current = data.question;
       hasCalledRef.current = false;
       setText('');
@@ -129,7 +129,7 @@ export function AnaliseScreen() {
       if (typingTimer.current) clearInterval(typingTimer.current);
       if (abortRef.current) abortRef.current.abort();
     }
-  }, [data?.question]);
+  }, [data.question]);
 
   const callAnalise = useCallback(async () => {
     if (!hasEverReceived) return;
