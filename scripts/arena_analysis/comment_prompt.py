@@ -292,3 +292,118 @@ FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
 - "claro porra tem q prender esse ladrão" = POSITIVE (concorda, tom raivoso)
 - "nao acho que deveria nao" = NEGATIVE (discorda)
 - TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative"""
+
+
+def build_single_prompt(
+    question: str,
+    context: ContextResult | None,
+    persona: dict[str, Any],
+) -> str:
+    """
+    Prompt dedicado para UMA ÚNICA persona.
+    O modelo dedica 100% da atenção a este perfil.
+    """
+    # Bloco de contexto (idêntico ao batch)
+    if context and context.contexto:
+        figuras_text = ""
+        if context.figuras:
+            figuras_text = " | ".join(
+                f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
+            )
+
+        is_media_context = context.tema == "Conteúdo de mídia analisado"
+
+        if is_media_context:
+            context_block = f"""PERGUNTA: "{question}"
+
+CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO, é sobre ISSO que você deve opinar):
+{context.contexto}
+{f"FIGURAS MENCIONADAS: {figuras_text}" if figuras_text else ""}
+
+⚠️ VOCÊ ESTÁ REAGINDO AO CONTEÚDO ACIMA. Leia os FATOS, ARGUMENTOS e DADOS apresentados. Sua opinião deve refletir como SEU PERFIL reagiria ao ver esse conteúdo numa rede social. Seja ESPECÍFICO — mencione pontos concretos do conteúdo."""
+        else:
+            context_block = f"""═══ PERGUNTA CENTRAL (é sobre ISSO que você deve opinar) ═══
+"{question}"
+
+═══ CONTEXTO (leia para entender de quem/do que se trata) ═══
+{context.contexto}
+{f"FIGURAS: {figuras_text}" if figuras_text else ""}
+
+⚠️ INSTRUÇÕES:
+1. LEIA o contexto para entender QUEM É a pessoa ou O QUE aconteceu
+2. RESPONDA À PERGUNTA CENTRAL baseado no SEU PERFIL (idade, classe, ideologia, região)
+3. O contexto te informa os FATOS — sua OPINIÃO vem do seu perfil
+4. Se a pergunta é "deveria estar preso?" → opine sobre ISSO, usando os fatos do contexto"""
+    else:
+        context_block = f'PERGUNTA: "{question}"'
+
+    # Perfil completo da persona
+    p = persona
+    career = p.get("career_json") or {}
+    occupation = ""
+    if isinstance(career, dict):
+        cargo = career.get("atuação_e_cargo") or career.get("atuacao_e_cargo") or {}
+        if isinstance(cargo, dict):
+            occupation = cargo.get("cargo_atual", "")
+    if not occupation:
+        demo = p.get("demographic_json") or {}
+        if isinstance(demo, dict):
+            socio = demo.get("socioeconomico") or {}
+            if isinstance(socio, dict):
+                occupation = socio.get("ocupacao_principal", "")
+
+    demo = p.get("demographic_json") or {}
+    etnia = ""
+    if isinstance(demo, dict):
+        ident = demo.get("identidade_basica") or {}
+        if isinstance(ident, dict):
+            etnia = ident.get("etnia", "")
+
+    score_eco = p.get("score_economico") or 0.0
+    score_cost = p.get("score_costumes") or 0.0
+    cluster_id = p.get("cluster_id", "?")
+    cluster_name = p.get("nome_grupo", "?")
+
+    extras = build_persona_extras(p)
+    persona_block = (
+        f'Nome: {p.get("name", "?")}\n'
+        f'Gênero: {p.get("gender_identity") or p.get("gender", "?")}, '
+        f'Idade: {p.get("age", "?")}a, Etnia: {etnia or "?"}\n'
+        f'Local: {p.get("state", "?")} ({p.get("region_br", "?")}, {p.get("area_type", "?")})\n'
+        f'Geração: {p.get("generation", "?")}\n'
+        f'ESCOLARIDADE: {p.get("education_level", "?")}\n'
+        f'Classe Social: {p.get("social_class", "?")}\n'
+        f'Profissão: {occupation or "?"}\n'
+        f'Estado civil: {p.get("civil_status", "?")}\n'
+        f'Posicionamento político: {p.get("political_leaning", "?")}\n'
+        f'Religião: {p.get("macro_religion", "?")}\n'
+        f'Cluster: {cluster_id} ({cluster_name})\n'
+        f'Score Econômico: {score_eco:.3f} | Score Costumes: {score_cost:.3f}'
+        + (f'\nOpiniões e vivências: {extras}' if extras else '')
+    )
+
+    return f"""{context_block}
+
+Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolaridade, região, idade, ideologia, religião, vivências, classe social — e gere 1 comentário de rede social que essa pessoa REALMENTE escreveria.
+
+⚠️ CHECKLIST OBRIGATÓRIO:
+1. ESCOLARIDADE → Fundamental = MUITOS erros ortográficos. Superior/Pós = correto mas CASUAL.
+2. ESTADO → Use gírias DAQUELE estado. OBRIGATÓRIO.
+3. SCORES 2D → ScoreEco e ScoreCost calibram INTENSIDADE. Perto de 0 = dividido. Extremo = forte.
+4. RELIGIÃO → Evangélico = cita Deus. Ateu = pode atacar religião.
+5. GERAÇÃO → Gen Z = abreviações. Boomer = MAIÚSCULA.
+6. SE NÃO CONHECE O TEMA → reflita isso ("sei la", "nunca ouvi falar").
+7. HUMOR → Brasileiro quase nunca é 100% sério. Misture humor quando natural pro perfil.
+8. NEUTRAL É VÁLIDO: persona que NÃO CONHECE, está DIVIDIDA, ou NÃO SE IMPORTA → neutral.
+
+═══ PERFIL DA PESSOA ═══
+{persona_block}
+
+FORMATO JSON OBRIGATÓRIO — responda APENAS com:
+{{"sentiment": "positive|negative|neutral", "comment": "..."}}
+
+⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
+- positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
+- negative = a CONCLUSÃO do comentário DISCORDA da pergunta
+- ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
+- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative"""

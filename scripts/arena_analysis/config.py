@@ -54,7 +54,7 @@ class Settings:
     anthropic_api_keys: list[str] = field(
         default_factory=lambda: _collect_keys("ANTHROPIC_API_KEY")
     )
-    model: str = "claude-haiku-4-5-20251001"
+    model: str = "claude-sonnet-4-20250514"  # upgraded: haiku → sonnet (máxima qualidade)
     # Modelo potente para steps criticos (analise, contexto, validacao)
     smart_model: str = "claude-sonnet-4-20250514"
 
@@ -65,19 +65,19 @@ class Settings:
     openai_api_keys: list[str] = field(
         default_factory=lambda: _collect_keys("OPENAI_API_KEY")
     )
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-4o"  # upgraded: gpt-4o-mini → gpt-4o
 
     # Web search
     tavily_api_key: str = field(
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")
     )
 
-    # Batching (otimizado para 20K personas com 8 contas)
-    batch_size: int = 30  # personas por batch (30 = mais confiável, menos JSON truncado)
-    max_parallel_claude: int = 12  # batches Claude simultaneos (~3/chave, evita 50 RPM limit)
-    max_parallel_openai: int = 80  # batches OpenAI simultaneos (~20/chave, GPT aguenta 500 RPM)
-    claude_share: float = 0.10  # 10% Claude, 90% GPT (Claude=gargalo com 50 RPM/chave)
-    max_tokens_per_batch: int = 8192  # tokens de saida por batch
+    # Batching — 1 persona por chamada (máxima qualidade individual)
+    batch_size: int = 1  # 1 persona por chamada = atenção 100% dedicada
+    max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
+    max_parallel_openai: int = 80  # 2 keys × 40 parallel
+    claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
+    max_tokens_per_batch: int = 1024  # só 1 comentário (~50-150 tokens)
 
     # Web search
     max_web_results: int = 5
@@ -86,7 +86,7 @@ class Settings:
     persona_cache_ttl: int = 300
 
     # Retry
-    max_retries: int = 1
+    max_retries: int = 2  # mais retries — cada persona individual importa
 
 
 settings = Settings()

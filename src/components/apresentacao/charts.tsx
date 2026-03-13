@@ -281,10 +281,15 @@ export const DonutCard = memo(function DonutCard({
               const sharePct = hasData ? Math.round((item.count / totalCount) * 100) : 0;
               const tot = item.positive + item.negative + item.neutral;
               const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-              const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
-              const isFavor = favPct >= conPct;
-              const sentPct = isFavor ? favPct : conPct;
-              const sentColor = hasData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600';
+              const neuPct = tot > 0 ? Math.round((item.neutral / tot) * 100) : 0;
+              const conPct = tot > 0 ? (100 - favPct - neuPct) : 0;
+              const dominant = Math.max(favPct, neuPct, conPct);
+              const dominantColor = hasData
+                ? (dominant === favPct ? 'text-emerald-400' : dominant === conPct ? 'text-rose-400' : 'text-amber-400')
+                : 'text-zinc-600';
+              const dominantLabel = hasData
+                ? (dominant === favPct ? 'Favor' : dominant === conPct ? 'Contra' : 'Neutro')
+                : '—';
               const dotColor = DONUT_COLORS[idx % DONUT_COLORS.length];
 
               return (
@@ -293,11 +298,15 @@ export const DonutCard = memo(function DonutCard({
                     <div className={cn('w-1.5 h-1.5 rounded-sm shrink-0', dotColor.bg)} />
                     <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
                   </div>
-                  <span className={cn('text-base font-black tabular-nums leading-none transition-colors duration-500', sentColor)}><AnimatedNumber value={sentPct} suffix="%" /></span>
-                  <span className={cn('text-[10px] font-bold leading-none transition-colors duration-500', sentColor)}>
-                    {hasData ? (isFavor ? 'Favor' : 'Contra') : '—'}
+                  <div className="w-full h-[4px] rounded-full overflow-hidden flex mt-0.5">
+                    <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
+                    <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
+                    <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
+                  </div>
+                  <span className={cn('text-sm font-black tabular-nums leading-none transition-colors duration-500', dominantColor)}><AnimatedNumber value={dominant} suffix="%" /></span>
+                  <span className={cn('text-[9px] font-bold leading-none transition-colors duration-500', dominantColor)}>
+                    {dominantLabel}
                   </span>
-                  <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate"><AnimatedNumber value={sharePct} suffix="%" /></span>
                 </div>
               );
             })}
@@ -360,26 +369,25 @@ export const HBarChart = memo(function HBarChart({
         {sorted.length > 0 ? sorted.map((item) => {
           const tot = item.positive + item.negative + item.neutral;
           const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-          const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
-          const barWidth = hasData ? Math.round((item.count / maxCount) * 100) : 0;
-          const isFavor = favPct >= conPct;
-          const sentPct = isFavor ? favPct : conPct;
-          const sentLabel = hasData ? (isFavor ? 'Favor' : 'Contra') : '—';
-          const sentColor = hasData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600';
+          const neuPct = tot > 0 ? Math.round((item.neutral / tot) * 100) : 0;
+          const conPct = tot > 0 ? (100 - favPct - neuPct) : 0;
+          const dominant = Math.max(favPct, neuPct, conPct);
+          const dominantColor = hasData
+            ? (dominant === favPct ? 'text-emerald-400' : dominant === conPct ? 'text-rose-400' : 'text-amber-400')
+            : 'text-zinc-600';
 
           return (
             <div key={item.label} className="flex items-center gap-2 group">
               <span className="text-xs text-zinc-400 w-[76px] truncate shrink-0 text-right group-hover:text-white transition-colors duration-200">
                 {item.label}
               </span>
-              <div className="flex-1 h-[18px] rounded-lg overflow-hidden bg-white/[0.03] relative">
-                <div
-                  className={cn('h-full rounded-lg bg-gradient-to-r transition-all duration-[3s]', c.bar)}
-                  style={{ width: `${barWidth}%`, opacity: 0.8 }}
-                />
+              <div className="flex-1 h-[14px] rounded-full overflow-hidden flex bg-white/[0.03]">
+                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
               </div>
-              <span className={cn('text-xs font-bold tabular-nums shrink-0 w-[72px] text-right transition-colors duration-500', sentColor)}>
-                <AnimatedNumber value={sentPct} suffix="%" /> {sentLabel}
+              <span className={cn('text-xs font-black tabular-nums shrink-0 transition-colors duration-500', dominantColor)}>
+                <AnimatedNumber value={favPct} suffix="%" />
               </span>
             </div>
           );
@@ -487,14 +495,24 @@ export function SpectrumGauge({
         {(() => {
           const dTot = dominant.positive + dominant.negative + dominant.neutral;
           const dFav = dTot > 0 ? Math.round((dominant.positive / dTot) * 100) : 0;
-          const dCon = dTot > 0 ? Math.round((dominant.negative / dTot) * 100) : 0;
-          const dIsFavor = dFav >= dCon;
+          const dNeu = dTot > 0 ? Math.round((dominant.neutral / dTot) * 100) : 0;
+          const dCon = dTot > 0 ? (100 - dFav - dNeu) : 0;
+          const dDom = Math.max(dFav, dNeu, dCon);
+          const dColor = hasData ? (dDom === dFav ? 'text-emerald-400' : dDom === dCon ? 'text-rose-400' : 'text-amber-400') : 'text-zinc-600';
+          const dLabel = dDom === dFav ? 'Favor' : dDom === dCon ? 'Contra' : 'Neutro';
           return (
             <div className="text-center">
-              <p className={cn('text-3xl font-black tabular-nums leading-none transition-colors duration-500', hasData ? (dIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
-                {hasData ? <><AnimatedNumber value={dIsFavor ? dFav : dCon} suffix="%" /> {dIsFavor ? 'Favor' : 'Contra'}</> : '0%'}
+              <p className={cn('text-3xl font-black tabular-nums leading-none transition-colors duration-500', dColor)}>
+                {hasData ? <><AnimatedNumber value={dDom} suffix="%" /> {dLabel}</> : '0%'}
               </p>
               <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
+              {hasData && (
+                <div className="flex items-center justify-center gap-3 mt-1">
+                  <span className="text-[10px] font-bold text-emerald-400/70 tabular-nums"><AnimatedNumber value={dFav} suffix="%" /> Fav</span>
+                  <span className="text-[10px] font-bold text-amber-400/70 tabular-nums"><AnimatedNumber value={dNeu} suffix="%" /> Neu</span>
+                  <span className="text-[10px] font-bold text-rose-400/70 tabular-nums"><AnimatedNumber value={dCon} suffix="%" /> Con</span>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -545,21 +563,24 @@ export function SpectrumGauge({
           <span className="text-xs font-bold text-blue-400/70 uppercase tracking-wider">{rightLabel}</span>
         </div>
 
-        {/* Sentiment per bucket */}
-        <div className="flex items-center gap-0.5">
+        {/* Sentiment per bucket — tricolor mini-bar */}
+        <div className="flex items-center gap-1">
           {buckets.map((b) => {
             const bTot = b.positive + b.negative + b.neutral;
             const bFav = bTot > 0 ? Math.round((b.positive / bTot) * 100) : 0;
-            const bCon = bTot > 0 ? Math.round((b.negative / bTot) * 100) : 0;
-            const bIsFavor = bFav >= bCon;
-            const bSent = bIsFavor ? bFav : bCon;
+            const bNeu = bTot > 0 ? Math.round((b.neutral / bTot) * 100) : 0;
+            const bCon = bTot > 0 ? (100 - bFav - bNeu) : 0;
+            const bDom = Math.max(bFav, bNeu, bCon);
+            const bColor = hasData ? (bDom === bFav ? 'text-emerald-400' : bDom === bCon ? 'text-rose-400' : 'text-amber-400') : 'text-zinc-600';
             return (
-              <div key={b.label} className="flex-1 text-center min-w-0">
-                <p className={cn('text-sm font-black tabular-nums leading-none transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
-                  <AnimatedNumber value={bSent} suffix="%" />
-                </p>
-                <p className={cn('text-[9px] font-bold leading-tight mt-0.5 transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400/60' : 'text-rose-400/60') : 'text-zinc-700')}>
-                  {bIsFavor ? 'Fav' : 'Con'}
+              <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+                <div className="w-full h-[4px] rounded-full overflow-hidden flex">
+                  <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${bFav}%` }} />
+                  <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${bNeu}%` }} />
+                  <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${bCon}%` }} />
+                </div>
+                <p className={cn('text-[10px] font-black tabular-nums leading-none transition-colors duration-500', bColor)}>
+                  <AnimatedNumber value={bFav} suffix="%" />
                 </p>
               </div>
             );
@@ -624,8 +645,8 @@ export function QuadrantGrid({
           const pct = hasQData ? Math.round((q.count / totalCount) * 100) : 0;
           const tot = q.positive + q.negative + q.neutral;
           const favPct = tot > 0 ? Math.round((q.positive / tot) * 100) : 0;
-          const conPct = tot > 0 ? Math.round((q.negative / tot) * 100) : 0;
-          const isFavor = favPct >= conPct;
+          const neuPct = tot > 0 ? Math.round((q.neutral / tot) * 100) : 0;
+          const conPct = tot > 0 ? (100 - favPct - neuPct) : 0;
 
           return (
             <div
@@ -637,17 +658,19 @@ export function QuadrantGrid({
             >
               <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
               <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={pct} suffix="%" /></p>
-              <p className="text-xs font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
+              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
                 {q.label}
               </p>
-              <p className={cn(
-                'text-sm font-bold tabular-nums',
-                hasQData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600',
-              )}>
-                {hasQData
-                  ? (isFavor ? <><AnimatedNumber value={favPct} suffix="%" /> Favor</> : <><AnimatedNumber value={conPct} suffix="%" /> Contra</>)
-                  : '0%'}
-              </p>
+              <div className="w-full h-[5px] rounded-full overflow-hidden flex">
+                <div className="h-full bg-emerald-400 transition-all duration-[3s]" style={{ width: `${favPct}%` }} />
+                <div className="h-full bg-amber-400 transition-all duration-[3s]" style={{ width: `${neuPct}%` }} />
+                <div className="h-full bg-rose-400 transition-all duration-[3s]" style={{ width: `${conPct}%` }} />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
+                <span className="text-[10px] font-bold tabular-nums text-amber-400"><AnimatedNumber value={neuPct} suffix="%" /></span>
+                <span className="text-[10px] font-bold tabular-nums text-rose-400"><AnimatedNumber value={conPct} suffix="%" /></span>
+              </div>
             </div>
           );
         })}
