@@ -55,8 +55,9 @@ class Settings:
         default_factory=lambda: _collect_keys("ANTHROPIC_API_KEY")
     )
     model: str = "claude-sonnet-4-20250514"  # upgraded: haiku → sonnet (máxima qualidade)
-    # Modelo potente para steps criticos (analise, contexto, validacao)
-    smart_model: str = "claude-sonnet-4-20250514"
+    # Modelo rápido para steps de preparação (contexto builder)
+    # Haiku 4.5 é 5-10x mais rápido que Sonnet para extraction estruturada
+    smart_model: str = "claude-haiku-4-5-20251001"
 
     # LLM — OpenAI (todas as chaves)
     openai_api_key: str = field(
@@ -65,7 +66,7 @@ class Settings:
     openai_api_keys: list[str] = field(
         default_factory=lambda: _collect_keys("OPENAI_API_KEY")
     )
-    openai_model: str = "gpt-4o"  # upgraded: gpt-4o-mini → gpt-4o
+    openai_model: str = "gpt-4o-mini"  # gpt-4o-mini: 3-4x faster, sufficient for sentiment classification
 
     # Web search
     tavily_api_key: str = field(
@@ -75,7 +76,7 @@ class Settings:
     # Batching — 1 persona por chamada (máxima qualidade individual)
     batch_size: int = 1  # 1 persona por chamada = atenção 100% dedicada
     max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
-    max_parallel_openai: int = 80  # 2 keys × 40 parallel
+    max_parallel_openai: int = 25  # reduced from 80 — prevents connection flood/timeouts on DO
     claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
     max_tokens_per_batch: int = 1024  # só 1 comentário (~50-150 tokens)
 

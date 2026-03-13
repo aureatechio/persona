@@ -53,6 +53,7 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(8000),
     });
     if (urlsRes.ok) {
       const { tracks, title, author } = await urlsRes.json();
@@ -93,6 +94,7 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(8000),
     });
     if (res.ok) {
       const data = await res.json();
@@ -115,6 +117,7 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(10000),
     });
     if (res.ok) {
       const data = await res.json();

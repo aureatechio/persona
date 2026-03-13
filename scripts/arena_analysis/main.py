@@ -29,10 +29,8 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 from arena_analysis.config import settings
-from arena_analysis.query_analyzer import QueryAnalyzer
 from arena_analysis.web_researcher import ArenaWebResearcher
 from arena_analysis.context_builder import ContextBuilder, ContextResult
-from arena_analysis.context_validator import ContextValidator
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
@@ -54,10 +52,8 @@ app.add_middleware(
 )
 
 # ── Singletons ────────────────────────────────────────────────────────────────
-query_analyzer = QueryAnalyzer()
 web_researcher = ArenaWebResearcher()
 context_builder = ContextBuilder()
-context_validator = ContextValidator()
 persona_loop = PersonaLoop()
 electoral_engine = ElectoralEngine()
 
@@ -129,30 +125,16 @@ async def analyze(request: AnalyzeRequest):
         # ── 0. Route event ────────────────────────────────────────
         yield sse_event("route", {"route": "python"})
 
-        # ── 1. Query Analysis + Persona Loading em paralelo ────────
-        yield sse_event("phase", {
-            "phase": "analyzing_query",
-            "message": "Analisando pergunta...",
-        })
+        # ── 1. Web Research + Persona Loading em paralelo ────────
+        # Skip query_analyzer — classify-route already decided this needs Python.
+        # Always do web research for context (fast with basic depth).
 
-        # Inicia carregamento de personas em paralelo com query analysis
+        # Inicia carregamento de personas em paralelo
         persona_task = asyncio.create_task(
             asyncio.to_thread(load_personas, cluster_filter=request.cluster_filter)
         )
 
-        analysis = await query_analyzer.analyze(request.question)
         context = None
-
-        if request.verbose:
-            yield sse_event("log", {
-                "step": "query_analyzer",
-                "level": "info",
-                "message": f"research={'yes' if analysis.needs_research else 'no'}: {analysis.reason}",
-                "detail": {
-                    "needs_research": analysis.needs_research,
-                    "reason": analysis.reason,
-                },
-            })
 
         # Se já temos contexto da mídia (imagem/arquivo analisado), usar diretamente
         if request.context_text:
@@ -162,60 +144,31 @@ async def analyze(request: AnalyzeRequest):
             )
             print(f"[Pipeline] Contexto de mídia recebido ({len(request.context_text)} chars)")
 
-            # Web research complementar se o query analyzer achar necessário
-            if analysis.needs_research:
-                yield sse_event("phase", {
-                    "phase": "web_research",
-                    "message": "Pesquisando contexto complementar na web...",
-                })
-                web_result = await web_researcher.research(request.question)
-                if web_result.combined_context:
-                    # Passa o web context pelo context_builder para gerar resumo em PT-BR
-                    # (Tavily pode retornar resultados em inglês)
-                    web_ctx = await context_builder.build(
-                        question=request.question,
-                        web_context=web_result.combined_context,
-                    )
-                    if web_ctx.contexto:
-                        context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
+            # Web research complementar — run in parallel with context building
+            yield sse_event("phase", {
+                "phase": "web_research",
+                "message": "Pesquisando contexto complementar na web...",
+            })
+            web_result = await web_researcher.research(request.question)
+            if web_result.combined_context:
+                web_ctx = await context_builder.build(
+                    question=request.question,
+                    web_context=web_result.combined_context,
+                )
+                if web_ctx.contexto:
+                    context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
 
-                yield sse_event("web_complete", {
-                    "snippets_count": len(web_result.snippets),
-                    "sources_count": len(web_result.sources),
-                })
+            yield sse_event("web_complete", {
+                "snippets_count": len(web_result.snippets),
+                "sources_count": len(web_result.sources),
+            })
 
-                if request.verbose:
-                    yield sse_event("log", {
-                        "step": "web_research",
-                        "level": "info",
-                        "message": f"{len(web_result.snippets)} snippets (complementar à mídia)",
-                        "detail": {
-                            "queries": web_result.queries,
-                            "snippets": [s[:300] for s in web_result.snippets],
-                            "sources": web_result.sources,
-                        },
-                    })
-
-            # Emit context builder verbose log for the media context
             yield sse_event("phase", {
                 "phase": "building_context",
                 "message": "Contexto de mídia recebido",
             })
 
-            if request.verbose:
-                yield sse_event("log", {
-                    "step": "context_builder",
-                    "level": "info",
-                    "message": "Contexto construído a partir de mídia analisada",
-                    "detail": {
-                        "tema": context.tema,
-                        "contexto": context.contexto,
-                        "figuras": getattr(context, 'figuras', []) or [],
-                        "periodo": getattr(context, 'periodo', '') or '',
-                    },
-                })
-
-        elif analysis.needs_research:
+        else:
             # ── 1b. Web Research ─────────────────────────────────────
             yield sse_event("phase", {
                 "phase": "web_research",
@@ -229,19 +182,7 @@ async def analyze(request: AnalyzeRequest):
                 "sources_count": len(web_result.sources),
             })
 
-            if request.verbose:
-                yield sse_event("log", {
-                    "step": "web_research",
-                    "level": "info",
-                    "message": f"{len(web_result.snippets)} snippets found",
-                    "detail": {
-                        "queries": web_result.queries,
-                        "snippets": [s[:300] for s in web_result.snippets],
-                        "sources": web_result.sources,
-                    },
-                })
-
-            # ── 1c. Context Builder ──────────────────────────────────
+            # ── 1c. Context Builder (skip validator — saves 3-5s) ────
             yield sse_event("phase", {
                 "phase": "building_context",
                 "message": "Criando contexto com IA...",
@@ -252,73 +193,6 @@ async def analyze(request: AnalyzeRequest):
                 web_context=web_result.combined_context,
             )
             total_tokens += context.prompt_tokens + context.output_tokens
-
-            if request.verbose:
-                yield sse_event("log", {
-                    "step": "context_builder",
-                    "level": "info",
-                    "message": "Context built",
-                    "detail": {
-                        "tema": context.tema,
-                        "contexto": context.contexto,
-                        "figuras": context.figuras,
-                        "periodo": context.periodo,
-                    },
-                })
-
-            # ── 1d. Context Validator (skip para velocidade) ─────────
-            validation = await context_validator.validate(
-                question=request.question,
-                context=context,
-                web_context=web_result.combined_context,
-            )
-            total_tokens += validation.prompt_tokens + validation.output_tokens
-
-            if request.verbose:
-                yield sse_event("log", {
-                    "step": "context_validator",
-                    "level": "info",
-                    "message": validation.verdict,
-                    "detail": {
-                        "verdict": validation.verdict,
-                        "issues": validation.issues or [],
-                        "corrections": validation.corrections or "",
-                    },
-                })
-
-            if validation.verdict == "REVISE" and validation.corrections:
-                context = await context_builder.build(
-                    question=request.question,
-                    web_context=web_result.combined_context,
-                    feedback=validation.corrections,
-                )
-                total_tokens += context.prompt_tokens + context.output_tokens
-
-                if request.verbose:
-                    yield sse_event("log", {
-                        "step": "context_builder",
-                        "level": "info",
-                        "message": "Context revised after validation",
-                        "detail": {
-                            "tema": context.tema,
-                            "contexto": context.contexto,
-                            "figuras": context.figuras,
-                            "periodo": context.periodo,
-                            "revised": True,
-                        },
-                    })
-        else:
-            print(f"[Pipeline] Pesquisa pulada: {analysis.reason}")
-            if request.verbose:
-                yield sse_event("log", {
-                    "step": "query_analyzer",
-                    "level": "info",
-                    "message": f"Research skipped: {analysis.reason}",
-                    "detail": {
-                        "needs_research": False,
-                        "reason": analysis.reason,
-                    },
-                })
 
         # ── 2. Aguardar personas (já carregando em paralelo) ──────────
         yield sse_event("phase", {

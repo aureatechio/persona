@@ -42,7 +42,7 @@ class ArenaWebResearcher:
                 None,
                 lambda: client.search(
                     query=query,
-                    search_depth="advanced",
+                    search_depth="basic",
                     max_results=settings.max_web_results,
                     include_answer=True,
                     include_raw_content=False,
@@ -57,22 +57,11 @@ class ArenaWebResearcher:
     def _generate_queries(self, question: str) -> list[str]:
         """
         Gera queries de busca a partir da pergunta.
-        Sempre gera 2-3 queries para cobrir o tema.
-        Todas em português para priorizar resultados em PT-BR.
+        2 queries para velocidade (basic depth compensa).
         """
-        # Query 1: a pergunta como esta (mais direta)
         q1 = question.strip().rstrip("?").strip()
-
-        # Query 2: adiciona "Brasil" para resultados em PT-BR
         q2 = f"{q1} Brasil notícias"
-
-        # Query 3: busca por noticias atuais
-        from datetime import datetime
-
-        year = datetime.now().year
-        q3 = f"{q1} últimas notícias {year} Brasil"
-
-        return [q1, q2, q3]
+        return [q1, q2]
 
     def _compile_results(
         self,
