@@ -272,19 +272,19 @@ export const DonutCard = memo(function DonutCard({
           </div>
         </div>
 
-        {/* Mini-card grid — fills remaining space */}
-        {hasData ? (
+        {/* Mini-card grid — always show structure, numbers grow from 0 */}
+        {sorted.length > 0 ? (
           <div className={cn(
             'flex-1 grid gap-1 min-w-0 auto-rows-fr grid-cols-2',
           )}>
             {sorted.slice(0, 6).map((item, idx) => {
-              const sharePct = Math.round((item.count / totalCount) * 100);
+              const sharePct = hasData ? Math.round((item.count / totalCount) * 100) : 0;
               const tot = item.positive + item.negative + item.neutral;
               const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
               const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
               const isFavor = favPct >= conPct;
               const sentPct = isFavor ? favPct : conPct;
-              const sentColor = isFavor ? 'text-emerald-400' : 'text-rose-400';
+              const sentColor = hasData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600';
               const dotColor = DONUT_COLORS[idx % DONUT_COLORS.length];
 
               return (
@@ -293,9 +293,9 @@ export const DonutCard = memo(function DonutCard({
                     <div className={cn('w-1.5 h-1.5 rounded-sm shrink-0', dotColor.bg)} />
                     <span className="text-[10px] text-zinc-400 truncate leading-tight font-medium">{item.label}</span>
                   </div>
-                  <span className={cn('text-base font-black tabular-nums leading-none', sentColor)}>{sentPct}%</span>
-                  <span className={cn('text-[10px] font-bold leading-none', sentColor)}>
-                    {isFavor ? 'Favor' : 'Contra'}
+                  <span className={cn('text-base font-black tabular-nums leading-none transition-colors duration-500', sentColor)}>{sentPct}%</span>
+                  <span className={cn('text-[10px] font-bold leading-none transition-colors duration-500', sentColor)}>
+                    {hasData ? (isFavor ? 'Favor' : 'Contra') : '—'}
                   </span>
                   <span className="text-[9px] text-zinc-600 tabular-nums leading-none truncate">{sharePct}%</span>
                 </div>
@@ -357,15 +357,15 @@ export const HBarChart = memo(function HBarChart({
       </div>
 
       <div className="flex-1 px-4 py-2 flex flex-col justify-evenly overflow-hidden">
-        {hasData ? sorted.map((item) => {
+        {sorted.length > 0 ? sorted.map((item) => {
           const tot = item.positive + item.negative + item.neutral;
           const favPct = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
           const conPct = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
-          const barWidth = Math.round((item.count / maxCount) * 100);
+          const barWidth = hasData ? Math.round((item.count / maxCount) * 100) : 0;
           const isFavor = favPct >= conPct;
           const sentPct = isFavor ? favPct : conPct;
-          const sentLabel = isFavor ? 'Favor' : 'Contra';
-          const sentColor = isFavor ? 'text-emerald-400' : 'text-rose-400';
+          const sentLabel = hasData ? (isFavor ? 'Favor' : 'Contra') : '—';
+          const sentColor = hasData ? (isFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600';
 
           return (
             <div key={item.label} className="flex items-center gap-2 group">
@@ -378,7 +378,7 @@ export const HBarChart = memo(function HBarChart({
                   style={{ width: `${barWidth}%`, opacity: 0.8 }}
                 />
               </div>
-              <span className={cn('text-xs font-bold tabular-nums shrink-0 w-[72px] text-right', sentColor)}>
+              <span className={cn('text-xs font-bold tabular-nums shrink-0 w-[72px] text-right transition-colors duration-500', sentColor)}>
                 {sentPct}% {sentLabel}
               </span>
             </div>
@@ -431,7 +431,7 @@ export function SpectrumGauge({
   const c = accentMap[accentColor] || accentMap.emerald;
 
   const totalCount = items.reduce((s, i) => s + i.count, 0);
-  if (totalCount === 0) return null;
+  const hasData = totalCount > 0;
 
   const positionMap: Record<string, number> = {
     'Esquerda Forte': 0, 'Progressista Forte': 0,
@@ -444,7 +444,7 @@ export function SpectrumGauge({
   const buckets = items.map(item => ({
     ...item,
     pos: positionMap[item.label] ?? 2,
-    pct: Math.round((item.count / totalCount) * 100),
+    pct: hasData ? Math.round((item.count / totalCount) * 100) : 0,
   })).sort((a, b) => a.pos - b.pos);
 
   const dominant = buckets.reduce((max, b) => b.count > max.count ? b : max, buckets[0]);
@@ -467,8 +467,8 @@ export function SpectrumGauge({
           const dIsFavor = dFav >= dCon;
           return (
             <div className="text-center">
-              <p className={cn('text-3xl font-black tabular-nums leading-none', dIsFavor ? 'text-emerald-400' : 'text-rose-400')}>
-                {dIsFavor ? dFav : dCon}% {dIsFavor ? 'Favor' : 'Contra'}
+              <p className={cn('text-3xl font-black tabular-nums leading-none transition-colors duration-500', hasData ? (dIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
+                {hasData ? `${dIsFavor ? dFav : dCon}% ${dIsFavor ? 'Favor' : 'Contra'}` : '0%'}
               </p>
               <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
             </div>
@@ -488,7 +488,7 @@ export function SpectrumGauge({
           <div className="absolute inset-0 flex items-center">
             {buckets.map((b) => {
               const leftPos = (b.pos / 4) * 100;
-              const size = Math.max(18, Math.min(34, (b.pct / 40) * 34));
+              const size = hasData ? Math.max(18, Math.min(34, (b.pct / 40) * 34)) : 18;
               return (
                 <div
                   key={b.label}
@@ -531,10 +531,10 @@ export function SpectrumGauge({
             const bSent = bIsFavor ? bFav : bCon;
             return (
               <div key={b.label} className="flex-1 text-center min-w-0">
-                <p className={cn('text-sm font-black tabular-nums leading-none', bIsFavor ? 'text-emerald-400' : 'text-rose-400')}>
+                <p className={cn('text-sm font-black tabular-nums leading-none transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400' : 'text-rose-400') : 'text-zinc-600')}>
                   {bSent}%
                 </p>
-                <p className={cn('text-[9px] font-bold leading-tight mt-0.5', bIsFavor ? 'text-emerald-400/60' : 'text-rose-400/60')}>
+                <p className={cn('text-[9px] font-bold leading-tight mt-0.5 transition-colors duration-500', hasData ? (bIsFavor ? 'text-emerald-400/60' : 'text-rose-400/60') : 'text-zinc-700')}>
                   {bIsFavor ? 'Fav' : 'Con'}
                 </p>
               </div>
@@ -570,7 +570,7 @@ export function QuadrantGrid({
   if (!items || items.length === 0) return null;
 
   const totalCount = items.reduce((s, i) => s + i.count, 0);
-  if (totalCount === 0) return null;
+  const hasQData = totalCount > 0;
 
   const accentMap: Record<string, { text: string; label: string }> = {
     emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -593,7 +593,7 @@ export function QuadrantGrid({
       <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1.5 p-2.5 min-h-0">
         {quads.map((q, idx) => {
           const qc = QUADRANT_COLOR_MAP[q.label] || QUADRANT_COLOR_FALLBACK;
-          const pct = Math.round((q.count / totalCount) * 100);
+          const pct = hasQData ? Math.round((q.count / totalCount) * 100) : 0;
           const tot = q.positive + q.negative + q.neutral;
           const favPct = tot > 0 ? Math.round((q.positive / tot) * 100) : 0;
           const conPct = tot > 0 ? Math.round((q.negative / tot) * 100) : 0;

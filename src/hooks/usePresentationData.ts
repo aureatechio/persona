@@ -3,11 +3,27 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 
+/** Pre-seeded segments with known Brazilian demographic labels (zero counts).
+ *  This ensures the dashboard shows card structures immediately,
+ *  and bars grow from 0 as real data arrives. */
+function z(label: string) { return { label, count: 0, positive: 0, negative: 0, neutral: 0 }; }
+
 const EMPTY_SEGMENTS = {
-  gender: [], religion: [], race: [], region: [],
-  generation: [], socialClass: [], education: [], politicalLeaning: [],
-  voto2022: [], aprovacaoLula: [], voto2026: [],
-  archetype: [], clusterMacro: [], scoreEco: [], scoreCost: [],
+  gender: [z('Masculino'), z('Feminino')],
+  religion: [z('Católico'), z('Evangélico'), z('Sem religião'), z('Espírita'), z('Umbanda/Candomblé'), z('Outros')],
+  race: [z('Branco'), z('Pardo'), z('Preto'), z('Amarelo'), z('Indígena')],
+  region: [z('Sudeste'), z('Nordeste'), z('Sul'), z('Norte'), z('Centro-Oeste')],
+  generation: [z('Gen Z'), z('Millennial'), z('Gen X'), z('Boomer')],
+  socialClass: [z('Classe A'), z('Classe B'), z('Classe C'), z('Classe D'), z('Classe E')],
+  education: [z('Superior Completo'), z('Médio Completo'), z('Fundamental'), z('Pós-graduação')],
+  politicalLeaning: [z('Centro'), z('Centro-Direita'), z('Centro-Esquerda'), z('Direita'), z('Esquerda')],
+  voto2022: [z('Lula'), z('Bolsonaro'), z('Nulo/Branco'), z('Ciro'), z('Tebet')],
+  aprovacaoLula: [z('Aprova'), z('Desaprova'), z('Neutro')],
+  voto2026: [z('Lula'), z('Bolsonaro'), z('Outros'), z('Indeciso')],
+  archetype: [] as { label: string; count: number; positive: number; negative: number; neutral: number }[],
+  clusterMacro: [z('Progressista'), z('Moderado'), z('Conservador'), z('Transversal')],
+  scoreEco: [z('Esquerda Forte'), z('Centro-Esquerda'), z('Centro'), z('Centro-Direita'), z('Direita Forte')],
+  scoreCost: [z('Progressista Forte'), z('Progressista'), z('Centro'), z('Conservador'), z('Conservador Forte')],
 };
 
 function makeZeroedData(question = ''): ArenaLiveData {

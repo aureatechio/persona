@@ -2,7 +2,8 @@
 
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 import { Users, MessageCircle } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult, PoliticalFigureDetection } from '@/lib/arena/types';
@@ -143,25 +144,33 @@ export function UnifiedScreen() {
   const { data, hasEverReceived } = usePresentationData();
   if (!hasEverReceived) return <Waiting />;
 
-  const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
+  const positive = data.positive || 0;
+  const negative = data.negative || 0;
+  const neutral = data.neutral || 0;
+  const total = positive + negative + neutral;
   const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
   const isLive = data.phase !== 'complete';
 
-  const comments = (data.simulation?.comments?.length ?? 0) > 0
-    ? data.simulation!.comments : data.liveComments ?? [];
+  const comments = useMemo(() => (
+    (data.simulation?.comments?.length ?? 0) > 0
+      ? data.simulation!.comments : data.liveComments ?? []
+  ), [data.simulation?.comments, data.liveComments]);
 
   const figures = data.liveIdeology?.politicalFigures || data.simulation?.politicalFigures || [];
   const lula = figures.find(f => f.figure === 'lula');
   const bolsonaro = figures.find(f => f.figure === 'bolsonaro');
-  const quadrantItems = quadrantsToSegments(data.liveIdeology?.quadrants || data.simulation?.quadrants);
-  const archetypeItems = (
+  const quadrantItems = useMemo(
+    () => quadrantsToSegments(data.liveIdeology?.quadrants || data.simulation?.quadrants),
+    [data.liveIdeology?.quadrants, data.simulation?.quadrants],
+  );
+  const archetypeItems = useMemo(() => (
     data.segments?.archetype?.length ? data.segments.archetype
     : archetypesToSegments(data.simulation?.archetypes)
-  )?.slice(0, 6);
-  const clusterItems = (
+  )?.slice(0, 6), [data.segments?.archetype, data.simulation?.archetypes]);
+  const clusterItems = useMemo(() => (
     data.segments?.clusterMacro?.length ? data.segments.clusterMacro
     : clustersToSegments(data.liveIdeology?.clusterResults || data.simulation?.clusterResults)
-  )?.slice(0, 6);
+  )?.slice(0, 6), [data.segments?.clusterMacro, data.liveIdeology?.clusterResults, data.simulation?.clusterResults]);
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
@@ -191,11 +200,11 @@ export function UnifiedScreen() {
       {/* ═══ HERO ZONE (compact) ═══ */}
       <div className="shrink-0 flex items-stretch gap-2 px-3 py-2 border-b border-white/[0.04]">
         {/* 3 Stat Cards */}
-        <TrendHeroCompact positive={data.positive || 0} negative={data.negative || 0} neutral={data.neutral || 0} />
+        <TrendHeroCompact positive={positive} negative={negative} neutral={neutral} />
 
         {/* SentimentBar + Political Figures */}
         <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-          <SentimentBar positive={data.positive || 0} negative={data.negative || 0} neutral={data.neutral || 0} />
+          <SentimentBar positive={positive} negative={negative} neutral={neutral} />
           <div className="flex items-stretch gap-2 flex-1">
             {lula ? <FigureGaugeCompact figure={lula} /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
@@ -276,6 +285,53 @@ export function UnifiedScreen() {
    TrendHeroCompact — Inline stat cards for the unified hero zone
    ════════════════════════════════════════════════════════════════════ */
 
+function CompactStatCard({ value, label, count, color, glow, border, isDominant }: {
+  value: number; label: string; count: number;
+  color: 'emerald' | 'amber' | 'rose'; glow: string; border: string; isDominant: boolean;
+}) {
+  const animatedValue = useAnimatedValue(value);
+  const animatedCount = useAnimatedValue(count, 800);
+  const colorMap = {
+    emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
+    amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
+    rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
+  };
+  const c = colorMap[color];
+
+  return (
+    <div className={cn(
+      'relative overflow-hidden shrink-0',
+      'bg-white/[0.03] backdrop-blur-xl rounded-xl',
+      'flex flex-col items-center justify-center',
+      'transition-all duration-500 ease-out',
+      isDominant
+        ? cn('w-[200px] border px-4 py-2', border)
+        : 'min-w-[120px] border border-white/[0.06] px-3 py-1.5',
+    )}>
+      <div className={cn(
+        'absolute inset-0 bg-gradient-to-br pointer-events-none transition-opacity duration-500',
+        isDominant ? 'opacity-40' : 'opacity-0',
+        glow,
+      )} />
+      <p className={cn(
+        'font-black uppercase tracking-[0.2em] text-zinc-500 relative transition-all duration-500 overflow-hidden',
+        isDominant ? 'text-[9px] max-h-6 opacity-100' : 'text-[9px] max-h-0 opacity-0',
+      )}>Tendencia</p>
+      <p className={cn(
+        'font-black tabular-nums leading-none relative transition-all duration-500',
+        isDominant ? 'text-4xl' : 'text-3xl',
+        c.text,
+      )}>{animatedValue}%</p>
+      <p className={cn(
+        'font-bold relative transition-all duration-500',
+        isDominant ? 'text-xs mt-0.5' : 'text-[10px] uppercase tracking-wider mt-0.5',
+        c.sub,
+      )}>{label}</p>
+      <p className="text-[10px] text-zinc-600 tabular-nums relative">{animatedCount.toLocaleString('pt-BR')}</p>
+    </div>
+  );
+}
+
 function TrendHeroCompact({ positive, negative, neutral }: { positive: number; negative: number; neutral: number }) {
   const total = positive + negative + neutral;
   const pctPos = total > 0 ? Math.round((positive / total) * 100) : 0;
@@ -289,40 +345,20 @@ function TrendHeroCompact({ positive, negative, neutral }: { positive: number; n
   ];
   const dominantIdx = stats.reduce((maxI, s, i) => s.value > stats[maxI].value ? i : maxI, 0);
 
-  const colorMap = {
-    emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
-    amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
-    rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
-  };
-
   return (
     <div className="flex items-stretch gap-2 shrink-0">
-      {stats.map((s, i) => {
-        const c = colorMap[s.color];
-        if (i === dominantIdx) {
-          return (
-            <div key={s.key} className={cn(
-              'relative overflow-hidden w-[200px] shrink-0',
-              'bg-white/[0.03] backdrop-blur-xl rounded-xl',
-              'border', s.border,
-              'flex flex-col items-center justify-center px-4 py-2',
-            )}>
-              <div className={cn('absolute inset-0 bg-gradient-to-br opacity-40 pointer-events-none', s.glow)} />
-              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-500 relative">Tendencia</p>
-              <p className={cn('text-4xl font-black tabular-nums leading-none relative', c.text)}>{s.value}%</p>
-              <p className={cn('text-xs font-bold relative mt-0.5', c.sub)}>{s.label}</p>
-              <p className="text-[10px] text-zinc-600 tabular-nums relative">{s.count.toLocaleString('pt-BR')}</p>
-            </div>
-          );
-        }
-        return (
-          <div key={s.key} className="relative overflow-hidden bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-1.5 flex flex-col items-center justify-center min-w-[120px]">
-            <p className={cn('text-3xl font-black tabular-nums leading-none', c.text)}>{s.value}%</p>
-            <p className={cn('text-[10px] font-bold uppercase tracking-wider mt-0.5', c.sub)}>{s.label}</p>
-            <p className="text-[10px] text-zinc-600 tabular-nums">{s.count.toLocaleString('pt-BR')}</p>
-          </div>
-        );
-      })}
+      {stats.map((s, i) => (
+        <CompactStatCard
+          key={s.key}
+          value={s.value}
+          label={s.label}
+          count={s.count}
+          color={s.color}
+          glow={s.glow}
+          border={s.border}
+          isDominant={i === dominantIdx}
+        />
+      ))}
     </div>
   );
 }
