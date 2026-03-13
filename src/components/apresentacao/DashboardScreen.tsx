@@ -361,13 +361,22 @@ export function DashboardScreen() {
         <p className="text-sm text-zinc-200 font-semibold truncate flex-1">{data.question}</p>
         <Users size={14} className="text-zinc-500" />
         {isLive ? (
-          <div className="flex items-center gap-2.5 shrink-0">
-            <div className="w-28 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
+          data.phase === 'collecting' ? (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
+              </div>
+              <span className="text-xs font-medium text-zinc-400">Preparando analise...</span>
             </div>
-            <span className="text-xs font-bold text-zinc-300 tabular-nums w-[70px]">{data.processedCount}/{data.totalCount}</span>
-            <span className="text-xs font-black text-emerald-400 tabular-nums">{progress}%</span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2.5 shrink-0">
+              <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
+              </div>
+              <span className="text-xs font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
+              <span className="text-sm font-black text-emerald-400 tabular-nums">{progress}%</span>
+            </div>
+          )
         ) : (
           <span className="text-sm font-bold text-zinc-200 tabular-nums">{total.toLocaleString('pt-BR')}</span>
         )}
@@ -418,11 +427,11 @@ export function DashboardScreen() {
         </div>
       </div>
 
-      {/* Progress bar */}
-      {isLive && (
+      {/* Progress bar — only when actively streaming */}
+      {isLive && data.phase !== 'collecting' && (
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="h-[3px] bg-zinc-900">
-            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-1000" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
           </div>
         </div>
       )}
