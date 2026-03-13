@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 4: Parse XML text segments
-    const textRegex = /<text[^>]*>(.*?)<\/text>/gs;
+    const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
     const texts: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = textRegex.exec(xml)) !== null) {
