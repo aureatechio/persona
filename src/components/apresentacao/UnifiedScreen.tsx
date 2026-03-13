@@ -277,11 +277,10 @@ export function UnifiedScreen() {
           </div>
 
           {/* Row 3 — Ideologico */}
-          <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
+          <div className="flex-1 grid grid-cols-4 gap-1.5 min-h-0">
             <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" />
             <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />
             <QuadrantGrid  items={quadrantItems}            title="Quadrante"      accentColor="cyan" />
-            <SegmentRanking items={archetypeItems} title="Arquetipos" accentColor="orange" />
             <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" />
           </div>
         </div>
