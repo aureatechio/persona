@@ -218,6 +218,13 @@ export default function SelfieVideoPage() {
         xhr.send(recordedBlob);
       });
 
+      // 3. Confirm upload → status "uploading" → "queued" (worker can now claim it)
+      await fetch('/api/selfie-video/confirm-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: data.id }),
+      });
+
       // Upload confirmed — show thank you
       setStep('obrigado');
     } catch (err) {

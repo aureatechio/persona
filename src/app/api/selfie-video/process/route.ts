@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
       .insert({
         name,
         phone: phone.replace(/\D/g, ''),
-        status: 'queued',
+        status: 'uploading',
       })
       .select()
       .single();
