@@ -367,7 +367,7 @@ export const ScoreHero = memo(function ScoreHero({
   processedCount: number;
   rightSlot?: ReactNode;
 }) {
-  const score = avgScore ?? 5.0;
+  const score = avgScore ?? 0;
   const emoji = scoreToEmoji(score);
   const label = scoreToLabel(score);
   const hex = scoreToHex(score);

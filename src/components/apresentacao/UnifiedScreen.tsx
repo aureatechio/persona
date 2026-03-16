@@ -164,7 +164,7 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
 
 /** Convert categorical counts to a weighted 0-10 score */
 function countsToScore(positive: number, negative: number, neutral: number, count: number): number {
-  if (count === 0) return 5.0;
+  if (count === 0) return 0;
   return Math.round(((positive * 8.5 + neutral * 5.0 + negative * 1.5) / count) * 10) / 10;
 }
 
@@ -265,7 +265,7 @@ export function UnifiedScreen() {
 
       {/* ═══ HERO ZONE (compact) ═══ */}
       <ScoreHero
-        avgScore={data.avgScore ?? 5.0}
+        avgScore={data.avgScore ?? 0}
         totalCount={data.totalCount}
         processedCount={data.processedCount}
         rightSlot={
