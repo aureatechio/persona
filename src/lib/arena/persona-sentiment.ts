@@ -289,6 +289,9 @@ const INVERSION_KEYWORDS = [
   'proibir', 'proibid', 'banir', 'acabar com', 'eliminar',
   'impedir', 'errado', 'problema', 'prejudic', 'devast',
   'destrui', 'ruim', 'pessim', 'fracass', 'nao deveria existir',
+  'ladrao', 'mentira', 'farsa', 'fraude', 'picareta', 'falcatrua',
+  'golpe', 'enganar', 'engana', 'prejudica', 'ruins', 'terrivel', 'horrivel',
+  'pessimo', 'nojento', 'absurdo', 'ridiculo', 'vergonhoso',
 ];
 
 const NORMAL_DIRECTION_KEYWORDS = [
@@ -643,10 +646,65 @@ function computeHolisticScore(
   const compositeSignal = Math.max(-1, Math.min(1, signal / signalCount));
 
   // Map to 0-10 with wider spread:
-  // -1 → 2.0, 0 → 5.0, +1 → 8.0 (amplification = 3.0)
-  const noise = (Math.random() - 0.5) * 2.0; // ±1.0 points
-  const raw = compositeSignal * 3.0 + 5.0 + noise;
+  // -1 → 1.0, 0 → 5.0, +1 → 9.0 (amplification = 4.0)
+  const noise = (Math.random() - 0.5) * 1.2; // ±0.6 points
+  const raw = compositeSignal * 4.0 + 5.0 + noise;
   return Math.max(0, Math.min(10, raw));
+}
+
+// ── Adversarial / Supportive Word Lists (shared) ────────────────────────────
+
+const ADVERSARIAL_WORDS = [
+  'preso', 'prender', 'condenar', 'corrupto', 'cadeia', 'criminoso', 'impeach', 'cassado', 'demitir', 'expulsar',
+  'ladrao', 'bandido', 'vagabundo', 'mentiroso', 'fascista',
+  'genocida', 'miliciano', 'ditador', 'autoritario', 'incompetente', 'lixo',
+  'vergonha', 'fracasso', 'destruiu', 'acabou', 'pior', 'desgraca', 'inutil',
+  'ladrão', 'safado', 'pilantra', 'golpista', 'traidor', 'covarde', 'burro',
+  'fdp', 'idiota', 'monstro', 'assassino', 'roubou', 'rouba', 'roubo',
+  'desastre', 'catastrofe', 'horror', 'nojo', 'fora', 'cai fora',
+  'nao presta', 'nao serve', 'nao merece',
+];
+
+const SUPPORTIVE_WORDS = [
+  'bom', 'melhor', 'excelente', 'competente', 'inocente', 'apoiar', 'defende', 'heroi', 'benefici',
+  'mito', 'salvador', 'patriota', 'honesto', 'trabalhador',
+  'lider', 'presidente', 'genio', 'corajoso', 'correto', 'integro',
+  'revolucionario', 'transformou', 'salvou', 'melhorou', 'avancou',
+  'orgulho', 'exemplo', 'dedicado', 'comprometido',
+];
+
+/**
+ * Detects adversarial/supportive framing by sentence structure.
+ * "X é [negativo]" → adversarial
+ * "X é [positivo]" → supportive
+ * "[negativo] do X" → adversarial
+ */
+function detectFraming(
+  normQuestion: string,
+  figureName: string,
+): 'adversarial' | 'supportive' | null {
+  const figIdx = normQuestion.indexOf(figureName);
+  if (figIdx === -1) return null;
+
+  // Pattern: "X é/e [word]" — figure followed by "e" or "é" then adjective
+  const afterFig = normQuestion.slice(figIdx + figureName.length);
+  const copulaMatch = afterFig.match(/^\s+e\s+(\S+)/);
+  if (copulaMatch) {
+    const word = copulaMatch[1];
+    if (ADVERSARIAL_WORDS.some(w => word.includes(w))) return 'adversarial';
+    if (SUPPORTIVE_WORDS.some(w => word.includes(w))) return 'supportive';
+  }
+
+  // Pattern: "[word] do/da X" — negative noun before figure
+  const beforeFig = normQuestion.slice(0, figIdx);
+  const doMatch = beforeFig.match(/(\S+)\s+d[oae]\s*$/);
+  if (doMatch) {
+    const word = doMatch[1];
+    if (ADVERSARIAL_WORDS.some(w => word.includes(w))) return 'adversarial';
+    if (SUPPORTIVE_WORDS.some(w => word.includes(w))) return 'supportive';
+  }
+
+  return null;
 }
 
 // ── Voting History Analysis ───────────────────────────────────────────────────
@@ -665,12 +723,17 @@ function analyzeVotingData(
   if (!hasLula && !hasBolsonaro) return null;
 
   // Detect adversarial framing
-  const advWords = ['preso', 'prender', 'condenar', 'corrupto', 'cadeia', 'criminoso', 'impeach', 'cassado', 'demitir', 'expulsar'];
-  const supWords = ['bom', 'melhor', 'excelente', 'competente', 'inocente', 'apoiar', 'defende', 'heroi', 'benefici'];
   let adv = 0, sup = 0;
-  for (const k of advWords) { if (normQuestion.includes(k)) adv++; }
-  for (const k of supWords) { if (normQuestion.includes(k)) sup++; }
-  const isAdversarial = adv > sup && adv > 0;
+  for (const k of ADVERSARIAL_WORDS) { if (normQuestion.includes(k)) adv++; }
+  for (const k of SUPPORTIVE_WORDS) { if (normQuestion.includes(k)) sup++; }
+  let isAdversarial = adv > sup && adv > 0;
+
+  // Framing override: detect "X é ladrão" / "corrupcao do X" patterns
+  if (!isAdversarial && adv === 0) {
+    const figName = hasLula ? 'lula' : 'bolsonaro';
+    const framing = detectFraming(normQuestion, figName);
+    if (framing === 'adversarial') isAdversarial = true;
+  }
 
   // ── COMPARISON: when BOTH names appear, detect who is the SUBJECT ──
   // "Lula é melhor que Bolsonaro" → subject = Lula (appears BEFORE "melhor"/"pior")
@@ -809,12 +872,17 @@ function analyzeVotingScore(
 
   if (!hasLula && !hasBolsonaro) return null;
 
-  const advWords = ['preso', 'prender', 'condenar', 'corrupto', 'cadeia', 'criminoso', 'impeach', 'cassado', 'demitir', 'expulsar'];
-  const supWords = ['bom', 'melhor', 'excelente', 'competente', 'inocente', 'apoiar', 'defende', 'heroi', 'benefici'];
   let adv = 0, sup = 0;
-  for (const k of advWords) { if (normQuestion.includes(k)) adv++; }
-  for (const k of supWords) { if (normQuestion.includes(k)) sup++; }
-  const isAdversarial = adv > sup && adv > 0;
+  for (const k of ADVERSARIAL_WORDS) { if (normQuestion.includes(k)) adv++; }
+  for (const k of SUPPORTIVE_WORDS) { if (normQuestion.includes(k)) sup++; }
+  let isAdversarial = adv > sup && adv > 0;
+
+  // Framing override: detect "X é ladrão" / "corrupcao do X" patterns
+  if (!isAdversarial && adv === 0) {
+    const figName = hasLula ? 'lula' : 'bolsonaro';
+    const framing = detectFraming(normQuestion, figName);
+    if (framing === 'adversarial') isAdversarial = true;
+  }
 
   // Helper: determine support level for a figure → score
   function figureScore(supports: boolean, opposes: boolean, adversarial: boolean): number {
@@ -983,7 +1051,7 @@ export function computePersonaScore(
 
     // Conviction compresses toward 5.0 (indifference) for low-conviction personas
     const conviction = computeConviction(persona, normQuestion);
-    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.65, conviction);
+    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.50, conviction);
 
     // Add noise: ±0.75 points
     const noise = (Math.random() - 0.5) * 1.5;
