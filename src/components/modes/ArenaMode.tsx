@@ -331,9 +331,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let useFallback = false;
     let simulation: any = null;
 
-    // Segments and stateBreakdown come directly from Python backend
+    // Segments, stateBreakdown, and ideology data come directly from Python backend
     let pythonSegments: AllSegments | undefined;
     let pythonStateBreakdown: Record<string, { count: number; positive: number; negative: number; neutral: number }> | undefined;
+    let pythonIdeology: ArenaLiveData['liveIdeology'] | undefined;
 
     /** Compute avgScore from Python sentiment counts */
     const computeAvgFromCounts = (pos: number, neg: number, neu: number): number => {
@@ -410,6 +411,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       neutral: simulation?.neutral || 0,
                       segments: pythonSegments,
                       stateBreakdown: pythonStateBreakdown,
+                      liveIdeology: pythonIdeology,
                     });
                   } else if (pythonPhase === 'processing_personas') {
                     // Stay in collecting until first real progress event arrives
@@ -457,6 +459,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   if (payload.data.stateBreakdown) {
                     pythonStateBreakdown = payload.data.stateBreakdown;
                   }
+                  // Update ideology data (politicalFigures, quadrants, clusterResults)
+                  if (payload.data.politicalFigures || payload.data.quadrants || payload.data.clusterResults) {
+                    pythonIdeology = {
+                      quadrants: payload.data.quadrants || pythonIdeology?.quadrants || [],
+                      clusterResults: payload.data.clusterResults || pythonIdeology?.clusterResults || [],
+                      politicalFigures: payload.data.politicalFigures || pythonIdeology?.politicalFigures || [],
+                    };
+                  }
                   // Use avgScore from Python AI scoring when available, fallback to local heuristic
                   const progressAvg = payload.data.avgScore != null
                     ? payload.data.avgScore
@@ -475,6 +485,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     scoreSum: progressScoreSum,
                     segments: pythonSegments,
                     stateBreakdown: pythonStateBreakdown,
+                    liveIdeology: pythonIdeology,
                   });
                   simulation = {
                     total: payload.data.total,
@@ -533,6 +544,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     totalPersonas: doneTotal,
                     segments: pythonSegments,
                     stateBreakdown: pythonStateBreakdown,
+                    liveIdeology: pythonIdeology,
                   });
                   onProcessing(false);
                   break;
@@ -568,6 +580,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
         });
         onProcessing(false);
       } else if (!streamDone && !hasResults) {
@@ -593,6 +606,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
         });
         onProcessing(false);
         return;
@@ -616,6 +630,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
         });
         onProcessing(false);
         return;

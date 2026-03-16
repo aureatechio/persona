@@ -306,6 +306,9 @@ async def analyze(request: AnalyzeRequest):
                     )
                     progress_data["segments"] = inc_agg.get("segments")
                     progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
+                    progress_data["politicalFigures"] = inc_agg.get("politicalFigures", [])
+                    progress_data["quadrants"] = inc_agg.get("quadrants", [])
+                    progress_data["clusterResults"] = inc_agg.get("clusterResults", [])
                     last_segment_count = progress.processed
                 except Exception as seg_err:
                     print(f"[Pipeline] Incremental segment error: {seg_err}")
