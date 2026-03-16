@@ -72,14 +72,19 @@ def classify_batch(
     personas_block = "\n".join(persona_texts)
     count = len(personas)
 
-    context_section = ""
-    if context_text:
-        context_section = f"\nContexto adicional: {context_text}\n"
+    # When context_text is the primary content (longer than question), use it as the debate topic
+    if context_text and len(context_text) > len(question):
+        prompt_header = f'Tema em debate:\n"{context_text[:3000]}"\n'
+        if question and question != context_text[:500]:
+            prompt_header += f'\nPergunta associada: "{question}"\n'
+    else:
+        prompt_header = f'Pergunta em debate: "{question}"\n'
+        if context_text:
+            prompt_header += f'\nContexto adicional: {context_text}\n'
 
     prompt = f"""Voce e um simulador de opiniao publica brasileira.
 
-Pergunta em debate: "{question}"
-{context_section}
+{prompt_header}
 Abaixo estao {count} personas sinteticas com seus perfis demograficos e opinioes.
 Para CADA persona, analise o perfil completo (ideologia, religiao, classe, educacao, respostas anteriores) e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) sobre a pergunta.
 

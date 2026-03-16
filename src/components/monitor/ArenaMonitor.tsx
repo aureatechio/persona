@@ -50,6 +50,7 @@ interface ContextExtractionData {
   claudeSummary: string | null;
   enrichedContext: string | null;
   generatedQuestion: string | null;
+  politicalFigures: Array<{ nome: string; alinhamento: string; posicao_autor: string }> | null;
 }
 
 /* Step detail data stored from verbose events */
@@ -94,6 +95,8 @@ interface StepDetails {
 
 interface PipelineState {
   question: string;
+  topic: string;
+  corePoint: string;
   contextExtraction: ContextExtractionData | null;
   nodes: Record<string, NodeStatus>;
   logs: LogEntry[];
@@ -117,6 +120,8 @@ const initialStepDetails: StepDetails = {
 
 const initialState: PipelineState = {
   question: '',
+  topic: '',
+  corePoint: '',
   contextExtraction: null,
   nodes: {
     contextExtraction: 'idle',
@@ -286,6 +291,36 @@ function ContextExtractionPanel({ data }: { data: ContextExtractionData }) {
         <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
           <p className="text-[9px] font-bold uppercase tracking-wider text-violet-400 mb-1.5">Ponto Central</p>
           <p className="text-[12px] text-zinc-200 leading-relaxed font-medium">{data.corePoint}</p>
+        </div>
+      )}
+
+      {/* Political Figures */}
+      {data.politicalFigures && data.politicalFigures.length > 0 && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-2.5">Figuras Politicas</p>
+          <div className="space-y-2">
+            {data.politicalFigures.map((fig, i) => {
+              const alignColor: Record<string, string> = {
+                'direita': 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+                'centro-direita': 'bg-sky-500/15 text-sky-400 border-sky-500/20',
+                'centro': 'bg-zinc-500/15 text-zinc-300 border-zinc-500/20',
+                'centro-esquerda': 'bg-orange-500/15 text-orange-400 border-orange-500/20',
+                'esquerda': 'bg-red-500/15 text-red-400 border-red-500/20',
+              };
+              const colorClass = alignColor[fig.alinhamento] || alignColor['centro'];
+              return (
+                <div key={i} className="flex items-center gap-2.5">
+                  <span className="text-[11px] text-white font-medium min-w-0">{fig.nome}</span>
+                  <span className={cn('text-[9px] px-2 py-0.5 rounded-full border font-medium shrink-0', colorClass)}>
+                    {fig.alinhamento}
+                  </span>
+                  <span className="text-[9px] text-zinc-600 shrink-0">
+                    {fig.posicao_autor === 'a favor' ? 'autor a favor' : fig.posicao_autor === 'contra' ? 'autor contra' : 'neutro'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1062,13 +1097,31 @@ export function ArenaMonitor() {
 
         case 'pipeline_start': {
           logIdRef.current = 0;
+          const hasMedia = payload.data.hasMedia;
           setState({
             ...initialState,
             question: payload.data.question,
+            topic: payload.data.question,
+            corePoint: '',
             startTime: Date.now(),
             listening: true,
+            nodes: {
+              ...initialState.nodes,
+              // Media: contextExtraction will go through running → complete
+              // Text-only: contextExtraction completes immediately via context_extracted
+              contextExtraction: hasMedia ? 'running' : 'idle',
+            },
           });
           addLog('system', 'info', `Pipeline iniciado: "${payload.data.question}"`);
+          if (hasMedia) {
+            addLog('contextExtraction', 'info', 'Extraindo conteudo da midia...');
+          }
+          break;
+        }
+
+        case 'context_extracting': {
+          updateNode('contextExtraction', 'running');
+          addLog('contextExtraction', 'info', 'Analisando midia com IA...');
           break;
         }
 
@@ -1078,14 +1131,31 @@ export function ArenaMonitor() {
           addLog('contextExtraction', 'info',
             d.rawTranscript
               ? `Transcricao extraida: ${d.rawTranscript.length.toLocaleString('pt-BR')} caracteres`
-              : 'Contexto extraido da midia',
+              : 'Contexto recebido',
           );
           if (d.corePoint) {
             addLog('contextExtraction', 'info', `Ponto central: ${d.corePoint}`);
           }
+          if (d.politicalFigures?.length > 0) {
+            addLog('contextExtraction', 'info',
+              `Figuras politicas: ${d.politicalFigures.map((f: any) => `${f.nome} (${f.alinhamento})`).join(', ')}`,
+            );
+          }
           setState(prev => ({
             ...prev,
             contextExtraction: d,
+            topic: d.corePoint || prev.topic || prev.question,
+            corePoint: d.corePoint || prev.corePoint,
+          }));
+          break;
+        }
+
+        case 'pipeline_topic': {
+          setState(prev => ({
+            ...prev,
+            topic: payload.data.topic || prev.topic,
+            corePoint: payload.data.corePoint || prev.corePoint,
+            question: payload.data.question || prev.question,
           }));
           break;
         }
@@ -1375,17 +1445,19 @@ export function ArenaMonitor() {
             </div>
           </div>
 
-          {/* Question display */}
+          {/* Context / Topic display */}
           <div className="flex-1 flex items-center gap-3 max-w-2xl">
-            {state.question ? (
+            {(state.topic || state.question) ? (
               <div className="flex-1 px-4 py-2.5 bg-white/[0.03] border border-white/[0.06] rounded-xl">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-0.5">Pergunta detectada</p>
-                <p className="text-sm text-white truncate">{state.question}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-0.5">
+                  {state.corePoint ? 'Ponto Central' : 'Contexto em analise'}
+                </p>
+                <p className="text-sm text-white truncate">{state.topic || state.question}</p>
               </div>
             ) : (
               <div className="flex-1 flex items-center gap-2 px-4 py-3 bg-white/[0.02] border border-dashed border-white/[0.06] rounded-xl">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <p className="text-xs text-zinc-500">Aguardando pergunta na tela principal...</p>
+                <p className="text-xs text-zinc-500">Aguardando conteudo na tela principal...</p>
               </div>
             )}
           </div>

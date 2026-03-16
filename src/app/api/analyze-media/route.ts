@@ -27,6 +27,24 @@ Sua tarefa: analisar o conteudo fornecido (video, imagem, screenshot, print de t
 
 3. **PONTO_CENTRAL** (obrigatorio): Uma frase curta e precisa que resume a TESE PRINCIPAL do autor. Ex: "O autor defende que Fulano deveria estar preso por corrupcao."
 
+4. **FIGURAS_POLITICAS** (obrigatorio se houver figuras publicas): Lista de figuras publicas mencionadas com alinhamento politico. Para CADA figura, informe:
+   - nome: nome completo ou como e conhecida
+   - alinhamento: "direita", "centro-direita", "centro", "centro-esquerda", "esquerda"
+   - posicao_autor: como o autor do conteudo se posiciona em relacao a essa figura ("a favor", "contra", "neutro")
+
+   Exemplos de alinhamento conhecidos:
+   - Bolsonaro, familia Bolsonaro → direita
+   - Nicolas Ferreira → direita
+   - Pablo Marcal → direita
+   - Tarcisio de Freitas → centro-direita
+   - Lula → esquerda
+   - Marina Silva → centro-esquerda
+   - Guilherme Boulos → esquerda
+   - Ciro Gomes → centro-esquerda
+   - Tabata Amaral → centro
+   - Simone Tebet → centro
+   - Se nao souber o alinhamento, infira pelo contexto ou omita a figura
+
 Regras para o CONTEXTO:
 - O contexto e um RESUMO BREVE para referencia — a transcricao completa sera enviada separadamente as personas
 - Identifique o PONTO CENTRAL ESPECIFICO — a tese, opiniao ou afirmacao principal do autor
@@ -58,9 +76,10 @@ Regras para a PERGUNTA (quando solicitada):
   - Autor: "O Pablo Marcal e um perigo" → "Politicos populistas sao perigosos?" (ERRADO - generalizou)
 
 FORMATO DE RESPOSTA (JSON):
-{"context": "...", "core_point": "...", "generated_question": "..."}
+{"context": "...", "core_point": "...", "generated_question": "...", "political_figures": [{"nome": "...", "alinhamento": "...", "posicao_autor": "..."}]}
 
 Se nao foi pedida pergunta, omita o campo generated_question.
+Se nao houver figuras politicas, use "political_figures": [].
 Responda APENAS o JSON, sem markdown, sem code blocks.`;
 
 export async function POST(request: Request) {
@@ -165,6 +184,7 @@ export async function POST(request: Request) {
       const context = parsed.context || cleanText;
       const corePoint = parsed.core_point || '';
       const generatedQuestion = parsed.generated_question || '';
+      const politicalFigures = parsed.political_figures || [];
 
       // ── Fidelity verification: check if core_point and question preserve specifics ──
       // Extract transcriptions from the original attachments for comparison
@@ -211,6 +231,7 @@ Responda APENAS com JSON (sem markdown):
                 return NextResponse.json({
                   context,
                   core_point: corePoint,
+                  political_figures: politicalFigures,
                   ...(verification.corrected_question && { generated_question: verification.corrected_question }),
                   fidelity_corrected: true,
                   fidelity_issue: verification.issue,
@@ -226,6 +247,7 @@ Responda APENAS com JSON (sem markdown):
       return NextResponse.json({
         context,
         core_point: corePoint,
+        political_figures: politicalFigures,
         ...(generatedQuestion && { generated_question: generatedQuestion }),
       });
     } catch {

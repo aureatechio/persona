@@ -85,8 +85,13 @@ async def analyze(request: Request):
     question = body.get("question", "")
     context_text = body.get("context_text")
 
-    if not question:
-        return {"error": "Missing question"}
+    # Accept either question or context_text as primary input
+    if not question and not context_text:
+        return {"error": "Missing question or context_text"}
+
+    # When context is primary (e.g. video transcript), use truncated context as question label
+    if not question and context_text:
+        question = context_text[:500]
 
     async def event_stream():
         personas = _ensure_cache()

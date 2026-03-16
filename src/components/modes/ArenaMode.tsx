@@ -96,6 +96,16 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     let enrichedContext = contextText || '';
     let mediaCorePoint = '';
+    let politicalFigures: Array<{ nome: string; alinhamento: string; posicao_autor: string }> = [];
+
+    // Broadcast pipeline start EARLY so monitor shows activity immediately
+    broadcastToMonitor({
+      type: 'pipeline_start',
+      data: {
+        question: q || '(extraindo do conteudo...)',
+        hasMedia: !!hasMedia,
+      },
+    });
 
     const mediaPreviews = hasMedia
       ? attachments.map(a => ({ type: a.type, preview: a.preview, name: a.name }))
@@ -159,6 +169,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         data: { previews: scannerPreviews, phase: 'Analisando midia com IA...' },
       });
 
+      // Notify monitor that context extraction is in progress
+      broadcastToMonitor({ type: 'context_extracting', data: { phase: 'analyzing' } });
+
       try {
         const mediaRes = await fetch('/api/analyze-media', {
           method: 'POST',
@@ -186,6 +199,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             mediaCorePoint = mediaData.core_point;
           }
 
+          // Capture political figures
+          if (mediaData.political_figures?.length > 0) {
+            politicalFigures = mediaData.political_figures;
+          }
+
           // Use RAW TRANSCRIPT as primary context (not the Claude summary)
           // The Claude summary is only used for core_point and generated_question
           if (rawTranscript) {
@@ -199,6 +217,14 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               : mediaData.context;
           }
 
+          // Append political figures context for personas
+          if (politicalFigures.length > 0) {
+            const figuresContext = politicalFigures
+              .map((f: any) => `${f.nome} (alinhamento: ${f.alinhamento}) — autor ${f.posicao_autor} a essa figura`)
+              .join('\n');
+            enrichedContext += `\n\n--- Figuras politicas mencionadas ---\n${figuresContext}`;
+          }
+
           // Broadcast context extraction to monitor
           broadcastToMonitor({
             type: 'context_extracted',
@@ -210,6 +236,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               claudeSummary: mediaData.context || null,
               enrichedContext: enrichedContext || null,
               generatedQuestion: mediaData.generated_question || null,
+              politicalFigures: politicalFigures.length > 0 ? politicalFigures : null,
             },
           });
         } else {
@@ -226,12 +253,27 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     }
 
     if (!q && !hasMedia) return;
-    // For media-only submissions where no question was generated, use a neutral question
-    if (!q && hasMedia) q = 'Analise este conteudo';
+    // For media-only submissions where no question was generated, derive from corePoint
+    if (!q && hasMedia) q = mediaCorePoint || 'Analise este conteudo';
 
     // ── Show collecting block IMMEDIATELY (zero delay) ──────────────────────
     // Only add block if not already showing media-scanning (which uses same blockId)
     if (!processedAttachments?.length) {
+      // Text-only submission — broadcast context_extracted with the question/context
+      broadcastToMonitor({
+        type: 'context_extracted',
+        data: {
+          rawTranscript: null,
+          title: null,
+          author: null,
+          corePoint: q,
+          claudeSummary: null,
+          enrichedContext: contextText || null,
+          generatedQuestion: null,
+          politicalFigures: null,
+        },
+      });
+
       const immediateData: ArenaLiveData = {
         question: q,
         phase: 'collecting',
@@ -251,8 +293,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: immediateData });
     }
 
-    // Broadcast pipeline start to monitor (always goes to Python backend)
-    broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
+    // Update monitor with final topic/question after all extraction is done
+    broadcastToMonitor({
+      type: 'pipeline_topic',
+      data: { topic: mediaCorePoint || q, corePoint: mediaCorePoint || null, question: q },
+    });
 
     // ── Full analysis with streaming live block ─────────────────────────────
     const baseLiveData: ArenaLiveData = {
