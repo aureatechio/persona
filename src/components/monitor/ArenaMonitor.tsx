@@ -6,9 +6,12 @@ import {
   Cpu, BarChart3, ChevronDown, ChevronRight,
   Database, AlertCircle, CheckCircle2, Loader2,
   MessageSquare, ArrowDown, GitBranch, Minus, Radio,
-  ExternalLink, FileText, Eye,
+  ExternalLink, FileText, Eye, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { AllSegments, SegmentItem } from '@/lib/arena/segments';
+import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
+import { scoreToEmoji, scoreToLabel, scoreToColor } from '@/lib/arena/types';
 
 /* ================================================================
    Types
@@ -35,6 +38,7 @@ interface BatchDetail {
     age: number;
     sentiment: string;
     comment: string;
+    score?: number;
   }>;
 }
 
@@ -93,6 +97,8 @@ interface PipelineState {
   batches: BatchDetail[];
   stepDetails: StepDetails;
   progress: { processed: number; total: number; positive: number; negative: number; neutral: number };
+  avgScore: number;
+  segments: AllSegments | null;
   startTime: number | null;
   endTime: number | null;
   listening: boolean;
@@ -124,6 +130,8 @@ const initialState: PipelineState = {
   batches: [],
   stepDetails: { ...initialStepDetails },
   progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0 },
+  avgScore: 0,
+  segments: null,
   startTime: null,
   endTime: null,
   listening: false,
@@ -689,6 +697,8 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
         const pos = batch.personas_summary.filter(p => p.sentiment === 'positive').length;
         const neg = batch.personas_summary.filter(p => p.sentiment === 'negative').length;
         const neu = batch.personas_summary.filter(p => p.sentiment === 'neutral').length;
+        const scoresInBatch = batch.personas_summary.filter(p => typeof p.score === 'number').map(p => p.score!);
+        const batchAvgScore = scoresInBatch.length > 0 ? scoresInBatch.reduce((a, b) => a + b, 0) / scoresInBatch.length : 0;
 
         return (
           <div key={idx} className="rounded-xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
@@ -707,6 +717,11 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
               </span>
               <span className="text-[10px] text-zinc-500">{batch.persona_count} personas</span>
               <div className="flex-1" />
+              {batchAvgScore > 0 && (
+                <span className={cn('text-[10px] font-bold tabular-nums', scoreToColor(batchAvgScore))}>
+                  {scoreToEmoji(batchAvgScore)} {batchAvgScore.toFixed(1)}
+                </span>
+              )}
               <div className="flex items-center gap-2 text-[9px] tabular-nums">
                 <span className="text-emerald-400">{pos}+</span>
                 <span className="text-rose-400">{neg}-</span>
@@ -722,7 +737,7 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
                       <th className="text-left px-3 py-2 w-36">Persona</th>
                       <th className="text-left px-3 py-2 w-12">UF</th>
                       <th className="text-left px-3 py-2 w-10">Idade</th>
-                      <th className="text-center px-3 py-2 w-16">Sent.</th>
+                      <th className="text-center px-3 py-2 w-16">Score</th>
                       <th className="text-left px-3 py-2">Resposta da Persona</th>
                     </tr>
                   </thead>
@@ -733,14 +748,20 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
                         <td className="px-3 py-1.5 text-zinc-500">{p.state}</td>
                         <td className="px-3 py-1.5 text-zinc-500 tabular-nums">{p.age}</td>
                         <td className="px-3 py-1.5 text-center">
-                          <span className={cn(
-                            'inline-block px-1.5 py-0.5 rounded-full text-[9px] font-bold',
-                            p.sentiment === 'positive' ? 'bg-emerald-500/10 text-emerald-400' :
-                            p.sentiment === 'negative' ? 'bg-rose-500/10 text-rose-400' :
-                            'bg-amber-500/10 text-amber-400',
-                          )}>
-                            {p.sentiment === 'positive' ? 'A favor' : p.sentiment === 'negative' ? 'Contra' : 'Neutro'}
-                          </span>
+                          {typeof p.score === 'number' ? (
+                            <span className={cn('text-[10px] font-bold tabular-nums', scoreToColor(p.score))}>
+                              {scoreToEmoji(p.score)} {p.score.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className={cn(
+                              'inline-block px-1.5 py-0.5 rounded-full text-[9px] font-bold',
+                              p.sentiment === 'positive' ? 'bg-emerald-500/10 text-emerald-400' :
+                              p.sentiment === 'negative' ? 'bg-rose-500/10 text-rose-400' :
+                              'bg-amber-500/10 text-amber-400',
+                            )}>
+                              {p.sentiment === 'positive' ? 'A favor' : p.sentiment === 'negative' ? 'Contra' : 'Neutro'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-1.5 text-zinc-400 max-w-xs">
                           <span className="line-clamp-3">{p.comment}</span>
@@ -759,27 +780,106 @@ function BatchInspector({ batches }: { batches: BatchDetail[] }) {
 }
 
 /* ================================================================
+   Segments Panel
+   ================================================================ */
+
+const SEGMENT_LABELS: Record<string, string> = {
+  gender: 'Gênero', religion: 'Religião', race: 'Raça/Cor', region: 'Região',
+  generation: 'Geração', socialClass: 'Classe Social', education: 'Escolaridade',
+  politicalLeaning: 'Posição Política', voto2022: 'Voto 2022', aprovacaoLula: 'Aprovação Lula',
+  voto2026: 'Voto 2026', archetype: 'Arquétipo', clusterMacro: 'Cluster Macro',
+  scoreEco: 'Eixo Econômico', scoreCost: 'Eixo Costumes',
+};
+
+function SegmentsPanel({ segments }: { segments: AllSegments | null }) {
+  if (!segments) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <div className="w-12 h-12 rounded-xl bg-zinc-900/50 flex items-center justify-center mb-3">
+          <Layers size={20} className="text-zinc-700" />
+        </div>
+        <p className="text-[11px] text-zinc-600">Nenhum segmento disponível</p>
+        <p className="text-[9px] text-zinc-700 mt-1">Os segmentos aparecem durante o processamento</p>
+      </div>
+    );
+  }
+
+  const categories = Object.entries(segments).filter(
+    ([, items]) => items && items.length > 0,
+  ) as [string, SegmentItem[]][];
+
+  if (categories.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full">
+        <div className="w-12 h-12 rounded-xl bg-zinc-900/50 flex items-center justify-center mb-3">
+          <Layers size={20} className="text-zinc-700" />
+        </div>
+        <p className="text-[11px] text-zinc-600">Segmentos vazios</p>
+      </div>
+    );
+  }
+
+  const maxCount = Math.max(...categories.flatMap(([, items]) => items.map(i => i.count)));
+
+  return (
+    <div className="overflow-y-auto h-full px-4 py-3 space-y-5 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+      {categories.map(([key, items]) => (
+        <div key={key}>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">
+            {SEGMENT_LABELS[key] || key}
+          </p>
+          <div className="space-y-1">
+            {items.map(item => (
+              <div key={item.label} className="flex items-center gap-2 group">
+                <span className="text-[10px] text-zinc-400 w-28 truncate shrink-0">{item.label}</span>
+                <span className="text-[9px] text-zinc-600 w-8 text-right tabular-nums shrink-0">{item.count}</span>
+                <div className="flex-1 h-3 bg-zinc-900/50 rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${maxCount > 0 ? (item.count / maxCount) * 100 : 0}%`,
+                      background: item.avgScore <= 2 ? '#fb7185' : item.avgScore <= 4 ? '#fb923c' : item.avgScore <= 6 ? '#fbbf24' : item.avgScore <= 8 ? '#34d399' : '#6ee7b7',
+                    }}
+                  />
+                </div>
+                <span className={cn('text-[10px] font-bold tabular-nums w-14 text-right shrink-0', scoreToColor(item.avgScore))}>
+                  {scoreToEmoji(item.avgScore)} {item.avgScore.toFixed(1)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ================================================================
    Progress Stats
    ================================================================ */
 
-function ProgressStats({ progress, startTime, endTime }: {
+function ProgressStats({ progress, startTime, endTime, avgScore }: {
   progress: PipelineState['progress'];
   startTime: number | null;
   endTime: number | null;
+  avgScore: number;
 }) {
   const elapsed = startTime ? ((endTime || Date.now()) - startTime) / 1000 : 0;
   const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
   const rate = elapsed > 0 && progress.processed > 0 ? Math.round(progress.processed / elapsed) : 0;
 
+  const stats = [
+    { label: 'Personas', value: `${progress.processed.toLocaleString('pt-BR')}/${progress.total.toLocaleString('pt-BR')}`, color: 'text-white' },
+    { label: 'Progresso', value: `${pct}%`, color: 'text-violet-400' },
+    ...(avgScore > 0
+      ? [{ label: scoreToLabel(avgScore), value: `${scoreToEmoji(avgScore)} ${avgScore.toFixed(1)}`, color: scoreToColor(avgScore) }]
+      : []),
+    { label: 'Velocidade', value: `${rate}/s`, color: 'text-sky-400' },
+  ];
+
   return (
-    <div className="grid grid-cols-5 gap-2 px-4 py-3">
-      {[
-        { label: 'Personas', value: `${progress.processed.toLocaleString('pt-BR')}/${progress.total.toLocaleString('pt-BR')}`, color: 'text-white' },
-        { label: 'Progresso', value: `${pct}%`, color: 'text-violet-400' },
-        { label: 'A Favor', value: progress.positive.toLocaleString('pt-BR'), color: 'text-emerald-400' },
-        { label: 'Contra', value: progress.negative.toLocaleString('pt-BR'), color: 'text-rose-400' },
-        { label: 'Velocidade', value: `${rate}/s`, color: 'text-sky-400' },
-      ].map(s => (
+    <div className={cn('grid gap-2 px-4 py-3', `grid-cols-${stats.length}`)}>
+      {stats.map(s => (
         <div key={s.label} className="text-center">
           <p className={cn('text-sm font-bold tabular-nums', s.color)}>{s.value}</p>
           <p className="text-[9px] font-semibold uppercase tracking-wider text-zinc-600">{s.label}</p>
@@ -889,7 +989,7 @@ function StepDetailView({ nodeKey, stepDetails, classifierDecision, batches }: {
 export function ArenaMonitor() {
   const [state, setState] = useState<PipelineState>({ ...initialState });
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [rightTab, setRightTab] = useState<'detail' | 'logs' | 'batches'>('detail');
+  const [rightTab, setRightTab] = useState<'detail' | 'logs' | 'batches' | 'segments'>('detail');
   const logIdRef = useRef(0);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [tick, setTick] = useState(0);
@@ -1193,6 +1293,34 @@ export function ArenaMonitor() {
             return { ...prev, nodes: updated, endTime: Date.now() };
           });
           break;
+
+        /* ── Live update from ArenaMode (score-based) ─────── */
+        case 'arena-live-update': {
+          const live = payload.data as ArenaLiveData;
+          setState(prev => ({
+            ...prev,
+            question: prev.question || live.question || '',
+            avgScore: live.avgScore ?? prev.avgScore,
+            segments: live.segments ?? prev.segments,
+            progress: {
+              processed: live.processedCount ?? prev.progress.processed,
+              total: live.totalCount ?? prev.progress.total,
+              positive: live.positive ?? prev.progress.positive,
+              negative: live.negative ?? prev.progress.negative,
+              neutral: live.neutral ?? prev.progress.neutral,
+            },
+          }));
+          break;
+        }
+
+        case 'arena-reset': {
+          logIdRef.current = 0;
+          setState({
+            ...initialState,
+            listening: true,
+          });
+          break;
+        }
       }
     };
 
@@ -1340,7 +1468,7 @@ export function ArenaMonitor() {
         <div className="flex-1 flex flex-col min-w-0">
           {state.progress.total > 0 && (
             <div className="shrink-0 border-b border-white/[0.06]">
-              <ProgressStats progress={state.progress} startTime={state.startTime} endTime={state.endTime} />
+              <ProgressStats progress={state.progress} startTime={state.startTime} endTime={state.endTime} avgScore={state.avgScore} />
             </div>
           )}
 
@@ -1349,6 +1477,7 @@ export function ArenaMonitor() {
               { key: 'detail' as const, label: () => selectedNode ? `Detalhes — ${NODE_LABELS[selectedNode] || selectedNode}` : 'Detalhes' },
               { key: 'logs' as const, label: () => `Logs (${state.logs.length})` },
               { key: 'batches' as const, label: () => `Lotes (${state.batches.length})` },
+              { key: 'segments' as const, label: () => `Segmentos` },
             ]).map(tab => (
               <button
                 key={tab.key}
@@ -1387,6 +1516,8 @@ export function ArenaMonitor() {
               )
             ) : rightTab === 'logs' ? (
               <LogPanel logs={state.logs} selectedNode={selectedNode} />
+            ) : rightTab === 'segments' ? (
+              <SegmentsPanel segments={state.segments} />
             ) : (
               <BatchInspector batches={state.batches} />
             )}

@@ -840,19 +840,22 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
             const label = scoreToLabel(score);
             const hex = scoreToHex(score);
             return (
-              <div className="flex items-center gap-3">
-                {/* Score badge */}
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-                  <span className="text-lg leading-none">{emoji}</span>
-                  <span className="text-lg font-black tabular-nums" style={{ color: hex }}>{score.toFixed(1)}</span>
-                  <span className="text-xs font-semibold" style={{ color: `${hex}cc` }}>{label}</span>
+              <div className="flex items-center gap-4">
+                {/* Score badge — hero size */}
+                <div className="relative flex items-center gap-3 px-5 py-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] backdrop-blur-xl" style={{ borderColor: `${hex}30` }}>
+                  <div className="absolute inset-0 rounded-2xl pointer-events-none opacity-20" style={{ background: `radial-gradient(ellipse at center, ${hex}25, transparent 70%)` }} />
+                  <span className="text-3xl leading-none relative">{emoji}</span>
+                  <div className="flex flex-col relative">
+                    <span className="text-3xl font-black tabular-nums leading-none tracking-tight" style={{ color: hex }}>{score.toFixed(1)}</span>
+                    <span className="text-xs font-bold mt-0.5" style={{ color: `${hex}cc` }}>{label}</span>
+                  </div>
                 </div>
-                {/* Mini gradient bar */}
-                <div className="flex-1 h-2 rounded-full overflow-hidden relative bg-zinc-900/80">
+                {/* Gradient bar */}
+                <div className="flex-1 h-2.5 rounded-full overflow-hidden relative bg-zinc-900/80">
                   <div className="absolute inset-0 rounded-full opacity-30"
                     style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
-                  <div className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-[3s]"
-                    style={{ left: `calc(${(score / 10) * 100}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
+                  <div className="absolute top-0 h-full w-[7px] rounded-full transition-all duration-[3s]"
+                    style={{ left: `calc(${(score / 10) * 100}% - 3.5px)`, backgroundColor: hex, boxShadow: `0 0 10px ${hex}90` }} />
                 </div>
               </div>
             );
