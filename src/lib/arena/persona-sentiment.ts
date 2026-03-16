@@ -572,87 +572,80 @@ function computeHolisticScore(
   persona: Record<string, any>,
   normQuestion: string,
 ): number {
-  const humanFields = [
-    'q_democracia_importante', 'q_direitos_lgbt', 'q_racismo_estrutural',
-    'q_feminismo_bom', 'q_adocao_homoafetiva', 'q_vacinas_confiar',
-    'q_ciencia_importante', 'q_amazonia_preservar', 'q_sus_funciona',
-    'q_universidade_publica_gratuita', 'q_bolsa_familia_bom',
-    'q_mudanca_climatica_real', 'q_energia_renovavel',
-  ];
-  const authFields = [
-    'q_pena_morte', 'q_prisao_perpetua', 'q_maioridade_penal_16',
-    'q_intervencao_militar', 'q_crack_internar_forcado',
-    'q_camera_facial_aceita', 'q_seguranca_prioridade',
-    'q_ti_linchamento_apoiaria', 'q_ti_tortura_preso_ok',
-  ];
-  const tradFields = [
-    'q_familia_tradicional', 'q_religiao_politica', 'q_genero_biologico',
-    'tema_casamento_gay', 'q_ideologia_genero_escola', 'q_linguagem_neutra',
-    'q_ti_homofobia_violenta', 'q_ti_bater_filho_normal',
-  ];
-  const ecoLibFields = [
-    'tema_privatizacoes', 'q_estado_tamanho', 'q_teto_gastos',
-    'q_previdencia_reforma', 'q_bitcoin_confiar',
-  ];
-
-  let humanScore = 0, humanCount = 0;
-  let authScore = 0, authCount = 0;
-  let tradScore = 0, tradCount = 0;
-  let ecoLibScore = 0, ecoLibCount = 0;
-
-  for (const f of humanFields) {
-    const s = classifyResponse(persona[f]);
-    if (s !== 0 || persona[f] != null) { humanScore += s; humanCount++; }
-  }
-  for (const f of authFields) {
-    const s = classifyResponse(persona[f]);
-    if (s !== 0 || persona[f] != null) { authScore += s; authCount++; }
-  }
-  for (const f of tradFields) {
-    const s = classifyResponse(persona[f]);
-    if (s !== 0 || persona[f] != null) { tradScore += s; tradCount++; }
-  }
-  for (const f of ecoLibFields) {
-    const s = classifyResponse(persona[f]);
-    if (s !== 0 || persona[f] != null) { ecoLibScore += s; ecoLibCount++; }
-  }
-
-  const avgHuman = humanCount > 0 ? humanScore / humanCount : 0;
-  const avgAuth = authCount > 0 ? authScore / authCount : 0;
-  const avgTrad = tradCount > 0 ? tradScore / tradCount : 0;
-  const avgEcoLib = ecoLibCount > 0 ? ecoLibScore / ecoLibCount : 0;
+  // Use the persona's pre-computed ideological axes as primary signal.
+  // These are continuous -1..+1 values that reliably differentiate personas.
+  const scoreEco = persona.score_economico ?? 0;   // -1 (left) to +1 (right)
+  const scoreCost = persona.score_costumes ?? 0;    // -1 (progressive) to +1 (conservative)
 
   const isProgressiveTopic = [
     'direito', 'igualdade', 'inclusao', 'diversidade', 'sustentab',
     'social', 'protecao', 'liberdade', 'educacao', 'saude',
+    'meio ambiente', 'ecologia', 'renovavel', 'clima',
+    'democracia', 'transparencia', 'participacao',
   ].some(w => normQuestion.includes(w));
   const isConservativeTopic = [
     'ordem', 'disciplina', 'tradicao', 'moral', 'seguranca',
     'punicao', 'autoridade', 'familia', 'patria',
+    'costume', 'valores', 'fe', 'religiao', 'igreja',
   ].some(w => normQuestion.includes(w));
   const isEconomicTopic = [
     'econom', 'mercado', 'emprego', 'imposto', 'empresa',
     'cresciment', 'investiment', 'lucro', 'dinheiro',
+    'privatiz', 'estatal', 'industria', 'comercio',
+    'inflacao', 'pib', 'renda', 'salario',
+  ].some(w => normQuestion.includes(w));
+  const isLeftTopic = [
+    'desigualdade', 'redistribuicao', 'popular', 'trabalhador',
+    'sindicato', 'greve', 'reforma agraria', 'sem terra',
+    'movimento social', 'ocupacao', 'periferia', 'favela',
+  ].some(w => normQuestion.includes(w));
+  const isRightTopic = [
+    'empreendedor', 'livre mercado', 'propriedade', 'merito',
+    'competicao', 'eficiencia', 'producao', 'agronegocio',
   ].some(w => normQuestion.includes(w));
 
+  // Build signal from ideological axes based on question topic
   let signal = 0;
   let signalCount = 0;
 
-  if (isProgressiveTopic) { signal += avgHuman * 0.6 - avgTrad * 0.4; signalCount++; }
-  if (isConservativeTopic) { signal += avgTrad * 0.5 + avgAuth * 0.3; signalCount++; }
-  if (isEconomicTopic) { signal += avgEcoLib * 0.6; signalCount++; }
+  if (isProgressiveTopic) {
+    // Progressive topics → left-leaning & progressive personas agree more
+    signal += -scoreEco * 0.4 + -scoreCost * 0.6;
+    signalCount++;
+  }
+  if (isConservativeTopic) {
+    // Conservative topics → right-leaning & conservative personas agree more
+    signal += scoreCost * 0.6 + scoreEco * 0.3;
+    signalCount++;
+  }
+  if (isEconomicTopic) {
+    // Economic topics → use economic axis primarily
+    signal += scoreEco * 0.7 + scoreCost * 0.2;
+    signalCount++;
+  }
+  if (isLeftTopic) {
+    signal += -scoreEco * 0.7 + -scoreCost * 0.3;
+    signalCount++;
+  }
+  if (isRightTopic) {
+    signal += scoreEco * 0.7 + scoreCost * 0.2;
+    signalCount++;
+  }
+
   if (signalCount === 0) {
-    signal = avgHuman * 0.2 + avgAuth * 0.1 + avgTrad * 0.1 + avgEcoLib * 0.1;
+    // No specific topic detected — use combined ideological position
+    // This still differentiates personas: extreme left ≠ extreme right ≠ center
+    signal = (scoreEco + scoreCost) * 0.5;
     signalCount = 1;
   }
 
   // composite is roughly -1 to +1
-  const compositeSignal = signal / signalCount;
+  const compositeSignal = Math.max(-1, Math.min(1, signal / signalCount));
 
-  // Map to 0-10: composite * 2.5 + 5.0 puts -1→2.5, 0→5.0, +1→7.5
-  // Then add larger noise since this is indirect
-  const noise = (Math.random() - 0.5) * 2.5; // ±1.25 points
-  const raw = compositeSignal * 2.5 + 5.0 + noise;
+  // Map to 0-10 with wider spread:
+  // -1 → 2.0, 0 → 5.0, +1 → 8.0 (amplification = 3.0)
+  const noise = (Math.random() - 0.5) * 2.0; // ±1.0 points
+  const raw = compositeSignal * 3.0 + 5.0 + noise;
   return Math.max(0, Math.min(10, raw));
 }
 

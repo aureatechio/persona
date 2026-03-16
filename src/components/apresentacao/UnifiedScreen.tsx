@@ -143,19 +143,25 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
    Helpers
    ════════════════════════════════════════════════════════════════════ */
 
+/** Convert categorical counts to a weighted 0-10 score */
+function countsToScore(positive: number, negative: number, neutral: number, count: number): number {
+  if (count === 0) return 5.0;
+  return Math.round(((positive * 8.5 + neutral * 5.0 + negative * 1.5) / count) * 10) / 10;
+}
+
 function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentItem[] | undefined {
   if (!quadrants || quadrants.length === 0) return undefined;
-  return quadrants.map(q => ({ label: q.label, count: q.count, positive: q.positive, negative: q.negative, neutral: q.neutral, avgScore: q.count > 0 ? Math.round(((q.positive / q.count) * 10) * 10) / 10 : 5.0 }));
+  return quadrants.map(q => ({ label: q.label, count: q.count, positive: q.positive, negative: q.negative, neutral: q.neutral, avgScore: countsToScore(q.positive, q.negative, q.neutral, q.count) }));
 }
 
 function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): SegmentItem[] | undefined {
   if (!archetypes || archetypes.length === 0) return undefined;
-  return archetypes.map(a => ({ label: a.name, count: a.count, positive: a.positive, negative: a.negative, neutral: a.neutral, avgScore: a.count > 0 ? Math.round(((a.positive / a.count) * 10) * 10) / 10 : 5.0 }));
+  return archetypes.map(a => ({ label: a.name, count: a.count, positive: a.positive, negative: a.negative, neutral: a.neutral, avgScore: countsToScore(a.positive, a.negative, a.neutral, a.count) }));
 }
 
 function clustersToSegments(clusters: ClusterResult[] | undefined): SegmentItem[] | undefined {
   if (!clusters || clusters.length === 0) return undefined;
-  return clusters.map(c => ({ label: c.name, count: c.count, positive: c.positive, negative: c.negative, neutral: c.neutral, avgScore: c.count > 0 ? Math.round(((c.positive / c.count) * 10) * 10) / 10 : 5.0 }));
+  return clusters.map(c => ({ label: c.name, count: c.count, positive: c.positive, negative: c.negative, neutral: c.neutral, avgScore: countsToScore(c.positive, c.negative, c.neutral, c.count) }));
 }
 
 /* ════════════════════════════════════════════════════════════════════
