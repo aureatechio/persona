@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
         const userPrompt = buildUserPrompt(question, batch);
 
         const response = await client.chat.completions.create({
-          model: 'gpt-4o',
-          max_tokens: 2048,
+          model: 'gpt-4o-mini',
+          max_tokens: 1024,
           temperature: 1.2,
           top_p: 0.95,
           frequency_penalty: 0.3,

@@ -66,7 +66,7 @@ class Settings:
     openai_api_keys: list[str] = field(
         default_factory=lambda: _collect_keys("OPENAI_API_KEY")
     )
-    openai_model: str = "gpt-4o"
+    openai_model: str = "gpt-4o-mini"
 
     # Web search
     tavily_api_key: str = field(
@@ -78,7 +78,7 @@ class Settings:
     max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
     max_parallel_openai: int = 40  # semaphore-controlled, safe for 1vCPU/1GB
     claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
-    max_tokens_per_batch: int = 4096  # 10 personas × ~150 tokens each + overhead
+    max_tokens_per_batch: int = 1500  # 10 personas × ~80 tokens each (short comments)
 
     # Web search
     max_web_results: int = 5
