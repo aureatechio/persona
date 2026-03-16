@@ -645,19 +645,32 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       commentAcc.setTotal(data.length);
     }).catch(() => {});
 
-    /** Merge backend segments with local accumulator data for fields the backend doesn't provide */
+    /** Merge backend segments with local accumulator data.
+     *  Backend segments have counts but NO avgScore — we inject avgScore from local accumulator. */
     const mergeSegments = (backendSegs: Partial<AllSegments> | undefined): AllSegments => {
       const local = segAcc.toSegments();
       if (!backendSegs) return local;
-      return {
-        ...local,
-        ...backendSegs,
-        // Always use local data for fields the Python backend doesn't compute
-        archetype: backendSegs.archetype?.length ? backendSegs.archetype : local.archetype,
-        clusterMacro: backendSegs.clusterMacro?.length ? backendSegs.clusterMacro : local.clusterMacro,
-        scoreEco: backendSegs.scoreEco?.length ? backendSegs.scoreEco : local.scoreEco,
-        scoreCost: backendSegs.scoreCost?.length ? backendSegs.scoreCost : local.scoreCost,
-      };
+
+      // Build a lookup of local avgScores by segment key + label
+      const localScoreLookup: Record<string, Record<string, number>> = {};
+      for (const [key, items] of Object.entries(local)) {
+        localScoreLookup[key] = {};
+        for (const item of items as any[]) {
+          localScoreLookup[key][item.label] = item.avgScore ?? 5.0;
+        }
+      }
+
+      // Inject avgScore from local data into backend segments
+      const merged: any = { ...local };
+      for (const [key, items] of Object.entries(backendSegs)) {
+        if (!Array.isArray(items) || items.length === 0) continue;
+        merged[key] = items.map((item: any) => ({
+          ...item,
+          avgScore: item.avgScore ?? localScoreLookup[key]?.[item.label] ?? 5.0,
+        }));
+      }
+
+      return merged as AllSegments;
     };
 
     let pythonScoreSum = 0;
@@ -877,11 +890,15 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   emitLive(blockId, completeBase);
                   onProcessing(false);
 
-                  // Compute segments locally if backend didn't provide them
+                  // Compute segments locally with scores if backend didn't provide them
                   if (!doneSegments && allPersonas.length > 0 && !cancelledBlocksRef.current.has(blockId)) {
                     const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-                    const segs = computeAllSegments(allPersonas, (p) => computePersonaSentiment(p, queryForSeg));
-                    completeBase.segments = segs;
+                    const segAccLocal = new SegmentAccumulator();
+                    for (const p of allPersonas) {
+                      const s = computePersonaScore(p, queryForSeg);
+                      segAccLocal.addPersonaWithScore(p, s);
+                    }
+                    completeBase.segments = segAccLocal.toSegments();
                     emitLive(blockId, completeBase);
                   }
 
