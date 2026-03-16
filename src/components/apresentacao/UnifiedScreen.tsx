@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Users, MessageCircle } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult, PoliticalFigureDetection } from '@/lib/arena/types';
-import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid, AnimatedScore } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 import { SegmentRanking, Waiting } from './DashboardScreen';
 
@@ -35,10 +35,7 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
         <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
-        <span className="text-xl leading-none">{emoji}</span>
-        <p className="text-2xl font-black tabular-nums leading-none" style={{ color: hex }}>
-          {score.toFixed(1)}
-        </p>
+        <AnimatedScore value={score} className="text-2xl" duration={10000} />
         {/* Score bar */}
         <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{

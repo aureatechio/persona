@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult } from '@/lib/arena/types';
-import { ScoreHero, ScoreSegmentCard, ScoreBar } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, AnimatedScore } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -97,12 +97,7 @@ export const SegmentRanking = memo(function SegmentRanking({
                   <span className="text-[10px] font-bold text-zinc-300">{item.label}</span>
                 </div>
                 <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl leading-none">{hasData ? emoji : ''}</span>
-                    <span className="text-2xl font-black tabular-nums leading-none" style={{ color: hasData ? hex : '#52525b' }}>
-                      {hasData ? score.toFixed(1) : '—'}
-                    </span>
-                  </div>
+                  <AnimatedScore value={hasData ? score : 0} className="text-2xl" duration={10000} />
                   <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
                     <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
                     {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full " style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
@@ -144,11 +139,8 @@ export const SegmentRanking = memo(function SegmentRanking({
                 <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
                 {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full " style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
               </div>
-              <div className="flex items-center gap-1 shrink-0 w-[52px]">
-                <span className="text-sm leading-none">{hasData ? emoji : ''}</span>
-                <span className="text-sm font-black tabular-nums" style={{ color: hasData ? hex : '#52525b' }}>
-                  {hasData ? score.toFixed(1) : '—'}
-                </span>
+              <div className="shrink-0 w-[56px]">
+                <AnimatedScore value={hasData ? score : 0} className="text-sm" duration={10000} />
               </div>
             </div>
           );

@@ -1,11 +1,98 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { AnimatedNumber } from '@/hooks/useAnimatedValue';
 import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { ReactNode } from 'react';
+
+/* ════════════════════════════════════════════════════════════════════
+   Animated Score — smoothly interpolates a 0-10 score with decimal,
+   updating emoji and color in real time as the number climbs.
+   ════════════════════════════════════════════════════════════════════ */
+
+function useAnimatedScore(target: number, duration = 12000): number {
+  const [display, setDisplay] = useState(0);
+  const currentRef = useRef(0);
+  const startValRef = useRef(0);
+  const startTimeRef = useRef(0);
+  const frameRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevTargetRef = useRef(0);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    // First render: always animate from 0
+    if (!initialized.current) {
+      initialized.current = true;
+      if (target === 0) return;
+    }
+
+    if (prevTargetRef.current === target) return;
+    prevTargetRef.current = target;
+
+    startValRef.current = currentRef.current;
+    startTimeRef.current = Date.now();
+
+    const cleanup = () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      frameRef.current = null;
+      timerRef.current = null;
+    };
+
+    const animate = () => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 5); // quintic ease-out
+      const current = startValRef.current + (target - startValRef.current) * eased;
+      const rounded = Math.round(current * 10) / 10;
+      currentRef.current = rounded;
+      setDisplay(rounded);
+
+      if (progress < 1) {
+        if (typeof requestAnimationFrame !== 'undefined' && !document.hidden) {
+          frameRef.current = requestAnimationFrame(animate);
+        } else {
+          timerRef.current = setTimeout(animate, 32);
+        }
+      }
+    };
+
+    cleanup();
+    animate();
+    return cleanup;
+  }, [target, duration]);
+
+  return display;
+}
+
+/** Renders an animated score with emoji + color that updates as the number climbs */
+export function AnimatedScore({ value, duration = 12000, className, showEmoji = true, showLabel = false }: {
+  value: number;
+  duration?: number;
+  className?: string;
+  showEmoji?: boolean;
+  showLabel?: boolean;
+}) {
+  const animated = useAnimatedScore(value, duration);
+  const emoji = scoreToEmoji(animated);
+  const hex = scoreToHex(animated);
+  const label = scoreToLabel(animated);
+
+  return (
+    <span className={cn('inline-flex items-center gap-1', className)}>
+      {showEmoji && <span className="leading-none">{animated > 0 ? emoji : ''}</span>}
+      <span className="font-black tabular-nums" style={{ color: animated > 0 ? hex : '#52525b' }}>
+        {animated > 0 ? animated.toFixed(1) : '—'}
+      </span>
+      {showLabel && animated > 0 && (
+        <span className="font-bold text-xs" style={{ color: `${hex}cc` }}>{label}</span>
+      )}
+    </span>
+  );
+}
 
 /* ════════════════════════════════════════════════════════════════════
    Helpers
@@ -113,16 +200,9 @@ export function SpectrumGauge({
         {/* Dominant value — score of the largest bucket */}
         {(() => {
           const dScore = dominant.avgScore ?? 5.0;
-          const dEmoji = scoreToEmoji(dScore);
-          const dHex = scoreToHex(dScore);
           return (
             <div className="text-center">
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-2xl leading-none">{hasData ? dEmoji : ''}</span>
-                <p className="text-3xl font-black tabular-nums leading-none transition-colors duration-500" style={{ color: hasData ? dHex : '#52525b' }}>
-                  {hasData ? dScore.toFixed(1) : '—'}
-                </p>
-              </div>
+              <AnimatedScore value={hasData ? dScore : 0} className="text-3xl justify-center" duration={12000} />
               <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
             </div>
           );
@@ -183,10 +263,7 @@ export function SpectrumGauge({
             const bEmoji = scoreToEmoji(bScore);
             return (
               <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-                <span className="text-xs leading-none">{hasData ? bEmoji : ''}</span>
-                <span className="text-[10px] font-black tabular-nums" style={{ color: hasData ? bHex : '#52525b' }}>
-                  {hasData ? bScore.toFixed(1) : '—'}
-                </span>
+                <AnimatedScore value={hasData ? bScore : 0} className="text-[10px]" duration={10000} />
               </div>
             );
           })}
@@ -265,10 +342,7 @@ export function QuadrantGrid({
               </p>
               {/* Score indicator */}
               <div className="flex items-center gap-1.5">
-                <span className="text-base leading-none">{scoreToEmoji(score)}</span>
-                <span className="text-sm font-black tabular-nums" style={{ color: scoreToHex(score) }}>
-                  {hasQData ? score.toFixed(1) : '—'}
-                </span>
+                <AnimatedScore value={hasQData ? score : 0} className="text-sm" duration={10000} />
               </div>
             </div>
           );
@@ -305,13 +379,9 @@ export const ScoreHero = memo(function ScoreHero({
         {/* Glow */}
         <div className="absolute inset-0 bg-gradient-to-br pointer-events-none opacity-30" style={{ background: `radial-gradient(ellipse at center, ${hex}20, transparent 70%)` }} />
         <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 relative">Nota</p>
-        <div className="flex items-center gap-3 relative">
-          <span className="text-4xl leading-none">{emoji}</span>
-          <span className="text-5xl font-black tabular-nums leading-none" style={{ color: hex }}>
-            {processedCount > 0 ? score.toFixed(1) : '—'}
-          </span>
+        <div className="relative">
+          <AnimatedScore value={processedCount > 0 ? score : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={14000} />
         </div>
-        <p className="text-sm font-bold relative mt-1" style={{ color: `${hex}cc` }}>{label}</p>
         <p className="text-xs text-zinc-600 tabular-nums relative">
           {processedCount > 0 ? processedCount.toLocaleString('pt-BR') : '0'} personas
         </p>
@@ -411,11 +481,8 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
               </div>
 
               {/* Emoji + Score */}
-              <div className="flex items-center gap-1 shrink-0 w-[52px]">
-                <span className="text-sm leading-none">{hasData ? emoji : ''}</span>
-                <span className="text-sm font-black tabular-nums" style={{ color: hasData ? hex : '#52525b' }}>
-                  {hasData ? score.toFixed(1) : '—'}
-                </span>
+              <div className="shrink-0 w-[56px]">
+                <AnimatedScore value={hasData ? score : 0} className="text-sm" duration={10000} />
               </div>
             </div>
           );
