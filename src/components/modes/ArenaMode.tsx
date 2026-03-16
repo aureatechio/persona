@@ -255,7 +255,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
     // Block already created above — just update phase
     {
-      const initialPhase = useLocalProcessing ? 'streaming' : 'collecting';
+      const initialPhase = 'collecting';
       emitLive(blockId, {
         ...baseLiveData,
         phase: initialPhase as ArenaLiveData['phase'],
@@ -278,9 +278,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         let aiCommentsFired = false;
 
         const getDelay = (progress: number) => {
-          if (progress < 0.3) return 450;
-          if (progress < 0.7) return 350;
-          return 250;
+          if (progress < 0.3) return 900;
+          if (progress < 0.7) return 700;
+          return 500;
         };
 
         let pendingPersonas: any[] = [];
@@ -290,8 +290,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           commentAcc.setTotal(total);
           emitLive(blockId, {
             ...baseLiveData,
-            phase: 'streaming',
-            processedCount: 0,
+            phase: 'collecting',
+            collectingStatus: 'loading',
             totalCount: total,
           });
         });
@@ -829,9 +829,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         let aiCommentsFired = false;
 
         const getDelay = (progress: number) => {
-          if (progress < 0.3) return 450;
-          if (progress < 0.7) return 350;
-          return 250;
+          if (progress < 0.3) return 900;
+          if (progress < 0.7) return 700;
+          return 500;
         };
 
         let pendingPersonas: any[] = [];
@@ -841,8 +841,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           commentAcc.setTotal(total);
           emitLive(blockId, {
             ...baseLiveData,
-            phase: 'streaming',
-            processedCount: 0,
+            phase: 'collecting',
+            collectingStatus: 'loading',
             totalCount: total,
           });
         });

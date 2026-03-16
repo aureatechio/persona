@@ -45,11 +45,12 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
             background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
           }} />
           <div
-            className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-[4s] ease-out"
+            className="absolute top-0 h-full w-[6px] rounded-full"
             style={{
               left: `calc(${(score / 10) * 100}% - 3px)`,
               backgroundColor: hex,
               boxShadow: `0 0 6px ${hex}80`,
+              transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
         </div>
@@ -223,7 +224,7 @@ export function UnifiedScreen() {
         <div className="flex-1" />
         {data.question && <Users size={14} className="text-zinc-500" />}
         {isLive && data.question ? (
-          data.phase === 'collecting' ? (
+          (data.phase === 'collecting' || data.processedCount === 0) ? (
             <div className="flex items-center gap-3 flex-1 max-w-md shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
@@ -233,7 +234,7 @@ export function UnifiedScreen() {
           ) : (
             <div className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[6s] ease-out" style={{ width: `${progress}%` }} />
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${progress}%`, transition: 'all 12s ease-out' }} />
               </div>
               <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
               <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
@@ -313,11 +314,11 @@ export function UnifiedScreen() {
         </div>
       </div>
 
-      {/* Progress bar — only when actively streaming */}
-      {isLive && data.question && data.phase !== 'collecting' && (
+      {/* Progress bar — only when actively streaming with real data */}
+      {isLive && data.question && data.phase !== 'collecting' && data.processedCount > 0 && (
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="h-[3px] bg-zinc-900">
-            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 transition-all duration-[2s] ease-out" style={{ width: `${progress}%` }} />
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: `${progress}%`, transition: 'all 4s ease-out' }} />
           </div>
         </div>
       )}

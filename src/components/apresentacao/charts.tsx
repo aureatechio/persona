@@ -145,12 +145,13 @@ export function SpectrumGauge({
               return (
                 <div
                   key={b.label}
-                  className="absolute flex items-center justify-center transition-all duration-[4s]"
+                  className="absolute flex items-center justify-center"
                   style={{
                     left: `${leftPos}%`,
                     transform: 'translateX(-50%)',
                     width: `${size}px`,
                     height: `${size}px`,
+                    transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
                   }}
                 >
                   <div
@@ -398,11 +399,12 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
                 }} />
                 {hasData && (
                   <div
-                    className="absolute top-0 h-full w-[8px] rounded-full transition-all duration-[4s] ease-out"
+                    className="absolute top-0 h-full w-[8px] rounded-full"
                     style={{
                       left: `calc(${barPosition}% - 4px)`,
                       backgroundColor: hex,
                       boxShadow: `0 0 8px ${hex}80`,
+                      transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
                     }}
                   />
                 )}
@@ -460,11 +462,12 @@ export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount }: {
         }} />
         {totalCount > 0 && (
           <div
-            className="absolute top-1 bottom-1 w-[4px] rounded-full transition-all duration-[6s] ease-out"
+            className="absolute top-1 bottom-1 w-[4px] rounded-full"
             style={{
               left: `calc(${barPosition}% - 2px)`,
               backgroundColor: hex,
               boxShadow: `0 0 12px ${hex}aa`,
+              transition: 'all 10s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
         )}
