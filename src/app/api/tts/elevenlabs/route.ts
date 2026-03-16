@@ -8,9 +8,69 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 // Default voice: "Enzo - Professional and Warm" — Young Brazilian male, tom caloroso e profissional
 const DEFAULT_VOICE_ID = 'b95tap8KE0pQivmClQRQ';
 
+// Dicionário de pronúncia no ElevenLabs — cobre cidades com fonética irregular (indígenas)
+// Criado via API, contém alias rules para Manhuaçu→Manuassu, Camaçari→Camassari, etc.
+const PRONUNCIATION_DICT_ID = 'd9hTg7V9pjOs8aojKFYl';
+
+/* ─── Correções genéricas de pronúncia para PT-BR ─── */
+function fixPronunciation(text: string): string {
+  // ══════════════════════════════════════════════════════════════
+  // REGRA 1: HIATO — nomes com vogal + í/ú acentuado
+  // Duplica consoante final (ou adiciona ss) pra reforçar pronúncia
+  // sem quebrar a palavra. Ex: "Laís" → "Laíss", "Raí" → "Raí"
+  // ══════════════════════════════════════════════════════════════
+  text = text.replace(
+    /\b([A-ZÀ-Úa-zà-ú]*[aeiouAEIOU])([íúÍÚ][s]?)\b/g,
+    (match, before, after) => {
+      if (after.endsWith('s')) return `${before}${after}s`;
+      return match;
+    },
+  );
+
+  // ══════════════════════════════════════════════════════════════
+  // REGRA 2: CEDILHA → SS em nomes próprios
+  // "ç" SEMPRE soa como "ss" em português, mas o TTS lê como "k".
+  // Ex: "Camaçari" → "Camassari"
+  // ══════════════════════════════════════════════════════════════
+  text = text.replace(
+    /\b([A-ZÀ-Ú][a-zà-ú]*?)ç([a-zà-ú])/g,
+    (_, before, after) => `${before}ss${after}`,
+  );
+
+  // ══════════════════════════════════════════════════════════════
+  // REGRA 3: "NH" NÃO-DÍGRAFO em palavras indígenas
+  // Em cidades de origem Tupi, "nh" são sons separados (n+h).
+  // Ex: "Manhuaçu" → "Manuassu"
+  // ══════════════════════════════════════════════════════════════
+  const indigenousSuffixes = /(?:a[cçs]su|assu|mirim|gua[cçs]su|aba|uba|inga|ema|ita|uí|aí)/i;
+  text = text.replace(
+    /\b([A-ZÀ-Ú][a-zà-ú]*?)nh([uao][a-zà-ú]*)\b/g,
+    (match, before, after) => {
+      if (indigenousSuffixes.test(after)) {
+        return `${before}n${after}`;
+      }
+      return match;
+    },
+  );
+
+  // ══════════════════════════════════════════════════════════════
+  // REGRA 4: HÍFENS SILÁBICOS do GPT — juntar de volta
+  // GPT às vezes separa sílabas: "Cu-ba-tão" → "Cubatão"
+  // ══════════════════════════════════════════════════════════════
+  text = text.replace(
+    /\b[A-ZÀ-Ú][a-zà-ú]{1,4}(?:-[A-Za-zà-ú]{1,4}){2,}\b/g,
+    (match) => match.replace(/-/g, ''),
+  );
+
+  return text;
+}
+
 /* ─── Pré-processa texto para fala mais humana e natural ─── */
 function humanizeTextForSpeech(raw: string): string {
   let text = raw.trim();
+
+  // Corrige pronúncias (regras genéricas)
+  text = fixPronunciation(text);
 
   // Travessão (—) → vírgula + micro-pausa natural (ElevenLabs interpreta melhor)
   text = text.replace(/\s*—\s*/g, '... ');
@@ -84,16 +144,16 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           text: processedText,
-          model_id: isClonedVoice ? 'eleven_v3' : 'eleven_multilingual_v2',
+          model_id: 'eleven_multilingual_v2',
           language_code: 'pt',
           apply_text_normalization: 'auto',
           voice_settings: isClonedVoice
             ? {
                 stability: 0.6,
-                similarity_boost: 1.0,
-                style: 0.3,
-                use_speaker_boost: true,
-                speed: 0.95,
+                similarity_boost: 0.75,
+                style: 0.35,
+                use_speaker_boost: false,
+                speed: 0.88,
               }
             : {
                 stability: 0.42,

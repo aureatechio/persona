@@ -14,6 +14,9 @@ logger = logging.getLogger("worker.tts")
 TTS_TIMEOUT = 30  # seconds
 FFMPEG_TIMEOUT = 30  # seconds
 
+# Dicionário de pronúncia no ElevenLabs — cidades com fonética irregular (indígenas)
+PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
+
 
 def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
     """
@@ -84,38 +87,57 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
 
 def _fix_pronunciation(text: str) -> str:
     """
-    Pre-process text to improve TTS pronunciation of Brazilian city/neighborhood names.
-    Expands hyphenated syllables (Cu-ba-tão → Cubatão) and adds commas around
-    city names to force the TTS to pause and pronounce them as complete words.
-    """
-    # Fix specific city names the TTS mispronounces
-    # "Manhuaçu" — TTS reads "nh" as digraph (ñ), should be "Man-hu-açu"
-    pronunciation_fixes = {
-        "Manhuaçu": "Manuassu",
-        "manhuaçu": "manuassu",
-        "Manhumirim": "Manumirim",
-        "manhumirim": "manumirim",
-    }
-    for wrong, right in pronunciation_fixes.items():
-        text = text.replace(wrong, right)
+    Generic pronunciation fixes for Brazilian Portuguese TTS.
+    Uses linguistic RULES instead of hardcoded lists:
 
-    # Remove syllable hyphens the GPT may have inserted (e.g. "Cu-ba-tão" → "Cubatão")
-    # Pattern: sequences of 2-4 letter groups separated by hyphens, at least 3 groups
-    def _join_syllables(m: re.Match) -> str:
-        return m.group(0).replace("-", "")
+    1. HIATUS — vowel + accented í/ú = separate syllables (always in PT-BR)
+    2. CEDILLA → SS — ç always sounds like "ss", but TTS reads as "k" in proper nouns
+    3. NH NON-DIGRAPH — in indigenous-origin words, "nh" are separate sounds (n+h)
+    4. PROPER NOUN ISOLATION — add pause around capitalized words
+    5. SYLLABLE HYPHENS — rejoin GPT-inserted hyphens
+    """
+    # REGRA 1: HIATO — nomes com vogal + ís → duplica s pra reforçar pronúncia
+    # Ex: "Laís" → "Laíss" (sem quebrar a palavra)
+    def _fix_hiatus(m: re.Match) -> str:
+        before, after = m.group(1), m.group(2)
+        if after.endswith('s'):
+            return f"{before}{after}s"
+        return m.group(0)
 
     text = re.sub(
-        r'\b[A-ZÀ-Ú][a-zà-ú]{1,4}(?:-[A-Za-zà-ú]{1,4}){2,}\b',
-        _join_syllables,
+        r'\b([A-ZÀ-Úa-zà-ú]*[aeiouAEIOU])([íúÍÚ][s]?)\b',
+        _fix_hiatus,
         text,
     )
 
-    # Add slight pause (comma) before city names ending in common Brazilian suffixes
-    # This prevents the TTS from merging the city name with surrounding words
-    suffixes = r'(?:tão|ções|lhos|íba|uba|uba|anga|inga|ema|uma|aba|aia|eira|ópolis|ândia|lândia)'
+    # REGRA 2: CEDILHA → SS em nomes próprios
     text = re.sub(
-        rf'(\s)([A-ZÀ-Ú][a-zà-ú]*{suffixes})\b',
-        r'\1\2,',
+        r'\b([A-ZÀ-Ú][a-zà-ú]*?)ç([a-zà-ú])',
+        lambda m: m.group(1) + "ss" + m.group(2),
+        text,
+    )
+
+    # REGRA 3: "NH" NÃO-DÍGRAFO em palavras indígenas
+    indigenous_suffixes = re.compile(
+        r'(?:a[cçs]su|assu|mirim|gua[cçs]su|aba|uba|inga|ema|ita|uí|aí)', re.IGNORECASE
+    )
+
+    def _fix_nh(m: re.Match) -> str:
+        before, after = m.group(1), m.group(2)
+        if indigenous_suffixes.search(after):
+            return f"{before}n{after}"
+        return m.group(0)
+
+    text = re.sub(
+        r'\b([A-ZÀ-Ú][a-zà-ú]*?)nh([uao][a-zà-ú]*)\b',
+        _fix_nh,
+        text,
+    )
+
+    # REGRA 4: HÍFENS SILÁBICOS do GPT — juntar de volta
+    text = re.sub(
+        r'\b[A-ZÀ-Ú][a-zà-ú]{1,4}(?:-[A-Za-zà-ú]{1,4}){2,}\b',
+        lambda m: m.group(0).replace("-", ""),
         text,
     )
 
@@ -129,7 +151,7 @@ def generate_tts(text: str, voice_id: str) -> bytes:
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-    # Fix pronunciation of city names before sending to TTS
+    # Fix pronunciation with generic rules
     processed_text = _fix_pronunciation(text)
     if processed_text != text:
         logger.info("Pronunciation fix applied: '%s' → '%s'", text[:80], processed_text[:80])
@@ -145,13 +167,14 @@ def generate_tts(text: str, voice_id: str) -> bytes:
         json={
             "text": processed_text,
             "model_id": "eleven_multilingual_v2",
+            "language_code": "pt",
             "apply_text_normalization": "on",
             "voice_settings": {
                 "stability": 0.6,
-                "similarity_boost": 1.0,
-                "style": 0.0,
-                "use_speaker_boost": True,
-                "speed": 1.0,
+                "similarity_boost": 0.75,
+                "style": 0.35,
+                "use_speaker_boost": False,
+                "speed": 0.88,
             },
         },
         timeout=TTS_TIMEOUT,
