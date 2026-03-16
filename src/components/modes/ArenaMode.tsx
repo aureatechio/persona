@@ -645,33 +645,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       commentAcc.setTotal(data.length);
     }).catch(() => {});
 
-    /** Merge backend segments with local accumulator data.
-     *  Backend segments have counts but NO avgScore — we inject avgScore from local accumulator. */
-    const mergeSegments = (backendSegs: Partial<AllSegments> | undefined): AllSegments => {
-      const local = segAcc.toSegments();
-      if (!backendSegs) return local;
-
-      // Build a lookup of local avgScores by segment key + label
-      const localScoreLookup: Record<string, Record<string, number>> = {};
-      for (const [key, items] of Object.entries(local)) {
-        localScoreLookup[key] = {};
-        for (const item of items as any[]) {
-          localScoreLookup[key][item.label] = item.avgScore ?? 5.0;
-        }
-      }
-
-      // Inject avgScore from local data into backend segments
-      const merged: any = { ...local };
-      for (const [key, items] of Object.entries(backendSegs)) {
-        if (!Array.isArray(items) || items.length === 0) continue;
-        merged[key] = items.map((item: any) => ({
-          ...item,
-          avgScore: item.avgScore ?? localScoreLookup[key]?.[item.label] ?? 5.0,
-        }));
-      }
-
-      return merged as AllSegments;
-    };
+    /** Always use local accumulator segments — they have both counts AND avgScore.
+     *  Python backend segments don't carry avgScore so we ignore them. */
+    const getSegments = (): AllSegments => segAcc.toSegments();
 
     let pythonScoreSum = 0;
 
@@ -820,7 +796,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     neutral: payload.data.neutral,
                     avgScore: progressAvg,
                     scoreSum: pythonScoreSum,
-                    segments: mergeSegments(payload.data.segments),
+                    segments: getSegments(),
                     liveIdeology: ideoAcc.toResults(),
                     liveComments,
                     stateBreakdown: stateAcc.toStateBreakdown(),
@@ -881,7 +857,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     scoreSum: pythonScoreSum,
                     simulation,
                     totalPersonas: doneTotal,
-                    segments: mergeSegments(doneSegments),
+                    segments: getSegments(),
                     liveIdeology: liveIdeo,
                     liveComments,
                     stateBreakdown: doneStateBreakdown,
