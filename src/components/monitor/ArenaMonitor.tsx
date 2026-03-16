@@ -4,8 +4,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Search, Brain, Globe, ShieldCheck, Users,
   Cpu, BarChart3, ChevronDown, ChevronRight,
-  Database, AlertCircle, CheckCircle2, Loader2,
-  MessageSquare, ArrowDown, GitBranch, Minus, Radio,
+  AlertCircle, CheckCircle2, Loader2,
+  MessageSquare, ArrowDown, Minus, Radio,
   ExternalLink, FileText, Eye, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,10 +42,14 @@ interface BatchDetail {
   }>;
 }
 
-interface ClassifierDecision {
-  route: string;
-  fields: string[];
-  reason: string;
+interface ContextExtractionData {
+  rawTranscript: string | null;
+  title: string | null;
+  author: string | null;
+  corePoint: string | null;
+  claudeSummary: string | null;
+  enrichedContext: string | null;
+  generatedQuestion: string | null;
 }
 
 /* Step detail data stored from verbose events */
@@ -90,8 +94,7 @@ interface StepDetails {
 
 interface PipelineState {
   question: string;
-  route: 'unknown' | 'local' | 'python';
-  classifierDecision: ClassifierDecision | null;
+  contextExtraction: ContextExtractionData | null;
   nodes: Record<string, NodeStatus>;
   logs: LogEntry[];
   batches: BatchDetail[];
@@ -114,10 +117,9 @@ const initialStepDetails: StepDetails = {
 
 const initialState: PipelineState = {
   question: '',
-  route: 'unknown',
-  classifierDecision: null,
+  contextExtraction: null,
   nodes: {
-    classifier: 'idle',
+    contextExtraction: 'idle',
     queryAnalyzer: 'idle',
     webResearch: 'idle',
     contextBuilder: 'idle',
@@ -144,7 +146,7 @@ const MONITOR_CHANNEL = 'arena-monitor';
    ================================================================ */
 
 const NODE_ICONS: Record<string, React.ReactNode> = {
-  classifier: <GitBranch size={16} />,
+  contextExtraction: <FileText size={16} />,
   queryAnalyzer: <Search size={16} />,
   webResearch: <Globe size={16} />,
   contextBuilder: <Brain size={16} />,
@@ -155,7 +157,7 @@ const NODE_ICONS: Record<string, React.ReactNode> = {
 };
 
 const NODE_LABELS: Record<string, string> = {
-  classifier: 'Decisao de Rota',
+  contextExtraction: 'Extracao de Contexto',
   queryAnalyzer: 'Analise da Pergunta',
   webResearch: 'Pesquisa na Web',
   contextBuilder: 'Construcao de Contexto',
@@ -166,7 +168,7 @@ const NODE_LABELS: Record<string, string> = {
 };
 
 const NODE_DESCRIPTIONS: Record<string, string> = {
-  classifier: 'Claude Sonnet 4 decide: Python IA ou Banco Local',
+  contextExtraction: 'Transcricao e contexto extraidos da midia',
   queryAnalyzer: 'Claude Sonnet 4 decide se precisa pesquisa web',
   webResearch: 'Tavily busca 3 queries na web em paralelo',
   contextBuilder: 'Claude Sonnet 4 cria contexto factual neutro',
@@ -252,54 +254,77 @@ function FlowNode({
 }
 
 /* ================================================================
-   Classifier Decision Card
+   Context Extraction Panel
    ================================================================ */
 
-function ClassifierCard({ decision }: { decision: ClassifierDecision }) {
-  const isPython = decision.route === 'python';
+function ContextExtractionPanel({ data }: { data: ContextExtractionData }) {
+  const [expanded, setExpanded] = useState(false);
+  const transcriptPreview = data.rawTranscript
+    ? (data.rawTranscript.length > 500 && !expanded
+        ? data.rawTranscript.slice(0, 500) + '...'
+        : data.rawTranscript)
+    : null;
 
   return (
-    <div className={cn(
-      'mx-3 mt-3 rounded-xl border p-4',
-      isPython
-        ? 'bg-violet-500/5 border-violet-500/20'
-        : 'bg-sky-500/5 border-sky-500/20',
-    )}>
-      <div className="flex items-center gap-2 mb-2.5">
-        <div className={cn(
-          'w-6 h-6 rounded-lg flex items-center justify-center',
-          isPython ? 'bg-violet-500/15' : 'bg-sky-500/15',
-        )}>
-          {isPython ? <Cpu size={12} className="text-violet-400" /> : <Database size={12} className="text-sky-400" />}
+    <div className="space-y-4">
+      <SectionHeader icon={<FileText size={14} />} title="Extracao de Contexto" subtitle="Conteudo extraido da midia enviada" />
+
+      {/* Title / Author */}
+      {(data.title || data.author) && (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+          {data.title && (
+            <p className="text-sm font-semibold text-white">{data.title}</p>
+          )}
+          {data.author && (
+            <p className="text-[11px] text-zinc-500 mt-0.5">{data.author}</p>
+          )}
         </div>
-        <span className={cn(
-          'text-xs font-bold uppercase tracking-wider',
-          isPython ? 'text-violet-400' : 'text-sky-400',
-        )}>
-          {isPython ? 'Caminho: Python IA' : 'Caminho: Banco Local'}
-        </span>
-      </div>
-      <div className="space-y-2">
-        <div>
-          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-0.5">Motivo da decisao</p>
-          <p className="text-[11px] text-zinc-300 leading-relaxed">{decision.reason}</p>
+      )}
+
+      {/* Core Point */}
+      {data.corePoint && (
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-violet-400 mb-1.5">Ponto Central</p>
+          <p className="text-[12px] text-zinc-200 leading-relaxed font-medium">{data.corePoint}</p>
         </div>
-        {decision.fields.length > 0 && (
-          <div>
-            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-1">Colunas usadas do banco</p>
-            <div className="flex flex-wrap gap-1.5">
-              {decision.fields.map(f => (
-                <span key={f} className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-zinc-800/60 text-zinc-400 border border-white/[0.04]">
-                  {f}
-                </span>
-              ))}
-            </div>
+      )}
+
+      {/* Generated Question */}
+      {data.generatedQuestion && (
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 mb-1.5">Pergunta Gerada</p>
+          <p className="text-[12px] text-zinc-200 leading-relaxed">{data.generatedQuestion}</p>
+        </div>
+      )}
+
+      {/* Raw Transcript */}
+      {transcriptPreview && (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">Transcricao Completa</p>
+            <span className="text-[9px] text-zinc-600 font-mono">{data.rawTranscript!.length.toLocaleString('pt-BR')} chars</span>
           </div>
-        )}
-        {isPython && decision.fields.length === 0 && (
-          <p className="text-[10px] text-zinc-500">Nenhuma coluna no banco responde — precisa de IA generativa</p>
-        )}
-      </div>
+          <pre className="text-[10px] text-zinc-400 leading-relaxed font-mono whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+            {transcriptPreview}
+          </pre>
+          {data.rawTranscript && data.rawTranscript.length > 500 && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="mt-2 text-[10px] text-violet-400 hover:text-violet-300 transition-colors duration-200"
+            >
+              {expanded ? 'Recolher' : 'Expandir transcricao completa'}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Claude Summary (for comparison) */}
+      {data.claudeSummary && (
+        <div className="rounded-xl border border-amber-500/10 bg-amber-500/5 p-4">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-amber-400/70 mb-1.5">Resumo Claude (referencia)</p>
+          <p className="text-[10px] text-zinc-400 leading-relaxed">{data.claudeSummary}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -893,16 +918,16 @@ function ProgressStats({ progress, startTime, endTime, avgScore }: {
    Step Detail View — shown in the right panel when a node is selected
    ================================================================ */
 
-function StepDetailView({ nodeKey, stepDetails, classifierDecision, batches }: {
+function StepDetailView({ nodeKey, stepDetails, contextExtraction, batches }: {
   nodeKey: string;
   stepDetails: StepDetails;
-  classifierDecision: ClassifierDecision | null;
+  contextExtraction: ContextExtractionData | null;
   batches: BatchDetail[];
 }) {
-  if (nodeKey === 'classifier' && classifierDecision) {
+  if (nodeKey === 'contextExtraction' && contextExtraction) {
     return (
       <div className="p-4">
-        <ClassifierCard decision={classifierDecision} />
+        <ContextExtractionPanel data={contextExtraction} />
       </div>
     );
   }
@@ -1044,56 +1069,24 @@ export function ArenaMonitor() {
             listening: true,
           });
           addLog('system', 'info', `Pipeline iniciado: "${payload.data.question}"`);
-          addLog('classifier', 'info', 'Enviando pergunta para GPT-4o-mini decidir caminho...');
-          updateNode('classifier', 'running');
           break;
         }
 
-        case 'classify_result': {
+        case 'context_extracted': {
           const d = payload.data;
-          const route = d.route || 'python';
-          updateNode('classifier', 'complete');
-
-          addLog('classifier', 'info',
-            route === 'python'
-              ? `➜ PYTHON IA — Motivo: ${d.reason || '?'}`
-              : `➜ BANCO LOCAL — Motivo: ${d.reason || '?'}`,
-            { rota: d.route, campos_banco: d.fields, motivo: d.reason },
+          updateNode('contextExtraction', 'complete');
+          addLog('contextExtraction', 'info',
+            d.rawTranscript
+              ? `Transcricao extraida: ${d.rawTranscript.length.toLocaleString('pt-BR')} caracteres`
+              : 'Contexto extraido da midia',
           );
-
-          if (d.fields?.length > 0) {
-            addLog('classifier', 'info', `Colunas encontradas: ${d.fields.join(', ')}`, { colunas: d.fields });
-          } else if (route === 'python') {
-            addLog('classifier', 'info', 'Nenhuma coluna no banco responde essa pergunta');
+          if (d.corePoint) {
+            addLog('contextExtraction', 'info', `Ponto central: ${d.corePoint}`);
           }
-
           setState(prev => ({
             ...prev,
-            route: route as 'local' | 'python',
-            classifierDecision: { route, fields: d.fields || [], reason: d.reason || '' },
+            contextExtraction: d,
           }));
-          break;
-        }
-
-        case 'local_start': {
-          addLog('system', 'info', 'CAMINHO: BANCO DE DADOS LOCAL');
-          addLog('system', 'info', 'Processando via colunas existentes — sem IA generativa');
-          ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'].forEach(n => {
-            updateNode(n, 'skipped');
-          });
-          updateNode('personaLoader', 'running');
-          addLog('personaLoader', 'info', 'Carregando personas...');
-          setTimeout(() => {
-            updateNode('personaLoader', 'complete');
-            updateNode('personaLoop', 'running');
-            addLog('personaLoop', 'info', 'Processando personas via colunas do banco...');
-            setTimeout(() => {
-              updateNode('personaLoop', 'complete');
-              updateNode('aggregator', 'complete');
-              addLog('system', 'info', 'Pipeline LOCAL concluido');
-              setState(prev => ({ ...prev, endTime: Date.now() }));
-            }, 500);
-          }, 300);
           break;
         }
 
@@ -1344,7 +1337,7 @@ export function ArenaMonitor() {
   };
 
   const nodeHasDetail = (key: string): boolean => {
-    if (key === 'classifier') return !!state.classifierDecision;
+    if (key === 'contextExtraction') return !!state.contextExtraction;
     if (key === 'queryAnalyzer') return !!state.stepDetails.queryAnalyzer;
     if (key === 'webResearch') return !!state.stepDetails.webResearch;
     if (key === 'contextBuilder') return !!state.stepDetails.context;
@@ -1353,7 +1346,7 @@ export function ArenaMonitor() {
     return false;
   };
 
-  const nodeOrder = ['classifier', 'queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator', 'personaLoader', 'personaLoop', 'aggregator'];
+  const nodeOrder = ['contextExtraction', 'queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator', 'personaLoader', 'personaLoop', 'aggregator'];
 
   // Auto-switch to detail tab when clicking a node with data
   const handleNodeClick = (key: string) => {
@@ -1403,16 +1396,6 @@ export function ArenaMonitor() {
               <span className="text-emerald-400 font-semibold">Escutando</span>
             </span>
 
-            {state.route !== 'unknown' && (
-              <span className={cn(
-                'px-2.5 py-1 rounded-full font-bold uppercase tracking-wider border',
-                state.route === 'python'
-                  ? 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-                  : 'bg-sky-500/10 text-sky-400 border-sky-500/20',
-              )}>
-                {state.route === 'python' ? 'Python IA' : 'Banco Local'}
-              </span>
-            )}
             {state.startTime && (
               <span className="text-zinc-500 tabular-nums font-mono">{elapsed}s</span>
             )}
@@ -1459,9 +1442,6 @@ export function ArenaMonitor() {
             </div>
           ))}
 
-          {state.classifierDecision && (
-            <ClassifierCard decision={state.classifierDecision} />
-          )}
         </div>
 
         {/* ─── Right ─── */}
@@ -1500,7 +1480,7 @@ export function ArenaMonitor() {
                 <StepDetailView
                   nodeKey={selectedNode}
                   stepDetails={state.stepDetails}
-                  classifierDecision={state.classifierDecision}
+                  contextExtraction={state.contextExtraction}
                   batches={state.batches}
                 />
               ) : (

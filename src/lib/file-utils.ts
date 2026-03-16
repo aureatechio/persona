@@ -36,7 +36,7 @@ function extractYouTubeVideoId(url: string): string | null {
 }
 
 const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
-const MAX_TRANSCRIPT_CHARS = 10_000;
+const MAX_TRANSCRIPT_CHARS = 30_000;
 
 /**
  * Try fetching YouTube transcript directly from the browser (residential IP).

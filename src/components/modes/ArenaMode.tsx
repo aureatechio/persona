@@ -131,6 +131,24 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         }))
       : mediaPreviews;
 
+    // ── Extract raw transcript from processed attachments ──────────────────
+    let rawTranscript = '';
+    let mediaTitle = '';
+    let mediaAuthor = '';
+    if (processedAttachments?.length) {
+      for (const att of processedAttachments) {
+        if (att.type === 'video' && att.data && att.data !== '__TRANSCRIPTION_FAILED__') {
+          // Extract title/author from YouTube header if present
+          const headerMatch = att.data.match(/^\[YouTube: (.+?)(?:\s*—\s*(.+?))?\]\n\n/);
+          if (headerMatch) {
+            mediaTitle = headerMatch[1] || '';
+            mediaAuthor = headerMatch[2] || '';
+          }
+          rawTranscript += (rawTranscript ? '\n\n' : '') + att.data;
+        }
+      }
+    }
+
     // ── Media analysis ──────────────────────────────────────────────────────
     if (processedAttachments?.length) {
       // Update phase — transcription done, now analyzing with Claude
@@ -167,11 +185,33 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           if (mediaData.core_point) {
             mediaCorePoint = mediaData.core_point;
           }
-          if (mediaData.context) {
+
+          // Use RAW TRANSCRIPT as primary context (not the Claude summary)
+          // The Claude summary is only used for core_point and generated_question
+          if (rawTranscript) {
+            enrichedContext = enrichedContext
+              ? `${enrichedContext}\n\n--- Transcricao completa da midia ---\n${rawTranscript}`
+              : rawTranscript;
+          } else if (mediaData.context) {
+            // Fallback to Claude summary if no raw transcript (e.g. images)
             enrichedContext = enrichedContext
               ? `${enrichedContext}\n\n--- Contexto extraido da midia ---\n${mediaData.context}`
               : mediaData.context;
           }
+
+          // Broadcast context extraction to monitor
+          broadcastToMonitor({
+            type: 'context_extracted',
+            data: {
+              rawTranscript: rawTranscript || null,
+              title: mediaTitle || null,
+              author: mediaAuthor || null,
+              corePoint: mediaCorePoint || null,
+              claudeSummary: mediaData.context || null,
+              enrichedContext: enrichedContext || null,
+              generatedQuestion: mediaData.generated_question || null,
+            },
+          });
         } else {
           const errBody = await mediaRes.text().catch(() => '');
           console.error('[Arena] Media analysis HTTP error:', mediaRes.status, errBody.slice(0, 500));
@@ -211,30 +251,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       onAddBlock({ id: blockId, type: 'arena-live', timestamp: new Date(), data: immediateData });
     }
 
-    // ── Ask AI whether to process locally or use Python backend ────────────
-    // Always use GPT classify-route for semantic analysis (no keyword shortcut)
-    let useLocalProcessing = false;
-    try {
-      const classifyRes = await fetch('/api/arena/classify-route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question: q,
-          context: enrichedContext || undefined,
-          core_point: mediaCorePoint || undefined,
-        }),
-      });
-      if (classifyRes.ok) {
-        const classification = await classifyRes.json();
-        console.log('[Arena] Route classification:', classification);
-        useLocalProcessing = classification.route === 'local';
-        // Broadcast to monitor
-        broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
-        broadcastToMonitor({ type: 'classify_result', data: classification });
-      }
-    } catch {
-      // On error, fall through to Python backend
-    }
+    // Broadcast pipeline start to monitor (always goes to Python backend)
+    broadcastToMonitor({ type: 'pipeline_start', data: { question: q } });
 
     // ── Full analysis with streaming live block ─────────────────────────────
     const baseLiveData: ArenaLiveData = {
@@ -263,149 +281,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       });
     }
 
-    // ── If local processing is sufficient, skip Python backend ──────────────
-    if (useLocalProcessing) {
-      broadcastToMonitor({ type: 'local_start', data: { question: q } });
-      try {
-        const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-        let pos = 0, neg = 0, neu = 0, localScoreSum = 0;
-        const segAcc = new SegmentAccumulator();
-        const ideoAcc = new IdeologyAccumulator(q);
-        const commentAcc = new LiveCommentAccumulator(q);
-        const stateAcc = new StateAccumulator();
-        const BATCH = 100;
-        let liveComments: import('@/lib/arena/types').CommentResult[] = [];
-        let aiCommentsFired = false;
-
-        const getDelay = (progress: number) => {
-          if (progress < 0.3) return 900;
-          if (progress < 0.7) return 700;
-          return 500;
-        };
-
-        let pendingPersonas: any[] = [];
-
-        const allData = await personaCache.loadAll((loaded, total, batch) => {
-          pendingPersonas.push(...batch);
-          commentAcc.setTotal(total);
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'collecting',
-            collectingStatus: 'loading',
-            totalCount: total,
-          });
-        });
-
-        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
-        const effectiveCount = toProcess.length;
-        commentAcc.setTotal(effectiveCount);
-
-        for (let offset = 0; offset < effectiveCount; offset += BATCH) {
-          if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-          const batch = toProcess.slice(offset, offset + BATCH);
-          const processed = Math.min(offset + BATCH, effectiveCount);
-
-          for (const p of batch) {
-            const score = computePersonaScore(p, queryForAnalysis);
-            const sentiment = scoreToSentiment(score);
-            localScoreSum += score;
-            if (sentiment === 'positive') pos++;
-            else if (sentiment === 'negative') neg++;
-            else neu++;
-            segAcc.addPersonaWithScore(p, score);
-            ideoAcc.addPersona(p, sentiment);
-            commentAcc.addPersona(p, sentiment);
-            stateAcc.addPersona(p, sentiment);
-          }
-
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'streaming',
-            processedCount: processed,
-            totalCount: effectiveCount,
-            positive: pos,
-            negative: neg,
-            neutral: neu,
-            avgScore: processed > 0 ? Math.round((localScoreSum / processed) * 10) / 10 : 5.0,
-            scoreSum: localScoreSum,
-            segments: segAcc.toSegments(),
-            liveIdeology: ideoAcc.toResults(),
-            liveComments,
-            stateBreakdown: stateAcc.toStateBreakdown(),
-          });
-
-          // Fire AI comment generation at ~25% with selected personas
-          const progress = processed / effectiveCount;
-          if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
-            aiCommentsFired = true;
-            const selectedSnapshot = [...commentAcc.selectedPersonas];
-            generateAIComments(q, selectedSnapshot).then(aiComments => {
-              if (cancelledBlocksRef.current.has(blockId)) return;
-              liveComments = aiComments;
-            }).catch(() => {});
-          }
-
-          await new Promise(r => setTimeout(r, getDelay(progress)));
-        }
-
-        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-
-        const localFinalAvg = effectiveCount > 0 ? Math.round((localScoreSum / effectiveCount) * 10) / 10 : 5.0;
-
-        // Enrichment: simulation
-        const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
-
-        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-        const simWithoutComments = { ...enhanced, comments: [] as any[] };
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: effectiveCount,
-          totalCount: effectiveCount,
-          positive: simWithoutComments.positive,
-          negative: simWithoutComments.negative,
-          neutral: simWithoutComments.neutral,
-          avgScore: localFinalAvg,
-          scoreSum: localScoreSum,
-          simulation: simWithoutComments,
-          totalPersonas: effectiveCount,
-          segments: segAcc.toSegments(),
-          liveComments,
-          stateBreakdown: stateAcc.toStateBreakdown(),
-        });
-        onProcessing(false);
-
-        // Generate full AI comments with all personas
-        if (cancelledBlocksRef.current.has(blockId)) return;
-        const topicScores = detectTopics(q);
-        const personasForAI = buildPersonasForAI(q, allData, topicScores);
-        const claudeComments = await generateAIComments(q, personasForAI);
-
-        if (cancelledBlocksRef.current.has(blockId)) return;
-        const sim = { ...enhanced, comments: claudeComments };
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: effectiveCount,
-          totalCount: effectiveCount,
-          positive: sim.positive,
-          negative: sim.negative,
-          neutral: sim.neutral,
-          avgScore: localFinalAvg,
-          scoreSum: localScoreSum,
-          simulation: sim,
-          totalPersonas: effectiveCount,
-          segments: segAcc.toSegments(),
-          stateBreakdown: stateAcc.toStateBreakdown(),
-        });
-        return;
-      } catch (localErr) {
-        console.warn('[Arena] Local processing failed, trying Python:', localErr);
-        // Fall through to Python backend
-      }
-    }
-
-    // ── Python backend (for questions without local column match) ────────────
+    // ── Python backend ────────────────────────────────────────────────────
     // Abort previous
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();

@@ -28,13 +28,13 @@ Sua tarefa: analisar o conteudo fornecido (video, imagem, screenshot, print de t
 3. **PONTO_CENTRAL** (obrigatorio): Uma frase curta e precisa que resume a TESE PRINCIPAL do autor. Ex: "O autor defende que Fulano deveria estar preso por corrupcao."
 
 Regras para o CONTEXTO:
-- Extraia TODOS os fatos, argumentos, numeros e posicoes mencionados
+- O contexto e um RESUMO BREVE para referencia — a transcricao completa sera enviada separadamente as personas
 - Identifique o PONTO CENTRAL ESPECIFICO — a tese, opiniao ou afirmacao principal do autor
 - Identifique figuras publicas, partidos ou instituicoes mencionados POR NOME
 - Identifique o tom geral (positivo, negativo, neutro, polemico)
 - Seja factual e neutro - nao adicione opiniao propria
 - Se for um print de rede social, identifique o autor, a plataforma e o conteudo exato
-- Formato: texto corrido em 2-4 paragrafos, maximo 500 palavras
+- Formato: texto corrido em 1-2 paragrafos curtos (maximo 200 palavras) — APENAS o essencial para identificar o tema
 
 REGRA CRITICA PARA O PONTO CENTRAL:
 - Abstraia o que o autor REALMENTE quer dizer — qual a TESE dele?
