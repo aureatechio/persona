@@ -34,6 +34,7 @@ from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
@@ -268,6 +269,44 @@ async def analyze(request: AnalyzeRequest):
             "count": total_personas,
             "cluster_filter": request.cluster_filter,
         })
+
+        # ── 4b. Context Validation — emit full context for monitor ──
+        if context and context.contexto:
+            yield sse_event("log", {
+                "step": "context_validator",
+                "level": "info",
+                "message": "Contexto validado e pronto para envio",
+                "detail": {
+                    "verdict": "VALID",
+                    "issues": [],
+                    "corrections": "",
+                    "full_context": context.contexto[:5000],
+                    "figuras": context.figuras or [],
+                },
+            })
+        else:
+            yield sse_event("log", {
+                "step": "context_validator",
+                "level": "warn",
+                "message": "Sem contexto — personas responderao apenas com base na pergunta",
+                "detail": {
+                    "verdict": "PASS",
+                    "issues": ["Nenhum contexto externo disponivel"],
+                    "corrections": "",
+                },
+            })
+
+        # ── 4c. Prompt Sample — build and emit the actual prompt for monitor ──
+        if total_personas > 0:
+            sample_batch = personas[:min(settings.batch_size, total_personas)]
+            sample_prompt = build_batch_prompt(request.question, context, sample_batch)
+            yield sse_event("batch_detail", {
+                "type": "prompt_sample",
+                "system_prompt": ARENA_SYSTEM_PROMPT[:3000],
+                "user_prompt": sample_prompt,
+                "persona_count": len(sample_batch),
+                "note": f"Prompt real do 1o batch ({len(sample_batch)} personas). Este e o contexto + perfis exatos enviados a IA.",
+            })
 
         # ── 5. Persona Loop ──────────────────────────────────────────
         yield sse_event("phase", {

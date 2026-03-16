@@ -76,6 +76,8 @@ interface ValidatorData {
   verdict: string;
   issues: string[];
   corrections: string;
+  fullContext?: string;
+  figuras?: Array<Record<string, unknown>>;
 }
 
 interface PromptSampleData {
@@ -511,10 +513,11 @@ function ContextPanel({ data }: { data: ContextData }) {
 
 function ValidatorPanel({ data }: { data: ValidatorData }) {
   const isValid = data.verdict?.toUpperCase() === 'PASS' || data.verdict?.toUpperCase() === 'VALID';
+  const [showFullContext, setShowFullContext] = useState(false);
 
   return (
     <div className="space-y-3">
-      <SectionHeader icon={<ShieldCheck size={14} />} title="Validacao de Contexto" subtitle="Claude Sonnet 4 verificou precisao e neutralidade" />
+      <SectionHeader icon={<ShieldCheck size={14} />} title="Validacao de Contexto" subtitle="Contexto final que sera enviado as personas" />
 
       <div className={cn(
         'rounded-xl border p-4',
@@ -552,6 +555,39 @@ function ValidatorPanel({ data }: { data: ValidatorData }) {
           <div className="px-3 py-2.5 rounded-lg bg-zinc-900/60 border border-white/[0.04]">
             <p className="text-[10px] text-zinc-400 leading-relaxed whitespace-pre-wrap">{data.corrections}</p>
           </div>
+        </div>
+      )}
+
+      {/* Figuras politicas detectadas */}
+      {data.figuras && data.figuras.length > 0 && (
+        <div>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-600 mb-2 px-1">Figuras politicas no contexto</p>
+          <div className="flex flex-wrap gap-1.5">
+            {data.figuras.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-300 font-medium">
+                {(f.nome as string) || '?'}
+                {f.cargo ? <span className="text-violet-500">({String(f.cargo)})</span> : null}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contexto completo enviado as personas */}
+      {data.fullContext && (
+        <div>
+          <button
+            onClick={() => setShowFullContext(!showFullContext)}
+            className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-zinc-600 hover:text-zinc-400 transition-colors duration-200 mb-2 px-1"
+          >
+            {showFullContext ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+            Contexto completo enviado ({data.fullContext.length.toLocaleString('pt-BR')} chars)
+          </button>
+          {showFullContext && (
+            <div className="px-4 py-3 rounded-xl bg-zinc-900/60 border border-white/[0.04] max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-800/50">
+              <pre className="text-[10px] text-zinc-300 leading-relaxed whitespace-pre-wrap font-mono">{data.fullContext}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -1309,6 +1345,8 @@ export function ArenaMonitor() {
                   verdict: (d.detail.verdict as string) || '',
                   issues: (d.detail.issues as string[]) || [],
                   corrections: (d.detail.corrections as string) || '',
+                  fullContext: (d.detail.full_context as string) || '',
+                  figuras: (d.detail.figuras as Array<Record<string, unknown>>) || [],
                 },
               },
             }));
@@ -1365,6 +1403,7 @@ export function ArenaMonitor() {
               negative: payload.data.negative,
               neutral: payload.data.neutral,
             },
+            avgScore: payload.data.avgScore ?? prev.avgScore,
           }));
           break;
 
