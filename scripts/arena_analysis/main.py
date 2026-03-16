@@ -129,6 +129,17 @@ async def analyze(request: AnalyzeRequest):
         # Skip query_analyzer — classify-route already decided this needs Python.
         # Always do web research for context (fast with basic depth).
 
+        # Notify monitor that query_analyzer is skipped (pipeline v2 always does web research)
+        yield sse_event("log", {
+            "step": "query_analyzer",
+            "level": "info",
+            "message": "Pipeline v2 — pesquisa web sempre ativa",
+            "detail": {
+                "needs_research": True,
+                "reason": "Pipeline v2 executa pesquisa web automaticamente para toda pergunta, sem etapa de decisão separada.",
+            },
+        })
+
         # Inicia carregamento de personas em paralelo
         persona_task = asyncio.create_task(
             asyncio.to_thread(load_personas, cluster_filter=request.cluster_filter)
@@ -163,9 +174,34 @@ async def analyze(request: AnalyzeRequest):
                 "sources_count": len(web_result.sources),
             })
 
+            # Emit web research details for monitor
+            yield sse_event("log", {
+                "step": "web_research",
+                "level": "info",
+                "message": f"Pesquisa concluida: {len(web_result.snippets)} trechos de {len(web_result.sources)} fontes",
+                "detail": {
+                    "queries": web_result.queries,
+                    "snippets": web_result.snippets,
+                    "sources": web_result.sources,
+                },
+            })
+
             yield sse_event("phase", {
                 "phase": "building_context",
                 "message": "Contexto de mídia recebido",
+            })
+
+            # Emit context details for monitor
+            yield sse_event("log", {
+                "step": "context_builder",
+                "level": "info",
+                "message": f"Contexto de mídia: {context.tema}",
+                "detail": {
+                    "tema": context.tema,
+                    "contexto": context.contexto[:2000],
+                    "figuras": context.figuras,
+                    "periodo": context.periodo,
+                },
             })
 
         else:
@@ -182,6 +218,18 @@ async def analyze(request: AnalyzeRequest):
                 "sources_count": len(web_result.sources),
             })
 
+            # Emit web research details for monitor
+            yield sse_event("log", {
+                "step": "web_research",
+                "level": "info",
+                "message": f"Pesquisa concluida: {len(web_result.snippets)} trechos de {len(web_result.sources)} fontes",
+                "detail": {
+                    "queries": web_result.queries,
+                    "snippets": web_result.snippets,
+                    "sources": web_result.sources,
+                },
+            })
+
             # ── 1c. Context Builder (skip validator — saves 3-5s) ────
             yield sse_event("phase", {
                 "phase": "building_context",
@@ -193,6 +241,19 @@ async def analyze(request: AnalyzeRequest):
                 web_context=web_result.combined_context,
             )
             total_tokens += context.prompt_tokens + context.output_tokens
+
+            # Emit context builder details for monitor
+            yield sse_event("log", {
+                "step": "context_builder",
+                "level": "info",
+                "message": f"Contexto criado: {context.tema}",
+                "detail": {
+                    "tema": context.tema,
+                    "contexto": context.contexto[:2000],
+                    "figuras": context.figuras,
+                    "periodo": context.periodo,
+                },
+            })
 
         # ── 2. Aguardar personas (já carregando em paralelo) ──────────
         yield sse_event("phase", {

@@ -1228,7 +1228,11 @@ export function ArenaMonitor() {
                   return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
                 }
                 // idle → skipped (step never ran, don't show as complete)
+                // Exception: queryAnalyzer may have detail from log event, mark complete instead
                 if (prev.nodes[n] === 'idle') {
+                  if (n === 'queryAnalyzer' && prev.stepDetails.queryAnalyzer) {
+                    return { ...prev, nodes: { ...prev.nodes, [n]: 'complete' } };
+                  }
                   return { ...prev, nodes: { ...prev.nodes, [n]: 'skipped' } };
                 }
                 return prev;
@@ -1318,6 +1322,21 @@ export function ArenaMonitor() {
             `Pesquisa concluida: ${payload.data.snippets_count} trechos de ${payload.data.sources_count} fontes`,
             payload.data,
           );
+          // If webResearch detail wasn't populated by a log event, populate from web_complete
+          setState(prev => {
+            if (prev.stepDetails.webResearch) return prev; // already populated
+            return {
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                webResearch: {
+                  queries: (payload.data.queries as string[]) || [],
+                  snippets: (payload.data.snippets as string[]) || [],
+                  sources: (payload.data.sources as string[]) || [],
+                },
+              },
+            };
+          });
           break;
 
         case 'personas_loaded': {

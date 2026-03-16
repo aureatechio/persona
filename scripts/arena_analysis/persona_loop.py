@@ -430,28 +430,40 @@ class PersonaLoop:
         claude_sem = asyncio.Semaphore(min(settings.max_parallel_claude, len(claude_batches) or 1))
         gpt_sem = asyncio.Semaphore(min(settings.max_parallel_openai, len(gpt_batches) or 1))
 
+        # Build metadata for each batch (model name + personas) for verbose mode
+        batch_info: list[tuple[str, list[dict[str, Any]]]] = []
+
+        # Wrapper to tag each coroutine with its index
+        async def _tagged(idx: int, coro):
+            result = await coro
+            return idx, result
+
         # Create all tasks — round-robin by key
         all_tasks = []
         for i, batch in enumerate(claude_batches):
             key_id = i % num_claude_keys
+            idx = len(all_tasks)
             all_tasks.append(
-                self._process_claude_batch(
+                _tagged(idx, self._process_claude_batch(
                     question, context, batch,
                     self._claude_limiters[key_id],
                     self._claude_clients[key_id],
                     claude_sem, key_id,
-                )
+                ))
             )
+            batch_info.append(("Claude Sonnet 4", batch))
         for i, batch in enumerate(gpt_batches):
             key_id = i % num_gpt_keys
+            idx = len(all_tasks)
             all_tasks.append(
-                self._process_openai_batch(
+                _tagged(idx, self._process_openai_batch(
                     question, context, batch,
                     self._openai_limiters[key_id],
                     self._openai_clients[key_id],
                     gpt_sem, key_id,
-                )
+                ))
             )
+            batch_info.append(("GPT-4o", batch))
 
         # Process and emit progress as batches complete
         processed = 0
@@ -460,7 +472,7 @@ class PersonaLoop:
         neutral = 0
 
         for coro in asyncio.as_completed(all_tasks):
-            batch_results = await coro
+            task_idx, batch_results = await coro
 
             for r in batch_results:
                 processed += 1
@@ -471,6 +483,26 @@ class PersonaLoop:
                 else:
                     neutral += 1
 
+            # Build verbose batch metadata
+            batch_meta = None
+            if verbose:
+                model_name, batch_personas = batch_info[task_idx]
+                batch_meta = {
+                    "model": model_name,
+                    "persona_count": len(batch_results),
+                    "personas_summary": [
+                        {
+                            "id": str(p.get("id", p.get("name", "?"))),
+                            "name": str(p.get("name", "?")),
+                            "state": str(p.get("state", "?")),
+                            "age": int(p.get("age", 0)),
+                            "sentiment": r.sentiment,
+                            "comment": r.comment[:300],
+                        }
+                        for p, r in zip(batch_personas, batch_results)
+                    ],
+                }
+
             yield BatchProgress(
                 processed=processed,
                 total=total,
@@ -478,7 +510,7 @@ class PersonaLoop:
                 negative=negative,
                 neutral=neutral,
                 results=batch_results,
-                batch_meta=None,
+                batch_meta=batch_meta,
             )
 
         print(
