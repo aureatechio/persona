@@ -16,16 +16,19 @@ import { SegmentRanking, Waiting } from './DashboardScreen';
    ════════════════════════════════════════════════════════════════════ */
 
 function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel: string }) {
-  const score = Math.round((item.avgScore ?? 5.0) * 10) / 10;
+  const total = item.count || 0;
+  const isEmpty = total === 0;
+  const score = isEmpty ? 0 : Math.round((item.avgScore ?? 0) * 10) / 10;
   const hex = scoreToHex(score);
 
-  const concordance = score > 6
-    ? { text: 'Maioria concorda', color: 'text-emerald-400' }
-    : score < 4
-      ? { text: 'Maioria discorda', color: 'text-red-400' }
-      : { text: 'Opiniao dividida', color: 'text-amber-400' };
+  const concordance = isEmpty
+    ? null
+    : score > 6
+      ? { text: 'Maioria concorda', color: 'text-emerald-400' }
+      : score < 4
+        ? { text: 'Maioria discorda', color: 'text-red-400' }
+        : { text: 'Opiniao dividida', color: 'text-amber-400' };
 
-  const total = item.count || 0;
   const positivePct = total > 0 ? Math.round(((item.positive || 0) / total) * 100) : 0;
   const negativePct = total > 0 ? Math.round(((item.negative || 0) / total) * 100) : 0;
 
@@ -37,28 +40,38 @@ function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel
         <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Eleitores de {item.label} ({partyLabel})</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
-        <AnimatedScore value={score} className="text-2xl" duration={10000} />
-        <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
+        {isEmpty ? (
+          <span className="text-2xl font-bold text-zinc-600">–</span>
+        ) : (
+          <AnimatedScore value={score} className="text-2xl" duration={10000} />
+        )}
+        {concordance && (
+          <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
+        )}
         {/* Score bar */}
         <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{
             background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
           }} />
-          <div
-            className="absolute top-0 h-full w-[6px] rounded-full"
-            style={{
-              left: `calc(${(score / 10) * 100}% - 3px)`,
-              backgroundColor: hex,
-              boxShadow: `0 0 6px ${hex}80`,
-              transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
-            }}
-          />
+          {!isEmpty && (
+            <div
+              className="absolute top-0 h-full w-[6px] rounded-full"
+              style={{
+                left: `calc(${(score / 10) * 100}% - 3px)`,
+                backgroundColor: hex,
+                boxShadow: `0 0 6px ${hex}80`,
+                transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+              }}
+            />
+          )}
         </div>
-        <div className="flex items-center gap-2 text-[8px] text-zinc-600">
-          <span>{positivePct}% concordam</span>
-          <span>·</span>
-          <span>{negativePct}% discordam</span>
-        </div>
+        {!isEmpty && (
+          <div className="flex items-center gap-2 text-[8px] text-zinc-600">
+            <span>{positivePct}% concordam</span>
+            <span>·</span>
+            <span>{negativePct}% discordam</span>
+          </div>
+        )}
       </div>
     </div>
   );

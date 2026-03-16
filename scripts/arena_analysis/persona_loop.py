@@ -428,6 +428,7 @@ class PersonaLoop:
         context: ContextResult | None,
         personas: list[dict[str, Any]],
         verbose: bool = False,
+        cancelled: asyncio.Event | None = None,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
         Processa personas em BATCHES (batch_size por chamada).
@@ -506,6 +507,15 @@ class PersonaLoop:
         score_sum = 0.0
 
         for coro in asyncio.as_completed(all_tasks):
+            # Check cancellation before awaiting next batch
+            if cancelled and cancelled.is_set():
+                print(f"[PersonaLoop] Cancelled — stopping after {processed}/{total} personas")
+                # Cancel remaining tasks
+                for t in all_tasks:
+                    if hasattr(t, 'cancel'):
+                        t.cancel()
+                return
+
             task_idx, batch_results = await coro
 
             for r in batch_results:

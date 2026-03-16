@@ -113,18 +113,33 @@ async def health():
 
 
 @app.post("/api/arena/analyze")
-async def analyze(request: AnalyzeRequest):
+async def analyze(request: AnalyzeRequest, raw_request: Request):
     """
     Analisa pergunta com pipeline AI completo.
     Retorna SSE stream com progresso e resultados.
     """
+    # Cancellation event — set when client disconnects
+    cancelled = asyncio.Event()
+
+    async def _watch_disconnect():
+        """Background task that sets cancelled when client disconnects."""
+        while not cancelled.is_set():
+            if await raw_request.is_disconnected():
+                cancelled.set()
+                print("[Pipeline] Client disconnected — cancelling processing")
+                return
+            await asyncio.sleep(1)
 
     async def generate():
+        # Start watching for client disconnect in the background
+        disconnect_task = asyncio.create_task(_watch_disconnect())
+
         start_time = time.time()
         total_tokens = 0
 
-        # ── 0. Route event ────────────────────────────────────────
-        yield sse_event("route", {"route": "python"})
+        try:
+            # ── 0. Route event ────────────────────────────────────────
+            yield sse_event("route", {"route": "python"})
 
         # ── 1. Web Research + Persona Loading em paralelo ────────
         # Skip query_analyzer — classify-route already decided this needs Python.
