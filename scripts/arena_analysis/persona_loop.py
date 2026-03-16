@@ -29,6 +29,7 @@ class PersonaResult:
     persona_id: str
     sentiment: str  # "positive" | "negative" | "neutral"
     comment: str
+    score: float = 5.0  # 0-10 impact score from AI
 
 
 @dataclass
@@ -40,7 +41,9 @@ class BatchProgress:
     negative: int
     neutral: int
     results: list[PersonaResult]
+    score_sum: float = 0.0
     batch_meta: dict | None = None
+    personas: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _chunk_list(lst: list, size: int) -> list[list]:
@@ -113,16 +116,29 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "") -> 
         parsed = parsed[0]
 
     if not isinstance(parsed, dict):
-        return PersonaResult(persona_id=pid, sentiment="neutral", comment="sei la")
+        return PersonaResult(persona_id=pid, sentiment="neutral", comment="sei la", score=5.0)
 
-    sentiment = parsed.get("sentiment", "neutral")
-    if sentiment not in ("positive", "negative", "neutral"):
+    # Extract and clamp score
+    raw_score = parsed.get("score")
+    try:
+        score = float(raw_score) if raw_score is not None else 5.0
+    except (TypeError, ValueError):
+        score = 5.0
+    score = max(0.0, min(10.0, score))
+
+    # Derive sentiment from score (ensures coherence)
+    if score >= 6.5:
+        sentiment = "positive"
+    elif score <= 3.5:
+        sentiment = "negative"
+    else:
         sentiment = "neutral"
 
     return PersonaResult(
         persona_id=pid,
         sentiment=sentiment,
         comment=parsed.get("comment", ""),
+        score=score,
     )
 
 
@@ -202,14 +218,29 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "") -> 
             continue
         persona = personas[i]
         pid = str(persona.get("id", persona.get("name", f"unknown_{i}")))
-        sentiment = item.get("sentiment", "neutral")
-        if sentiment not in ("positive", "negative", "neutral"):
+
+        # Extract and clamp score
+        raw_score = item.get("score")
+        try:
+            score = float(raw_score) if raw_score is not None else 5.0
+        except (TypeError, ValueError):
+            score = 5.0
+        score = max(0.0, min(10.0, score))
+
+        # Derive sentiment from score (ensures coherence)
+        if score >= 6.5:
+            sentiment = "positive"
+        elif score <= 3.5:
+            sentiment = "negative"
+        else:
             sentiment = "neutral"
+
         results.append(
             PersonaResult(
                 persona_id=pid,
                 sentiment=sentiment,
                 comment=item.get("comment", ""),
+                score=score,
             )
         )
 
@@ -217,7 +248,7 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "") -> 
         persona = personas[i]
         pid = str(persona.get("id", persona.get("name", f"unknown_{i}")))
         results.append(
-            PersonaResult(persona_id=pid, sentiment="neutral", comment="...")
+            PersonaResult(persona_id=pid, sentiment="neutral", comment="...", score=5.0)
         )
 
     if len(results) < len(personas):
@@ -233,6 +264,7 @@ def _fallback_results(personas: list[dict[str, Any]]) -> list[PersonaResult]:
             persona_id=str(p.get("id", p.get("name", "unknown"))),
             sentiment="neutral",
             comment="sei la",
+            score=5.0,
         )
         for p in personas
     ]
@@ -244,6 +276,7 @@ def _fallback_single(persona: dict[str, Any]) -> PersonaResult:
         persona_id=str(persona.get("id", persona.get("name", "unknown"))),
         sentiment="neutral",
         comment="sei la",
+        score=5.0,
     )
 
 
@@ -470,12 +503,14 @@ class PersonaLoop:
         positive = 0
         negative = 0
         neutral = 0
+        score_sum = 0.0
 
         for coro in asyncio.as_completed(all_tasks):
             task_idx, batch_results = await coro
 
             for r in batch_results:
                 processed += 1
+                score_sum += r.score
                 if r.sentiment == "positive":
                     positive += 1
                 elif r.sentiment == "negative":
@@ -497,12 +532,14 @@ class PersonaLoop:
                             "state": str(p.get("state", "?")),
                             "age": int(p.get("age", 0)),
                             "sentiment": r.sentiment,
+                            "score": r.score,
                             "comment": r.comment[:300],
                         }
                         for p, r in zip(batch_personas, batch_results)
                     ],
                 }
 
+            _, batch_personas_for_progress = batch_info[task_idx]
             yield BatchProgress(
                 processed=processed,
                 total=total,
@@ -510,10 +547,13 @@ class PersonaLoop:
                 negative=negative,
                 neutral=neutral,
                 results=batch_results,
+                score_sum=score_sum,
                 batch_meta=batch_meta,
+                personas=batch_personas_for_progress,
             )
 
+        avg_score = round(score_sum / processed, 2) if processed > 0 else 5.0
         print(
             f"[PersonaLoop] Concluido: {processed}/{total} personas. "
-            f"P={positive} N={negative} U={neutral}"
+            f"P={positive} N={negative} U={neutral} | avgScore={avg_score}"
         )

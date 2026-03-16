@@ -66,6 +66,19 @@ INTENSITY_BANDS = [
 ]
 
 
+def _compute_avg_score(d: dict) -> float:
+    """Compute avgScore from accumulated AI scores. Falls back to sentiment heuristic."""
+    count = d.get("count", 0)
+    if count == 0:
+        return 5.0
+    total_score = d.get("total_score", 0.0)
+    if total_score > 0:
+        return round(total_score / count, 1)
+    # Fallback: derive from sentiment counts
+    total = d["positive"] * 8.5 + d["negative"] * 1.5 + d["neutral"] * 5.0
+    return round(total / count, 1)
+
+
 def _classify_quadrant(score_eco: float, score_cost: float) -> str:
     if score_eco <= 0 and score_cost <= 0:
         return "esq_progressista"
@@ -103,38 +116,35 @@ def aggregate_results(
     total_positive = 0
     total_negative = 0
     total_neutral = 0
+    total_score_sum = 0.0
 
-    # Aggregators
-    cluster_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
+    # Aggregators — all include total_score for AI-based avgScore
+    def _new_seg():
+        return {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_score": 0.0}
+
+    cluster_data: dict[str, dict] = defaultdict(_new_seg)
     quadrant_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "cluster_counts": defaultdict(int)}
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_score": 0.0, "cluster_counts": defaultdict(int)}
     )
-    region_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
+    region_data: dict[str, dict] = defaultdict(_new_seg)
     generation_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_age": 0}
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_score": 0.0, "total_age": 0}
     )
     education_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_intensity": 0.0}
+        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0, "total_score": 0.0, "total_intensity": 0.0}
     )
-    gender_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
-    religion_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
-    race_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
-    social_class_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
-    political_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
+    gender_data: dict[str, dict] = defaultdict(_new_seg)
+    religion_data: dict[str, dict] = defaultdict(_new_seg)
+    race_data: dict[str, dict] = defaultdict(_new_seg)
+    social_class_data: dict[str, dict] = defaultdict(_new_seg)
+    political_data: dict[str, dict] = defaultdict(_new_seg)
+    voto2022_data: dict[str, dict] = defaultdict(_new_seg)
+    aprovacao_lula_data: dict[str, dict] = defaultdict(_new_seg)
+    voto2026_data: dict[str, dict] = defaultdict(_new_seg)
+    cluster_macro_data: dict[str, dict] = defaultdict(_new_seg)
+    score_eco_data: dict[str, dict] = defaultdict(_new_seg)
+    score_cost_data: dict[str, dict] = defaultdict(_new_seg)
+    state_data: dict[str, dict] = defaultdict(_new_seg)
     intensity_data = [
         {"label": b["label"], "range": b["range"], "count": 0, "total_score": 0}
         for b in INTENSITY_BANDS
@@ -170,11 +180,14 @@ def aggregate_results(
         if not result:
             sentiment = "neutral"
             comment = ""
+            persona_score = 5.0
         else:
             sentiment = result.sentiment
             comment = result.comment
+            persona_score = result.score
 
         # Totals
+        total_score_sum += persona_score
         if sentiment == "positive":
             total_positive += 1
         elif sentiment == "negative":
@@ -186,6 +199,7 @@ def aggregate_results(
         cid = persona.get("cluster_id") or "unknown"
         cluster_data[cid]["count"] += 1
         cluster_data[cid][sentiment] += 1
+        cluster_data[cid]["total_score"] += persona_score
 
         # Quadrant
         eco = float(persona.get("score_economico") or 0)
@@ -193,34 +207,40 @@ def aggregate_results(
         quadrant = _classify_quadrant(eco, cost)
         quadrant_data[quadrant]["count"] += 1
         quadrant_data[quadrant][sentiment] += 1
+        quadrant_data[quadrant]["total_score"] += persona_score
         quadrant_data[quadrant]["cluster_counts"][cid] += 1
 
         # Region
         region = persona.get("region_br") or "Não informado"
         region_data[region]["count"] += 1
         region_data[region][sentiment] += 1
+        region_data[region]["total_score"] += persona_score
 
         # Generation
         gen = persona.get("generation") or "Não informado"
         generation_data[gen]["count"] += 1
         generation_data[gen][sentiment] += 1
+        generation_data[gen]["total_score"] += persona_score
         generation_data[gen]["total_age"] += int(persona.get("age") or 0)
 
         # Education
         edu = persona.get("education_level") or "Não informado"
         education_data[edu]["count"] += 1
         education_data[edu][sentiment] += 1
+        education_data[edu]["total_score"] += persona_score
         education_data[edu]["total_intensity"] += (abs(eco) + abs(cost)) / 2
 
         # Gender
         gender = persona.get("gender_identity") or persona.get("gender") or "Outros"
         gender_data[gender]["count"] += 1
         gender_data[gender][sentiment] += 1
+        gender_data[gender]["total_score"] += persona_score
 
         # Religion
         religion = persona.get("macro_religion") or "Outros"
         religion_data[religion]["count"] += 1
         religion_data[religion][sentiment] += 1
+        religion_data[religion]["total_score"] += persona_score
 
         # Race
         race = persona.get("raca_cor") or "Não informado"
@@ -232,16 +252,87 @@ def aggregate_results(
                     race = ident.get("etnia") or "Não informado"
         race_data[race]["count"] += 1
         race_data[race][sentiment] += 1
+        race_data[race]["total_score"] += persona_score
 
         # Social Class
         sc = persona.get("social_class") or "Outros"
-        social_class_data[f"Classe {sc}" if sc != "Outros" else sc]["count"] += 1
-        social_class_data[f"Classe {sc}" if sc != "Outros" else sc][sentiment] += 1
+        sc_label = f"Classe {sc}" if sc != "Outros" else sc
+        social_class_data[sc_label]["count"] += 1
+        social_class_data[sc_label][sentiment] += 1
+        social_class_data[sc_label]["total_score"] += persona_score
 
         # Political Leaning
         pol = persona.get("political_leaning") or "Outros"
         political_data[pol]["count"] += 1
         political_data[pol][sentiment] += 1
+        political_data[pol]["total_score"] += persona_score
+
+        # Voto 2022 — normalize to Lula/Bolsonaro/Nulo
+        voto22_raw = persona.get("voto_2022") or ""
+        voto22_norm = voto22_raw.strip()
+        if voto22_norm:
+            low = voto22_norm.lower()
+            if "lula" in low or "pt" in low:
+                voto22_label = "Lula"
+            elif "bolsonaro" in low or "jair" in low:
+                voto22_label = "Bolsonaro"
+            else:
+                voto22_label = "Nulo/Outro"
+        else:
+            voto22_label = "Não informado"
+        voto2022_data[voto22_label]["count"] += 1
+        voto2022_data[voto22_label][sentiment] += 1
+        voto2022_data[voto22_label]["total_score"] += persona_score
+
+        # Aprovação Lula
+        aprov_raw = persona.get("aprovacao_lula") or ""
+        aprov_label = str(aprov_raw).strip() or "Não informado"
+        aprovacao_lula_data[aprov_label]["count"] += 1
+        aprovacao_lula_data[aprov_label][sentiment] += 1
+        aprovacao_lula_data[aprov_label]["total_score"] += persona_score
+
+        # Voto 2026
+        voto26_raw = persona.get("voto_2026") or ""
+        voto26_label = str(voto26_raw).strip() or "Não informado"
+        voto2026_data[voto26_label]["count"] += 1
+        voto2026_data[voto26_label][sentiment] += 1
+        voto2026_data[voto26_label]["total_score"] += persona_score
+
+        # Cluster Macro — derive from cluster_id first char
+        macro_label = CLUSTER_MACROS.get(cid, "Outro")
+        cluster_macro_data[macro_label]["count"] += 1
+        cluster_macro_data[macro_label][sentiment] += 1
+        cluster_macro_data[macro_label]["total_score"] += persona_score
+
+        # Score Econômico — bucketize
+        eco_bucket = (
+            "Esquerda forte" if eco <= -0.5 else
+            "Esquerda leve" if eco <= -0.1 else
+            "Centro" if eco <= 0.1 else
+            "Direita leve" if eco <= 0.5 else
+            "Direita forte"
+        )
+        score_eco_data[eco_bucket]["count"] += 1
+        score_eco_data[eco_bucket][sentiment] += 1
+        score_eco_data[eco_bucket]["total_score"] += persona_score
+
+        # Score Costumes — bucketize
+        cost_bucket = (
+            "Progressista forte" if cost <= -0.5 else
+            "Progressista leve" if cost <= -0.1 else
+            "Centro" if cost <= 0.1 else
+            "Conservador leve" if cost <= 0.5 else
+            "Conservador forte"
+        )
+        score_cost_data[cost_bucket]["count"] += 1
+        score_cost_data[cost_bucket][sentiment] += 1
+        score_cost_data[cost_bucket]["total_score"] += persona_score
+
+        # State breakdown
+        st = persona.get("state") or "Não informado"
+        state_data[st]["count"] += 1
+        state_data[st][sentiment] += 1
+        state_data[st]["total_score"] += persona_score
 
         # Intensity bands
         magnitude = (abs(eco) + abs(cost)) / 2
@@ -416,16 +507,16 @@ def aggregate_results(
         })
 
     # Archetypes (aggregate from personas)
-    archetype_data: dict[str, dict] = defaultdict(
-        lambda: {"count": 0, "positive": 0, "negative": 0, "neutral": 0}
-    )
+    archetype_data: dict[str, dict] = defaultdict(_new_seg)
     for persona in personas:
         arch = persona.get("archetype_primary", "moderate")
         pid = str(persona.get("id", persona.get("name", "")))
         result = result_map.get(pid)
         sentiment = result.sentiment if result else "neutral"
+        arch_score = result.score if result else 5.0
         archetype_data[arch]["count"] += 1
         archetype_data[arch][sentiment] += 1
+        archetype_data[arch]["total_score"] += arch_score
 
     archetypes = [
         {
@@ -448,7 +539,7 @@ def aggregate_results(
     # Build AllSegments (matches frontend AllSegments interface)
     def _seg(d: dict[str, dict]) -> list[dict]:
         return sorted(
-            [{"label": k, **v} for k, v in d.items() if v["count"] > 0],
+            [{"label": k, "avgScore": _compute_avg_score(v), **v} for k, v in d.items() if v["count"] > 0],
             key=lambda x: x["count"], reverse=True,
         )
 
@@ -462,13 +553,29 @@ def aggregate_results(
         "education": _seg(education_data),
         "politicalLeaning": _seg(political_data),
         "archetype": _seg(archetype_data),
+        "voto2022": _seg(voto2022_data),
+        "aprovacaoLula": _seg(aprovacao_lula_data),
+        "voto2026": _seg(voto2026_data),
+        "clusterMacro": _seg(cluster_macro_data),
+        "scoreEco": _seg(score_eco_data),
+        "scoreCost": _seg(score_cost_data),
     }
+
+    # State breakdown — per-state counts + avgScore
+    state_breakdown = {
+        st: {"count": d["count"], "positive": d["positive"], "negative": d["negative"], "neutral": d["neutral"], "avgScore": _compute_avg_score(d)}
+        for st, d in state_data.items()
+        if d["count"] > 0
+    }
+
+    global_avg_score = round(total_score_sum / total, 1) if total > 0 else 5.0
 
     return {
         "total": total,
         "positive": total_positive,
         "negative": total_negative,
         "neutral": total_neutral,
+        "avgScore": global_avg_score,
         "archetypes": archetypes,
         "clusterResults": cluster_results,
         "comments": best_comments,
@@ -481,4 +588,5 @@ def aggregate_results(
         "politicalFigures": political_figures,
         "intensityBands": intensity_bands,
         "segments": segments,
+        "stateBreakdown": state_breakdown,
     }

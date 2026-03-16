@@ -205,6 +205,8 @@ export interface ArenaSSEProgress {
   positive: number;
   negative: number;
   neutral: number;
+  avgScore?: number;
+  scoreSum?: number;
 }
 
 export interface ArenaSSEDone {

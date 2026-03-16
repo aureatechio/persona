@@ -276,17 +276,41 @@ async def analyze(request: AnalyzeRequest):
         })
 
         all_results = []
+        # Incremental aggregator for progressive segments
+        inc_personas: list[dict] = []
+        inc_results: list = []
+        last_segment_count = 0
+        SEGMENT_INTERVAL = 500  # emit segments every ~500 personas
 
         async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose):
             all_results.extend(progress.results)
+            inc_personas.extend(progress.personas)
+            inc_results.extend(progress.results)
 
-            yield sse_event("progress", {
+            avg_score = round(progress.score_sum / progress.processed, 1) if progress.processed > 0 else 5.0
+            progress_data: dict = {
                 "processed": progress.processed,
                 "total": progress.total,
                 "positive": progress.positive,
                 "negative": progress.negative,
                 "neutral": progress.neutral,
-            })
+                "avgScore": avg_score,
+                "scoreSum": progress.score_sum,
+            }
+
+            # Emit segments periodically
+            if progress.processed - last_segment_count >= SEGMENT_INTERVAL or progress.processed == progress.total:
+                try:
+                    inc_agg = await asyncio.to_thread(
+                        aggregate_results, inc_personas, inc_results, request.question
+                    )
+                    progress_data["segments"] = inc_agg.get("segments")
+                    progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
+                    last_segment_count = progress.processed
+                except Exception as seg_err:
+                    print(f"[Pipeline] Incremental segment error: {seg_err}")
+
+            yield sse_event("progress", progress_data)
 
             if request.verbose and progress.batch_meta:
                 yield sse_event("batch_detail", progress.batch_meta)

@@ -33,6 +33,8 @@ PERSONA_FIELDS = ",".join([
     "cluster_id", "nome_grupo", "score_economico", "score_costumes",
     "social_class", "area_type", "region_br", "civil_status",
     "apelido_politico", "cronotype",
+    "voto_2022", "aprovacao_lula", "voto_2026", "raca_cor",
+    "q_avaliacao_bolsonaro",
     "career_json", "demographic_json", "psychology_json", "beliefs_json",
 ])
 

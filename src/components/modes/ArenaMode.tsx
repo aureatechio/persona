@@ -3,18 +3,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import type { ConversationBlock } from '@/hooks/useConversation';
 import type { EnhancedSimulationResult } from '@/lib/arena';
-import {
-  detectTopics,
-  buildPersonasForAI,
-  generateAIComments,
-  runEnhancedSimulation,
-  computePersonaScore,
-  SegmentAccumulator,
-  IdeologyAccumulator,
-  LiveCommentAccumulator,
-  StateAccumulator,
-  scoreToSentiment,
-} from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { processAttachmentsForUpload, isYouTubeUrl, type Attachment } from '@/lib/file-utils';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
@@ -343,52 +331,15 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let useFallback = false;
     let simulation: any = null;
 
-    // ── Progressive accumulators fed by Python progress events ──────────
-    const segAcc = new SegmentAccumulator();
-    const ideoAcc = new IdeologyAccumulator(q);
-    const commentAcc = new LiveCommentAccumulator(q);
-    const stateAcc = new StateAccumulator();
-    let liveComments: import('@/lib/arena/types').CommentResult[] = [];
-    let aiCommentsFired = false;
+    // Segments and stateBreakdown come directly from Python backend
+    let pythonSegments: AllSegments | undefined;
+    let pythonStateBreakdown: Record<string, { count: number; positive: number; negative: number; neutral: number }> | undefined;
 
-    // Pre-load persona data for accumulators (populate incrementally as batches arrive)
-    let allPersonas: any[] = [];
-    let personaIndex = 0; // tracks how many personas we've fed to accumulators
-    const personaLoadPromise = personaCache.loadAll((loaded, total, batch) => {
-      allPersonas = [...allPersonas, ...batch];
-      commentAcc.setTotal(total);
-    }).then(data => {
-      // Final sync — ensure we have the complete set
-      allPersonas = data;
-      commentAcc.setTotal(data.length);
-    }).catch(() => {});
-
-    /** Always use local accumulator segments — they have both counts AND avgScore.
-     *  Python backend segments don't carry avgScore so we ignore them. */
-    const getSegments = (): AllSegments => segAcc.toSegments();
-
-    let pythonScoreSum = 0;
-
-    /** Feed next N personas to ideology/comment accumulators based on Python progress */
-    const feedAccumulators = (pythonProcessed: number, pythonTotal: number) => {
-      if (allPersonas.length === 0) return;
-      // Map Python progress proportionally to local personas
-      const targetIndex = Math.min(
-        Math.floor((pythonProcessed / pythonTotal) * allPersonas.length),
-        allPersonas.length,
-      );
-      const queryForLocal = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-      while (personaIndex < targetIndex) {
-        const p = allPersonas[personaIndex];
-        const score = computePersonaScore(p, queryForLocal);
-        const sentiment = scoreToSentiment(score);
-        pythonScoreSum += score;
-        segAcc.addPersonaWithScore(p, score);
-        ideoAcc.addPersona(p, sentiment);
-        commentAcc.addPersona(p, sentiment);
-        stateAcc.addPersona(p, sentiment);
-        personaIndex++;
-      }
+    /** Compute avgScore from Python sentiment counts */
+    const computeAvgFromCounts = (pos: number, neg: number, neu: number): number => {
+      const total = pos + neg + neu;
+      if (total === 0) return 5.0;
+      return Math.round(((pos * 8.5 + neg * 1.5 + neu * 5.0) / total) * 10) / 10;
     };
 
     try {
@@ -414,6 +365,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       let streamDone = false;
       let lastEventTime = Date.now();
       let receivedAnyProgress = false;
+      let lastScoreSum = 0;
       // Python needs time: query analysis + loading 20k personas + GPT batches
       // Only cancel if truly stalled (no events at all for 2 min)
       let stallThreshold = 120_000;
@@ -456,10 +408,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       positive: simulation?.positive || 0,
                       negative: simulation?.negative || 0,
                       neutral: simulation?.neutral || 0,
-                      segments: segAcc.toSegments(),
-                      liveIdeology: ideoAcc.toResults(),
-                      liveComments,
-                      stateBreakdown: stateAcc.toStateBreakdown(),
+                      segments: pythonSegments,
+                      stateBreakdown: pythonStateBreakdown,
                     });
                   } else if (pythonPhase === 'processing_personas') {
                     // Stay in collecting until first real progress event arrives
@@ -500,10 +450,19 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                 case 'progress': {
                   receivedAnyProgress = true;
                   stallThreshold = 120_000;
-                  // Feed accumulators proportionally to Python progress
-                  feedAccumulators(payload.data.processed, payload.data.total);
-                  // Emit with Python sentiment + progressive ideology/comments
-                  const progressAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
+                  // Use segments from Python when available
+                  if (payload.data.segments) {
+                    pythonSegments = payload.data.segments as AllSegments;
+                  }
+                  if (payload.data.stateBreakdown) {
+                    pythonStateBreakdown = payload.data.stateBreakdown;
+                  }
+                  // Use avgScore from Python AI scoring when available, fallback to local heuristic
+                  const progressAvg = payload.data.avgScore != null
+                    ? payload.data.avgScore
+                    : computeAvgFromCounts(payload.data.positive, payload.data.negative, payload.data.neutral);
+                  const progressScoreSum = payload.data.scoreSum || 0;
+                  lastScoreSum = progressScoreSum;
                   emitLive(blockId, {
                     ...baseLiveData,
                     phase: 'streaming',
@@ -513,11 +472,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     negative: payload.data.negative,
                     neutral: payload.data.neutral,
                     avgScore: progressAvg,
-                    scoreSum: pythonScoreSum,
-                    segments: getSegments(),
-                    liveIdeology: ideoAcc.toResults(),
-                    liveComments,
-                    stateBreakdown: stateAcc.toStateBreakdown(),
+                    scoreSum: progressScoreSum,
+                    segments: pythonSegments,
+                    stateBreakdown: pythonStateBreakdown,
                   });
                   simulation = {
                     total: payload.data.total,
@@ -541,77 +498,43 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
                 case 'results': {
                   const resultsData = payload.data;
-                  const backendSegments = resultsData.segments;
-                  delete resultsData.segments;
-                  simulation = resultsData as EnhancedSimulationResult;
-                  if (backendSegments) {
-                    (simulation as any)._backendSegments = backendSegments;
+                  if (resultsData.segments) {
+                    pythonSegments = resultsData.segments as AllSegments;
+                    delete resultsData.segments;
                   }
+                  if (resultsData.stateBreakdown) {
+                    pythonStateBreakdown = resultsData.stateBreakdown;
+                    delete resultsData.stateBreakdown;
+                  }
+                  simulation = resultsData as EnhancedSimulationResult;
                   hasResults = true;
                   break;
                 }
 
                 case 'done': {
                   streamDone = true;
-                  await personaLoadPromise;
-                  // Feed remaining personas to accumulators
-                  feedAccumulators(payload.data.total_personas || simulation?.total || allPersonas.length, payload.data.total_personas || simulation?.total || allPersonas.length);
                   const doneTotal = payload.data.total_personas || simulation?.total || 0;
-                  const doneSegments = (simulation as any)?._backendSegments;
-                  const liveIdeo = ideoAcc.toResults();
-                  const doneStateBreakdown = stateAcc.toStateBreakdown();
+                  // Use avgScore from Python aggregator (AI-based) when available
+                  const doneAvg = simulation?.avgScore != null
+                    ? simulation.avgScore
+                    : computeAvgFromCounts(simulation?.positive || 0, simulation?.negative || 0, simulation?.neutral || 0);
 
-                  // Build complete snapshot — all subsequent emissions extend this
-                  const pythonFinalAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
-                  const completeBase = {
+                  emitLive(blockId, {
                     ...baseLiveData,
-                    phase: 'complete' as const,
+                    phase: 'complete',
                     processedCount: doneTotal,
                     totalCount: doneTotal,
                     positive: simulation?.positive || 0,
                     negative: simulation?.negative || 0,
                     neutral: simulation?.neutral || 0,
-                    avgScore: pythonFinalAvg,
-                    scoreSum: pythonScoreSum,
+                    avgScore: doneAvg,
+                    scoreSum: lastScoreSum,
                     simulation,
                     totalPersonas: doneTotal,
-                    segments: getSegments(),
-                    liveIdeology: liveIdeo,
-                    liveComments,
-                    stateBreakdown: doneStateBreakdown,
-                  };
-
-                  emitLive(blockId, completeBase);
+                    segments: pythonSegments,
+                    stateBreakdown: pythonStateBreakdown,
+                  });
                   onProcessing(false);
-
-                  // ALWAYS recompute segments with scores from all personas
-                  // (feedAccumulators may have been incomplete due to race conditions)
-                  if (allPersonas.length > 0 && !cancelledBlocksRef.current.has(blockId)) {
-                    const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-                    const segAccFinal = new SegmentAccumulator();
-                    let finalScoreSum = 0;
-                    for (const p of allPersonas) {
-                      const s = computePersonaScore(p, queryForSeg);
-                      segAccFinal.addPersonaWithScore(p, s);
-                      finalScoreSum += s;
-                    }
-                    const finalAvg = allPersonas.length > 0 ? Math.round((finalScoreSum / allPersonas.length) * 10) / 10 : 5.0;
-                    completeBase.segments = segAccFinal.toSegments();
-                    completeBase.avgScore = finalAvg;
-                    completeBase.scoreSum = finalScoreSum;
-                    emitLive(blockId, completeBase);
-                  }
-
-                  // Generate full AI comments if not already available
-                  if (!simulation?.comments?.length && !cancelledBlocksRef.current.has(blockId)) {
-                    const topicScores = detectTopics(enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q);
-                    const personasForAI = buildPersonasForAI(q, allPersonas.length > 0 ? allPersonas : await personaCache.loadAll(), topicScores);
-                    const claudeComments = await generateAIComments(q, personasForAI);
-                    if (cancelledBlocksRef.current.has(blockId)) break;
-                    simulation = { ...simulation, comments: claudeComments };
-                    completeBase.simulation = simulation;
-                    emitLive(blockId, completeBase);
-                  }
                   break;
                 }
               }
@@ -627,59 +550,25 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       console.log(`[Arena] 🐍 Stream ended. streamDone=${streamDone}, hasResults=${hasResults}, receivedAnyProgress=${receivedAnyProgress}`);
       if (!streamDone && hasResults) {
         console.log('[Arena] 🐍 Stream incomplete but has results — using partial data');
-        await personaLoadPromise;
         const total = simulation?.total || 0;
-
-        // Recompute segments with scores from all local personas
-        let partialScoreSum = 0;
-        if (allPersonas.length > 0) {
-          const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-          const segAccPartial = new SegmentAccumulator();
-          for (const p of allPersonas) {
-            const s = computePersonaScore(p, queryForSeg);
-            segAccPartial.addPersonaWithScore(p, s);
-            partialScoreSum += s;
-          }
-          // Replace segAcc contents — copy to the outer segAcc isn't possible,
-          // so we emit directly with the new accumulator
-          const partialAvg = Math.round((partialScoreSum / allPersonas.length) * 10) / 10;
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'complete',
-            processedCount: total,
-            totalCount: total,
-            positive: simulation?.positive || 0,
-            negative: simulation?.negative || 0,
-            neutral: simulation?.neutral || 0,
-            avgScore: partialAvg,
-            scoreSum: partialScoreSum,
-            simulation,
-            totalPersonas: total,
-            segments: segAccPartial.toSegments(),
-            liveIdeology: ideoAcc.toResults(),
-            liveComments,
-            stateBreakdown: stateAcc.toStateBreakdown(),
-          });
-        } else {
-          const partialAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'complete',
-            processedCount: total,
-            totalCount: total,
-            positive: simulation?.positive || 0,
-            negative: simulation?.negative || 0,
-            neutral: simulation?.neutral || 0,
-            avgScore: partialAvg,
-            scoreSum: pythonScoreSum,
-            simulation,
-            totalPersonas: total,
-            segments: segAcc.toSegments(),
-            liveIdeology: ideoAcc.toResults(),
-            liveComments,
-            stateBreakdown: stateAcc.toStateBreakdown(),
-          });
-        }
+        const partialAvg = computeAvgFromCounts(
+          simulation?.positive || 0, simulation?.negative || 0, simulation?.neutral || 0
+        );
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: total,
+          totalCount: total,
+          positive: simulation?.positive || 0,
+          negative: simulation?.negative || 0,
+          neutral: simulation?.neutral || 0,
+          avgScore: partialAvg,
+          scoreSum: 0,
+          simulation,
+          totalPersonas: total,
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
+        });
         onProcessing(false);
       } else if (!streamDone && !hasResults) {
         console.warn('[Arena] ⚠️ Stream incomplete, no results — FALLING BACK TO LOCAL');
@@ -689,7 +578,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       console.error('[Arena] ❌ Python fetch error:', err?.name, err?.message);
       if (err?.name === 'AbortError' && hasResults) {
         const total = simulation?.total || 0;
-        const abortAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
+        const abortAvg = computeAvgFromCounts(
+          simulation?.positive || 0, simulation?.negative || 0, simulation?.neutral || 0
+        );
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -698,12 +589,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           avgScore: abortAvg,
-          scoreSum: pythonScoreSum,
+          scoreSum: 0,
           totalPersonas: total,
-          segments: segAcc.toSegments(),
-          liveIdeology: ideoAcc.toResults(),
-          liveComments,
-          stateBreakdown: stateAcc.toStateBreakdown(),
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
         });
         onProcessing(false);
         return;
@@ -712,7 +601,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         useFallback = true;
       } else if (hasResults) {
         const total = simulation?.total || 0;
-        const errAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
+        const errAvg = computeAvgFromCounts(
+          simulation?.positive || 0, simulation?.negative || 0, simulation?.neutral || 0
+        );
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -721,12 +612,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
           avgScore: errAvg,
-          scoreSum: pythonScoreSum,
+          scoreSum: 0,
           totalPersonas: total,
-          segments: segAcc.toSegments(),
-          liveIdeology: ideoAcc.toResults(),
-          liveComments,
-          stateBreakdown: stateAcc.toStateBreakdown(),
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
         });
         onProcessing(false);
         return;
@@ -735,150 +624,15 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       }
     }
 
-    // ── Fallback: local JS simulation with progressive segments ────────────
+    // ── No fallback — show error if Python is unavailable ────────────────
     if (useFallback) {
-      console.warn('[Arena] 🔄 Running LOCAL FALLBACK (Python unavailable)');
-      try {
-        const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-        let pos = 0, neg = 0, neu = 0, fbScoreSum = 0;
-        const segAcc = new SegmentAccumulator();
-        const ideoAcc = new IdeologyAccumulator(q);
-        const commentAcc = new LiveCommentAccumulator(q);
-        const stateAccFb = new StateAccumulator();
-        const BATCH = 100;
-        let liveComments: import('@/lib/arena/types').CommentResult[] = [];
-        let aiCommentsFired = false;
-
-        const getDelay = (progress: number) => {
-          if (progress < 0.3) return 900;
-          if (progress < 0.7) return 700;
-          return 500;
-        };
-
-        let pendingPersonas: any[] = [];
-
-        const allData = await personaCache.loadAll((loaded, total, batch) => {
-          pendingPersonas.push(...batch);
-          commentAcc.setTotal(total);
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'collecting',
-            collectingStatus: 'loading',
-            totalCount: total,
-          });
-        });
-
-        const toProcess = pendingPersonas.length > 0 ? pendingPersonas : allData;
-        const effectiveCount = toProcess.length;
-        commentAcc.setTotal(effectiveCount);
-
-        for (let offset = 0; offset < effectiveCount; offset += BATCH) {
-          if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-          const batch = toProcess.slice(offset, offset + BATCH);
-          const processed = Math.min(offset + BATCH, effectiveCount);
-
-          for (const p of batch) {
-            const score = computePersonaScore(p, queryForAnalysis);
-            const sentiment = scoreToSentiment(score);
-            fbScoreSum += score;
-            if (sentiment === 'positive') pos++;
-            else if (sentiment === 'negative') neg++;
-            else neu++;
-            segAcc.addPersonaWithScore(p, score);
-            ideoAcc.addPersona(p, sentiment);
-            commentAcc.addPersona(p, sentiment);
-            stateAccFb.addPersona(p, sentiment);
-          }
-
-          emitLive(blockId, {
-            ...baseLiveData,
-            phase: 'streaming',
-            processedCount: processed,
-            totalCount: effectiveCount,
-            positive: pos,
-            negative: neg,
-            neutral: neu,
-            avgScore: processed > 0 ? Math.round((fbScoreSum / processed) * 10) / 10 : 5.0,
-            scoreSum: fbScoreSum,
-            segments: segAcc.toSegments(),
-            liveIdeology: ideoAcc.toResults(),
-            liveComments,
-            stateBreakdown: stateAccFb.toStateBreakdown(),
-          });
-
-          // Fire AI comment generation at ~25% with selected personas
-          const progress = processed / effectiveCount;
-          if (!aiCommentsFired && progress >= 0.25 && commentAcc.count >= 8) {
-            aiCommentsFired = true;
-            const selectedSnapshot = [...commentAcc.selectedPersonas];
-            generateAIComments(q, selectedSnapshot).then(aiComments => {
-              if (cancelledBlocksRef.current.has(blockId)) return;
-              liveComments = aiComments;
-            }).catch(() => {});
-          }
-
-          await new Promise(r => setTimeout(r, getDelay(progress)));
-        }
-
-        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-
-        const fbFinalAvg = effectiveCount > 0 ? Math.round((fbScoreSum / effectiveCount) * 10) / 10 : 5.0;
-
-        // Enrichment: simulation
-        const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
-
-        if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
-        const simWithoutComments = { ...enhanced, comments: [] as any[] };
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: effectiveCount,
-          totalCount: effectiveCount,
-          positive: simWithoutComments.positive,
-          negative: simWithoutComments.negative,
-          neutral: simWithoutComments.neutral,
-          avgScore: fbFinalAvg,
-          scoreSum: fbScoreSum,
-          simulation: simWithoutComments,
-          totalPersonas: effectiveCount,
-          segments: segAcc.toSegments(),
-          liveComments,
-          stateBreakdown: stateAccFb.toStateBreakdown(),
-        });
-        onProcessing(false);
-
-        // Generate full AI comments with all personas
-        if (cancelledBlocksRef.current.has(blockId)) return;
-        const topicScores = detectTopics(q);
-        const personasForAI = buildPersonasForAI(q, allData, topicScores);
-        const claudeComments = await generateAIComments(q, personasForAI);
-
-        if (cancelledBlocksRef.current.has(blockId)) return;
-        const sim = { ...enhanced, comments: claudeComments };
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: effectiveCount,
-          totalCount: effectiveCount,
-          positive: sim.positive,
-          negative: sim.negative,
-          neutral: sim.neutral,
-          avgScore: fbFinalAvg,
-          scoreSum: fbScoreSum,
-          simulation: sim,
-          totalPersonas: effectiveCount,
-          segments: segAcc.toSegments(),
-          stateBreakdown: stateAccFb.toStateBreakdown(),
-        });
-      } catch (fallbackErr) {
-        console.error('[Arena] Fallback failed:', fallbackErr);
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          error: 'Falha ao processar',
-        });
-        onProcessing(false);
-      }
+      console.error('[Arena] Python backend unavailable — no local fallback');
+      emitLive(blockId, {
+        ...baseLiveData,
+        phase: 'complete',
+        error: 'Servidor de analise indisponivel. Tente novamente em alguns instantes.',
+      });
+      onProcessing(false);
     }
   }, [personaCache, onAddBlock, emitLive, onProcessing]);
 

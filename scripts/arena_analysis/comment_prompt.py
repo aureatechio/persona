@@ -154,6 +154,18 @@ REGRAS DE SIMULAÇÃO — EXECUTE TODAS SEM EXCEÇÃO
     "sei la quem e esse cara nao kkkk", "nunca ouvi falar", "oq e isso kkkk"
     Use a IDADE + ESCOLARIDADE + GERAÇÃO para determinar se a persona saberia.
 
+16. SCORE DE IMPACTO (0 a 10) — atribua um score numérico para cada persona:
+    0-1: 💣 Rejeição TOTAL — persona ODEIA, ficou revoltada
+    1-3: 😡 Rejeição — discorda fortemente, indignação
+    3-5: 😐 Indiferença — tanto faz, não conhece, dividido
+    5-7: 👍 Aceitou — concorda parcialmente, acha razoável
+    7-9: ❤️ Gostou — concorda fortemente, aprovação entusiástica
+    9-10: 🔥 Impacto máximo — ADORA, viral
+    Coerência OBRIGATÓRIA com sentiment:
+    - positive → score >= 6.0
+    - negative → score <= 4.0
+    - neutral → score entre 3.5 e 6.5
+
 ═══════════════════════════════════════════════════════════
 LEMBRETE FINAL: Cada comentário deve parecer COPIADO de um post real do Twitter/Instagram/Facebook.
 Se você ler e pensar "isso parece uma IA" — REESCREVA.
@@ -282,7 +294,7 @@ PERFIS:
 {personas_block}
 
 FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
-{{"results": [{{"id": 1, "sentiment": "positive|negative|neutral", "comment": "..."}}, ...]}}
+{{"results": [{{"id": 1, "sentiment": "positive|negative|neutral", "score": 7.5, "comment": "..."}}, ...]}}
 
 ⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
 - positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
@@ -400,7 +412,7 @@ Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolarida
 {persona_block}
 
 FORMATO JSON OBRIGATÓRIO — responda APENAS com:
-{{"sentiment": "positive|negative|neutral", "comment": "..."}}
+{{"sentiment": "positive|negative|neutral", "score": 7.5, "comment": "..."}}
 
 ⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
 - positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
