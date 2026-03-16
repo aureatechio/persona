@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         video_storage_path: videoPath,
         voice_model_id: voiceModel.id,
         prompt_template,
-        lipsync_config: lipsync_config || { model: 'lipsync-2-pro', sync_mode: 'cut_off', temperature: 0.3 },
+        lipsync_config: lipsync_config || { model: 'lipsync-2-pro', sync_mode: 'loop', temperature: 0.3 },
         is_active: true,
       })
       .select('*, voice_models(*)')

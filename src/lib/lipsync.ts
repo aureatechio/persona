@@ -53,7 +53,7 @@ async function syncSubmit(videoUrl: string, audioUrl: string): Promise<LipsyncSu
         { type: 'video', url: videoUrl },
         { type: 'audio', url: audioUrl },
       ],
-      options: { sync_mode: 'cut_off' },
+      options: { sync_mode: 'loop' },
     }),
   });
 

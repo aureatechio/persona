@@ -145,7 +145,6 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify({
           text: processedText,
           model_id: 'eleven_multilingual_v2',
-          language_code: 'pt',
           apply_text_normalization: 'auto',
           voice_settings: isClonedVoice
             ? {

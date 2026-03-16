@@ -19,7 +19,7 @@ def _submit(
     audio_url: str,
     api_key: str = "",
     model: str = "lipsync-2-pro",
-    sync_mode: str = "cut_off",
+    sync_mode: str = "loop",
     temperature: float = 0.3,
 ) -> str:
     key = api_key or SYNC_API_KEY
@@ -165,7 +165,7 @@ def run_lipsync(
     api_key: str = "",
     heartbeat_fn=None,
     model: str = "lipsync-2-pro",
-    sync_mode: str = "cut_off",
+    sync_mode: str = "loop",
     temperature: float = 0.3,
 ) -> str:
     """Submit and poll Sync Labs lip-sync. Returns output video URL.

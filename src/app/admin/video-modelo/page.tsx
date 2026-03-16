@@ -19,7 +19,7 @@ interface LipsyncConfig {
 
 const DEFAULT_LIPSYNC: LipsyncConfig = {
   model: 'lipsync-2-pro',
-  sync_mode: 'cut_off',
+  sync_mode: 'loop',
   temperature: 0.3,
 };
 
@@ -78,6 +78,13 @@ export default function VideoModeloPage() {
   }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Track unsaved changes
+  const hasUnsavedChanges = model && !videoFile && (
+    name !== model.name ||
+    promptTemplate !== model.prompt_template ||
+    JSON.stringify(lipsyncConfig) !== JSON.stringify({ ...DEFAULT_LIPSYNC, ...(model.lipsync_config || {}) })
+  );
 
   useEffect(() => {
     loadModel();
@@ -201,6 +208,10 @@ export default function VideoModeloPage() {
       if (!res.ok) throw new Error(data.error);
 
       setModel(data.model);
+      // Sync local state from DB response to confirm save worked
+      setName(data.model.name);
+      setPromptTemplate(data.model.prompt_template);
+      setLipsyncConfig({ ...DEFAULT_LIPSYNC, ...(data.model.lipsync_config || {}) });
       setMessage({ type: 'success', text: 'Modelo atualizado!' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao atualizar';
@@ -307,6 +318,31 @@ export default function VideoModeloPage() {
           )}>
             {message.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
             {message.text}
+          </div>
+        )}
+
+        {/* Unsaved changes warning */}
+        {hasUnsavedChanges && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border bg-amber-500/10 border-amber-500/20 text-amber-400 text-sm">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} />
+              <span>Você tem alterações não salvas</span>
+            </div>
+            <button
+              onClick={handleUpdate}
+              disabled={saving}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-1.5',
+                'bg-amber-500 hover:bg-amber-400',
+                'text-black font-semibold text-xs',
+                'rounded-lg',
+                'active:scale-[0.97] transition-all duration-200',
+                'disabled:opacity-50',
+              )}
+            >
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+              Salvar agora
+            </button>
           </div>
         )}
 
@@ -653,18 +689,16 @@ export default function VideoModeloPage() {
                 disabled={saving || processing || !promptTemplate.trim()}
                 className={cn(
                   'inline-flex items-center gap-2 px-6 py-3',
-                  'bg-emerald-500 hover:bg-emerald-400',
-                  'text-black font-semibold text-sm',
-                  'rounded-xl',
-                  'shadow-lg shadow-emerald-500/25',
-                  'hover:shadow-emerald-400/30',
-                  'active:scale-[0.97]',
-                  'transition-all duration-200',
+                  'font-semibold text-sm rounded-xl',
+                  'active:scale-[0.97] transition-all duration-200',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
+                  hasUnsavedChanges
+                    ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/25 hover:shadow-amber-400/30 animate-pulse'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
                 )}
               >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {saving ? 'Salvando...' : 'Salvar alterações'}
+                {saving ? 'Salvando...' : hasUnsavedChanges ? 'Salvar alterações*' : 'Salvar alterações'}
               </button>
             )}
 

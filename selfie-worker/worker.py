@@ -204,7 +204,7 @@ def process_selfie(selfie: dict):
                     api_key=key_data["access_key"],
                     heartbeat_fn=_heartbeat,
                     model=lip_cfg.get("model", "lipsync-2-pro"),
-                    sync_mode=lip_cfg.get("sync_mode", "cut_off"),
+                    sync_mode=lip_cfg.get("sync_mode", "loop"),
                     temperature=float(lip_cfg.get("temperature", 0.3)),
                 )
                 db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
