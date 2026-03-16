@@ -99,19 +99,21 @@ def process_selfie(selfie: dict):
 
         # Wait for browser upload to complete (file might not exist yet)
         video_bytes = None
-        for attempt in range(5):
+        for attempt in range(3):
             try:
+                t0 = time.time()
                 video_bytes = db.download_file(selfie["selfie_video_path"])
+                logger.info("Download took %.1fs (%d bytes)", time.time() - t0, len(video_bytes))
                 break
             except Exception:
-                if attempt < 4:
-                    logger.info("File not ready yet, waiting 3s... (attempt %d/5)", attempt + 1)
-                    time.sleep(3)
+                if attempt < 2:
+                    logger.info("File not ready yet, waiting 1s... (attempt %d/3)", attempt + 1)
+                    time.sleep(1)
                 else:
                     raise
 
         if not video_bytes:
-            raise RuntimeError("Failed to download selfie video after 5 attempts")
+            raise RuntimeError("Failed to download selfie video after 3 attempts")
         ext = "webm" if selfie["selfie_video_path"].endswith(".webm") else "mp4"
         transcription = transcribe(video_bytes, ext)
 
