@@ -5,44 +5,36 @@ import { usePresentationData } from '@/hooks/usePresentationData';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Users, MessageCircle } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
-import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult, PoliticalFigureDetection } from '@/lib/arena/types';
+import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult } from '@/lib/arena/types';
 import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid, AnimatedScore } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 import { SegmentRanking, Waiting } from './DashboardScreen';
 
 /* ════════════════════════════════════════════════════════════════════
-   FigureGaugeCompact — Political figure approval gauge (compact)
+   VoterGaugeCompact — Shows how voters of a political figure react
+   Uses voto2022 segment data (avgScore already correct from computePersonaScore)
    ════════════════════════════════════════════════════════════════════ */
 
-function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
-  const total = figure.supportCount + figure.attackCount + figure.neutralCount;
-  if (total === 0) return null;
-  // Score reflects agreement with the STATEMENT (not approval of the figure).
-  // attackCount = people who agree with the statement (e.g., "Lula é corrupto" → they attack Lula)
-  // supportCount = people who disagree (they support/defend the figure)
-  const rawScore = total > 0
-    ? ((figure.attackCount * 9 + figure.neutralCount * 5 + figure.supportCount * 1) / total)
-    : 5.0;
-  const score = Math.round(rawScore * 10) / 10;
+function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel: string }) {
+  const score = Math.round((item.avgScore ?? 5.0) * 10) / 10;
   const hex = scoreToHex(score);
 
-  // Descriptive label based on score
   const concordance = score > 6
     ? { text: 'Maioria concorda', color: 'text-emerald-400' }
     : score < 4
       ? { text: 'Maioria discorda', color: 'text-red-400' }
       : { text: 'Opiniao dividida', color: 'text-amber-400' };
 
-  // Percentage breakdown
-  const attackPct = total > 0 ? Math.round((figure.attackCount / total) * 100) : 0;
-  const supportPct = total > 0 ? Math.round((figure.supportCount / total) * 100) : 0;
+  const total = item.count || 0;
+  const positivePct = total > 0 ? Math.round(((item.positive || 0) / total) * 100) : 0;
+  const negativePct = total > 0 ? Math.round(((item.negative || 0) / total) * 100) : 0;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl flex flex-col flex-1 min-w-[140px]">
       <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none bg-violet-500/8" />
       <div className="px-3 py-1 border-b border-white/[0.04] shrink-0 flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-violet-400" />
-        <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Sobre {figure.label}</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Eleitores de {item.label} ({partyLabel})</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
         <AnimatedScore value={score} className="text-2xl" duration={10000} />
@@ -63,9 +55,9 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
           />
         </div>
         <div className="flex items-center gap-2 text-[8px] text-zinc-600">
-          <span>{attackPct}% concordam</span>
+          <span>{positivePct}% concordam</span>
           <span>·</span>
-          <span>{supportPct}% discordam</span>
+          <span>{negativePct}% discordam</span>
         </div>
       </div>
     </div>
@@ -194,9 +186,9 @@ export function UnifiedScreen() {
       ? data.simulation!.comments : data.liveComments ?? []
   ), [data.simulation?.comments, data.liveComments]);
 
-  const figures = data.liveIdeology?.politicalFigures || data.simulation?.politicalFigures || [];
-  const lula = figures.find(f => f.figure === 'lula');
-  const bolsonaro = figures.find(f => f.figure === 'bolsonaro');
+  const voto2022 = data.segments?.voto2022 || [];
+  const lulaVoters = voto2022.find(s => s.label === 'Lula');
+  const bolsonaroVoters = voto2022.find(s => s.label === 'Bolsonaro');
   const quadrantItems = useMemo(
     () => quadrantsToSegments(data.liveIdeology?.quadrants || data.simulation?.quadrants),
     [data.liveIdeology?.quadrants, data.simulation?.quadrants],
@@ -265,12 +257,12 @@ export function UnifiedScreen() {
         processedCount={data.processedCount}
         rightSlot={
           <div className="flex items-stretch gap-2 flex-1">
-            {lula ? <FigureGaugeCompact figure={lula} /> : (
+            {lulaVoters ? <VoterGaugeCompact item={lulaVoters} partyLabel="PT" /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
                 <p className="text-[10px] text-zinc-700">Lula</p>
               </div>
             )}
-            {bolsonaro ? <FigureGaugeCompact figure={bolsonaro} /> : (
+            {bolsonaroVoters ? <VoterGaugeCompact item={bolsonaroVoters} partyLabel="PL" /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
                 <p className="text-[10px] text-zinc-700">Bolsonaro</p>
               </div>
