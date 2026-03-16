@@ -953,12 +953,49 @@ function ProgressStats({ progress, startTime, endTime, avgScore }: {
    Step Detail View — shown in the right panel when a node is selected
    ================================================================ */
 
-function StepDetailView({ nodeKey, stepDetails, contextExtraction, batches }: {
+function StepDetailView({ nodeKey, stepDetails, contextExtraction, batches, nodeStatus, progress }: {
   nodeKey: string;
   stepDetails: StepDetails;
   contextExtraction: ContextExtractionData | null;
   batches: BatchDetail[];
+  nodeStatus: NodeStatus;
+  progress: { processed: number; total: number; positive: number; negative: number; neutral: number };
 }) {
+  // Skipped steps — show informative message
+  if (nodeStatus === 'skipped') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-center p-8">
+        <div className="w-12 h-12 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-3">
+          <Minus size={20} className="text-zinc-700" />
+        </div>
+        <p className="text-[11px] text-zinc-500 font-medium">{NODE_LABELS[nodeKey]}</p>
+        <p className="text-[9px] text-zinc-700 mt-1.5 max-w-xs leading-relaxed">
+          Step pulado — o worker simplificado processa personas diretamente com GPT sem esta etapa intermediaria.
+        </p>
+      </div>
+    );
+  }
+
+  // PersonaLoader — show count
+  if (nodeKey === 'personaLoader' && progress.total > 0) {
+    return (
+      <div className="p-4">
+        <SectionHeader icon={<Users size={14} />} title="Carregamento de Personas" subtitle="Personas carregadas do banco de dados" />
+        <div className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center">
+              <Users size={24} className="text-emerald-400" />
+            </div>
+            <div>
+              <p className="text-3xl font-bold text-white">{progress.total.toLocaleString('pt-BR')}</p>
+              <p className="text-[11px] text-zinc-500 mt-0.5">personas carregadas e prontas para processamento</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (nodeKey === 'contextExtraction' && contextExtraction) {
     return (
       <div className="p-4">
@@ -1283,16 +1320,23 @@ export function ArenaMonitor() {
           );
           break;
 
-        case 'personas_loaded':
-          updateNode('personaLoader', 'complete');
-          addLog('personaLoader', 'info', `${payload.data.count?.toLocaleString('pt-BR')} personas carregadas do banco`);
-          setState(prev => ({
-            ...prev,
-            progress: { ...prev.progress, total: payload.data.count },
-          }));
+        case 'personas_loaded': {
+          const count = payload.data.count;
+          addLog('personaLoader', 'info', `${count?.toLocaleString('pt-BR')} personas carregadas do banco`);
+          // If intermediate steps are still idle, the simple worker skipped them
+          setState(prev => {
+            const nodes = { ...prev.nodes };
+            ['queryAnalyzer', 'webResearch', 'contextBuilder', 'contextValidator'].forEach(n => {
+              if (nodes[n] === 'idle') nodes[n] = 'skipped';
+            });
+            nodes.personaLoader = 'complete';
+            return { ...prev, nodes, progress: { ...prev.progress, total: count } };
+          });
           break;
+        }
 
         case 'progress':
+          updateNode('personaLoop', 'running');
           setState(prev => ({
             ...prev,
             progress: {
@@ -1350,6 +1394,8 @@ export function ArenaMonitor() {
           );
           setState(prev => {
             const updated = { ...prev.nodes };
+            // Mark aggregator as complete explicitly
+            updated.aggregator = 'complete';
             for (const key of Object.keys(updated)) {
               if (updated[key] === 'running') updated[key] = 'complete';
             }
@@ -1407,12 +1453,15 @@ export function ArenaMonitor() {
   };
 
   const nodeHasDetail = (key: string): boolean => {
+    // Skipped steps always have detail (the "skipped" message)
+    if (state.nodes[key] === 'skipped') return true;
     if (key === 'contextExtraction') return !!state.contextExtraction;
     if (key === 'queryAnalyzer') return !!state.stepDetails.queryAnalyzer;
     if (key === 'webResearch') return !!state.stepDetails.webResearch;
     if (key === 'contextBuilder') return !!state.stepDetails.context;
     if (key === 'contextValidator') return !!state.stepDetails.validator;
-    if (key === 'personaLoop') return state.batches.length > 0;
+    if (key === 'personaLoader') return state.progress.total > 0;
+    if (key === 'personaLoop') return state.batches.length > 0 || state.progress.processed > 0;
     return false;
   };
 
@@ -1554,6 +1603,8 @@ export function ArenaMonitor() {
                   stepDetails={state.stepDetails}
                   contextExtraction={state.contextExtraction}
                   batches={state.batches}
+                  nodeStatus={state.nodes[selectedNode]}
+                  progress={state.progress}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center p-8">

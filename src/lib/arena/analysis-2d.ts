@@ -400,7 +400,7 @@ function analyzePoliticalFigures(
 
     return {
       figure,
-      label: figure === 'lula' ? 'Lula (PT)' : 'Bolsonaro',
+      label: figure === 'lula' ? 'Lula (PT)' : 'Bolsonaro (PL)',
       supportCount,
       attackCount,
       neutralCount,
@@ -526,7 +526,7 @@ export class IdeologyAccumulator {
       const topAttack = [...data.attackClusters.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id]) => id);
       politicalFigures.push({
         figure,
-        label: figure === 'lula' ? 'Lula (PT)' : 'Bolsonaro',
+        label: figure === 'lula' ? 'Lula (PT)' : 'Bolsonaro (PL)',
         supportCount: data.supportCount,
         attackCount: data.attackCount,
         neutralCount: data.neutralCount,

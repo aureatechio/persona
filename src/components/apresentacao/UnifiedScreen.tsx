@@ -24,18 +24,29 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
     ? ((figure.attackCount * 9 + figure.neutralCount * 5 + figure.supportCount * 1) / total)
     : 5.0;
   const score = Math.round(rawScore * 10) / 10;
-  const emoji = scoreToEmoji(score);
   const hex = scoreToHex(score);
+
+  // Descriptive label based on score
+  const concordance = score > 6
+    ? { text: 'Maioria concorda', color: 'text-emerald-400' }
+    : score < 4
+      ? { text: 'Maioria discorda', color: 'text-red-400' }
+      : { text: 'Opiniao dividida', color: 'text-amber-400' };
+
+  // Percentage breakdown
+  const attackPct = total > 0 ? Math.round((figure.attackCount / total) * 100) : 0;
+  const supportPct = total > 0 ? Math.round((figure.supportCount / total) * 100) : 0;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl flex flex-col flex-1 min-w-[140px]">
       <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none bg-violet-500/8" />
       <div className="px-3 py-1 border-b border-white/[0.04] shrink-0 flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-violet-400" />
-        <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Sobre {figure.label}</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
         <AnimatedScore value={score} className="text-2xl" duration={10000} />
+        <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
         {/* Score bar */}
         <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{
@@ -50,6 +61,11 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
               transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
+        </div>
+        <div className="flex items-center gap-2 text-[8px] text-zinc-600">
+          <span>{attackPct}% concordam</span>
+          <span>·</span>
+          <span>{supportPct}% discordam</span>
         </div>
       </div>
     </div>
