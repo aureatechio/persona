@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult } from '@/lib/arena/types';
-import type { QuickAnswerResult } from '@/lib/arena/quick-answer';
+import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
 import type { AllSegments, SegmentItem } from '@/lib/arena/segments';
 
 /* ============================================================
@@ -41,8 +41,6 @@ export interface ArenaLiveData {
   media?: MediaItem[];
   mediaContext?: string;
   error?: string;
-  isQuickAnswer?: boolean;
-  quickAnswer?: QuickAnswerResult;
   segments?: AllSegments;
   liveIdeology?: {
     quadrants: QuadrantResult[];
@@ -601,7 +599,7 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
     question, phase, processedCount, totalCount,
     positive, negative, neutral,
     simulation, totalPersonas, media, mediaContext,
-    isQuickAnswer, quickAnswer, segments,
+    segments,
   } = data;
 
   const [showMediaSummary, setShowMediaSummary] = useState(false);
@@ -624,10 +622,10 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   const isStreaming = phase === 'streaming' || phase === 'aggregating';
   const isComplete = phase === 'complete';
 
-  const finalPositive = isComplete ? (quickAnswer?.positive ?? simulation?.positive ?? positive) : positive;
-  const finalNegative = isComplete ? (quickAnswer?.negative ?? simulation?.negative ?? negative) : negative;
-  const finalNeutral = isComplete ? (quickAnswer?.neutral ?? simulation?.neutral ?? neutral) : neutral;
-  const finalTotal = isComplete ? (quickAnswer?.total ?? simulation?.total ?? totalCount) : totalCount;
+  const finalPositive = isComplete ? (simulation?.positive ?? positive) : positive;
+  const finalNegative = isComplete ? (simulation?.negative ?? negative) : negative;
+  const finalNeutral = isComplete ? (simulation?.neutral ?? neutral) : neutral;
+  const finalTotal = isComplete ? (simulation?.total ?? totalCount) : totalCount;
 
   // Reset when new question arrives
   useEffect(() => {
@@ -748,7 +746,7 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
   }, []);
 
   // Error state
-  if (data.error && !simulation && !quickAnswer) {
+  if (data.error && !simulation) {
     return (
       <div className="bg-white/[0.03] border border-red-500/20 rounded-2xl p-6 text-center">
         <p className="text-sm text-red-400">{data.error}</p>
@@ -798,9 +796,6 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
 
   // ── Normal Mode: Collecting + Progress + Analysis ──────────────────
   const total = finalPositive + finalNegative + finalNeutral;
-  const pctPos = total > 0 ? Math.round((finalPositive / total) * 100) : 0;
-  const pctNeg = total > 0 ? Math.round((finalNegative / total) * 100) : 0;
-  const pctNeu = total > 0 ? Math.round((finalNeutral / total) * 100) : 0;
 
   const showAnalysis = isComplete && (displayedText || isAnalyzing);
   const waitingForAnalysis = isComplete && !displayedText && !isAnalyzing && !analysisText;
@@ -812,13 +807,8 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
         <div className="flex-1 min-w-0 flex flex-col gap-2">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-[11px] font-black uppercase tracking-[0.2em] text-zinc-600">
-              Arena {isQuickAnswer ? '• Resposta Direta' : '• Analise'}
+              Arena • Analise
             </p>
-            {isQuickAnswer && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold text-emerald-400">
-                <Zap size={9} /> Instantaneo
-              </span>
-            )}
             {(isCollecting || isStreaming) && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-[9px] font-bold text-violet-400 animate-pulse">
                 <Activity size={9} /> {isCollecting ? 'Preparando' : 'Ao vivo'}
@@ -829,9 +819,9 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
                 <span className="text-[10px] text-zinc-500 flex items-center gap-1">
                   <Users size={10} /> {(totalPersonas || finalTotal).toLocaleString('pt-BR')} personas
                 </span>
-                {(quickAnswer?.processingTimeMs || simulation?.processingTime) && (
+                {simulation?.processingTime && (
                   <span className="text-[10px] text-zinc-500 flex items-center gap-1">
-                    <Zap size={10} /> {(quickAnswer?.processingTimeMs ?? simulation?.processingTime ?? 0).toFixed(0)}ms
+                    <Zap size={10} /> {(simulation?.processingTime ?? 0).toFixed(0)}ms
                   </span>
                 )}
               </>
@@ -843,23 +833,30 @@ export function ArenaLiveBlock({ data }: { data: ArenaLiveData }) {
             )}
           </div>
 
-          {/* Sentiment bar + pills when complete */}
-          {isComplete && total > 0 && (
-            <div className="flex flex-col gap-2">
-              {/* Stacked sentiment bar */}
-              <div className="h-2.5 rounded-full overflow-hidden flex bg-zinc-900/80">
-                <div className="h-full bg-emerald-500 transition-all duration-[2000ms]" style={{ width: `${pctPos}%` }} />
-                <div className="h-full bg-amber-500 transition-all duration-[2000ms]" style={{ width: `${pctNeu}%` }} />
-                <div className="h-full bg-rose-500 transition-all duration-[2000ms]" style={{ width: `${pctNeg}%` }} />
+          {/* Score gauge when complete */}
+          {isComplete && total > 0 && (() => {
+            const score = data.avgScore ?? 5.0;
+            const emoji = scoreToEmoji(score);
+            const label = scoreToLabel(score);
+            const hex = scoreToHex(score);
+            return (
+              <div className="flex items-center gap-3">
+                {/* Score badge */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <span className="text-lg leading-none">{emoji}</span>
+                  <span className="text-lg font-black tabular-nums" style={{ color: hex }}>{score.toFixed(1)}</span>
+                  <span className="text-xs font-semibold" style={{ color: `${hex}cc` }}>{label}</span>
+                </div>
+                {/* Mini gradient bar */}
+                <div className="flex-1 h-2 rounded-full overflow-hidden relative bg-zinc-900/80">
+                  <div className="absolute inset-0 rounded-full opacity-30"
+                    style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+                  <div className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-[3s]"
+                    style={{ left: `calc(${(score / 10) * 100}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
+                </div>
               </div>
-              {/* Percentage pills below the bar */}
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">{pctPos}% Favor</span>
-                <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">{pctNeg}% Contra</span>
-                <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}% Neutros</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           <MediaSummaryPanel cleanedContext={cleanedMediaContext} open={showMediaSummary} onClose={() => setShowMediaSummary(false)} />
         </div>

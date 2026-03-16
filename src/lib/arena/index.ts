@@ -83,10 +83,6 @@ export type { QuestionPolarity } from './analysis-2d';
 // Data-Driven Persona Sentiment
 export { computePersonaSentiment, computePersonaScore, hasLocalFieldMatch } from './persona-sentiment';
 
-// Quick Answer (Yes/No columns)
-export { detectQuickAnswer, runQuickAnswer, classifyQuickPersona, classifyQuickPersonaScore } from './quick-answer';
-export type { QuickAnswerMatch, QuickAnswerResult } from './quick-answer';
-
 // Segment breakdowns
 export { computeAllSegments, computeAllSegmentsWithScore, SegmentAccumulator } from './segments';
 export type { SegmentItem, AllSegments } from './segments';

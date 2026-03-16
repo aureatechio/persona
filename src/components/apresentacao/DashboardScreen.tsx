@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult } from '@/lib/arena/types';
-import { TrendHero, SentimentBar, DonutCard, HBarChart, ScoreHero, ScoreSegmentCard, ScoreBar } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -36,7 +36,11 @@ export const SegmentRanking = memo(function SegmentRanking({
   title: string;
   accentColor: string;
 }) {
-  const sorted = items && items.length > 0 ? [...items].sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5)) : [];
+  const sorted = items && items.length > 0 ? [...items].sort((a, b) => {
+    if (a.count > 0 && b.count === 0) return -1;
+    if (a.count === 0 && b.count > 0) return 1;
+    return (b.avgScore ?? 5) - (a.avgScore ?? 5);
+  }) : [];
   const hasData = sorted.some(s => s.count > 0);
 
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {

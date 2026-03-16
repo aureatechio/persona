@@ -983,7 +983,7 @@ export function computePersonaScore(
 
     // Conviction compresses toward 5.0 (indifference) for low-conviction personas
     const conviction = computeConviction(persona, normQuestion);
-    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.3, conviction);
+    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.65, conviction);
 
     // Add noise: ±0.75 points
     const noise = (Math.random() - 0.5) * 1.5;

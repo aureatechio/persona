@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
+import type { SegmentItem } from '@/lib/arena/segments';
 
 /** Pre-seeded segments with known Brazilian demographic labels (zero counts).
  *  This ensures the dashboard shows card structures immediately,
@@ -75,17 +76,40 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
         if (event.data?.type === 'arena-live-update') {
           const incoming = event.data.data as ArenaLiveData;
 
-          // Ensure segments always have pre-seeded labels (never lose structure)
+          // Merge segments: preserve ALL pre-seeded labels, update with live data
           if (!incoming.segments || Object.keys(incoming.segments).length === 0) {
             incoming.segments = { ...EMPTY_SEGMENTS };
           } else {
-            // Merge: keep incoming data but fill missing segment keys with empty labels
-            const merged = { ...EMPTY_SEGMENTS } as any;
-            for (const key of Object.keys(incoming.segments)) {
-              const seg = (incoming.segments as any)[key];
-              if (Array.isArray(seg) && seg.length > 0) {
-                merged[key] = seg;
+            const merged = {} as any;
+            for (const key of Object.keys(EMPTY_SEGMENTS)) {
+              const preSeeded: SegmentItem[] = (EMPTY_SEGMENTS as any)[key] || [];
+              const incomingSeg: SegmentItem[] = (incoming.segments as any)?.[key] || [];
+
+              if (incomingSeg.length === 0) {
+                merged[key] = preSeeded.map(s => ({ ...s }));
+                continue;
               }
+
+              // Build map from incoming data by label
+              const incomingMap = new Map<string, SegmentItem>();
+              for (const item of incomingSeg) incomingMap.set(item.label, item);
+
+              // Keep all pre-seeded labels in order, update with live data
+              const result: SegmentItem[] = [];
+              const seenLabels = new Set<string>();
+              for (const seed of preSeeded) {
+                result.push(incomingMap.get(seed.label) || { ...seed });
+                seenLabels.add(seed.label);
+              }
+              // Add any NEW labels from live data not in pre-seeded set
+              for (const item of incomingSeg) {
+                if (!seenLabels.has(item.label)) result.push(item);
+              }
+              merged[key] = result;
+            }
+            // Include segment keys not in EMPTY_SEGMENTS
+            for (const key of Object.keys(incoming.segments || {})) {
+              if (!(key in merged)) merged[key] = (incoming.segments as any)[key];
             }
             incoming.segments = merged;
           }
