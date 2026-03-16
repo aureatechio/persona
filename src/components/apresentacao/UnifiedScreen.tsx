@@ -17,10 +17,13 @@ import { SegmentRanking, Waiting } from './DashboardScreen';
 function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
   const total = figure.supportCount + figure.attackCount + figure.neutralCount;
   if (total === 0) return null;
-  const pctSupport = Math.round((figure.supportCount / total) * 100);
-  const pctAttack = Math.round((figure.attackCount / total) * 100);
-  const pctNeutral = Math.round((figure.neutralCount / total) * 100);
-  const isPositive = pctSupport > pctAttack;
+  // Derive a 0-10 score: support pulls toward 10, attack toward 0
+  const rawScore = total > 0
+    ? ((figure.supportCount * 9 + figure.neutralCount * 5 + figure.attackCount * 1) / total)
+    : 5.0;
+  const score = Math.round(rawScore * 10) / 10;
+  const emoji = scoreToEmoji(score);
+  const hex = scoreToHex(score);
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl flex flex-col flex-1 min-w-[140px]">
@@ -29,19 +32,24 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
         <div className="w-2 h-2 rounded-full bg-violet-400" />
         <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
       </div>
-      <div className="flex-1 flex flex-col justify-center px-3 py-1.5 gap-1.5">
-        <div className="text-center">
-          <p className={cn('text-2xl font-black tabular-nums leading-none', isPositive ? 'text-emerald-400' : 'text-rose-400')}>
-            {isPositive ? pctSupport : pctAttack}%
-          </p>
-          <p className={cn('text-[10px] font-bold mt-0.5', isPositive ? 'text-emerald-400/70' : 'text-rose-400/70')}>
-            {isPositive ? 'Aprovacao' : 'Rejeicao'}
-          </p>
-        </div>
-        <div className="h-[8px] rounded-full overflow-hidden flex">
-          <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctSupport}%` }} />
-          <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeutral}%` }} />
-          <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctAttack}%` }} />
+      <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
+        <span className="text-xl leading-none">{emoji}</span>
+        <p className="text-2xl font-black tabular-nums leading-none" style={{ color: hex }}>
+          {score.toFixed(1)}
+        </p>
+        {/* Score bar */}
+        <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
+          <div className="absolute inset-0 rounded-full opacity-20" style={{
+            background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
+          }} />
+          <div
+            className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-[4s] ease-out"
+            style={{
+              left: `calc(${(score / 10) * 100}% - 3px)`,
+              backgroundColor: hex,
+              boxShadow: `0 0 6px ${hex}80`,
+            }}
+          />
         </div>
       </div>
     </div>
@@ -53,19 +61,19 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
    ════════════════════════════════════════════════════════════════════ */
 
 function CommentCard({ c }: { c: CommentResult }) {
-  const dot = c.sentiment === 'positive' ? 'bg-emerald-400' : c.sentiment === 'negative' ? 'bg-rose-400' : 'bg-amber-400';
-  const sentimentLabel = c.sentiment === 'positive' ? 'A Favor' : c.sentiment === 'negative' ? 'Contra' : 'Neutro';
-  const sentimentColor = c.sentiment === 'positive' ? 'text-emerald-500' : c.sentiment === 'negative' ? 'text-rose-500' : 'text-amber-500';
+  const approxScore = c.sentiment === 'positive' ? 7.5 : c.sentiment === 'negative' ? 2.5 : 5.0;
+  const emoji = scoreToEmoji(approxScore);
+  const hex = scoreToHex(approxScore);
 
   return (
     <div className="py-2 border-b border-white/[0.04]">
       <div className="flex items-center gap-2 mb-0.5">
-        <div className={cn('w-2 h-2 rounded-full shrink-0', dot)} />
+        <span className="text-sm leading-none shrink-0">{emoji}</span>
         <span className="text-xs font-semibold text-zinc-100 truncate flex-1">{c.personaName}</span>
         {c.age && <span className="text-[10px] text-zinc-600">{c.age}a</span>}
-        <span className={cn('text-[10px] font-bold uppercase', sentimentColor)}>{sentimentLabel}</span>
+        <span className="text-[10px] font-bold tabular-nums" style={{ color: hex }}>{approxScore.toFixed(1)}</span>
       </div>
-      <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2 pl-4">{c.comment}</p>
+      <p className="text-xs text-zinc-400 leading-relaxed line-clamp-2 pl-5">{c.comment}</p>
     </div>
   );
 }

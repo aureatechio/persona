@@ -36,7 +36,8 @@ export const SegmentRanking = memo(function SegmentRanking({
   title: string;
   accentColor: string;
 }) {
-  const sorted = items && items.length > 0 ? [...items].sort((a, b) => b.count - a.count) : [];
+  const sorted = items && items.length > 0 ? [...items].sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5)) : [];
+  const hasData = sorted.some(s => s.count > 0);
 
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -52,16 +53,10 @@ export const SegmentRanking = memo(function SegmentRanking({
   };
   const c = colorMap[accentColor] || colorMap.emerald;
 
-  // ── Empty state — card shell with header while awaiting data ──
+  // ── Empty state ──
   if (sorted.length === 0) {
     return (
-      <div className={cn(
-        'relative overflow-hidden',
-        'bg-white/[0.03] backdrop-blur-xl',
-        'border border-white/[0.06]',
-        'rounded-2xl',
-        'flex flex-col h-full',
-      )}>
+      <div className={cn('relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full')}>
         <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
         <div className="px-4 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
           <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
@@ -74,64 +69,39 @@ export const SegmentRanking = memo(function SegmentRanking({
     );
   }
 
-  // ── Gender layout (≤2 items) — two full halves with icons ──
+  // ── Gender layout (≤2 items) — score cards ──
   if (sorted.length <= 2) {
     return (
-      <div className={cn(
-        'relative overflow-hidden',
-        'bg-white/[0.03] backdrop-blur-xl',
-        'border border-white/[0.06]',
-        'rounded-2xl',
-        'flex flex-col h-full',
-      )}>
+      <div className={cn('relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full')}>
         <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
-
         <div className="px-5 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
           <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
           <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
         </div>
-
         <div className="flex-1 grid grid-rows-2 gap-0 min-h-0">
           {sorted.map((item, idx) => {
-            const tot = item.positive + item.negative + item.neutral;
-            const pctFav = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-            const pctCon = tot > 0 ? Math.round((item.negative / tot) * 100) : 0;
-            const pctNeu = tot > 0 ? Math.round((item.neutral / tot) * 100) : 0;
-
+            const score = item.avgScore ?? 5.0;
+            const emoji = scoreToEmoji(score);
+            const hex = scoreToHex(score);
+            const barPos = (score / 10) * 100;
             return (
-              <div
-                key={item.label}
-                className={cn(
-                  'relative overflow-hidden flex items-center gap-3 px-4 py-1.5',
-                  idx === 0 && 'border-b border-white/[0.04]',
-                )}
-              >
+              <div key={item.label} className={cn('relative overflow-hidden flex items-center gap-3 px-4 py-1.5', idx === 0 && 'border-b border-white/[0.04]')}>
                 <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 w-10">
                   <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06]">
                     <UserRound size={16} className="text-violet-400" />
                   </div>
                   <span className="text-[10px] font-bold text-zinc-300">{item.label}</span>
                 </div>
-
-                <div className="flex-1 min-w-0 relative flex flex-col justify-center gap-1.5">
-                  <div className="h-[6px] rounded-full overflow-hidden flex">
-                    <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctFav}%` }} />
-                    <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeu}%` }} />
-                    <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctCon}%` }} />
+                <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl leading-none">{hasData ? emoji : ''}</span>
+                    <span className="text-2xl font-black tabular-nums leading-none" style={{ color: hasData ? hex : '#52525b' }}>
+                      {hasData ? score.toFixed(1) : '—'}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-500/60">Favor</p>
-                      <p className="text-sm font-black tabular-nums text-emerald-400 leading-tight"><AnimatedNumber value={pctFav} suffix="%" /></p>
-                    </div>
-                    <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-amber-500/60">Neutro</p>
-                      <p className="text-sm font-black tabular-nums text-amber-400 leading-tight"><AnimatedNumber value={pctNeu} suffix="%" /></p>
-                    </div>
-                    <div className="flex-1 bg-white/[0.03] rounded-lg px-2 py-0.5 border border-white/[0.04]">
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-rose-500/60">Contra</p>
-                      <p className="text-sm font-black tabular-nums text-rose-400 leading-tight"><AnimatedNumber value={pctCon} suffix="%" /></p>
-                    </div>
+                  <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
+                    <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+                    {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-[4s] ease-out" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80` }} />}
                   </div>
                 </div>
               </div>
@@ -142,50 +112,40 @@ export const SegmentRanking = memo(function SegmentRanking({
     );
   }
 
-  // ── Standard layout (3+ items) — contextual sentiment labels ──
+  // ── Standard layout (3+ items) — score per item ──
   const display = sorted.slice(0, 6);
 
   return (
-    <div className={cn(
-      'relative overflow-hidden',
-      'bg-white/[0.03] backdrop-blur-xl',
-      'border border-white/[0.06]',
-      'rounded-2xl',
-      'flex flex-col h-full',
-    )}>
+    <div className={cn('relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full')}>
       <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
-
       <div className="px-4 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
         <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
         <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
       </div>
-
-      <div className="flex-1 px-4 py-2 flex flex-col justify-evenly overflow-hidden">
+      <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
         {display.map((item, i) => {
-          const tot = item.positive + item.negative + item.neutral;
-          const pctFav = tot > 0 ? Math.round((item.positive / tot) * 100) : 0;
-          const pctNeu = tot > 0 ? Math.round((item.neutral / tot) * 100) : 0;
-          const pctCon = tot > 0 ? (100 - pctFav - pctNeu) : 0;
-
+          const score = item.avgScore ?? 5.0;
+          const hex = scoreToHex(score);
+          const emoji = scoreToEmoji(score);
+          const barPos = (score / 10) * 100;
           return (
             <div key={item.label} className="flex items-center gap-2 group">
-              <span className={cn(
-                'w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold shrink-0',
-                i === 0 ? cn('bg-white/[0.08]', c.text) : 'bg-white/[0.03] text-zinc-600',
-              )}>
+              <span className={cn('w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold shrink-0', i === 0 ? cn('bg-white/[0.08]', c.text) : 'bg-white/[0.03] text-zinc-600')}>
                 {i + 1}
               </span>
-              <span className="text-xs text-zinc-300 w-[80px] truncate shrink-0 group-hover:text-white transition-colors duration-200">
+              <span className="text-xs text-zinc-300 w-[76px] truncate shrink-0 group-hover:text-white transition-colors duration-200">
                 {item.label}
               </span>
-              <div className="flex-1 h-[8px] rounded-full overflow-hidden flex">
-                <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctFav}%` }} />
-                <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeu}%` }} />
-                <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctCon}%` }} />
+              <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
+                <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+                {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full transition-all duration-[4s] ease-out" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />}
               </div>
-              <span className="text-[10px] font-bold tabular-nums text-emerald-400 shrink-0"><AnimatedNumber value={pctFav} suffix="%" /></span>
-              <span className="text-[10px] font-bold tabular-nums text-amber-400 shrink-0"><AnimatedNumber value={pctNeu} suffix="%" /></span>
-              <span className="text-[10px] font-bold tabular-nums text-rose-400 shrink-0"><AnimatedNumber value={pctCon} suffix="%" /></span>
+              <div className="flex items-center gap-1 shrink-0 w-[52px]">
+                <span className="text-sm leading-none">{hasData ? emoji : ''}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: hasData ? hex : '#52525b' }}>
+                  {hasData ? score.toFixed(1) : '—'}
+                </span>
+              </div>
             </div>
           );
         })}

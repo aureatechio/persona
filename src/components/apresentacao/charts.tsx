@@ -496,28 +496,20 @@ export function SpectrumGauge({
       </div>
 
       <div className="flex-1 flex flex-col justify-center px-5 py-3 gap-3">
-        {/* Dominant value — sentiment of the largest bucket */}
+        {/* Dominant value — score of the largest bucket */}
         {(() => {
-          const dTot = dominant.positive + dominant.negative + dominant.neutral;
-          const dFav = dTot > 0 ? Math.round((dominant.positive / dTot) * 100) : 0;
-          const dNeu = dTot > 0 ? Math.round((dominant.neutral / dTot) * 100) : 0;
-          const dCon = dTot > 0 ? (100 - dFav - dNeu) : 0;
-          const dDom = Math.max(dFav, dNeu, dCon);
-          const dColor = hasData ? (dDom === dFav ? 'text-emerald-400' : dDom === dCon ? 'text-rose-400' : 'text-amber-400') : 'text-zinc-600';
-          const dLabel = dDom === dFav ? 'Favor' : dDom === dCon ? 'Contra' : 'Neutro';
+          const dScore = dominant.avgScore ?? 5.0;
+          const dEmoji = scoreToEmoji(dScore);
+          const dHex = scoreToHex(dScore);
           return (
             <div className="text-center">
-              <p className={cn('text-3xl font-black tabular-nums leading-none transition-colors duration-500', dColor)}>
-                {hasData ? <><AnimatedNumber value={dDom} suffix="%" /> {dLabel}</> : '0%'}
-              </p>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-2xl leading-none">{hasData ? dEmoji : ''}</span>
+                <p className="text-3xl font-black tabular-nums leading-none transition-colors duration-500" style={{ color: hasData ? dHex : '#52525b' }}>
+                  {hasData ? dScore.toFixed(1) : '—'}
+                </p>
+              </div>
               <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
-              {hasData && (
-                <div className="flex items-center justify-center gap-3 mt-1">
-                  <span className="text-[10px] font-bold text-emerald-400/70 tabular-nums"><AnimatedNumber value={dFav} suffix="%" /> Fav</span>
-                  <span className="text-[10px] font-bold text-amber-400/70 tabular-nums"><AnimatedNumber value={dNeu} suffix="%" /> Neu</span>
-                  <span className="text-[10px] font-bold text-rose-400/70 tabular-nums"><AnimatedNumber value={dCon} suffix="%" /> Con</span>
-                </div>
-              )}
             </div>
           );
         })()}
@@ -568,27 +560,18 @@ export function SpectrumGauge({
           <span className="text-xs font-bold text-blue-400/70 uppercase tracking-wider">{rightLabel}</span>
         </div>
 
-        {/* Sentiment per bucket — tricolor mini-bar */}
+        {/* Score per bucket */}
         <div className="flex items-center gap-1">
           {buckets.map((b) => {
-            const bTot = b.positive + b.negative + b.neutral;
-            const bFav = bTot > 0 ? Math.round((b.positive / bTot) * 100) : 0;
-            const bNeu = bTot > 0 ? Math.round((b.neutral / bTot) * 100) : 0;
-            const bCon = bTot > 0 ? (100 - bFav - bNeu) : 0;
-            const bDom = Math.max(bFav, bNeu, bCon);
-            const bColor = hasData ? (bDom === bFav ? 'text-emerald-400' : bDom === bCon ? 'text-rose-400' : 'text-amber-400') : 'text-zinc-600';
+            const bScore = b.avgScore ?? 5.0;
+            const bHex = scoreToHex(bScore);
+            const bEmoji = scoreToEmoji(bScore);
             return (
               <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-                <div className="w-full h-[4px] rounded-full overflow-hidden flex">
-                  <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${bFav}%` }} />
-                  <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${bNeu}%` }} />
-                  <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${bCon}%` }} />
-                </div>
-                <div className="flex items-center gap-0.5">
-                  <span className="text-[9px] font-black tabular-nums text-emerald-400"><AnimatedNumber value={bFav} suffix="%" /></span>
-                  <span className="text-[9px] font-black tabular-nums text-amber-400"><AnimatedNumber value={bNeu} suffix="%" /></span>
-                  <span className="text-[9px] font-black tabular-nums text-rose-400"><AnimatedNumber value={bCon} suffix="%" /></span>
-                </div>
+                <span className="text-xs leading-none">{hasData ? bEmoji : ''}</span>
+                <span className="text-[10px] font-black tabular-nums" style={{ color: hasData ? bHex : '#52525b' }}>
+                  {hasData ? bScore.toFixed(1) : '—'}
+                </span>
               </div>
             );
           })}

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { MapPin, X, TrendingUp, TrendingDown, Minus, Users, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
+import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
 
 const STATE_CENTERS: Record<string, [number, number]> = {
   AC: [-8.77, -70.55], AL: [-9.57, -36.78], AM: [-3.47, -65.10], AP: [1.41, -51.77],
@@ -110,16 +111,28 @@ function StateDetailPanel({ sigla, stateData, onClose }: {
         </button>
       </div>
       <div className="space-y-4">
-        <div className="h-4 rounded-full overflow-hidden flex bg-zinc-800/50">
-          <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${pPos}%` }} />
-          <div className="h-full bg-amber-500 transition-all duration-500" style={{ width: `${pNeu}%` }} />
-          <div className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${pNeg}%` }} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center"><div className="text-2xl font-black text-emerald-400">{pPos.toFixed(1)}%</div><div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">A Favor</div></div>
-          <div className="text-center"><div className="text-2xl font-black text-amber-400">{pNeu.toFixed(1)}%</div><div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">Neutros</div></div>
-          <div className="text-center"><div className="text-2xl font-black text-rose-400">{pNeg.toFixed(1)}%</div><div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-0.5">Contra</div></div>
-        </div>
+        {/* Score display */}
+        {(() => {
+          const rawScore = total > 0
+            ? ((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total)
+            : 5.0;
+          const score = Math.round(rawScore * 10) / 10;
+          const emoji = scoreToEmoji(score);
+          const hex = scoreToHex(score);
+          const label = scoreToLabel(score);
+          const barPos = (score / 10) * 100;
+          return (<>
+            <div className="flex items-center justify-center gap-3">
+              <span className="text-3xl leading-none">{emoji}</span>
+              <span className="text-4xl font-black tabular-nums leading-none" style={{ color: hex }}>{score.toFixed(1)}</span>
+            </div>
+            <p className="text-center text-sm font-bold" style={{ color: `${hex}cc` }}>{label}</p>
+            <div className="h-3 rounded-full overflow-hidden relative bg-zinc-800/50">
+              <div className="absolute inset-0 rounded-full opacity-25" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+              <div className="absolute top-0 h-full w-[6px] rounded-full transition-all duration-500" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
+            </div>
+          </>);
+        })()}
         <div className="flex items-center justify-center gap-2 pt-2 border-t border-white/[0.06]">
           <Users size={14} className="text-zinc-500" />
           <span className="text-sm text-zinc-400">{total.toLocaleString()} personas</span>
@@ -320,22 +333,28 @@ export function MapaScreen() {
         <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.04] rounded-2xl p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Sentimento por Estado</span>
-              <div className="flex items-center">
+              <span className="text-[10px] text-zinc-500 font-medium uppercase tracking-wider">Nota por Estado</span>
+              <div className="flex items-center gap-1">
+                <span className="text-xs">💣</span>
                 <div className="w-24 h-3 rounded-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500" />
+                <span className="text-xs">🔥</span>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-                <span>Contra</span><span>Neutro</span><span>A Favor</span>
+                <span>0</span><span>5</span><span>10</span>
               </div>
             </div>
-            {total > 0 && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold text-emerald-400">{Math.round((data.positive / total) * 100)}%</span>
-                <span className="text-xs font-bold text-amber-400">{Math.round((data.neutral / total) * 100)}%</span>
-                <span className="text-xs font-bold text-rose-400">{Math.round((data.negative / total) * 100)}%</span>
-                <span className="text-[10px] text-zinc-600">{total.toLocaleString()}</span>
-              </div>
-            )}
+            {total > 0 && (() => {
+              const globalScore = Math.round(((data.avgScore ?? 5.0)) * 10) / 10;
+              const hex = scoreToHex(globalScore);
+              const emoji = scoreToEmoji(globalScore);
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm leading-none">{emoji}</span>
+                  <span className="text-sm font-black tabular-nums" style={{ color: hex }}>{globalScore.toFixed(1)}</span>
+                  <span className="text-[10px] text-zinc-600">{total.toLocaleString()} personas</span>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

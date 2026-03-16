@@ -16,54 +16,29 @@ import type { QuadrantResult, PoliticalFigureDetection } from '@/lib/arena/types
 function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
   const total = figure.supportCount + figure.attackCount + figure.neutralCount;
   if (total === 0) return null;
-  const pctSupport = Math.round((figure.supportCount / total) * 100);
-  const pctAttack = Math.round((figure.attackCount / total) * 100);
-  const pctNeutral = Math.round((figure.neutralCount / total) * 100);
-
-  const isPositive = pctSupport > pctAttack;
+  const rawScore = total > 0
+    ? ((figure.supportCount * 9 + figure.neutralCount * 5 + figure.attackCount * 1) / total)
+    : 5.0;
+  const score = Math.round(rawScore * 10) / 10;
+  const emoji = scoreToEmoji(score);
+  const hex = scoreToHex(score);
+  const barPos = (score / 10) * 100;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-xl flex flex-col flex-1 min-w-[180px]">
       <div className="absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none bg-violet-500/8" />
-
-      {/* Header */}
       <div className="px-3 py-1.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-violet-400" />
         <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
       </div>
-
-      {/* Body */}
-      <div className="flex-1 flex flex-col justify-center px-4 py-2 gap-2">
-        {/* Big number */}
-        <div className="text-center">
-          <p className={cn(
-            'text-3xl font-black tabular-nums leading-none',
-            isPositive ? 'text-emerald-400' : 'text-rose-400',
-          )}>
-            {isPositive ? pctSupport : pctAttack}%
-          </p>
-          <p className={cn(
-            'text-xs font-bold mt-0.5',
-            isPositive ? 'text-emerald-400/70' : 'text-rose-400/70',
-          )}>
-            {isPositive ? 'Aprovacao' : 'Rejeicao'}
-          </p>
-        </div>
-
-        {/* Mini bar */}
-        <div className="h-[10px] rounded-full overflow-hidden flex">
-          <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${pctSupport}%` }} />
-          <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${pctNeutral}%` }} />
-          <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${pctAttack}%` }} />
-        </div>
-
-        {/* Stats row */}
-        <div className="flex items-center justify-center gap-3">
-          <span className="text-xs font-bold text-emerald-400 tabular-nums">{pctSupport}% Apoiam</span>
-          <span className="text-zinc-700 text-xs">·</span>
-          <span className="text-xs font-bold text-amber-400 tabular-nums">{pctNeutral}%</span>
-          <span className="text-zinc-700 text-xs">·</span>
-          <span className="text-xs font-bold text-rose-400 tabular-nums">{pctAttack}% Rejeitam</span>
+      <div className="flex-1 flex flex-col justify-center items-center px-4 py-2 gap-2">
+        <span className="text-2xl leading-none">{emoji}</span>
+        <p className="text-3xl font-black tabular-nums leading-none" style={{ color: hex }}>
+          {score.toFixed(1)}
+        </p>
+        <div className="w-full h-[8px] rounded-full overflow-hidden relative bg-white/[0.03]">
+          <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+          <div className="absolute top-0 h-full w-[8px] rounded-full transition-all duration-[4s] ease-out" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
         </div>
       </div>
     </div>
