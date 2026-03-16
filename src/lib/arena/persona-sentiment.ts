@@ -870,14 +870,19 @@ function analyzeVotingScore(
   }
 
   if (hasLula) {
-    const opLula = hasDesaprova(aprovLula) || aprovLula.includes('ruim') || aprovLula.includes('pessim');
-    const supLula = supportsLula;
+    // Opposition: check approval text AND voting history (like the old analyzeVotingData)
+    const opLula = hasDesaprova(aprovLula) || aprovLula.includes('ruim') || aprovLula.includes('pessim')
+      || voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
+    const supLula = supportsLula
+      || voto22.includes('pt') || voto26.includes('pt');
     if (Math.random() > 0.15) return figureScore(supLula, opLula, isAdversarial);
     return null;
   }
 
   if (hasBolsonaro) {
-    const opBolso = avalBolso.includes('ruim') || avalBolso.includes('pessim') || avalBolso.includes('horrivel') || hasDesaprova(avalBolso);
+    // Opposition: check evaluation text AND voting history
+    const opBolso = avalBolso.includes('ruim') || avalBolso.includes('pessim') || avalBolso.includes('horrivel') || hasDesaprova(avalBolso)
+      || voto22.includes('lula') || voto22.includes('pt') || voto26.includes('lula') || voto26.includes('pt');
     const supBolso = supportsBolsonaro;
     if (Math.random() > 0.15) return figureScore(supBolso, opBolso, isAdversarial);
     return null;
