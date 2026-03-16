@@ -866,15 +866,21 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   emitLive(blockId, completeBase);
                   onProcessing(false);
 
-                  // Compute segments locally with scores if backend didn't provide them
-                  if (!doneSegments && allPersonas.length > 0 && !cancelledBlocksRef.current.has(blockId)) {
+                  // ALWAYS recompute segments with scores from all personas
+                  // (feedAccumulators may have been incomplete due to race conditions)
+                  if (allPersonas.length > 0 && !cancelledBlocksRef.current.has(blockId)) {
                     const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-                    const segAccLocal = new SegmentAccumulator();
+                    const segAccFinal = new SegmentAccumulator();
+                    let finalScoreSum = 0;
                     for (const p of allPersonas) {
                       const s = computePersonaScore(p, queryForSeg);
-                      segAccLocal.addPersonaWithScore(p, s);
+                      segAccFinal.addPersonaWithScore(p, s);
+                      finalScoreSum += s;
                     }
-                    completeBase.segments = segAccLocal.toSegments();
+                    const finalAvg = allPersonas.length > 0 ? Math.round((finalScoreSum / allPersonas.length) * 10) / 10 : 5.0;
+                    completeBase.segments = segAccFinal.toSegments();
+                    completeBase.avgScore = finalAvg;
+                    completeBase.scoreSum = finalScoreSum;
                     emitLive(blockId, completeBase);
                   }
 
@@ -903,25 +909,59 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       console.log(`[Arena] 🐍 Stream ended. streamDone=${streamDone}, hasResults=${hasResults}, receivedAnyProgress=${receivedAnyProgress}`);
       if (!streamDone && hasResults) {
         console.log('[Arena] 🐍 Stream incomplete but has results — using partial data');
+        await personaLoadPromise;
         const total = simulation?.total || 0;
-        const partialAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
-        emitLive(blockId, {
-          ...baseLiveData,
-          phase: 'complete',
-          processedCount: total,
-          totalCount: total,
-          positive: simulation?.positive || 0,
-          negative: simulation?.negative || 0,
-          neutral: simulation?.neutral || 0,
-          avgScore: partialAvg,
-          scoreSum: pythonScoreSum,
-          simulation,
-          totalPersonas: total,
-          segments: segAcc.toSegments(),
-          liveIdeology: ideoAcc.toResults(),
-          liveComments,
-          stateBreakdown: stateAcc.toStateBreakdown(),
-        });
+
+        // Recompute segments with scores from all local personas
+        let partialScoreSum = 0;
+        if (allPersonas.length > 0) {
+          const queryForSeg = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
+          const segAccPartial = new SegmentAccumulator();
+          for (const p of allPersonas) {
+            const s = computePersonaScore(p, queryForSeg);
+            segAccPartial.addPersonaWithScore(p, s);
+            partialScoreSum += s;
+          }
+          // Replace segAcc contents — copy to the outer segAcc isn't possible,
+          // so we emit directly with the new accumulator
+          const partialAvg = Math.round((partialScoreSum / allPersonas.length) * 10) / 10;
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'complete',
+            processedCount: total,
+            totalCount: total,
+            positive: simulation?.positive || 0,
+            negative: simulation?.negative || 0,
+            neutral: simulation?.neutral || 0,
+            avgScore: partialAvg,
+            scoreSum: partialScoreSum,
+            simulation,
+            totalPersonas: total,
+            segments: segAccPartial.toSegments(),
+            liveIdeology: ideoAcc.toResults(),
+            liveComments,
+            stateBreakdown: stateAcc.toStateBreakdown(),
+          });
+        } else {
+          const partialAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
+          emitLive(blockId, {
+            ...baseLiveData,
+            phase: 'complete',
+            processedCount: total,
+            totalCount: total,
+            positive: simulation?.positive || 0,
+            negative: simulation?.negative || 0,
+            neutral: simulation?.neutral || 0,
+            avgScore: partialAvg,
+            scoreSum: pythonScoreSum,
+            simulation,
+            totalPersonas: total,
+            segments: segAcc.toSegments(),
+            liveIdeology: ideoAcc.toResults(),
+            liveComments,
+            stateBreakdown: stateAcc.toStateBreakdown(),
+          });
+        }
         onProcessing(false);
       } else if (!streamDone && !hasResults) {
         console.warn('[Arena] ⚠️ Stream incomplete, no results — FALLING BACK TO LOCAL');
