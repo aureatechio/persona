@@ -79,6 +79,11 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // Reset presentation screens (dashboard/map) immediately
     broadcastToMonitor({ type: 'arena-reset', data: null });
 
+    // Create abort controller early so media analysis can also be cancelled
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     const blockId = crypto.randomUUID();
     currentBlockIdRef.current = blockId;
 
@@ -169,6 +174,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             question: q || undefined,
             generate_question: !q,
           }),
+          signal: controller.signal,
         });
 
         if (mediaRes.ok) {
@@ -315,11 +321,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     }
 
     // ── Python backend ────────────────────────────────────────────────────
-    // Abort previous
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
     // Start in collecting phase — no metrics shown yet
     emitLive(blockId, {
       ...baseLiveData,
@@ -681,11 +682,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         cancelledBlocksRef.current.add(currentBlockIdRef.current);
         currentBlockIdRef.current = null;
       }
-      // Abort any running Python backend request
+      // Abort any running Python backend request — this propagates to Python via signal
       if (abortRef.current) {
         abortRef.current.abort();
         abortRef.current = null;
       }
+      // Clear old cancelled block IDs to prevent memory leak
+      cancelledBlocksRef.current.clear();
       broadcastToMonitor({ type: 'arena-reset', data: null });
     };
     window.addEventListener('arena-new-chat', handler);

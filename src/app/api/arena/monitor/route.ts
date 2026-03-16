@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: request.signal,
   });
 
   if (!upstream.ok || !upstream.body) {

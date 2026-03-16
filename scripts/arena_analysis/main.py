@@ -130,16 +130,15 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 return
             await asyncio.sleep(1)
 
-    async def generate():
-        # Start watching for client disconnect in the background
-        disconnect_task = asyncio.create_task(_watch_disconnect())
+    # Start watching for client disconnect in the background
+    disconnect_task = asyncio.create_task(_watch_disconnect())
 
+    async def generate():
         start_time = time.time()
         total_tokens = 0
 
-        try:
-            # ── 0. Route event ────────────────────────────────────────
-            yield sse_event("route", {"route": "python"})
+        # ── 0. Route event ────────────────────────────────────────
+        yield sse_event("route", {"route": "python"})
 
         # ── 1. Web Research + Persona Loading em paralelo ────────
         # Skip query_analyzer — classify-route already decided this needs Python.
@@ -271,6 +270,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 },
             })
 
+        # Check cancellation before waiting for personas
+        if cancelled.is_set():
+            print("[Pipeline] Cancelled before persona loading — aborting")
+            return
+
         # ── 2. Aguardar personas (já carregando em paralelo) ──────────
         yield sse_event("phase", {
             "phase": "loading_personas",
@@ -324,6 +328,10 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             })
 
         # ── 5. Persona Loop ──────────────────────────────────────────
+        if cancelled.is_set():
+            print("[Pipeline] Cancelled before persona loop — aborting")
+            return
+
         yield sse_event("phase", {
             "phase": "processing_personas",
             "message": f"Processando {total_personas} personas com IA...",
@@ -336,7 +344,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         last_segment_count = 0
         SEGMENT_INTERVAL = 500  # emit segments every ~500 personas
 
-        async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose):
+        async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose, cancelled=cancelled):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)
             inc_results.extend(progress.results)
@@ -371,6 +379,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
             if request.verbose and progress.batch_meta:
                 yield sse_event("batch_detail", progress.batch_meta)
+
+            # Check cancellation after each batch
+            if cancelled.is_set():
+                print(f"[Pipeline] Cancelled during persona loop at {progress.processed}/{progress.total}")
+                return
 
         # ── 6. Aggregate Results ──────────────────────────────────────
         yield sse_event("phase", {
@@ -421,8 +434,17 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "total_tokens": total_tokens,
         })
 
+    async def generate_with_cleanup():
+        try:
+            async for event in generate():
+                yield event
+        finally:
+            # Stop watching for disconnect
+            cancelled.set()
+            disconnect_task.cancel()
+
     return StreamingResponse(
-        generate(),
+        generate_with_cleanup(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

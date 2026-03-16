@@ -11,6 +11,8 @@ export async function POST(request: Request) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
+      // Propagate client abort to Python backend
+      signal: request.signal,
     });
 
     if (!upstream.ok || !upstream.body) {
@@ -30,6 +32,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: any) {
+    // Don't log abort errors — they're expected when user clicks "Novo Chat"
+    if (err?.name === 'AbortError') {
+      return new Response(null, { status: 499 });
+    }
     console.warn('[Arena API] Python backend unreachable:', err?.message || err);
     return new Response(
       JSON.stringify({ error: 'Python backend offline', fallback: true }),
