@@ -16,8 +16,9 @@ import type { QuadrantResult, PoliticalFigureDetection } from '@/lib/arena/types
 function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
   const total = figure.supportCount + figure.attackCount + figure.neutralCount;
   if (total === 0) return null;
+  // Score reflects agreement with the STATEMENT, not approval of the figure.
   const rawScore = total > 0
-    ? ((figure.supportCount * 9 + figure.neutralCount * 5 + figure.attackCount * 1) / total)
+    ? ((figure.attackCount * 9 + figure.neutralCount * 5 + figure.supportCount * 1) / total)
     : 5.0;
   const score = Math.round(rawScore * 10) / 10;
   const emoji = scoreToEmoji(score);

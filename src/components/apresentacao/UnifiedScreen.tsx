@@ -17,9 +17,11 @@ import { SegmentRanking, Waiting } from './DashboardScreen';
 function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
   const total = figure.supportCount + figure.attackCount + figure.neutralCount;
   if (total === 0) return null;
-  // Derive a 0-10 score: support pulls toward 10, attack toward 0
+  // Score reflects agreement with the STATEMENT (not approval of the figure).
+  // attackCount = people who agree with the statement (e.g., "Lula é corrupto" → they attack Lula)
+  // supportCount = people who disagree (they support/defend the figure)
   const rawScore = total > 0
-    ? ((figure.supportCount * 9 + figure.neutralCount * 5 + figure.attackCount * 1) / total)
+    ? ((figure.attackCount * 9 + figure.neutralCount * 5 + figure.supportCount * 1) / total)
     : 5.0;
   const score = Math.round(rawScore * 10) / 10;
   const emoji = scoreToEmoji(score);
