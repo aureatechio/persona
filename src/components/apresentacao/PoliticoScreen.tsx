@@ -4,7 +4,8 @@ import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 import { Users, Vote } from 'lucide-react';
 import { Waiting } from './DashboardScreen';
-import { TrendHero, DonutCard, SpectrumGauge, QuadrantGrid } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid } from './charts';
+import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { QuadrantResult, PoliticalFigureDetection } from '@/lib/arena/types';
 
@@ -81,6 +82,7 @@ function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentIt
     positive: q.positive,
     negative: q.negative,
     neutral: q.neutral,
+    avgScore: q.count > 0 ? Math.round(((q.positive / q.count) * 10) * 10) / 10 : 5.0,
   }));
 }
 
@@ -154,11 +156,11 @@ export function PoliticoScreen() {
         ) : null}
       </div>
 
-      {/* ═══ HERO ZONE — Trend + Figure Gauges ═══ */}
-      <TrendHero
-        positive={data.positive || 0}
-        negative={data.negative || 0}
-        neutral={data.neutral || 0}
+      {/* ═══ HERO ZONE — Score + Figure Gauges ═══ */}
+      <ScoreHero
+        avgScore={data.avgScore ?? 5.0}
+        totalCount={data.totalCount}
+        processedCount={data.processedCount}
         rightSlot={
           <div className="flex items-stretch gap-3 flex-1">
             {lula ? <FigureGaugeCompact figure={lula} /> : (
@@ -180,9 +182,9 @@ export function PoliticoScreen() {
 
         {/* Row 1 — Electoral Donuts */}
         <div className="flex-1 grid grid-cols-3 gap-2.5 min-h-0">
-          <DonutCard items={data.segments?.voto2022}          title="Voto 2022"        accentColor="violet" />
-          <DonutCard items={data.segments?.voto2026}          title="Intencao 2026"    accentColor="emerald" />
-          <DonutCard items={data.segments?.politicalLeaning}  title="Pos. Politica"    accentColor="sky" />
+          <ScoreSegmentCard items={data.segments?.voto2022}          title="Voto 2022"        accentColor="violet" />
+          <ScoreSegmentCard items={data.segments?.voto2026}          title="Intencao 2026"    accentColor="emerald" />
+          <ScoreSegmentCard items={data.segments?.politicalLeaning}  title="Pos. Politica"    accentColor="sky" />
         </div>
 
         {/* Row 2 — Ideological Axes */}

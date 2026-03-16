@@ -3,6 +3,7 @@
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { useAnimatedValue, AnimatedNumber } from '@/hooks/useAnimatedValue';
+import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { ReactNode } from 'react';
 
@@ -18,7 +19,8 @@ function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | u
     item.count === b[i].count &&
     item.positive === b[i].positive &&
     item.negative === b[i].negative &&
-    item.neutral === b[i].neutral
+    item.neutral === b[i].neutral &&
+    item.avgScore === b[i].avgScore
   );
 }
 
@@ -608,11 +610,11 @@ const QUADRANT_COLOR_MAP: Record<string, { bg: string; border: string; text: str
 };
 const QUADRANT_COLOR_FALLBACK = { bg: 'bg-zinc-500/20', border: 'border-zinc-500/30', text: 'text-zinc-400', glow: 'bg-zinc-500/10' };
 
-const DEFAULT_QUADRANTS = [
-  { label: 'Direita + Conservador', count: 0, positive: 0, negative: 0, neutral: 0 },
-  { label: 'Direita + Progressista', count: 0, positive: 0, negative: 0, neutral: 0 },
-  { label: 'Esquerda + Progressista', count: 0, positive: 0, negative: 0, neutral: 0 },
-  { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0 },
+const DEFAULT_QUADRANTS: SegmentItem[] = [
+  { label: 'Direita + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
+  { label: 'Direita + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
+  { label: 'Esquerda + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
+  { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
 ];
 
 export function QuadrantGrid({
@@ -648,10 +650,7 @@ export function QuadrantGrid({
         {quads.map((q) => {
           const qc = QUADRANT_COLOR_MAP[q.label] || QUADRANT_COLOR_FALLBACK;
           const pct = hasQData ? Math.round((q.count / totalCount) * 100) : 0;
-          const tot = q.positive + q.negative + q.neutral;
-          const favPct = tot > 0 ? Math.round((q.positive / tot) * 100) : 0;
-          const neuPct = tot > 0 ? Math.round((q.neutral / tot) * 100) : 0;
-          const conPct = tot > 0 ? (100 - favPct - neuPct) : 0;
+          const score = q.avgScore ?? 5.0;
 
           return (
             <div
@@ -666,15 +665,12 @@ export function QuadrantGrid({
               <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
                 {q.label}
               </p>
-              <div className="w-full h-[5px] rounded-full overflow-hidden flex">
-                <div className="h-full bg-emerald-400 transition-all duration-[6s]" style={{ width: `${favPct}%` }} />
-                <div className="h-full bg-amber-400 transition-all duration-[6s]" style={{ width: `${neuPct}%` }} />
-                <div className="h-full bg-rose-400 transition-all duration-[6s]" style={{ width: `${conPct}%` }} />
-              </div>
+              {/* Score indicator */}
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold tabular-nums text-emerald-400"><AnimatedNumber value={favPct} suffix="%" /></span>
-                <span className="text-[10px] font-bold tabular-nums text-amber-400"><AnimatedNumber value={neuPct} suffix="%" /></span>
-                <span className="text-[10px] font-bold tabular-nums text-rose-400"><AnimatedNumber value={conPct} suffix="%" /></span>
+                <span className="text-base leading-none">{scoreToEmoji(score)}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: scoreToHex(score) }}>
+                  {hasQData ? score.toFixed(1) : '—'}
+                </span>
               </div>
             </div>
           );
@@ -683,3 +679,202 @@ export function QuadrantGrid({
     </div>
   );
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   SCORE HERO — Giant unified 0-10 score with emoji (replaces TrendHero)
+   ════════════════════════════════════════════════════════════════════ */
+
+export const ScoreHero = memo(function ScoreHero({
+  avgScore,
+  totalCount,
+  processedCount,
+  rightSlot,
+}: {
+  avgScore: number;
+  totalCount: number;
+  processedCount: number;
+  rightSlot?: ReactNode;
+}) {
+  const score = avgScore ?? 5.0;
+  const emoji = scoreToEmoji(score);
+  const label = scoreToLabel(score);
+  const hex = scoreToHex(score);
+
+  return (
+    <div className="shrink-0 flex items-stretch gap-3 px-5 py-4 border-b border-white/[0.04]">
+      {/* Main score */}
+      <div className="relative overflow-hidden shrink-0 bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-white/[0.06] px-8 py-3 flex flex-col items-center justify-center" style={{ borderColor: `${hex}33` }}>
+        {/* Glow */}
+        <div className="absolute inset-0 bg-gradient-to-br pointer-events-none opacity-30" style={{ background: `radial-gradient(ellipse at center, ${hex}20, transparent 70%)` }} />
+        <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 relative">Nota</p>
+        <div className="flex items-center gap-3 relative">
+          <span className="text-4xl leading-none">{emoji}</span>
+          <span className="text-5xl font-black tabular-nums leading-none" style={{ color: hex }}>
+            {processedCount > 0 ? score.toFixed(1) : '—'}
+          </span>
+        </div>
+        <p className="text-sm font-bold relative mt-1" style={{ color: `${hex}cc` }}>{label}</p>
+        <p className="text-xs text-zinc-600 tabular-nums relative">
+          {processedCount > 0 ? processedCount.toLocaleString('pt-BR') : '0'} personas
+        </p>
+      </div>
+
+      {/* Right Slot */}
+      {rightSlot && (
+        <div className="flex-1 min-w-0 flex items-stretch">
+          {rightSlot}
+        </div>
+      )}
+    </div>
+  );
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   SCORE SEGMENT CARD — List of items with individual 0-10 scores
+   Replaces DonutCard and HBarChart
+   ════════════════════════════════════════════════════════════════════ */
+
+export const ScoreSegmentCard = memo(function ScoreSegmentCard({
+  items,
+  title,
+  accentColor,
+  maxItems = 7,
+}: {
+  items: SegmentItem[] | undefined;
+  title: string;
+  accentColor: string;
+  maxItems?: number;
+}) {
+  const accentMap: Record<string, { text: string; label: string; glow: string }> = {
+    emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80', glow: 'bg-emerald-500/8' },
+    amber:   { text: 'text-amber-400',   label: 'text-amber-400/80',   glow: 'bg-amber-500/8' },
+    violet:  { text: 'text-violet-400',   label: 'text-violet-400/80',  glow: 'bg-violet-500/8' },
+    cyan:    { text: 'text-cyan-400',     label: 'text-cyan-400/80',    glow: 'bg-cyan-500/8' },
+    sky:     { text: 'text-sky-400',      label: 'text-sky-400/80',     glow: 'bg-sky-500/8' },
+    rose:    { text: 'text-rose-400',     label: 'text-rose-400/80',    glow: 'bg-rose-500/8' },
+    fuchsia: { text: 'text-fuchsia-400',  label: 'text-fuchsia-400/80', glow: 'bg-fuchsia-500/8' },
+    indigo:  { text: 'text-indigo-400',   label: 'text-indigo-400/80',  glow: 'bg-indigo-500/8' },
+    orange:  { text: 'text-orange-400',   label: 'text-orange-400/80',  glow: 'bg-orange-500/8' },
+    pink:    { text: 'text-pink-400',     label: 'text-pink-400/80',    glow: 'bg-pink-500/8' },
+  };
+  const c = accentMap[accentColor] || accentMap.emerald;
+
+  // Sort by avgScore descending (highest impact first), then by count
+  const sorted = items && items.length > 0
+    ? [...items].sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5)).slice(0, maxItems)
+    : [];
+  const hasData = sorted.some(s => s.count > 0);
+
+  return (
+    <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
+      <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
+
+      {/* Header */}
+      <div className="px-4 py-2 border-b border-white/[0.04] shrink-0 flex items-center gap-2 min-w-0">
+        <div className={cn('w-2 h-2 rounded-full shrink-0', c.text.replace('text-', 'bg-'))} />
+        <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
+      </div>
+
+      {/* Items list */}
+      <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
+        {sorted.length > 0 ? sorted.map((item) => {
+          const score = item.avgScore ?? 5.0;
+          const hex = scoreToHex(score);
+          const emoji = scoreToEmoji(score);
+          const barPosition = (score / 10) * 100;
+
+          return (
+            <div key={item.label} className="flex items-center gap-2 group">
+              {/* Label */}
+              <span className="text-xs text-zinc-400 w-[76px] truncate shrink-0 text-right group-hover:text-white transition-colors duration-200">
+                {item.label}
+              </span>
+
+              {/* Score bar — gradient from rose to emerald with marker */}
+              <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
+                <div className="absolute inset-0 rounded-full opacity-20" style={{
+                  background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
+                }} />
+                {hasData && (
+                  <div
+                    className="absolute top-0 h-full w-[8px] rounded-full transition-all duration-[4s] ease-out"
+                    style={{
+                      left: `calc(${barPosition}% - 4px)`,
+                      backgroundColor: hex,
+                      boxShadow: `0 0 8px ${hex}80`,
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Emoji + Score */}
+              <div className="flex items-center gap-1 shrink-0 w-[52px]">
+                <span className="text-sm leading-none">{hasData ? emoji : ''}</span>
+                <span className="text-sm font-black tabular-nums" style={{ color: hasData ? hex : '#52525b' }}>
+                  {hasData ? score.toFixed(1) : '—'}
+                </span>
+              </div>
+            </div>
+          );
+        }) : (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-zinc-700">Aguardando...</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  return prev.title === next.title &&
+    prev.accentColor === next.accentColor &&
+    shallowEqualSegments(prev.items, next.items);
+});
+
+/* ════════════════════════════════════════════════════════════════════
+   SCORE BAR — Gradient bar showing global score position (rightSlot)
+   ════════════════════════════════════════════════════════════════════ */
+
+export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount }: {
+  avgScore: number; totalCount: number;
+}) {
+  const score = avgScore ?? 5.0;
+  const hex = scoreToHex(score);
+  const barPosition = (score / 10) * 100;
+
+  const scaleItems = [
+    { score: 1, emoji: '💣' },
+    { score: 3, emoji: '😡' },
+    { score: 5, emoji: '😐' },
+    { score: 7, emoji: '👍' },
+    { score: 9, emoji: '❤️' },
+    { score: 10, emoji: '🔥' },
+  ];
+
+  return (
+    <div className="flex-1 flex flex-col justify-center gap-2 min-w-0 px-2">
+      {/* Score gradient bar */}
+      <div className="relative h-[28px] rounded-xl overflow-hidden bg-white/[0.03] border border-white/[0.04]">
+        <div className="absolute inset-0 rounded-xl opacity-30" style={{
+          background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
+        }} />
+        {totalCount > 0 && (
+          <div
+            className="absolute top-1 bottom-1 w-[4px] rounded-full transition-all duration-[6s] ease-out"
+            style={{
+              left: `calc(${barPosition}% - 2px)`,
+              backgroundColor: hex,
+              boxShadow: `0 0 12px ${hex}aa`,
+            }}
+          />
+        )}
+      </div>
+
+      {/* Emoji scale */}
+      <div className="flex items-center justify-between px-1">
+        {scaleItems.map(s => (
+          <span key={s.score} className="text-xs leading-none">{s.emoji}</span>
+        ))}
+      </div>
+    </div>
+  );
+});

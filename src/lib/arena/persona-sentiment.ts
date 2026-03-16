@@ -13,7 +13,8 @@
  * 5. When no direct match: build holistic profile from all responses
  */
 
-import type { Sentiment } from './types';
+import type { Sentiment, ImpactScore } from './types';
+import { scoreToSentiment } from './types';
 
 // ── Normalize (same as engine.ts) ─────────────────────────────────────────────
 
@@ -228,6 +229,53 @@ function classifyResponse(value: unknown): number {
   if (neutralPatterns.some(p => v.includes(p))) return 0;
 
   return 0;
+}
+
+// ── Response Classification (0-10 Score) ─────────────────────────────────────
+
+/**
+ * Converts a persona's questionnaire response to a 0-10 impact score.
+ * Numeric fields (1-10) pass through directly.
+ * Text fields are mapped to score ranges based on intensity.
+ */
+function classifyResponseScore(value: unknown): number {
+  if (value == null || value === '') return 5.0; // no data = indifference
+
+  // Numeric fields (1-10) — use directly
+  if (typeof value === 'number') {
+    return Math.max(0, Math.min(10, value));
+  }
+
+  const v = norm(String(value));
+
+  // Strong positive
+  const strongPositive = ['excelente', 'otimo', 'apoio total', 'totalmente a favor', 'concordo totalmente'];
+  if (strongPositive.some(p => v.includes(p))) return 8.5 + Math.random();
+
+  // Positive
+  const positive = ['a favor', 'concordo', 'bom', 'positiv', 'confiavel', 'real', 'correto', 'justo', 'necessario', 'essencial', 'melhor', 'importante', 'funciona', 'apoio', 'deveria'];
+  if (positive.some(p => v.includes(p))) return 7.0 + Math.random();
+
+  // Weak positive (just "sim" / "aprova")
+  if (v === 'sim' || (hasAprova(v) && !hasDesaprova(v))) return 6.0 + Math.random();
+
+  // Strong negative
+  const strongNegative = ['horrivel', 'pessim', 'totalmente contra', 'discordo totalmente', 'jamais', 'nunca'];
+  if (strongNegative.some(p => v.includes(p))) return 0.5 + Math.random();
+
+  // Negative
+  const negative = ['contra', 'discordo', 'ruim', 'nao funciona', 'nao confio', 'falso', 'injusto', 'desnecessario', 'errado', 'nao apoia', 'perigoso', 'nao acredita', 'negativ', 'reprov'];
+  if (negative.some(p => v.includes(p))) return 2.0 + Math.random();
+
+  // Weak negative
+  if (hasDesaprova(v)) return 2.5 + Math.random() * 0.5;
+  if (v === 'nao' || v.startsWith('nao,') || v.endsWith(' nao')) return 3.0 + Math.random();
+
+  // Neutral
+  const neutralPatterns = ['neutro', 'indeciso', 'tanto faz', 'depende', 'talvez', 'nao sei', 'ns/nr', 'regular', 'medio', 'mais ou menos'];
+  if (neutralPatterns.some(p => v.includes(p))) return 4.5 + Math.random();
+
+  return 5.0; // unknown → indifference
 }
 
 // ── Question Polarity Detection ───────────────────────────────────────────────
@@ -514,6 +562,100 @@ function computeHolisticSentiment(
   return 'neutral';
 }
 
+// ── Holistic Profile Score (0-10) ────────────────────────────────────────────
+
+/**
+ * Holistic profile analysis returning a 0-10 score.
+ * Uses the same 4-dimension composite signal but maps to continuous scale.
+ */
+function computeHolisticScore(
+  persona: Record<string, any>,
+  normQuestion: string,
+): number {
+  const humanFields = [
+    'q_democracia_importante', 'q_direitos_lgbt', 'q_racismo_estrutural',
+    'q_feminismo_bom', 'q_adocao_homoafetiva', 'q_vacinas_confiar',
+    'q_ciencia_importante', 'q_amazonia_preservar', 'q_sus_funciona',
+    'q_universidade_publica_gratuita', 'q_bolsa_familia_bom',
+    'q_mudanca_climatica_real', 'q_energia_renovavel',
+  ];
+  const authFields = [
+    'q_pena_morte', 'q_prisao_perpetua', 'q_maioridade_penal_16',
+    'q_intervencao_militar', 'q_crack_internar_forcado',
+    'q_camera_facial_aceita', 'q_seguranca_prioridade',
+    'q_ti_linchamento_apoiaria', 'q_ti_tortura_preso_ok',
+  ];
+  const tradFields = [
+    'q_familia_tradicional', 'q_religiao_politica', 'q_genero_biologico',
+    'tema_casamento_gay', 'q_ideologia_genero_escola', 'q_linguagem_neutra',
+    'q_ti_homofobia_violenta', 'q_ti_bater_filho_normal',
+  ];
+  const ecoLibFields = [
+    'tema_privatizacoes', 'q_estado_tamanho', 'q_teto_gastos',
+    'q_previdencia_reforma', 'q_bitcoin_confiar',
+  ];
+
+  let humanScore = 0, humanCount = 0;
+  let authScore = 0, authCount = 0;
+  let tradScore = 0, tradCount = 0;
+  let ecoLibScore = 0, ecoLibCount = 0;
+
+  for (const f of humanFields) {
+    const s = classifyResponse(persona[f]);
+    if (s !== 0 || persona[f] != null) { humanScore += s; humanCount++; }
+  }
+  for (const f of authFields) {
+    const s = classifyResponse(persona[f]);
+    if (s !== 0 || persona[f] != null) { authScore += s; authCount++; }
+  }
+  for (const f of tradFields) {
+    const s = classifyResponse(persona[f]);
+    if (s !== 0 || persona[f] != null) { tradScore += s; tradCount++; }
+  }
+  for (const f of ecoLibFields) {
+    const s = classifyResponse(persona[f]);
+    if (s !== 0 || persona[f] != null) { ecoLibScore += s; ecoLibCount++; }
+  }
+
+  const avgHuman = humanCount > 0 ? humanScore / humanCount : 0;
+  const avgAuth = authCount > 0 ? authScore / authCount : 0;
+  const avgTrad = tradCount > 0 ? tradScore / tradCount : 0;
+  const avgEcoLib = ecoLibCount > 0 ? ecoLibScore / ecoLibCount : 0;
+
+  const isProgressiveTopic = [
+    'direito', 'igualdade', 'inclusao', 'diversidade', 'sustentab',
+    'social', 'protecao', 'liberdade', 'educacao', 'saude',
+  ].some(w => normQuestion.includes(w));
+  const isConservativeTopic = [
+    'ordem', 'disciplina', 'tradicao', 'moral', 'seguranca',
+    'punicao', 'autoridade', 'familia', 'patria',
+  ].some(w => normQuestion.includes(w));
+  const isEconomicTopic = [
+    'econom', 'mercado', 'emprego', 'imposto', 'empresa',
+    'cresciment', 'investiment', 'lucro', 'dinheiro',
+  ].some(w => normQuestion.includes(w));
+
+  let signal = 0;
+  let signalCount = 0;
+
+  if (isProgressiveTopic) { signal += avgHuman * 0.6 - avgTrad * 0.4; signalCount++; }
+  if (isConservativeTopic) { signal += avgTrad * 0.5 + avgAuth * 0.3; signalCount++; }
+  if (isEconomicTopic) { signal += avgEcoLib * 0.6; signalCount++; }
+  if (signalCount === 0) {
+    signal = avgHuman * 0.2 + avgAuth * 0.1 + avgTrad * 0.1 + avgEcoLib * 0.1;
+    signalCount = 1;
+  }
+
+  // composite is roughly -1 to +1
+  const compositeSignal = signal / signalCount;
+
+  // Map to 0-10: composite * 2.5 + 5.0 puts -1→2.5, 0→5.0, +1→7.5
+  // Then add larger noise since this is indirect
+  const noise = (Math.random() - 0.5) * 2.5; // ±1.25 points
+  const raw = compositeSignal * 2.5 + 5.0 + noise;
+  return Math.max(0, Math.min(10, raw));
+}
+
 // ── Voting History Analysis ───────────────────────────────────────────────────
 
 /**
@@ -659,6 +801,91 @@ function analyzeVotingData(
   return null;
 }
 
+// ── Voting History Score (0-10) ──────────────────────────────────────────────
+
+/**
+ * For political figure questions, returns a 0-10 score based on voting data.
+ * Returns null when no political figure detected (falls through).
+ */
+function analyzeVotingScore(
+  persona: Record<string, any>,
+  normQuestion: string,
+): number | null {
+  const hasLula = ['lula', 'petista', ' pt ', 'pt ', 'governo lula', 'partido dos trabalhadores'].some(k => normQuestion.includes(k));
+  const hasBolsonaro = ['bolsonaro', 'bolsonarism', 'capitao', 'mito '].some(k => normQuestion.includes(k));
+
+  if (!hasLula && !hasBolsonaro) return null;
+
+  const advWords = ['preso', 'prender', 'condenar', 'corrupto', 'cadeia', 'criminoso', 'impeach', 'cassado', 'demitir', 'expulsar'];
+  const supWords = ['bom', 'melhor', 'excelente', 'competente', 'inocente', 'apoiar', 'defende', 'heroi', 'benefici'];
+  let adv = 0, sup = 0;
+  for (const k of advWords) { if (normQuestion.includes(k)) adv++; }
+  for (const k of supWords) { if (normQuestion.includes(k)) sup++; }
+  const isAdversarial = adv > sup && adv > 0;
+
+  // Helper: determine support level for a figure → score
+  function figureScore(supports: boolean, opposes: boolean, adversarial: boolean): number {
+    const noise = (Math.random() - 0.5) * 2.0; // ±1.0
+    if (supports && !opposes) {
+      // Supporter
+      const base = adversarial ? 1.5 : 8.5;
+      return Math.max(0, Math.min(10, base + noise));
+    }
+    if (opposes && !supports) {
+      // Opponent
+      const base = adversarial ? 8.5 : 1.5;
+      return Math.max(0, Math.min(10, base + noise));
+    }
+    // Neutral/conflicted
+    return Math.max(0, Math.min(10, 5.0 + noise));
+  }
+
+  const voto22 = norm(String(persona.voto_2022 || ''));
+  const voto26 = norm(String(persona.voto_2026 || ''));
+  const aprovLula = norm(String(persona.aprovacao_lula || ''));
+  const avalBolso = norm(String(persona.q_avaliacao_bolsonaro || ''));
+
+  const supportsLula =
+    hasAprova(aprovLula) || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
+    voto22.includes('lula') || voto26.includes('lula');
+  const supportsBolsonaro =
+    avalBolso.includes('bom') || avalBolso.includes('otimo') || avalBolso.includes('excelente') ||
+    voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
+
+  // Comparison: both figures mentioned
+  if (hasLula && hasBolsonaro) {
+    const lulaPos = normQuestion.indexOf('lula');
+    const bolsoPos = normQuestion.indexOf('bolsonaro');
+    const lulaIsSubject = lulaPos < bolsoPos;
+
+    // 85% follow data, 15% noise
+    if (Math.random() > 0.15) {
+      if (lulaIsSubject) {
+        return figureScore(supportsLula, supportsBolsonaro, isAdversarial);
+      } else {
+        return figureScore(supportsBolsonaro, supportsLula, isAdversarial);
+      }
+    }
+    return null;
+  }
+
+  if (hasLula) {
+    const opLula = hasDesaprova(aprovLula) || aprovLula.includes('ruim') || aprovLula.includes('pessim');
+    const supLula = supportsLula;
+    if (Math.random() > 0.15) return figureScore(supLula, opLula, isAdversarial);
+    return null;
+  }
+
+  if (hasBolsonaro) {
+    const opBolso = avalBolso.includes('ruim') || avalBolso.includes('pessim') || avalBolso.includes('horrivel') || hasDesaprova(avalBolso);
+    const supBolso = supportsBolsonaro;
+    if (Math.random() > 0.15) return figureScore(supBolso, opBolso, isAdversarial);
+    return null;
+  }
+
+  return null;
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // QUESTION COVERAGE CHECK
 // ══════════════════════════════════════════════════════════════════════════════
@@ -695,8 +922,87 @@ export function hasLocalFieldMatch(question: string): boolean {
 // PUBLIC API
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════════
+// PUBLIC API — SCORE (0-10)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Computes a 0-10 impact score for a persona by analyzing their ACTUAL data.
+ *
+ * Priority:
+ * 1. Moral consensus (extreme questions like "idosos devem morrer")
+ * 2. Political figure analysis (using voting data, not formulas)
+ * 3. Direct field matching (question keywords → persona's questionnaire answers)
+ * 4. Holistic profile analysis (all responses → composite values profile)
+ */
+export function computePersonaScore(
+  persona: Record<string, any>,
+  question: string,
+): ImpactScore {
+  const normQuestion = norm(question);
+
+  // 1. Moral consensus — extreme propositions get near-zero scores
+  const consensus = detectMoralConsensus(normQuestion);
+  if (consensus) {
+    const roll = Math.random();
+    if (consensus.direction === 'negative') {
+      // 97% reject → score 0.5-1.5
+      if (roll < consensus.strength) return 0.5 + Math.random();
+      if (roll < consensus.strength + 0.02) return 4.5 + Math.random();
+      return 8.5 + Math.random();
+    } else {
+      if (roll < consensus.strength) return 8.5 + Math.random();
+      if (roll < consensus.strength + 0.02) return 4.5 + Math.random();
+      return 0.5 + Math.random();
+    }
+  }
+
+  // 2. Political figure analysis using voting data
+  const votingScore = analyzeVotingScore(persona, normQuestion);
+  if (votingScore !== null) return votingScore;
+
+  // 3. Direct field matching — persona's actual answers to the topic
+  const inverted = isQuestionInverted(normQuestion);
+  const directScores: number[] = [];
+
+  for (const mapping of QUESTION_FIELD_MAP) {
+    const kwMatch = mapping.keywords.some(kw => normQuestion.includes(norm(kw)));
+    if (!kwMatch) continue;
+
+    for (const field of mapping.fields) {
+      const value = persona[field];
+      if (value == null || value === '') continue;
+
+      let score = classifyResponseScore(value);
+      if (inverted) score = 10 - score;
+
+      directScores.push(score);
+    }
+  }
+
+  if (directScores.length > 0) {
+    const rawAvg = directScores.reduce((a, b) => a + b, 0) / directScores.length;
+
+    // Conviction compresses toward 5.0 (indifference) for low-conviction personas
+    const conviction = computeConviction(persona, normQuestion);
+    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.3, conviction);
+
+    // Add noise: ±0.75 points
+    const noise = (Math.random() - 0.5) * 1.5;
+    return Math.max(0, Math.min(10, convictionAdjusted + noise));
+  }
+
+  // 4. No direct match → holistic profile score
+  return computeHolisticScore(persona, normQuestion);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PUBLIC API — SENTIMENT (backward compat bridge)
+// ══════════════════════════════════════════════════════════════════════════════
+
 /**
  * Computes sentiment for a persona by analyzing their ACTUAL data.
+ * Now delegates to computePersonaScore and converts via scoreToSentiment.
  *
  * Priority:
  * 1. Moral consensus (extreme questions like "idosos devem morrer")
@@ -708,75 +1014,5 @@ export function computePersonaSentiment(
   persona: Record<string, any>,
   question: string,
 ): Sentiment {
-  const normQuestion = norm(question);
-
-  // 1. Check for moral consensus (extreme/universally-rejected propositions)
-  const consensus = detectMoralConsensus(normQuestion);
-  if (consensus) {
-    const roll = Math.random();
-    if (consensus.direction === 'negative') {
-      if (roll < consensus.strength) return 'negative';
-      if (roll < consensus.strength + 0.02) return 'neutral';
-      return 'positive';
-    } else {
-      if (roll < consensus.strength) return 'positive';
-      if (roll < consensus.strength + 0.02) return 'neutral';
-      return 'negative';
-    }
-  }
-
-  // 2. Political figure analysis (Lula, Bolsonaro) using ACTUAL voting data
-  const votingResult = analyzeVotingData(persona, normQuestion);
-  if (votingResult) return votingResult;
-
-  // 3. Direct field matching — find persona's actual answer to the question topic
-  const inverted = isQuestionInverted(normQuestion);
-  const directMatches: number[] = [];
-
-  for (const mapping of QUESTION_FIELD_MAP) {
-    const kwMatch = mapping.keywords.some(kw => normQuestion.includes(norm(kw)));
-    if (!kwMatch) continue;
-
-    for (const field of mapping.fields) {
-      const value = persona[field];
-      if (value == null || value === '') continue;
-
-      let score = classifyResponse(value);
-      if (inverted) score = -score;
-
-      directMatches.push(score);
-    }
-  }
-
-  if (directMatches.length > 0) {
-    const avgScore = directMatches.reduce((a, b) => a + b, 0) / directMatches.length;
-
-    // Compute conviction — how sure is this persona about their position?
-    // Low conviction (center ideology, moderate scores) → chance of neutral
-    const conviction = computeConviction(persona, normQuestion);
-
-    // Neutral chance inversely proportional to conviction:
-    //   conviction 0.0 → ~18% neutral (very undecided persona, e.g. Centro puro)
-    //   conviction 0.3 → ~12% neutral
-    //   conviction 0.5 → ~9% neutral
-    //   conviction 0.7 → ~5% neutral
-    //   conviction 1.0 → ~0% neutral (extremely convicted persona)
-    // Target: ~5-15% neutrals overall across 20K personas
-    const neutralChance = 0.18 * (1 - conviction);
-
-    if (neutralChance > 0 && Math.random() < neutralChance) {
-      return 'neutral';
-    }
-
-    // Standard noise for natural variance
-    const noise = (Math.random() - 0.5) * 0.3;
-    const finalScore = avgScore + noise;
-
-    if (finalScore > 0.2) return 'positive';
-    if (finalScore < -0.2) return 'negative';
-    return 'neutral';
-  }
-
-  // 4. No direct match → holistic analysis of persona's complete profile
-  return computeHolisticSentiment(persona, normQuestion);
+  return scoreToSentiment(computePersonaScore(persona, question));
 }

@@ -7,7 +7,8 @@ import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult } from '@/lib/arena/types';
-import { TrendHero, SentimentBar, DonutCard, HBarChart } from './charts';
+import { TrendHero, SentimentBar, DonutCard, HBarChart, ScoreHero, ScoreSegmentCard, ScoreBar } from './charts';
+import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 
 /* ════════════════════════════════════════════════════════════════════
    Segment Ranking v2 — contextual labels, readable font sizes
@@ -202,19 +203,20 @@ export const SegmentRanking = memo(function SegmentRanking({
    ════════════════════════════════════════════════════════════════════ */
 
 function CommentCard({ c }: { c: CommentResult }) {
-  const dot = c.sentiment === 'positive' ? 'bg-emerald-400' : c.sentiment === 'negative' ? 'bg-rose-400' : 'bg-amber-400';
-  const sentimentLabel = c.sentiment === 'positive' ? 'A Favor' : c.sentiment === 'negative' ? 'Contra' : 'Neutro';
-  const sentimentColor = c.sentiment === 'positive' ? 'text-emerald-500' : c.sentiment === 'negative' ? 'text-rose-500' : 'text-amber-500';
+  // Derive approximate score from sentiment for comments (comments don't have individual scores yet)
+  const approxScore = c.sentiment === 'positive' ? 7.5 : c.sentiment === 'negative' ? 2.5 : 5.0;
+  const emoji = scoreToEmoji(approxScore);
+  const hex = scoreToHex(approxScore);
 
   return (
     <div className="py-2.5 border-b border-white/[0.04]">
       <div className="flex items-center gap-2 mb-1">
-        <div className={cn('w-2 h-2 rounded-full shrink-0', dot)} />
+        <span className="text-sm leading-none shrink-0">{emoji}</span>
         <span className="text-sm font-semibold text-zinc-100 truncate flex-1">{c.personaName}</span>
         {c.age && <span className="text-xs text-zinc-600">{c.age}a</span>}
-        <span className={cn('text-xs font-bold uppercase', sentimentColor)}>{sentimentLabel}</span>
+        <span className="text-xs font-bold tabular-nums" style={{ color: hex }}>{approxScore.toFixed(1)}</span>
       </div>
-      <p className="text-sm text-zinc-400 leading-relaxed line-clamp-2 pl-4">{c.comment}</p>
+      <p className="text-sm text-zinc-400 leading-relaxed line-clamp-2 pl-6">{c.comment}</p>
     </div>
   );
 }
@@ -309,6 +311,7 @@ function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentIt
     positive: q.positive,
     negative: q.negative,
     neutral: q.neutral,
+    avgScore: q.count > 0 ? Math.round(((q.positive / q.count) * 10) * 10) / 10 : 5.0,
   }));
 }
 
@@ -320,6 +323,7 @@ function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): Segmen
     positive: a.positive,
     negative: a.negative,
     neutral: a.neutral,
+    avgScore: a.count > 0 ? Math.round(((a.positive / a.count) * 10) * 10) / 10 : 5.0,
   }));
 }
 
@@ -347,9 +351,9 @@ export function DashboardScreen() {
     [data.simulation?.archetypes],
   );
 
-  const sentimentBar = useMemo(() => (
-    <SentimentBar positive={positive} negative={negative} neutral={neutral} />
-  ), [positive, negative, neutral]);
+  const scoreBar = useMemo(() => (
+    <ScoreBar avgScore={data.avgScore ?? 5.0} totalCount={total} />
+  ), [data.avgScore, total]);
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
@@ -399,31 +403,31 @@ export function DashboardScreen() {
         ) : null}
       </div>
 
-      {/* ═══ HERO ZONE ═══ */}
-      <TrendHero
-        positive={positive}
-        negative={negative}
-        neutral={neutral}
-        rightSlot={sentimentBar}
+      {/* ═══ HERO ZONE — Score 0-10 ═══ */}
+      <ScoreHero
+        avgScore={data.avgScore ?? 5.0}
+        totalCount={total}
+        processedCount={data.processedCount}
+        rightSlot={scoreBar}
       />
 
       {/* ═══ MAIN GRID: 2 rows × 4 cols + sidebar ═══ */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
 
         <div className="flex-1 flex flex-col gap-2 p-2.5 min-h-0 overflow-hidden">
-          {/* Row 1 — Donuts + Rankings (visual variety) */}
+          {/* Row 1 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <SegmentRanking items={data.segments?.gender}     title="Genero"         accentColor="violet" />
-            <DonutCard items={data.segments?.race}            title="Etnia"          accentColor="cyan" />
-            <SegmentRanking items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" />
-            <SegmentRanking items={archetypeItems}            title="Arquetipos"     accentColor="orange" />
+            <ScoreSegmentCard items={data.segments?.gender}     title="Genero"         accentColor="violet" maxItems={4} />
+            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" />
+            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" />
+            <ScoreSegmentCard items={archetypeItems}            title="Arquetipos"     accentColor="orange" />
           </div>
-          {/* Row 2 — HBarCharts (dense data) */}
+          {/* Row 2 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <HBarChart items={data.segments?.religion}    title="Religiao"       accentColor="amber" />
-            <HBarChart items={data.segments?.region}      title="Regiao"         accentColor="emerald" />
-            <HBarChart items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" />
-            <HBarChart items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" />
+            <ScoreSegmentCard items={data.segments?.religion}    title="Religiao"       accentColor="amber" />
+            <ScoreSegmentCard items={data.segments?.region}      title="Regiao"         accentColor="emerald" />
+            <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" />
+            <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" />
           </div>
         </div>
 

@@ -6,8 +6,9 @@
  * This gives instant results for 200+ binary columns.
  */
 
-import type { Sentiment, RegionResult, GenerationResult } from './types';
-import { computeAllSegments, type AllSegments } from './segments';
+import type { Sentiment, RegionResult, GenerationResult, ImpactScore } from './types';
+import { scoreToSentiment } from './types';
+import { computeAllSegments, computeAllSegmentsWithScore, type AllSegments } from './segments';
 import { computeConviction } from './persona-sentiment';
 
 function norm(str: string): string {
@@ -143,6 +144,8 @@ export interface QuickAnswerResult {
   positive: number;
   negative: number;
   neutral: number;
+  /** Average 0-10 impact score across all personas */
+  avgScore: number;
   /** Breakdown by gender */
   genderGroups: { label: string; count: number; positive: number; negative: number; neutral: number }[];
   /** Breakdown by region */
@@ -182,6 +185,37 @@ export function classifyQuickPersona(
   return match.yesIsPositive ? 'negative' : 'positive';
 }
 
+/** Classify a single persona for a quick answer, returning a 0-10 score. */
+export function classifyQuickPersonaScore(
+  p: Record<string, any>,
+  match: QuickAnswerMatch,
+  question?: string,
+): ImpactScore {
+  const raw = p[match.column];
+
+  // No data → indifference
+  if (!isYes(raw) && !isNo(raw)) return 4.5 + Math.random();
+
+  // Conviction compresses toward 5.0
+  let conviction = 1.0;
+  if (question) {
+    conviction = Math.max(0.3, computeConviction(p, norm(question)));
+  }
+
+  const noise = (Math.random() - 0.5) * 1.5; // ±0.75
+
+  if (isYes(raw)) {
+    const base = match.yesIsPositive ? 8.0 : 2.0;
+    const adjusted = 5.0 + (base - 5.0) * conviction;
+    return Math.max(0, Math.min(10, adjusted + noise));
+  }
+
+  // isNo
+  const base = match.yesIsPositive ? 2.0 : 8.0;
+  const adjusted = 5.0 + (base - 5.0) * conviction;
+  return Math.max(0, Math.min(10, adjusted + noise));
+}
+
 /**
  * Counts yes/no directly from persona data for a matched column.
  * Returns instant results with demographic breakdowns.
@@ -196,13 +230,16 @@ export function runQuickAnswer(
   let positive = 0;
   let negative = 0;
   let neutral = 0;
+  let scoreSum = 0;
 
   const genderMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
   const regionMap = new Map<string, { count: number; positive: number; negative: number; neutral: number }>();
   const genMap = new Map<string, { count: number; positive: number; negative: number; neutral: number; totalAge: number }>();
 
   for (const p of personas) {
-    const sentiment = classifyQuickPersona(p, match, question);
+    const score = classifyQuickPersonaScore(p, match, question);
+    const sentiment = scoreToSentiment(score);
+    scoreSum += score;
 
     if (sentiment === 'positive') positive++;
     else if (sentiment === 'negative') negative++;
@@ -231,8 +268,8 @@ export function runQuickAnswer(
     gn.totalAge += (p.age || 30);
   }
 
-  // Compute full demographic segments using the same sentiment logic
-  const segments = computeAllSegments(personas, (p) => classifyQuickPersona(p, match, question));
+  // Compute full demographic segments with score tracking
+  const segments = computeAllSegmentsWithScore(personas, (p) => classifyQuickPersonaScore(p, match, question));
 
   return {
     column: match.column,
@@ -241,6 +278,7 @@ export function runQuickAnswer(
     positive,
     negative,
     neutral,
+    avgScore: personas.length > 0 ? Math.round((scoreSum / personas.length) * 10) / 10 : 5.0,
     genderGroups: Array.from(genderMap.entries()).map(([label, d]) => ({ label, ...d })),
     regionGroups: Array.from(regionMap.entries()).map(([region, d]) => ({ region, ...d })),
     generationGroups: Array.from(genMap.entries()).map(([generation, d]) => ({

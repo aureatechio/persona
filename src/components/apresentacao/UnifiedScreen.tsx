@@ -3,11 +3,11 @@
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useAnimatedValue } from '@/hooks/useAnimatedValue';
 import { Users, MessageCircle } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult, PoliticalFigureDetection } from '@/lib/arena/types';
-import { TrendHero, SentimentBar, DonutCard, HBarChart, SpectrumGauge, QuadrantGrid } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid } from './charts';
+import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 import { SegmentRanking, Waiting } from './DashboardScreen';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -135,17 +135,17 @@ function CommentsTicker({ comments }: { comments: CommentResult[] }) {
 
 function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentItem[] | undefined {
   if (!quadrants || quadrants.length === 0) return undefined;
-  return quadrants.map(q => ({ label: q.label, count: q.count, positive: q.positive, negative: q.negative, neutral: q.neutral }));
+  return quadrants.map(q => ({ label: q.label, count: q.count, positive: q.positive, negative: q.negative, neutral: q.neutral, avgScore: q.count > 0 ? Math.round(((q.positive / q.count) * 10) * 10) / 10 : 5.0 }));
 }
 
 function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): SegmentItem[] | undefined {
   if (!archetypes || archetypes.length === 0) return undefined;
-  return archetypes.map(a => ({ label: a.name, count: a.count, positive: a.positive, negative: a.negative, neutral: a.neutral }));
+  return archetypes.map(a => ({ label: a.name, count: a.count, positive: a.positive, negative: a.negative, neutral: a.neutral, avgScore: a.count > 0 ? Math.round(((a.positive / a.count) * 10) * 10) / 10 : 5.0 }));
 }
 
 function clustersToSegments(clusters: ClusterResult[] | undefined): SegmentItem[] | undefined {
   if (!clusters || clusters.length === 0) return undefined;
-  return clusters.map(c => ({ label: c.name, count: c.count, positive: c.positive, negative: c.negative, neutral: c.neutral }));
+  return clusters.map(c => ({ label: c.name, count: c.count, positive: c.positive, negative: c.negative, neutral: c.neutral, avgScore: c.count > 0 ? Math.round(((c.positive / c.count) * 10) * 10) / 10 : 5.0 }));
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -155,10 +155,7 @@ function clustersToSegments(clusters: ClusterResult[] | undefined): SegmentItem[
 export function UnifiedScreen() {
   const { data, hasEverReceived } = usePresentationData();
 
-  const positive = data.positive || 0;
-  const negative = data.negative || 0;
-  const neutral = data.neutral || 0;
-  const total = positive + negative + neutral;
+  const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
   const isLive = data.phase !== 'complete';
 
@@ -232,13 +229,11 @@ export function UnifiedScreen() {
       </div>
 
       {/* ═══ HERO ZONE (compact) ═══ */}
-      <div className="shrink-0 flex items-stretch gap-2 px-3 py-2 border-b border-white/[0.04]">
-        {/* 3 Stat Cards */}
-        <TrendHeroCompact positive={positive} negative={negative} neutral={neutral} />
-
-        {/* SentimentBar + Political Figures */}
-        <div className="flex flex-col gap-1.5 flex-1 min-w-0">
-          <SentimentBar positive={positive} negative={negative} neutral={neutral} />
+      <ScoreHero
+        avgScore={data.avgScore ?? 5.0}
+        totalCount={data.totalCount}
+        processedCount={data.processedCount}
+        rightSlot={
           <div className="flex items-stretch gap-2 flex-1">
             {lula ? <FigureGaugeCompact figure={lula} /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
@@ -251,8 +246,8 @@ export function UnifiedScreen() {
               </div>
             )}
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* ═══ MAIN: 3x5 Grid + Sidebar ═══ */}
       <div className="flex-1 flex min-h-0 overflow-hidden">
@@ -260,20 +255,20 @@ export function UnifiedScreen() {
 
           {/* Row 1 — Demografico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            <SegmentRanking items={data.segments?.gender}     title="Genero"       accentColor="violet" />
-            <DonutCard      items={data.segments?.race}       title="Etnia"        accentColor="cyan" />
-            <SegmentRanking items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" />
-            <HBarChart      items={data.segments?.religion}   title="Religiao"     accentColor="amber" />
-            <HBarChart      items={data.segments?.region}     title="Regiao"       accentColor="emerald" />
+            <SegmentRanking    items={data.segments?.gender}     title="Genero"       accentColor="violet" />
+            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"        accentColor="cyan" />
+            <SegmentRanking    items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" />
+            <ScoreSegmentCard items={data.segments?.religion}   title="Religiao"     accentColor="amber" />
+            <ScoreSegmentCard items={data.segments?.region}     title="Regiao"       accentColor="emerald" />
           </div>
 
           {/* Row 2 — Socioeconomico + Eleitoral */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            <HBarChart items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" />
-            <HBarChart items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" />
-            <DonutCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" />
-            <DonutCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" />
-            <DonutCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" />
+            <ScoreSegmentCard items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" />
+            <ScoreSegmentCard items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" />
+            <ScoreSegmentCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" />
+            <ScoreSegmentCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" />
+            <ScoreSegmentCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" />
           </div>
 
           {/* Row 3 — Ideologico */}
@@ -314,84 +309,3 @@ export function UnifiedScreen() {
   );
 }
 
-/* ════════════════════════════════════════════════════════════════════
-   TrendHeroCompact — Inline stat cards for the unified hero zone
-   ════════════════════════════════════════════════════════════════════ */
-
-function CompactStatCard({ value, label, count, color, glow, border, isDominant }: {
-  value: number; label: string; count: number;
-  color: 'emerald' | 'amber' | 'rose'; glow: string; border: string; isDominant: boolean;
-}) {
-  const animatedValue = useAnimatedValue(value);
-  const animatedCount = useAnimatedValue(count, 10000);
-  const colorMap = {
-    emerald: { text: 'text-emerald-400', sub: 'text-emerald-500/60' },
-    amber:   { text: 'text-amber-400',   sub: 'text-amber-500/60' },
-    rose:    { text: 'text-rose-400',     sub: 'text-rose-500/60' },
-  };
-  const c = colorMap[color];
-
-  return (
-    <div className={cn(
-      'relative overflow-hidden shrink-0',
-      'bg-white/[0.03] backdrop-blur-xl rounded-xl',
-      'flex flex-col items-center justify-center',
-      'transition-all duration-500 ease-out',
-      isDominant
-        ? cn('w-[200px] border px-4 py-2', border)
-        : 'min-w-[120px] border border-white/[0.06] px-3 py-1.5',
-    )}>
-      <div className={cn(
-        'absolute inset-0 bg-gradient-to-br pointer-events-none transition-opacity duration-500',
-        isDominant ? 'opacity-40' : 'opacity-0',
-        glow,
-      )} />
-      <p className={cn(
-        'font-black uppercase tracking-[0.2em] text-zinc-500 relative transition-all duration-500 overflow-hidden',
-        isDominant ? 'text-[9px] max-h-6 opacity-100' : 'text-[9px] max-h-0 opacity-0',
-      )}>Tendencia</p>
-      <p className={cn(
-        'font-black tabular-nums leading-none relative transition-all duration-500',
-        isDominant ? 'text-4xl' : 'text-3xl',
-        c.text,
-      )}>{animatedValue}%</p>
-      <p className={cn(
-        'font-bold relative transition-all duration-500',
-        isDominant ? 'text-xs mt-0.5' : 'text-[10px] uppercase tracking-wider mt-0.5',
-        c.sub,
-      )}>{label}</p>
-      <p className="text-[10px] text-zinc-600 tabular-nums relative">{animatedCount.toLocaleString('pt-BR')}</p>
-    </div>
-  );
-}
-
-function TrendHeroCompact({ positive, negative, neutral }: { positive: number; negative: number; neutral: number }) {
-  const total = positive + negative + neutral;
-  const pctPos = total > 0 ? Math.round((positive / total) * 100) : 0;
-  const pctNeg = total > 0 ? Math.round((negative / total) * 100) : 0;
-  const pctNeu = total > 0 ? Math.round((neutral / total) * 100) : 0;
-
-  const stats = [
-    { key: 'pos', value: pctPos, label: 'Concordam', count: positive, color: 'emerald' as const, glow: 'from-emerald-500/20 to-emerald-500/0', border: 'border-emerald-500/20' },
-    { key: 'neu', value: pctNeu, label: 'Neutros',   count: neutral,  color: 'amber' as const,   glow: 'from-amber-500/20 to-amber-500/0',   border: 'border-amber-500/20' },
-    { key: 'neg', value: pctNeg, label: 'Discordam',  count: negative, color: 'rose' as const,    glow: 'from-rose-500/20 to-rose-500/0',     border: 'border-rose-500/20' },
-  ];
-  const dominantIdx = stats.reduce((maxI, s, i) => s.value > stats[maxI].value ? i : maxI, 0);
-
-  return (
-    <div className="flex items-stretch gap-2 shrink-0">
-      {stats.map((s, i) => (
-        <CompactStatCard
-          key={s.key}
-          value={s.value}
-          label={s.label}
-          count={s.count}
-          color={s.color}
-          glow={s.glow}
-          border={s.border}
-          isDominant={i === dominantIdx}
-        />
-      ))}
-    </div>
-  );
-}

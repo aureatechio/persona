@@ -6,7 +6,7 @@ import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 /** Pre-seeded segments with known Brazilian demographic labels (zero counts).
  *  This ensures the dashboard shows card structures immediately,
  *  and bars grow from 0 as real data arrives. */
-function z(label: string) { return { label, count: 0, positive: 0, negative: 0, neutral: 0 }; }
+function z(label: string) { return { label, count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 }; }
 
 const EMPTY_SEGMENTS = {
   gender: [z('Masculino'), z('Feminino')],
@@ -35,6 +35,8 @@ function makeZeroedData(question = ''): ArenaLiveData {
     positive: 0,
     negative: 0,
     neutral: 0,
+    avgScore: 5.0,
+    scoreSum: 0,
     simulation: null,
     totalPersonas: 0,
     segments: { ...EMPTY_SEGMENTS },

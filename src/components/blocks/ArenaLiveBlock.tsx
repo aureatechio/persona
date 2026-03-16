@@ -32,6 +32,10 @@ export interface ArenaLiveData {
   positive: number;
   negative: number;
   neutral: number;
+  /** Average 0-10 impact score across all processed personas */
+  avgScore: number;
+  /** Running sum of scores (for incremental average computation) */
+  scoreSum: number;
   simulation: EnhancedSimulationResult | null;
   totalPersonas: number;
   media?: MediaItem[];

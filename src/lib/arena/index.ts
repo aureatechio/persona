@@ -4,6 +4,7 @@
 export type {
   Phase,
   Sentiment,
+  ImpactScore,
   ArchetypeResult,
   CommentResult,
   ClusterResult,
@@ -19,6 +20,9 @@ export type {
   IntensityBand,
   EnhancedSimulationResult,
 } from './types';
+
+// Score utilities
+export { scoreToEmoji, scoreToLabel, scoreToColor, scoreToHex, scoreToSentiment } from './types';
 
 // Constants
 export {
@@ -77,14 +81,14 @@ export {
 export type { QuestionPolarity } from './analysis-2d';
 
 // Data-Driven Persona Sentiment
-export { computePersonaSentiment, hasLocalFieldMatch } from './persona-sentiment';
+export { computePersonaSentiment, computePersonaScore, hasLocalFieldMatch } from './persona-sentiment';
 
 // Quick Answer (Yes/No columns)
-export { detectQuickAnswer, runQuickAnswer, classifyQuickPersona } from './quick-answer';
+export { detectQuickAnswer, runQuickAnswer, classifyQuickPersona, classifyQuickPersonaScore } from './quick-answer';
 export type { QuickAnswerMatch, QuickAnswerResult } from './quick-answer';
 
 // Segment breakdowns
-export { computeAllSegments, SegmentAccumulator } from './segments';
+export { computeAllSegments, computeAllSegmentsWithScore, SegmentAccumulator } from './segments';
 export type { SegmentItem, AllSegments } from './segments';
 
 // State-level accumulator (Brazil heat map)

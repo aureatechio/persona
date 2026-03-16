@@ -9,12 +9,15 @@ import {
   generateAIComments,
   runEnhancedSimulation,
   computePersonaSentiment,
+  computePersonaScore,
   computeAllSegments,
   SegmentAccumulator,
   IdeologyAccumulator,
   LiveCommentAccumulator,
   classifyQuickPersona,
+  classifyQuickPersonaScore,
   StateAccumulator,
+  scoreToSentiment,
 } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { detectQuickAnswer, runQuickAnswer } from '@/lib/arena/quick-answer';
@@ -202,6 +205,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         positive: 0,
         negative: 0,
         neutral: 0,
+        avgScore: 5.0,
+        scoreSum: 0,
         simulation: null,
         totalPersonas: personaCache.count,
         media: mediaPreviews,
@@ -225,6 +230,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         positive: 0,
         negative: 0,
         neutral: 0,
+        avgScore: 5.0,
+        scoreSum: 0,
         simulation: null,
         totalPersonas: personaCache.count,
         media: mediaPreviews,
@@ -236,7 +243,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       emitLive(blockId, baseLiveData);
 
       try {
-        let pos = 0, neg = 0, neu = 0;
+        let pos = 0, neg = 0, neu = 0, scoreSum = 0;
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
@@ -253,11 +260,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         const processBatch = (batch: any[], processed: number, total: number) => {
           for (const p of batch) {
-            const sentiment = classifyQuickPersona(p, quickMatch, q);
+            const score = classifyQuickPersonaScore(p, quickMatch, q);
+            const sentiment = scoreToSentiment(score);
+            scoreSum += score;
             if (sentiment === 'positive') pos++;
             else if (sentiment === 'negative') neg++;
             else neu++;
-            segAcc.addPersona(p, sentiment);
+            segAcc.addPersonaWithScore(p, score);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
             stateAcc.addPersona(p, sentiment);
@@ -270,6 +279,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             positive: pos,
             negative: neg,
             neutral: neu,
+            avgScore: processed > 0 ? Math.round((scoreSum / processed) * 10) / 10 : 5.0,
+            scoreSum,
             totalPersonas: total,
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
@@ -322,6 +333,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         const qaSegments = segAcc.toSegments();
         const qaStateBreakdown = stateAcc.toStateBreakdown();
 
+        const finalAvgScore = total > 0 ? Math.round((scoreSum / total) * 10) / 10 : 5.0;
+
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -330,6 +343,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: pos,
           negative: neg,
           neutral: neu,
+          avgScore: finalAvgScore,
+          scoreSum,
           totalPersonas: total,
           segments: qaSegments,
           quickAnswer: qaResult,
@@ -355,6 +370,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               positive: pos,
               negative: neg,
               neutral: neu,
+              avgScore: finalAvgScore,
+              scoreSum,
               totalPersonas: total,
               segments: qaSegments,
               quickAnswer: qaResult,
@@ -377,6 +394,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               positive: pos,
               negative: neg,
               neutral: neu,
+              avgScore: finalAvgScore,
+              scoreSum,
               totalPersonas: total,
               segments: qaSegments,
               quickAnswer: qaResult,
@@ -429,6 +448,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       positive: 0,
       negative: 0,
       neutral: 0,
+      avgScore: 5.0,
+      scoreSum: 0,
       simulation: null,
       totalPersonas: personaCache.count,
       media: mediaPreviews,
@@ -450,7 +471,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       broadcastToMonitor({ type: 'local_start', data: { question: q } });
       try {
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-        let pos = 0, neg = 0, neu = 0;
+        let pos = 0, neg = 0, neu = 0, localScoreSum = 0;
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
@@ -488,11 +509,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           const processed = Math.min(offset + BATCH, effectiveCount);
 
           for (const p of batch) {
-            const sentiment = computePersonaSentiment(p, queryForAnalysis);
+            const score = computePersonaScore(p, queryForAnalysis);
+            const sentiment = scoreToSentiment(score);
+            localScoreSum += score;
             if (sentiment === 'positive') pos++;
             else if (sentiment === 'negative') neg++;
             else neu++;
-            segAcc.addPersona(p, sentiment);
+            segAcc.addPersonaWithScore(p, score);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
             stateAcc.addPersona(p, sentiment);
@@ -506,6 +529,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             positive: pos,
             negative: neg,
             neutral: neu,
+            avgScore: processed > 0 ? Math.round((localScoreSum / processed) * 10) / 10 : 5.0,
+            scoreSum: localScoreSum,
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
             liveComments,
@@ -528,6 +553,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
 
+        const localFinalAvg = effectiveCount > 0 ? Math.round((localScoreSum / effectiveCount) * 10) / 10 : 5.0;
+
         // Enrichment: simulation
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
 
@@ -541,6 +568,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: simWithoutComments.positive,
           negative: simWithoutComments.negative,
           neutral: simWithoutComments.neutral,
+          avgScore: localFinalAvg,
+          scoreSum: localScoreSum,
           simulation: simWithoutComments,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
@@ -565,6 +594,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: sim.positive,
           negative: sim.negative,
           neutral: sim.neutral,
+          avgScore: localFinalAvg,
+          scoreSum: localScoreSum,
           simulation: sim,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
@@ -629,6 +660,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       };
     };
 
+    let pythonScoreSum = 0;
+
     /** Feed next N personas to ideology/comment accumulators based on Python progress */
     const feedAccumulators = (pythonProcessed: number, pythonTotal: number) => {
       if (allPersonas.length === 0) return;
@@ -640,16 +673,15 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       const queryForLocal = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
       while (personaIndex < targetIndex) {
         const p = allPersonas[personaIndex];
-        const sentiment = computePersonaSentiment(p, queryForLocal);
-        segAcc.addPersona(p, sentiment);
+        const score = computePersonaScore(p, queryForLocal);
+        const sentiment = scoreToSentiment(score);
+        pythonScoreSum += score;
+        segAcc.addPersonaWithScore(p, score);
         ideoAcc.addPersona(p, sentiment);
         commentAcc.addPersona(p, sentiment);
         stateAcc.addPersona(p, sentiment);
         personaIndex++;
       }
-      // NOTE: We do NOT generate local AI comments for the Python path.
-      // The Python backend generates contextual comments with full persona profiles.
-      // Local generateAIComments lacks the context (e.g., who Vorcaro is) and produces wrong comments.
     };
 
     try {
@@ -764,6 +796,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   // Feed accumulators proportionally to Python progress
                   feedAccumulators(payload.data.processed, payload.data.total);
                   // Emit with Python sentiment + progressive ideology/comments
+                  const progressAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
                   emitLive(blockId, {
                     ...baseLiveData,
                     phase: 'streaming',
@@ -772,6 +805,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     positive: payload.data.positive,
                     negative: payload.data.negative,
                     neutral: payload.data.neutral,
+                    avgScore: progressAvg,
+                    scoreSum: pythonScoreSum,
                     segments: mergeSegments(payload.data.segments),
                     liveIdeology: ideoAcc.toResults(),
                     liveComments,
@@ -820,6 +855,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   const doneStateBreakdown = stateAcc.toStateBreakdown();
 
                   // Build complete snapshot — all subsequent emissions extend this
+                  const pythonFinalAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
                   const completeBase = {
                     ...baseLiveData,
                     phase: 'complete' as const,
@@ -828,6 +864,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     positive: simulation?.positive || 0,
                     negative: simulation?.negative || 0,
                     neutral: simulation?.neutral || 0,
+                    avgScore: pythonFinalAvg,
+                    scoreSum: pythonScoreSum,
                     simulation,
                     totalPersonas: doneTotal,
                     segments: mergeSegments(doneSegments),
@@ -873,6 +911,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       if (!streamDone && hasResults) {
         console.log('[Arena] 🐍 Stream incomplete but has results — using partial data');
         const total = simulation?.total || 0;
+        const partialAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -881,6 +920,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: simulation?.positive || 0,
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
+          avgScore: partialAvg,
+          scoreSum: pythonScoreSum,
           simulation,
           totalPersonas: total,
           segments: segAcc.toSegments(),
@@ -897,6 +938,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       console.error('[Arena] ❌ Python fetch error:', err?.name, err?.message);
       if (err?.name === 'AbortError' && hasResults) {
         const total = simulation?.total || 0;
+        const abortAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -904,6 +946,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: simulation?.positive || 0,
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
+          avgScore: abortAvg,
+          scoreSum: pythonScoreSum,
           totalPersonas: total,
           segments: segAcc.toSegments(),
           liveIdeology: ideoAcc.toResults(),
@@ -917,6 +961,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         useFallback = true;
       } else if (hasResults) {
         const total = simulation?.total || 0;
+        const errAvg = personaIndex > 0 ? Math.round((pythonScoreSum / personaIndex) * 10) / 10 : 5.0;
         emitLive(blockId, {
           ...baseLiveData,
           phase: 'complete',
@@ -924,6 +969,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: simulation?.positive || 0,
           negative: simulation?.negative || 0,
           neutral: simulation?.neutral || 0,
+          avgScore: errAvg,
+          scoreSum: pythonScoreSum,
           totalPersonas: total,
           segments: segAcc.toSegments(),
           liveIdeology: ideoAcc.toResults(),
@@ -942,7 +989,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       console.warn('[Arena] 🔄 Running LOCAL FALLBACK (Python unavailable)');
       try {
         const queryForAnalysis = enrichedContext ? `${q}\n\nContexto: ${enrichedContext}` : q;
-        let pos = 0, neg = 0, neu = 0;
+        let pos = 0, neg = 0, neu = 0, fbScoreSum = 0;
         const segAcc = new SegmentAccumulator();
         const ideoAcc = new IdeologyAccumulator(q);
         const commentAcc = new LiveCommentAccumulator(q);
@@ -980,11 +1027,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           const processed = Math.min(offset + BATCH, effectiveCount);
 
           for (const p of batch) {
-            const sentiment = computePersonaSentiment(p, queryForAnalysis);
+            const score = computePersonaScore(p, queryForAnalysis);
+            const sentiment = scoreToSentiment(score);
+            fbScoreSum += score;
             if (sentiment === 'positive') pos++;
             else if (sentiment === 'negative') neg++;
             else neu++;
-            segAcc.addPersona(p, sentiment);
+            segAcc.addPersonaWithScore(p, score);
             ideoAcc.addPersona(p, sentiment);
             commentAcc.addPersona(p, sentiment);
             stateAccFb.addPersona(p, sentiment);
@@ -998,6 +1047,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
             positive: pos,
             negative: neg,
             neutral: neu,
+            avgScore: processed > 0 ? Math.round((fbScoreSum / processed) * 10) / 10 : 5.0,
+            scoreSum: fbScoreSum,
             segments: segAcc.toSegments(),
             liveIdeology: ideoAcc.toResults(),
             liveComments,
@@ -1020,6 +1071,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
 
         if (cancelledBlocksRef.current.has(blockId)) { onProcessing(false); return; }
 
+        const fbFinalAvg = effectiveCount > 0 ? Math.round((fbScoreSum / effectiveCount) * 10) / 10 : 5.0;
+
         // Enrichment: simulation
         const enhanced = runEnhancedSimulation(queryForAnalysis, effectiveCount, allData);
 
@@ -1033,6 +1086,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: simWithoutComments.positive,
           negative: simWithoutComments.negative,
           neutral: simWithoutComments.neutral,
+          avgScore: fbFinalAvg,
+          scoreSum: fbScoreSum,
           simulation: simWithoutComments,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
@@ -1057,6 +1112,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           positive: sim.positive,
           negative: sim.negative,
           neutral: sim.neutral,
+          avgScore: fbFinalAvg,
+          scoreSum: fbScoreSum,
           simulation: sim,
           totalPersonas: effectiveCount,
           segments: segAcc.toSegments(),
