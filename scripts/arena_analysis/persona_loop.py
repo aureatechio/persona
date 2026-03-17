@@ -86,7 +86,81 @@ def _clean_json_text(text: str) -> str:
     return text
 
 
-def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "") -> PersonaResult:
+def _enforce_political_coherence(score: float, persona: dict[str, Any], question: str) -> float:
+    """
+    Post-processing: enforce political score coherence.
+    If a persona has declared electoral data and the question is about a political figure,
+    ensure the score is polarized (not stuck in the neutral 4-6 range).
+
+    Returns corrected score.
+    """
+    q = question.lower()
+
+    # Detect if question is about Lula or Bolsonaro
+    is_about_lula = any(w in q for w in ["lula", "pt ", "petista", "haddad"])
+    is_about_bolsonaro = any(w in q for w in ["bolsonaro", "mito", "capitão", "capitao"])
+    if not is_about_lula and not is_about_bolsonaro:
+        return score  # Not a political question — no correction
+
+    # Detect if question is critical or praising
+    critical_words = ["corrupto", "ladrão", "ladrao", "preso", "criminoso", "ruim", "incompetente", "fracasso", "destruiu", "mentiroso"]
+    praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande", "herói", "heroi", "salvador"]
+    is_critical = any(w in q for w in critical_words)
+    is_praise = any(w in q for w in praise_words)
+    if not is_critical and not is_praise:
+        return score  # Neutral question about politics — no correction
+
+    # Get electoral data
+    voto22 = (persona.get("voto_2022") or "").lower()
+    aprov_lula = (persona.get("aprovacao_lula") or "").lower()
+    aval_bolso = (persona.get("q_avaliacao_bolsonaro") or "").lower()
+    leaning = (persona.get("political_leaning") or "").lower()
+
+    # Determine if persona supports or opposes the figure in question
+    supports_figure = False
+    opposes_figure = False
+
+    if is_about_lula:
+        if "lula" in voto22 or "aprova" in aprov_lula:
+            supports_figure = True
+        elif "bolsonaro" in voto22 or "desaprova" in aprov_lula or ("bom" in aval_bolso or "ótimo" in aval_bolso or "otimo" in aval_bolso):
+            opposes_figure = True
+        elif "direita" in leaning:
+            opposes_figure = True
+        elif "esquerda" in leaning:
+            supports_figure = True
+
+    elif is_about_bolsonaro:
+        if "bolsonaro" in voto22 or "bom" in aval_bolso or "ótimo" in aval_bolso or "otimo" in aval_bolso:
+            supports_figure = True
+        elif "lula" in voto22 or "aprova" in aprov_lula or ("ruim" in aval_bolso or "péssimo" in aval_bolso or "pessimo" in aval_bolso):
+            opposes_figure = True
+        elif "esquerda" in leaning:
+            opposes_figure = True
+        elif "direita" in leaning:
+            supports_figure = True
+
+    if not supports_figure and not opposes_figure:
+        return score  # No clear electoral alignment
+
+    # For critical questions: supporters reject (low score), opponents agree (high score)
+    # For praise questions: supporters agree (high score), opponents reject (low score)
+    should_be_high = (is_critical and opposes_figure) or (is_praise and supports_figure)
+    should_be_low = (is_critical and supports_figure) or (is_praise and opposes_figure)
+
+    if should_be_high and score < 7.0:
+        # Push toward 7-10 range — the stronger the original score, the less correction
+        corrected = max(score, 7.0 + (score / 10) * 3)  # min 7.0, max 10.0
+        return min(10.0, round(corrected, 1))
+    elif should_be_low and score > 3.0:
+        # Push toward 0-3 range
+        corrected = min(score, 3.0 - (1 - score / 10) * 3)  # max 3.0, min 0.0
+        return max(0.0, round(corrected, 1))
+
+    return score
+
+
+def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", question: str = "") -> PersonaResult:
     """
     Parse JSON de resposta para 1 persona.
     Espera: {"sentiment": "...", "comment": "..."}
@@ -125,6 +199,10 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "") -> 
     except (TypeError, ValueError):
         score = 5.0
     score = max(0.0, min(10.0, score))
+
+    # Enforce political coherence — correct incoherent scores for political questions
+    if question:
+        score = _enforce_political_coherence(score, persona, question)
 
     # Derive sentiment from score (ensures coherence)
     # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
@@ -188,7 +266,7 @@ def _recover_truncated_json(text: str) -> str:
     raise json.JSONDecodeError("Cannot recover JSON", text, 0)
 
 
-def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "") -> list[PersonaResult]:
+def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", question: str = "") -> list[PersonaResult]:
     """
     Parse JSON da resposta em batch (mantido para electoral engine / backward compat).
     """
@@ -228,10 +306,15 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "") -> 
             score = 5.0
         score = max(0.0, min(10.0, score))
 
+        # Enforce political coherence for political questions
+        if question:
+            score = _enforce_political_coherence(score, persona, question)
+
         # Derive sentiment from score (ensures coherence)
-        if score >= 6.5:
+        # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
+        if score >= 6.0:
             sentiment = "positive"
-        elif score <= 3.5:
+        elif score <= 4.0:
             sentiment = "negative"
         else:
             sentiment = "neutral"
@@ -346,7 +429,7 @@ class PersonaLoop:
                     )
                     if not text_block:
                         raise ValueError("No text block in response")
-                    return _parse_response(text_block.text, personas, tag)
+                    return _parse_response(text_block.text, personas, tag, question)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -399,7 +482,7 @@ class PersonaLoop:
                         response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content or ""
-                    return _parse_response(raw, personas, tag)
+                    return _parse_response(raw, personas, tag, question)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:

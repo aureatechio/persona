@@ -154,7 +154,22 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         cluster_name = p.get("nome_grupo", "?")
 
         extras = build_persona_extras(p)
-        electoral_part = f'ELEITOR: {extras} | ' if extras else ''
+
+        # Extract electoral fields PROMINENTLY (separate from extras blob)
+        electoral_fields = []
+        for field, label in [
+            ("voto_2022", "Voto22"),
+            ("aprovacao_lula", "AprovLula"),
+            ("q_avaliacao_bolsonaro", "AvalBolso"),
+            ("voto_2026", "Voto26"),
+        ]:
+            v = p.get(field)
+            if v is not None and v != "" and v != "Não respondeu":
+                electoral_fields.append(f"{label}:{v}")
+        electoral_str = ' '.join(electoral_fields) if electoral_fields else ''
+        electoral_part = f'⚡ELEIÇÃO: {electoral_str} | ' if electoral_str else ''
+        extras_part = f' | {extras}' if extras else ''
+
         line = (
             f'[{i + 1}] {p.get("name", "?")} | '
             f'{p.get("gender_identity") or p.get("gender", "?")}, '
@@ -170,6 +185,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
             f'Religião: {p.get("macro_religion", "?")} | '
             f'Cluster: {cluster_id}({cluster_name}) | '
             f'ScoreEco: {score_eco:.3f} | ScoreCost: {score_cost:.3f}'
+            f'{extras_part}'
         )
         persona_lines.append(line)
 
@@ -200,10 +216,20 @@ FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
 - positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
 - negative = a CONCLUSÃO do comentário DISCORDA da pergunta
 - ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
-- "deveria sim mas nunca vai preso nesse pais de merda" = POSITIVE (concorda, tom cínico)
-- "claro porra tem q prender esse ladrão" = POSITIVE (concorda, tom raivoso)
-- "nao acho que deveria nao" = NEGATIVE (discorda)
-- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative"""
+- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
+
+📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas sobre figuras políticas):
+Pergunta: "Lula é corrupto?"
+- Persona com Voto22:Bolsonaro, AprovLula:Desaprova → score 9.2, positive ("claro porra ladrão tinha q ta preso")
+- Persona com Voto22:Lula, AprovLula:Aprova → score 1.0, negative ("corrupto é quem inventou essa mentira")
+- Persona com Voto22:Nulo → score 4.8, neutral ("sei la mano todo politico rouba")
+
+Pergunta: "Bolsonaro é o melhor presidente?"
+- Persona com Voto22:Bolsonaro, AvalBolso:Bom → score 9.5, positive ("MITO! melhor presidente da historia")
+- Persona com Voto22:Lula, AvalBolso:Ruim → score 0.8, negative ("melhor em destruir o pais ne")
+- Persona Centro, dividido → score 5.0, neutral ("tem coisa boa e ruim ne")
+
+⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado."""
 
 
 def build_single_prompt(
