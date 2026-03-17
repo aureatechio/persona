@@ -14,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   MessageCircle,
+  History,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
@@ -35,8 +36,10 @@ interface SliderConfig {
 }
 
 interface ChangelogEntry {
+  id: string;
   version: number;
   changes: string[];
+  previous_content: string | null;
   created_at: string;
 }
 
@@ -253,6 +256,81 @@ function ConfirmSaveModal({
   );
 }
 
+// ── Confirm Restore Modal ─────────────────────────────────────────────────────
+
+function ConfirmRestoreModal({
+  open,
+  onClose,
+  onConfirm,
+  loading,
+  title,
+  description,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  loading: boolean;
+  title: string;
+  description: string;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-zinc-950 border border-white/[0.08] rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl shadow-black/60">
+        <div className="flex items-start gap-3 mb-4">
+          <div className="p-2 rounded-xl bg-amber-500/10">
+            <AlertTriangle size={20} className="text-amber-400" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">{title}</h3>
+            <p className="text-sm text-zinc-400 mt-1">{description}</p>
+          </div>
+        </div>
+
+        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 mb-6">
+          <p className="text-sm text-zinc-300">
+            O prompt atual será salvo automaticamente no histórico como backup antes da restauração.
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            disabled={loading}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5
+              bg-white/[0.05] hover:bg-white/[0.1]
+              text-zinc-300 hover:text-white
+              border border-white/[0.08] hover:border-white/[0.15]
+              rounded-xl font-medium text-sm
+              active:scale-[0.97] transition-all duration-200
+              disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5
+              bg-amber-500 hover:bg-amber-400
+              text-black font-semibold text-sm rounded-xl
+              shadow-lg shadow-amber-500/25
+              active:scale-[0.97] transition-all duration-200
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <History size={16} />
+            )}
+            {loading ? 'Restaurando...' : 'Restaurar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // ── Main Page ────────────────────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════════════════════
@@ -282,6 +360,10 @@ export default function PromptArenaPage() {
   // History
   const [history, setHistory] = useState<ChangelogEntry[]>([]);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  // Restore original
+  const [showRestoreOriginal, setShowRestoreOriginal] = useState(false);
+  const [restoringOriginal, setRestoringOriginal] = useState(false);
 
   // Modal & toast
   const [showConfirm, setShowConfirm] = useState(false);
@@ -422,6 +504,93 @@ export default function PromptArenaPage() {
     setWarnings([]);
   }
 
+  // ── Restore original (factory default) ──────────────────────────────────
+
+  async function handleRestoreOriginal() {
+    setRestoringOriginal(true);
+    try {
+      // 1. Fetch the hardcoded original from Python file
+      const origRes = await fetch('/api/arena/prompts/original');
+      const origData = await origRes.json();
+
+      if (!origRes.ok || !origData.content) {
+        showToast(origData.error || 'Falha ao buscar prompt original', 'error');
+        setRestoringOriginal(false);
+        setShowRestoreOriginal(false);
+        return;
+      }
+
+      // 2. Save it to Supabase
+      const saveRes = await fetch('/api/arena/prompts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'arena_system',
+          content: origData.content,
+          changelog: ['Restaurado para o prompt original (factory default)'],
+        }),
+      });
+
+      const saveData = await saveRes.json();
+
+      if (saveRes.ok && saveData.prompt) {
+        setPrompt(saveData.prompt);
+        setPreviewPrompt(null);
+        setChangelog([]);
+        setWarnings([]);
+        setFreeInstruction('');
+        setSliders({
+          political_bias: 0,
+          neutral_pct: 0,
+          humor_level: 0,
+          profanity_level: 0,
+          regionalism: 0,
+        });
+        showToast(`Prompt original restaurado! Versão ${saveData.prompt.version}`, 'success');
+        loadHistory();
+      } else {
+        showToast(saveData.error || 'Falha ao restaurar', 'error');
+      }
+    } catch {
+      showToast('Erro de conexão', 'error');
+    }
+    setRestoringOriginal(false);
+    setShowRestoreOriginal(false);
+  }
+
+  // ── Restore from history entry ──────────────────────────────────────────
+
+  async function handleRestoreFromHistory(previousContent: string) {
+    setRestoringOriginal(true);
+    try {
+      const res = await fetch('/api/arena/prompts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'arena_system',
+          content: previousContent,
+          changelog: ['Restaurado a partir de versão anterior (backup do histórico)'],
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.prompt) {
+        setPrompt(data.prompt);
+        setPreviewPrompt(null);
+        setChangelog([]);
+        setWarnings([]);
+        showToast(`Backup restaurado! Versão ${data.prompt.version}`, 'success');
+        loadHistory();
+      } else {
+        showToast(data.error || 'Falha ao restaurar', 'error');
+      }
+    } catch {
+      showToast('Erro de conexão', 'error');
+    }
+    setRestoringOriginal(false);
+  }
+
   // ═════════════════════════════════════════════════════════════════════════
   // ── Render ─────────────────────────────────────────────────────────────
   // ═════════════════════════════════════════════════════════════════════════
@@ -480,9 +649,23 @@ export default function PromptArenaPage() {
                 <h2 className="text-lg font-semibold text-white tracking-tight">
                   Prompt Atual
                 </h2>
-                <div className="flex items-center gap-2 text-xs text-zinc-500">
-                  <Clock size={12} />
-                  {new Date(prompt.updated_at).toLocaleString('pt-BR')}
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => setShowRestoreOriginal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5
+                      bg-white/[0.05] hover:bg-amber-500/10
+                      text-zinc-400 hover:text-amber-400
+                      border border-white/[0.08] hover:border-amber-500/20
+                      rounded-lg text-xs font-medium
+                      active:scale-[0.97] transition-all duration-200"
+                  >
+                    <History size={12} />
+                    Restaurar Original
+                  </button>
+                  <div className="flex items-center gap-2 text-xs text-zinc-500">
+                    <Clock size={12} />
+                    {new Date(prompt.updated_at).toLocaleString('pt-BR')}
+                  </div>
                 </div>
               </div>
 
@@ -681,14 +864,32 @@ export default function PromptArenaPage() {
                     ) : (
                       <div className="divide-y divide-white/[0.04]">
                         {history.map((entry, i) => (
-                          <div key={i} className="px-6 py-4 hover:bg-white/[0.02] transition-colors duration-200">
+                          <div key={entry.id || i} className="px-6 py-4 hover:bg-white/[0.02] transition-colors duration-200">
                             <div className="flex items-center justify-between mb-2">
                               <span className="text-xs font-medium text-zinc-400">
                                 v{entry.version}
                               </span>
-                              <span className="text-xs text-zinc-600">
-                                {new Date(entry.created_at).toLocaleString('pt-BR')}
-                              </span>
+                              <div className="flex items-center gap-3">
+                                {entry.previous_content && (
+                                  <button
+                                    onClick={() => handleRestoreFromHistory(entry.previous_content!)}
+                                    disabled={restoringOriginal}
+                                    className="inline-flex items-center gap-1 px-2 py-1
+                                      bg-white/[0.05] hover:bg-amber-500/10
+                                      text-zinc-500 hover:text-amber-400
+                                      border border-white/[0.06] hover:border-amber-500/20
+                                      rounded-lg text-[10px] font-medium
+                                      active:scale-[0.97] transition-all duration-200
+                                      disabled:opacity-50"
+                                  >
+                                    <RotateCcw size={10} />
+                                    Restaurar anterior
+                                  </button>
+                                )}
+                                <span className="text-xs text-zinc-600">
+                                  {new Date(entry.created_at).toLocaleString('pt-BR')}
+                                </span>
+                              </div>
                             </div>
                             <div className="space-y-1">
                               {entry.changes.map((c, j) => (
@@ -718,6 +919,16 @@ export default function PromptArenaPage() {
         changelog={changelog}
         warnings={warnings}
         loading={saving}
+      />
+
+      {/* ── Restore Original Modal ────────────────────────────────────── */}
+      <ConfirmRestoreModal
+        open={showRestoreOriginal}
+        onClose={() => setShowRestoreOriginal(false)}
+        onConfirm={handleRestoreOriginal}
+        loading={restoringOriginal}
+        title="Restaurar Prompt Original"
+        description="Isso vai substituir o prompt atual pela versão original (que estava ativa quando a Prompt Arena foi criada). A versão atual será salva no histórico como backup."
       />
 
       {/* ── Toast ─────────────────────────────────────────────────────── */}

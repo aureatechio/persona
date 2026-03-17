@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('arena_prompt_changelog')
-      .select('version, changes, created_at')
+      .select('id, version, changes, previous_content, created_at')
       .eq('prompt_id', promptId)
       .order('created_at', { ascending: false })
       .limit(20);

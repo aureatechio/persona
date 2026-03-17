@@ -48,10 +48,10 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Get current version
+    // Get current version + content (for backup)
     const { data: current } = await supabaseAdmin
       .from('arena_prompts')
-      .select('version')
+      .select('version, content')
       .eq('id', id)
       .single();
 
@@ -78,14 +78,15 @@ export async function PATCH(request: NextRequest) {
     // Invalidate in-memory cache
     invalidatePromptCache(id);
 
-    // Save changelog entry if provided
-    if (changelog && Array.isArray(changelog) && changelog.length > 0) {
-      await supabaseAdmin.from('arena_prompt_changelog').insert({
-        prompt_id: id,
-        version: nextVersion,
-        changes: changelog,
-      });
-    }
+    // Save changelog entry with previous_content as backup
+    await supabaseAdmin.from('arena_prompt_changelog').insert({
+      prompt_id: id,
+      version: nextVersion,
+      changes: changelog && Array.isArray(changelog) && changelog.length > 0
+        ? changelog
+        : ['Atualização direta'],
+      previous_content: current?.content || null,
+    });
 
     return NextResponse.json({ prompt: data });
   } catch (err) {
