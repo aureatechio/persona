@@ -46,78 +46,64 @@ async function fetchYouTubeTranscript(url: string): Promise<{ transcript: string
   const videoId = extractYouTubeVideoId(url);
   if (!videoId) return null;
 
-  // Strategy 1: Hybrid — server gets caption URLs (innertube), browser fetches XML (residential IP)
-  // YouTube blocks cloud IPs but allows CORS on timedtext URLs from any origin
-  try {
-    const urlsRes = await fetch('/api/youtube-caption-urls', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (urlsRes.ok) {
+  // Run Vercel strategies (1 & 2) in parallel — both use same edge, different approaches
+  // Strategy 1: Hybrid (server gets caption URLs, browser fetches XML)
+  // Strategy 2: Edge route (server does everything)
+  const vercelResult = await Promise.any([
+    // Strategy 1: Hybrid
+    (async () => {
+      const urlsRes = await fetch('/api/youtube-caption-urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!urlsRes.ok) throw new Error('caption-urls failed');
       const { tracks, title, author } = await urlsRes.json();
-      if (tracks && tracks.length > 0) {
-        // Pick best track: pt > pt-BR > en > first
-        const track =
-          tracks.find((t: any) => t.lang === 'pt') ||
-          tracks.find((t: any) => t.lang === 'pt-BR') ||
-          tracks.find((t: any) => t.lang === 'en') ||
-          tracks[0];
+      if (!tracks?.length) throw new Error('no tracks');
 
-        if (!track.url.includes('&exp=xpe')) {
-          // Browser fetches caption XML directly (residential IP, CORS allowed)
-          const captionRes = await fetch(track.url);
-          if (captionRes.ok) {
-            const xml = await captionRes.text();
-            const transcript = parseTranscriptXml(xml);
-            if (transcript) {
-              console.log('[youtube] Hybrid strategy succeeded (server URLs + client fetch)');
-              return { transcript, title: title || '', author: author || '' };
-            }
-          } else {
-            console.warn('[youtube] Client caption fetch failed:', captionRes.status);
-          }
-        }
-      }
-    } else {
-      const errBody = await urlsRes.text().catch(() => '');
-      console.warn('[youtube] Caption URLs route failed:', urlsRes.status, errBody.slice(0, 200));
-    }
-  } catch (e: any) {
-    console.log('[youtube] Hybrid strategy failed:', e?.message || 'unknown error');
-  }
+      const track =
+        tracks.find((t: any) => t.lang === 'pt') ||
+        tracks.find((t: any) => t.lang === 'pt-BR') ||
+        tracks.find((t: any) => t.lang === 'en') ||
+        tracks[0];
+      if (track.url.includes('&exp=xpe')) throw new Error('PoToken required');
 
-  // Strategy 2: Server-side route (works from dev, may work from some Vercel regions)
-  try {
-    const res = await fetch('/api/youtube-transcript', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-      signal: AbortSignal.timeout(8000),
-    });
-    if (res.ok) {
+      const captionRes = await fetch(track.url);
+      if (!captionRes.ok) throw new Error('caption fetch failed');
+      const xml = await captionRes.text();
+      const transcript = parseTranscriptXml(xml);
+      if (!transcript) throw new Error('empty transcript');
+
+      console.log('[youtube] Hybrid strategy succeeded');
+      return { transcript, title: title || '', author: author || '' };
+    })(),
+    // Strategy 2: Edge route
+    (async () => {
+      const res = await fetch('/api/youtube-transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(6000),
+      });
+      if (!res.ok) throw new Error(`edge ${res.status}`);
       const data = await res.json();
-      if (data.transcript) {
-        console.log('[youtube] Edge route succeeded');
-        return data;
-      }
-    } else {
-      const errBody = await res.text().catch(() => '');
-      console.warn('[youtube] Edge route failed:', res.status, errBody.slice(0, 200));
-    }
-  } catch {
-    console.log('[youtube] Edge route network error, trying Python backend...');
-  }
+      if (!data.transcript) throw new Error('empty');
+      console.log('[youtube] Edge route succeeded');
+      return data as { transcript: string; title: string; author: string };
+    })(),
+  ]).catch(() => null);
 
-  // Strategy 3: Python backend on Digital Ocean (different IP, uses youtube-transcript-api)
+  if (vercelResult) return vercelResult;
+
+  // Strategy 3: Python backend on Digital Ocean (different IP, has yt-dlp + Whisper)
   try {
     const backendUrl = process.env.NEXT_PUBLIC_ARENA_BACKEND_URL || 'https://arena-analysis-api-2puat.ondigitalocean.app';
     const res = await fetch(`${backendUrl}/api/youtube-transcript`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(90000), // longer timeout for yt-dlp + Whisper fallback
     });
     if (res.ok) {
       const data = await res.json();
