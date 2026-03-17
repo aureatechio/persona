@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
     const userMessage = `PROMPT ATUAL:\n${currentPrompt}\n\n---\n\n${parts.join('\n\n')}`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8192,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
