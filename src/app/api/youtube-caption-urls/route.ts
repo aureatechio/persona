@@ -23,12 +23,19 @@ export async function POST(req: NextRequest) {
     const videoId = match[1];
 
     const playerRes = await fetch(
-      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
+      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
+          context: {
+            client: {
+              clientName: 'IOS',
+              clientVersion: '20.10.4',
+              hl: 'pt',
+              gl: 'BR',
+            },
+          },
           videoId,
         }),
       },

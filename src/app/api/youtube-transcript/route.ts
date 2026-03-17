@@ -14,7 +14,7 @@ function extractVideoId(url: string): string | null {
 }
 
 /**
- * Fetch YouTube transcript using the ANDROID innertube client.
+ * Fetch YouTube transcript using the IOS innertube client.
  * Runs on Vercel Edge Runtime to avoid AWS IP blocks.
  */
 export async function POST(req: NextRequest) {
@@ -29,17 +29,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    // Call innertube /player API with ANDROID client
+    // Call innertube /player API with IOS client (reliable for captions)
     const playerRes = await fetch(
-      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}`,
+      `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           context: {
             client: {
-              clientName: 'ANDROID',
-              clientVersion: '20.10.38',
+              clientName: 'IOS',
+              clientVersion: '20.10.4',
+              hl: 'pt',
+              gl: 'BR',
             },
           },
           videoId,
