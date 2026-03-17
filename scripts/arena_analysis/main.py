@@ -799,11 +799,11 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
 
         async with httpx.AsyncClient(timeout=10) as client:
             watch_res = await client.get(
-                f"https://www.youtube.com/watch?v={video_id}&hl=pt",
+                f"https://www.youtube.com/watch?v={video_id}&hl=pt&bpctr=9999999999&has_verified=1",
                 headers={
                     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
                     "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-                    "Cookie": "SOCS=CAISNQgDEitib3FfaWRlbnRpdHlfZnJvbnRlbmRfdWlzZXJ2ZXJfMjAyMzA4MjkuMDdfcDAGEA; CONSENT=PENDING+987",
+                    "Cookie": "SOCS=CAISNQgDEitib3FfaWRlbnRpdHlfZnJvbnRlbmRfdWlzZXJ2ZXJfMjAyMzA4MjkuMDdfcDAGEA; CONSENT=YES+cb.20210328-17-p0.en+FX+987",
                 },
             )
             if watch_res.status_code == 200:
