@@ -207,6 +207,5 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     raw_audio = response.content
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
-    # Apply outdoor environment effect
-    audio_bytes = _apply_outdoor_fx(raw_audio)
-    return audio_bytes, processed_text
+    # Áudio limpo — sem efeitos outdoor que mascaram pronúncia de siglas
+    return raw_audio, processed_text
