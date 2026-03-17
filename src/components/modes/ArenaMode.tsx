@@ -253,6 +253,43 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // ── Show collecting block IMMEDIATELY (zero delay) ──────────────────────
     // Only add block if not already showing media-scanning (which uses same blockId)
     if (!processedAttachments?.length) {
+      // Auto-detect political figures in text-only questions and inject partisan context
+      // This ensures "Bolsonaro é corrupto?" gets proper partisan framing
+      const KNOWN_FIGURES: Record<string, string> = {
+        'bolsonaro': 'direita (ex-presidente, PL)',
+        'lula': 'esquerda (presidente, PT)',
+        'boulos': 'esquerda (PSOL)',
+        'pablo marcal': 'direita (empresario)',
+        'marçal': 'direita (empresario)',
+        'nicolas ferreira': 'direita (PL)',
+        'tarcisio': 'centro-direita (Republicanos)',
+        'marina silva': 'centro-esquerda (Rede)',
+        'ciro gomes': 'centro-esquerda (PDT)',
+        'tabata amaral': 'centro (PSB)',
+        'tebet': 'centro (MDB)',
+        'haddad': 'esquerda (PT)',
+        'flavio dino': 'esquerda (PCdoB/PSB)',
+        'alexandre de moraes': 'STF - sem alinhamento declarado',
+        'sergio moro': 'centro-direita (ex-juiz)',
+        'damares': 'direita (Republicanos)',
+        'michelle bolsonaro': 'direita (PL)',
+      };
+
+      const normQ = q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const detectedFigures: Array<{ nome: string; alinhamento: string }> = [];
+      for (const [name, alignment] of Object.entries(KNOWN_FIGURES)) {
+        if (normQ.includes(name.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) {
+          detectedFigures.push({ nome: name.charAt(0).toUpperCase() + name.slice(1), alinhamento: alignment });
+        }
+      }
+
+      if (detectedFigures.length > 0 && !enrichedContext) {
+        const figCtx = detectedFigures
+          .map(f => `${f.nome}: alinhamento politico ${f.alinhamento}`)
+          .join('; ');
+        enrichedContext = `Contexto politico: ${figCtx}. A pergunta se refere especificamente a essa(s) figura(s) politica(s) — as respostas devem refletir o posicionamento ideologico de cada persona em relacao a essa figura.`;
+      }
+
       // Text-only submission — broadcast context_extracted with the question/context
       broadcastToMonitor({
         type: 'context_extracted',
@@ -262,9 +299,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           author: null,
           corePoint: q,
           claudeSummary: null,
-          enrichedContext: contextText || null,
+          enrichedContext: enrichedContext || contextText || null,
           generatedQuestion: null,
-          politicalFigures: null,
+          politicalFigures: detectedFigures.length > 0 ? detectedFigures : null,
         },
       });
 

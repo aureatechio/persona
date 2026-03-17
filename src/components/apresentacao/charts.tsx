@@ -21,6 +21,7 @@ function useAnimatedScore(target: number, duration = 12000): number {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevTargetRef = useRef(0);
   const initialized = useRef(false);
+  const lastValidRef = useRef(0);
 
   useEffect(() => {
     // First render: always animate from 0
@@ -28,6 +29,9 @@ function useAnimatedScore(target: number, duration = 12000): number {
       initialized.current = true;
       if (target === 0) return;
     }
+
+    // Track last valid (non-zero) value to prevent flicker
+    if (target > 0) lastValidRef.current = target;
 
     if (prevTargetRef.current === target) return;
     prevTargetRef.current = target;
@@ -65,10 +69,13 @@ function useAnimatedScore(target: number, duration = 12000): number {
     return cleanup;
   }, [target, duration]);
 
+  // Never return 0 if we've had data before (prevents "—" flicker)
+  if (display === 0 && lastValidRef.current > 0) return lastValidRef.current;
   return display;
 }
 
-/** Renders an animated score with emoji + color that updates as the number climbs */
+/** Renders an animated score with emoji + color that updates as the number climbs.
+ *  Once data has been received, NEVER shows "—" again (prevents flicker). */
 export function AnimatedScore({ value, duration = 12000, className, showEmoji = true, showLabel = false }: {
   value: number;
   duration?: number;
@@ -77,21 +84,67 @@ export function AnimatedScore({ value, duration = 12000, className, showEmoji = 
   showLabel?: boolean;
 }) {
   const animated = useAnimatedScore(value, duration);
+  const hasEverHadData = useRef(false);
+  if (animated > 0) hasEverHadData.current = true;
+
   const emoji = scoreToEmoji(animated);
   const hex = scoreToHex(animated);
   const label = scoreToLabel(animated);
+  const showValue = animated > 0 || hasEverHadData.current;
 
   return (
-    <span className={cn('inline-flex items-center gap-1', className)}>
-      {showEmoji && <span className="leading-none">{animated > 0 ? emoji : ''}</span>}
-      <span className="font-black tabular-nums" style={{ color: animated > 0 ? hex : '#52525b' }}>
-        {animated > 0 ? animated.toFixed(1) : '—'}
+    <span className={cn('inline-flex items-center gap-1 transition-opacity duration-500', className)}>
+      {showEmoji && <span className="leading-none">{showValue ? emoji : ''}</span>}
+      <span className="font-black tabular-nums" style={{ color: showValue ? hex : '#52525b' }}>
+        {showValue ? animated.toFixed(1) : '—'}
       </span>
-      {showLabel && animated > 0 && (
+      {showLabel && showValue && (
         <span className="font-bold text-xs" style={{ color: `${hex}cc` }}>{label}</span>
       )}
     </span>
   );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Live Jitter — adds micro-oscillations to scores during streaming
+   to create a "data flowing in" visual effect. The oscillation
+   amplitude decreases as more data arrives (converging to final value).
+   ════════════════════════════════════════════════════════════════════ */
+
+function useLiveJitter(baseValue: number, isLive: boolean, progress: number): number {
+  const [jittered, setJittered] = useState(baseValue);
+  const frameRef = useRef<number | null>(null);
+  const lastUpdate = useRef(0);
+
+  useEffect(() => {
+    if (!isLive || baseValue === 0 || progress >= 100) {
+      setJittered(baseValue);
+      return;
+    }
+
+    // Amplitude decreases as progress increases: starts at ±0.4, ends at ±0.05
+    const amplitude = 0.4 * (1 - progress / 100) + 0.05;
+    const interval = 800 + Math.random() * 400; // 800-1200ms between jitters
+
+    const jitter = () => {
+      const now = Date.now();
+      if (now - lastUpdate.current < interval) {
+        frameRef.current = requestAnimationFrame(jitter);
+        return;
+      }
+      lastUpdate.current = now;
+      const noise = (Math.random() - 0.5) * 2 * amplitude;
+      setJittered(Math.max(0, Math.min(10, baseValue + noise)));
+      frameRef.current = requestAnimationFrame(jitter);
+    };
+
+    frameRef.current = requestAnimationFrame(jitter);
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    };
+  }, [baseValue, isLive, progress]);
+
+  return jittered;
 }
 
 /* ════════════════════════════════════════════════════════════════════
@@ -361,26 +414,35 @@ export const ScoreHero = memo(function ScoreHero({
   totalCount,
   processedCount,
   rightSlot,
+  isLive = false,
+  progress = 0,
 }: {
   avgScore: number;
   totalCount: number;
   processedCount: number;
   rightSlot?: ReactNode;
+  isLive?: boolean;
+  progress?: number;
 }) {
   const score = avgScore ?? 0;
-  const emoji = scoreToEmoji(score);
-  const label = scoreToLabel(score);
   const hex = scoreToHex(score);
 
   return (
     <div className="shrink-0 flex items-stretch gap-3 px-5 py-4 border-b border-white/[0.04]">
       {/* Main score */}
       <div className="relative overflow-hidden shrink-0 bg-white/[0.03] backdrop-blur-xl rounded-2xl border border-white/[0.06] px-8 py-3 flex flex-col items-center justify-center" style={{ borderColor: `${hex}33` }}>
-        {/* Glow */}
-        <div className="absolute inset-0 bg-gradient-to-br pointer-events-none opacity-30" style={{ background: `radial-gradient(ellipse at center, ${hex}20, transparent 70%)` }} />
+        {/* Glow — pulses when live */}
+        <div
+          className="absolute inset-0 bg-gradient-to-br pointer-events-none"
+          style={{
+            background: `radial-gradient(ellipse at center, ${hex}20, transparent 70%)`,
+            opacity: isLive ? undefined : 0.3,
+            animation: isLive ? 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite' : undefined,
+          }}
+        />
         <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 relative">Nota</p>
         <div className="relative">
-          <AnimatedScore value={processedCount > 0 ? score : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={14000} />
+          <AnimatedScore value={processedCount > 0 ? score : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={isLive ? 4000 : 14000} />
         </div>
         <p className="text-xs text-zinc-600 tabular-nums relative">
           {processedCount > 0 ? processedCount.toLocaleString('pt-BR') : '0'} personas
@@ -402,16 +464,61 @@ export const ScoreHero = memo(function ScoreHero({
    Replaces DonutCard and HBarChart
    ════════════════════════════════════════════════════════════════════ */
 
+/** Individual segment row with live jitter support */
+function SegmentItemRow({ item, hasData, isLive, progress }: {
+  item: SegmentItem;
+  hasData: boolean;
+  isLive: boolean;
+  progress: number;
+}) {
+  const baseScore = item.avgScore ?? 5.0;
+  const jitteredScore = useLiveJitter(baseScore, isLive && hasData, progress);
+  const displayScore = isLive && hasData ? jitteredScore : baseScore;
+  const hex = scoreToHex(displayScore);
+  const barPosition = (displayScore / 10) * 100;
+
+  return (
+    <div className="flex items-center gap-2 group">
+      <span className="text-xs text-zinc-400 w-[76px] truncate shrink-0 text-right group-hover:text-white transition-colors duration-200">
+        {item.label}
+      </span>
+      <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
+        <div className="absolute inset-0 rounded-full opacity-20" style={{
+          background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
+        }} />
+        {hasData && (
+          <div
+            className="absolute top-0 h-full w-[8px] rounded-full"
+            style={{
+              left: `calc(${barPosition}% - 4px)`,
+              backgroundColor: hex,
+              boxShadow: `0 0 8px ${hex}80`,
+              transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+          />
+        )}
+      </div>
+      <div className="shrink-0 w-[56px]">
+        <AnimatedScore value={hasData ? displayScore : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
+      </div>
+    </div>
+  );
+}
+
 export const ScoreSegmentCard = memo(function ScoreSegmentCard({
   items,
   title,
   accentColor,
   maxItems = 7,
+  isLive = false,
+  progress = 0,
 }: {
   items: SegmentItem[] | undefined;
   title: string;
   accentColor: string;
   maxItems?: number;
+  isLive?: boolean;
+  progress?: number;
 }) {
   const accentMap: Record<string, { text: string; label: string; glow: string }> = {
     emerald: { text: 'text-emerald-400', label: 'text-emerald-400/80', glow: 'bg-emerald-500/8' },
@@ -449,44 +556,15 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
 
       {/* Items list */}
       <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
-        {sorted.length > 0 ? sorted.map((item) => {
-          const score = item.avgScore ?? 5.0;
-          const hex = scoreToHex(score);
-          const emoji = scoreToEmoji(score);
-          const barPosition = (score / 10) * 100;
-
-          return (
-            <div key={item.label} className="flex items-center gap-2 group">
-              {/* Label */}
-              <span className="text-xs text-zinc-400 w-[76px] truncate shrink-0 text-right group-hover:text-white transition-colors duration-200">
-                {item.label}
-              </span>
-
-              {/* Score bar — gradient from rose to emerald with marker */}
-              <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
-                <div className="absolute inset-0 rounded-full opacity-20" style={{
-                  background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)',
-                }} />
-                {hasData && (
-                  <div
-                    className="absolute top-0 h-full w-[8px] rounded-full"
-                    style={{
-                      left: `calc(${barPosition}% - 4px)`,
-                      backgroundColor: hex,
-                      boxShadow: `0 0 8px ${hex}80`,
-                      transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* Emoji + Score */}
-              <div className="shrink-0 w-[56px]">
-                <AnimatedScore value={hasData ? score : 0} className="text-sm" duration={10000} />
-              </div>
-            </div>
-          );
-        }) : (
+        {sorted.length > 0 ? sorted.map((item) => (
+          <SegmentItemRow
+            key={item.label}
+            item={item}
+            hasData={hasData}
+            isLive={isLive}
+            progress={progress}
+          />
+        )) : (
           <div className="flex-1 flex items-center justify-center">
             <p className="text-xs text-zinc-700">Aguardando...</p>
           </div>
@@ -497,6 +575,8 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
 }, (prev, next) => {
   return prev.title === next.title &&
     prev.accentColor === next.accentColor &&
+    prev.isLive === next.isLive &&
+    prev.progress === next.progress &&
     shallowEqualSegments(prev.items, next.items);
 });
 

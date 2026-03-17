@@ -712,6 +712,8 @@ function detectFraming(
 /**
  * For political figure questions, use the persona's actual voting data
  * and approval ratings instead of ideology formulas.
+ *
+ * v2: Uses detectPoliticalStance for broader detection + reduced noise.
  */
 function analyzeVotingData(
   persona: Record<string, any>,
@@ -728,129 +730,43 @@ function analyzeVotingData(
   for (const k of SUPPORTIVE_WORDS) { if (normQuestion.includes(k)) sup++; }
   let isAdversarial = adv > sup && adv > 0;
 
-  // Framing override: detect "X é ladrão" / "corrupcao do X" patterns
   if (!isAdversarial && adv === 0) {
     const figName = hasLula ? 'lula' : 'bolsonaro';
     const framing = detectFraming(normQuestion, figName);
     if (framing === 'adversarial') isAdversarial = true;
   }
 
-  // ── COMPARISON: when BOTH names appear, detect who is the SUBJECT ──
-  // "Lula é melhor que Bolsonaro" → subject = Lula (appears BEFORE "melhor"/"pior")
-  // "Bolsonaro é melhor que Lula" → subject = Bolsonaro
-  // The subject is the one being praised/criticized — route to their block
+  function stanceToSentiment(stance: 'supporter' | 'opponent' | 'neutral', adversarial: boolean): Sentiment {
+    if (stance === 'supporter') return adversarial ? 'negative' : 'positive';
+    if (stance === 'opponent') return adversarial ? 'positive' : 'negative';
+    return 'neutral';
+  }
+
+  // ── COMPARISON: when BOTH names appear ──
   if (hasLula && hasBolsonaro) {
-    const comparisonWords = ['melhor', 'pior', 'mais', 'menos', 'superior', 'inferior'];
     const lulaPos = normQuestion.indexOf('lula');
     const bolsoPos = normQuestion.indexOf('bolsonaro');
-
-    // Find the first comparison word position
-    let compPos = normQuestion.length;
-    for (const w of comparisonWords) {
-      const idx = normQuestion.indexOf(w);
-      if (idx !== -1 && idx < compPos) compPos = idx;
-    }
-
-    // The name that appears BEFORE the comparison word is the subject
-    // "lula e melhor que bolsonaro" → lula(0) < melhor(7) → subject is Lula
-    // "bolsonaro e melhor que lula" → bolsonaro(0) < melhor(14) → subject is Bolsonaro
     const lulaIsSubject = lulaPos < bolsoPos;
 
-    // For comparison questions, we use a head-to-head approach:
-    // "X é melhor que Y?" → supporters of X = positive, supporters of Y = negative
-    const voto22 = norm(String(persona.voto_2022 || ''));
-    const voto26 = norm(String(persona.voto_2026 || ''));
-    const aprovLula = norm(String(persona.aprovacao_lula || ''));
-    const avalBolso = norm(String(persona.q_avaliacao_bolsonaro || ''));
-
-    // Determine who the persona supports
-    const supportsLula =
-      hasAprova(aprovLula) || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
-      voto22.includes('lula') || voto26.includes('lula');
-    const supportsBolsonaro =
-      avalBolso.includes('bom') || avalBolso.includes('otimo') || avalBolso.includes('excelente') ||
-      voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
-
-    let stance: Sentiment = 'neutral';
-    if (lulaIsSubject) {
-      // "Lula é melhor que Bolsonaro" → Lula supporters agree, Bolsonaro supporters disagree
-      if (supportsLula && !supportsBolsonaro) stance = 'positive';
-      else if (supportsBolsonaro && !supportsLula) stance = 'negative';
-      else if (supportsLula && supportsBolsonaro) stance = 'neutral'; // conflicted
-    } else {
-      // "Bolsonaro é melhor que Lula" → Bolsonaro supporters agree, Lula supporters disagree
-      if (supportsBolsonaro && !supportsLula) stance = 'positive';
-      else if (supportsLula && !supportsBolsonaro) stance = 'negative';
-      else if (supportsLula && supportsBolsonaro) stance = 'neutral'; // conflicted
+    // 95% follow data, 5% noise
+    if (Math.random() > 0.05) {
+      const figure = lulaIsSubject ? 'lula' : 'bolsonaro';
+      const stance = detectPoliticalStance(persona, figure);
+      return stanceToSentiment(stance, isAdversarial);
     }
-
-    // 85% follow their data, 15% noise
-    if (Math.random() > 0.15) return stance;
     return null;
   }
 
+  // Single figure
   if (hasLula) {
-    // Use ACTUAL data: aprovacao_lula, voto_2022, voto_2026
-    const aprovacao = persona.aprovacao_lula;
-    const voto22 = norm(String(persona.voto_2022 || ''));
-    const voto26 = norm(String(persona.voto_2026 || ''));
-
-    let stance: Sentiment = 'neutral';
-
-    // Check approval
-    const aprov = aprovacao ? norm(String(aprovacao)) : '';
-    if (hasDesaprova(aprov) || aprov.includes('ruim') || aprov.includes('pessim')) {
-      stance = 'negative';
-    } else if (hasAprova(aprov) || aprov.includes('bom') || aprov.includes('otimo')) {
-      stance = 'positive';
-    }
-
-    // Check voting history for stronger signal
-    if (stance === 'neutral') {
-      if (voto22.includes('lula') || voto22.includes('pt') || voto26.includes('lula') || voto26.includes('pt')) {
-        stance = 'positive';
-      } else if (voto22.includes('bolsonaro') || voto26.includes('bolsonaro')) {
-        stance = 'negative';
-      }
-    }
-
-    // Invert for adversarial questions ("Lula deveria estar preso?")
-    if (isAdversarial && stance !== 'neutral') {
-      stance = stance === 'positive' ? 'negative' : 'positive';
-    }
-
-    // 85% follow their data, 15% noise for variance
-    if (Math.random() > 0.15) return stance;
-    return null; // Fall through to topic analysis
+    const stance = detectPoliticalStance(persona, 'lula');
+    if (Math.random() > 0.05) return stanceToSentiment(stance, isAdversarial);
+    return null;
   }
 
   if (hasBolsonaro) {
-    const avaliacao = persona.q_avaliacao_bolsonaro;
-    const voto22 = norm(String(persona.voto_2022 || ''));
-    const voto26 = norm(String(persona.voto_2026 || ''));
-
-    let stance: Sentiment = 'neutral';
-
-    const aval = avaliacao ? norm(String(avaliacao)) : '';
-    if (aval.includes('ruim') || aval.includes('pessim') || aval.includes('horrivel') || hasDesaprova(aval)) {
-      stance = 'negative';
-    } else if (aval.includes('bom') || aval.includes('otimo') || aval.includes('excelente') || hasAprova(aval)) {
-      stance = 'positive';
-    }
-
-    if (stance === 'neutral') {
-      if (voto22.includes('bolsonaro') || voto26.includes('bolsonaro')) {
-        stance = 'positive';
-      } else if (voto22.includes('lula') || voto22.includes('pt') || voto26.includes('lula')) {
-        stance = 'negative';
-      }
-    }
-
-    if (isAdversarial && stance !== 'neutral') {
-      stance = stance === 'positive' ? 'negative' : 'positive';
-    }
-
-    if (Math.random() > 0.15) return stance;
+    const stance = detectPoliticalStance(persona, 'bolsonaro');
+    if (Math.random() > 0.05) return stanceToSentiment(stance, isAdversarial);
     return null;
   }
 
@@ -860,8 +776,86 @@ function analyzeVotingData(
 // ── Voting History Score (0-10) ──────────────────────────────────────────────
 
 /**
+ * Detects supporter/opponent status using ALL available signals.
+ * Much broader than before: checks approval text, voting history,
+ * political leaning, evaluation patterns, and ideological scores.
+ */
+function detectPoliticalStance(
+  persona: Record<string, any>,
+  figure: 'lula' | 'bolsonaro',
+): 'supporter' | 'opponent' | 'neutral' {
+  const voto22 = norm(String(persona.voto_2022 || ''));
+  const voto26 = norm(String(persona.voto_2026 || ''));
+  const aprovLula = norm(String(persona.aprovacao_lula || ''));
+  const avalBolso = norm(String(persona.q_avaliacao_bolsonaro || ''));
+  const leaning = norm(String(persona.political_leaning || ''));
+  const scoreEco = persona.score_economico ?? 0;
+  const scoreCost = persona.score_costumes ?? 0;
+
+  // ── Layer 1: Direct voting data (strongest signal) ──
+  const votedLula = voto22.includes('lula') || voto26.includes('lula') || voto22.includes('pt') || voto26.includes('pt');
+  const votedBolsonaro = voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
+
+  // ── Layer 2: Approval/evaluation text (broad pattern match) ──
+  const approvesLula =
+    hasAprova(aprovLula) ||
+    ['bom', 'otimo', 'excelente', 'positiv', 'favoravel', 'apoio', 'concordo'].some(p => aprovLula.includes(p));
+  const disapprovesLula =
+    hasDesaprova(aprovLula) ||
+    ['ruim', 'pessim', 'horrivel', 'negativ', 'desfavoravel', 'contra', 'reprov', 'terrivel'].some(p => aprovLula.includes(p));
+
+  const approvesBolsonaro =
+    hasAprova(avalBolso) ||
+    ['bom', 'otimo', 'excelente', 'positiv', 'favoravel', 'apoio', 'concordo', 'mito'].some(p => avalBolso.includes(p));
+  const disapprovesBolsonaro =
+    hasDesaprova(avalBolso) ||
+    ['ruim', 'pessim', 'horrivel', 'negativ', 'desfavoravel', 'contra', 'reprov', 'terrivel', 'genocida'].some(p => avalBolso.includes(p));
+
+  // Numeric approval fields (some personas have 1-10 scores)
+  const aprovLulaNum = typeof persona.aprovacao_lula === 'number' ? persona.aprovacao_lula : null;
+  const avalBolsoNum = typeof persona.q_avaliacao_bolsonaro === 'number' ? persona.q_avaliacao_bolsonaro : null;
+
+  // ── Layer 3: Political leaning as fallback ──
+  const isLeftLeaning = ['esquerda', 'extrema esquerda', 'centro-esquerda'].some(l => leaning.includes(l));
+  const isRightLeaning = ['direita', 'extrema direita', 'centro-direita'].some(l => leaning.includes(l));
+
+  // ── Layer 4: Ideological scores as last resort ──
+  const strongLeft = scoreEco < -0.4;
+  const strongRight = scoreEco > 0.4;
+
+  if (figure === 'bolsonaro') {
+    // Definite supporter
+    if (votedBolsonaro || approvesBolsonaro || (avalBolsoNum !== null && avalBolsoNum >= 7)) return 'supporter';
+    // Definite opponent
+    if (votedLula || disapprovesBolsonaro || approvesLula || (avalBolsoNum !== null && avalBolsoNum <= 3)) return 'opponent';
+    // Leaning-based inference
+    if (isRightLeaning || strongRight) return 'supporter';
+    if (isLeftLeaning || strongLeft) return 'opponent';
+    // Numeric approval as weak signal
+    if (aprovLulaNum !== null && aprovLulaNum >= 7) return 'opponent';
+    if (aprovLulaNum !== null && aprovLulaNum <= 3) return 'supporter';
+  } else {
+    // Definite supporter
+    if (votedLula || approvesLula || (aprovLulaNum !== null && aprovLulaNum >= 7)) return 'supporter';
+    // Definite opponent
+    if (votedBolsonaro || disapprovesLula || approvesBolsonaro || (aprovLulaNum !== null && aprovLulaNum <= 3)) return 'opponent';
+    // Leaning-based inference
+    if (isLeftLeaning || strongLeft) return 'supporter';
+    if (isRightLeaning || strongRight) return 'opponent';
+    // Numeric evaluation as weak signal
+    if (avalBolsoNum !== null && avalBolsoNum >= 7) return 'opponent';
+    if (avalBolsoNum !== null && avalBolsoNum <= 3) return 'supporter';
+  }
+
+  return 'neutral';
+}
+
+/**
  * For political figure questions, returns a 0-10 score based on voting data.
  * Returns null when no political figure detected (falls through).
+ *
+ * v2: Uses detectPoliticalStance for MUCH broader supporter detection.
+ * Reduced noise from 15% to 5% for political figure questions.
  */
 function analyzeVotingScore(
   persona: Record<string, any>,
@@ -885,33 +879,21 @@ function analyzeVotingScore(
   }
 
   // Helper: determine support level for a figure → score
-  function figureScore(supports: boolean, opposes: boolean, adversarial: boolean): number {
-    const noise = (Math.random() - 0.5) * 2.0; // ±1.0
-    if (supports && !opposes) {
-      // Supporter
+  function figureScore(stance: 'supporter' | 'opponent' | 'neutral', adversarial: boolean): number {
+    const noise = (Math.random() - 0.5) * 1.6; // ±0.8 (tighter than before)
+    if (stance === 'supporter') {
+      // Supporter: adversarial question → strong disagree, supportive → strong agree
       const base = adversarial ? 1.5 : 8.5;
       return Math.max(0, Math.min(10, base + noise));
     }
-    if (opposes && !supports) {
-      // Opponent
+    if (stance === 'opponent') {
+      // Opponent: adversarial question → strong agree, supportive → strong disagree
       const base = adversarial ? 8.5 : 1.5;
       return Math.max(0, Math.min(10, base + noise));
     }
-    // Neutral/conflicted
-    return Math.max(0, Math.min(10, 5.0 + noise));
+    // Neutral/conflicted — compress toward center but with wider spread
+    return Math.max(0, Math.min(10, 5.0 + noise * 1.5));
   }
-
-  const voto22 = norm(String(persona.voto_2022 || ''));
-  const voto26 = norm(String(persona.voto_2026 || ''));
-  const aprovLula = norm(String(persona.aprovacao_lula || ''));
-  const avalBolso = norm(String(persona.q_avaliacao_bolsonaro || ''));
-
-  const supportsLula =
-    hasAprova(aprovLula) || aprovLula.includes('bom') || aprovLula.includes('otimo') ||
-    voto22.includes('lula') || voto26.includes('lula');
-  const supportsBolsonaro =
-    avalBolso.includes('bom') || avalBolso.includes('otimo') || avalBolso.includes('excelente') ||
-    voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
 
   // Comparison: both figures mentioned
   if (hasLula && hasBolsonaro) {
@@ -919,33 +901,29 @@ function analyzeVotingScore(
     const bolsoPos = normQuestion.indexOf('bolsonaro');
     const lulaIsSubject = lulaPos < bolsoPos;
 
-    // 85% follow data, 15% noise
-    if (Math.random() > 0.15) {
+    // 95% follow data, 5% noise (was 85/15)
+    if (Math.random() > 0.05) {
       if (lulaIsSubject) {
-        return figureScore(supportsLula, supportsBolsonaro, isAdversarial);
+        const stanceLula = detectPoliticalStance(persona, 'lula');
+        return figureScore(stanceLula, isAdversarial);
       } else {
-        return figureScore(supportsBolsonaro, supportsLula, isAdversarial);
+        const stanceBolso = detectPoliticalStance(persona, 'bolsonaro');
+        return figureScore(stanceBolso, isAdversarial);
       }
     }
     return null;
   }
 
+  // Single figure: 95% follow data, 5% noise
   if (hasLula) {
-    // Opposition: check approval text AND voting history (like the old analyzeVotingData)
-    const opLula = hasDesaprova(aprovLula) || aprovLula.includes('ruim') || aprovLula.includes('pessim')
-      || voto22.includes('bolsonaro') || voto26.includes('bolsonaro');
-    const supLula = supportsLula
-      || voto22.includes('pt') || voto26.includes('pt');
-    if (Math.random() > 0.15) return figureScore(supLula, opLula, isAdversarial);
+    const stance = detectPoliticalStance(persona, 'lula');
+    if (Math.random() > 0.05) return figureScore(stance, isAdversarial);
     return null;
   }
 
   if (hasBolsonaro) {
-    // Opposition: check evaluation text AND voting history
-    const opBolso = avalBolso.includes('ruim') || avalBolso.includes('pessim') || avalBolso.includes('horrivel') || hasDesaprova(avalBolso)
-      || voto22.includes('lula') || voto22.includes('pt') || voto26.includes('lula') || voto26.includes('pt');
-    const supBolso = supportsBolsonaro;
-    if (Math.random() > 0.15) return figureScore(supBolso, opBolso, isAdversarial);
+    const stance = detectPoliticalStance(persona, 'bolsonaro');
+    if (Math.random() > 0.05) return figureScore(stance, isAdversarial);
     return null;
   }
 
@@ -1024,8 +1002,21 @@ export function computePersonaScore(
   }
 
   // 2. Political figure analysis using voting data
+  // When a political figure is mentioned, voting data takes ABSOLUTE priority.
+  // Even the 5% noise fallthrough should use ideology, NOT generic field mapping
+  // (prevents "corrupto" matching q_corrupcao_problema instead of political stance)
+  const hasPoliticalFigure = ['lula', 'petista', ' pt ', 'pt ', 'governo lula', 'partido dos trabalhadores',
+    'bolsonaro', 'bolsonarism', 'capitao', 'mito '].some(k => normQuestion.includes(k));
+
   const votingScore = analyzeVotingScore(persona, normQuestion);
   if (votingScore !== null) return votingScore;
+
+  // If a political figure was detected but voting score returned null (5% noise),
+  // use holistic ideology-based scoring instead of generic field matching.
+  // This prevents "Bolsonaro é corrupto" from matching q_corrupcao_problema.
+  if (hasPoliticalFigure) {
+    return computeHolisticScore(persona, normQuestion);
+  }
 
   // 3. Direct field matching — persona's actual answers to the topic
   const inverted = isQuestionInverted(normQuestion);

@@ -259,6 +259,16 @@ export function Waiting() {
    Helpers: convert simulation data to SegmentItem[]
    ════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Converts positive/negative/neutral counts to a 0-10 score.
+ * Uses weighted formula matching UnifiedScreen: pos=8.5, neutral=5.0, neg=1.5
+ * This creates wider spread than simple positive/count ratio.
+ */
+function sentimentToScore(positive: number, negative: number, neutral: number, count: number): number {
+  if (count === 0) return 5.0;
+  return Math.round(((positive * 8.5 + neutral * 5.0 + negative * 1.5) / count) * 10) / 10;
+}
+
 function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentItem[] | undefined {
   if (!quadrants || quadrants.length === 0) return undefined;
   return quadrants.map(q => ({
@@ -267,7 +277,7 @@ function quadrantsToSegments(quadrants: QuadrantResult[] | undefined): SegmentIt
     positive: q.positive,
     negative: q.negative,
     neutral: q.neutral,
-    avgScore: q.count > 0 ? Math.round(((q.positive / q.count) * 10) * 10) / 10 : 5.0,
+    avgScore: sentimentToScore(q.positive, q.negative, q.neutral, q.count),
   }));
 }
 
@@ -279,7 +289,7 @@ function archetypesToSegments(archetypes: ArchetypeResult[] | undefined): Segmen
     positive: a.positive,
     negative: a.negative,
     neutral: a.neutral,
-    avgScore: a.count > 0 ? Math.round(((a.positive / a.count) * 10) * 10) / 10 : 5.0,
+    avgScore: sentimentToScore(a.positive, a.negative, a.neutral, a.count),
   }));
 }
 
@@ -365,6 +375,8 @@ export function DashboardScreen() {
         totalCount={total}
         processedCount={data.processedCount}
         rightSlot={scoreBar}
+        isLive={isLive}
+        progress={progress}
       />
 
       {/* ═══ MAIN GRID: 2 rows × 4 cols + sidebar ═══ */}
@@ -373,17 +385,17 @@ export function DashboardScreen() {
         <div className="flex-1 flex flex-col gap-2 p-2.5 min-h-0 overflow-hidden">
           {/* Row 1 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.gender}     title="Genero"         accentColor="violet" maxItems={4} />
-            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" />
-            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" />
-            <ScoreSegmentCard items={archetypeItems}            title="Arquetipos"     accentColor="orange" />
+            <ScoreSegmentCard items={data.segments?.gender}     title="Genero"         accentColor="violet" maxItems={4} isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={archetypeItems}            title="Arquetipos"     accentColor="orange" isLive={isLive} progress={progress} />
           </div>
           {/* Row 2 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.religion}    title="Religiao"       accentColor="amber" />
-            <ScoreSegmentCard items={data.segments?.region}      title="Regiao"         accentColor="emerald" />
-            <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" />
-            <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" />
+            <ScoreSegmentCard items={data.segments?.religion}    title="Religiao"       accentColor="amber" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.region}      title="Regiao"         accentColor="emerald" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" isLive={isLive} progress={progress} />
           </div>
         </div>
 

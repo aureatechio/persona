@@ -268,6 +268,8 @@ export function UnifiedScreen() {
         avgScore={data.avgScore ?? 0}
         totalCount={data.totalCount}
         processedCount={data.processedCount}
+        isLive={isLive}
+        progress={progress}
         rightSlot={
           <div className="flex items-stretch gap-2 flex-1">
             {lulaVoters ? <VoterGaugeCompact item={lulaVoters} partyLabel="PT" /> : (
@@ -291,19 +293,19 @@ export function UnifiedScreen() {
           {/* Row 1 — Demografico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
             <SegmentRanking    items={data.segments?.gender}     title="Genero"       accentColor="violet" />
-            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"        accentColor="cyan" />
+            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"        accentColor="cyan" isLive={isLive} progress={progress} />
             <SegmentRanking    items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" />
-            <ScoreSegmentCard items={data.segments?.religion}   title="Religiao"     accentColor="amber" />
-            <ScoreSegmentCard items={data.segments?.region}     title="Regiao"       accentColor="emerald" />
+            <ScoreSegmentCard items={data.segments?.religion}   title="Religiao"     accentColor="amber" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.region}     title="Regiao"       accentColor="emerald" isLive={isLive} progress={progress} />
           </div>
 
           {/* Row 2 — Socioeconomico + Eleitoral */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            <ScoreSegmentCard items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" />
-            <ScoreSegmentCard items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" />
-            <ScoreSegmentCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" />
-            <ScoreSegmentCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" />
-            <ScoreSegmentCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" />
+            <ScoreSegmentCard items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" isLive={isLive} progress={progress} />
           </div>
 
           {/* Row 3 — Ideologico */}
