@@ -130,8 +130,26 @@ export async function POST(request: NextRequest) {
       .map((b) => b.text)
       .join('');
 
-    // Parse JSON response
-    const parsed = JSON.parse(text);
+    // Strip markdown code fences if present (```json ... ```)
+    const cleaned = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.error('[arena/prompts/improve] Failed to parse AI response:', cleaned.slice(0, 500));
+      return NextResponse.json(
+        { error: 'A IA retornou um formato inválido. Tente novamente.' },
+        { status: 502 },
+      );
+    }
+
+    if (!parsed.improved_prompt) {
+      return NextResponse.json(
+        { error: 'A IA não retornou o prompt melhorado. Tente novamente.' },
+        { status: 502 },
+      );
+    }
 
     return NextResponse.json({
       improved_prompt: parsed.improved_prompt,

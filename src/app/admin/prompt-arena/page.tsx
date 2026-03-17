@@ -439,6 +439,9 @@ export default function PromptArenaPage() {
     setWarnings([]);
 
     try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 55000);
+
       const res = await fetch('/api/arena/prompts/improve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -447,19 +450,26 @@ export default function PromptArenaPage() {
           instruction: freeInstruction.trim() || undefined,
           sliders: hasSliderChanges ? sliders : undefined,
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
       const data = await res.json();
 
       if (res.ok && data.improved_prompt) {
         setPreviewPrompt(data.improved_prompt);
         setChangelog(data.changelog || []);
         setWarnings(data.warnings || []);
+        showToast('Prompt melhorado gerado!', 'success');
       } else {
         showToast(data.error || 'Falha ao gerar melhoria', 'error');
       }
-    } catch {
-      showToast('Erro de conexão', 'error');
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        showToast('Timeout — a IA demorou demais. Tente novamente.', 'error');
+      } else {
+        showToast('Erro de conexão', 'error');
+      }
     }
 
     setGenerating(false);
