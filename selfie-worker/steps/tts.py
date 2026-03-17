@@ -182,7 +182,7 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     logger.info("Generating TTS for voice '%s' (%d chars)...", voice_id, len(processed_text))
 
     response = requests.post(
-        url,
+        url + "?output_format=mp3_44100_128",
         headers={
             "Content-Type": "application/json",
             "xi-api-key": ELEVENLABS_API_KEY,

@@ -59,7 +59,7 @@ def _normalize(input_path: str, output_path: str):
             "-i", input_path,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
             "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
             "-movflags", "+faststart", "-y", output_path,
         ])
@@ -70,7 +70,7 @@ def _normalize(input_path: str, output_path: str):
             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
-            "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2",
+            "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
             "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
             "-map", "0:v:0", "-map", "1:a:0", "-shortest",
             "-movflags", "+faststart", "-y", output_path,
@@ -84,7 +84,7 @@ def _normalize(input_path: str, output_path: str):
             "-i", output_path,
             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-c:v", "copy",
-            "-c:a", "aac", "-b:a", "128k",
+            "-c:a", "aac", "-b:a", "256k",
             "-map", "0:v:0", "-map", "1:a:0", "-shortest",
             "-movflags", "+faststart", "-y", temp_out,
         ])
