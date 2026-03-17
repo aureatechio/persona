@@ -578,7 +578,7 @@ export default function SelfieVideoPage() {
                   Obrigado pelo seu depoimento!
                 </h2>
                 <p className="text-blue-200/50 text-sm leading-relaxed">
-                  <span className="text-yellow-400 font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 5 minutos.
+                  <span className="text-yellow-400 font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.
                 </p>
               </div>
 
