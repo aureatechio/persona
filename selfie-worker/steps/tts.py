@@ -135,18 +135,27 @@ def _fix_pronunciation(text: str) -> str:
     )
 
     # REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
-    # "P.L." ou "PL" → "P L" (espaço entre letras = TTS fala fluido)
-    # Primeiro normaliza "P.L." → "PL", depois separa com espaço
-    text = re.sub(r'\bP\.?\s*L\.?', 'P L', text)
-    text = re.sub(r'\bP\.?\s*T\.?(?!\w)', 'P T', text)
-    text = re.sub(r'\bM\.?\s*D\.?\s*B\.?', 'M D B', text)
-    text = re.sub(r'\bP\.?\s*S\.?\s*D\.?\s*B\.?', 'P S D B', text)
-    text = re.sub(r'\bP\.?\s*S\.?\s*D\.?(?!\w)', 'P S D', text)
-    text = re.sub(r'\bP\.?\s*D\.?\s*T\.?', 'P D T', text)
-    text = re.sub(r'\bP\.?\s*S\.?\s*B\.?', 'P S B', text)
-    text = re.sub(r'\bP\.?\s*S\.?\s*O\.?\s*L\.?', 'P SOL', text)
-    text = re.sub(r'\bS\.?\s*T\.?\s*F\.?', 'S T F', text)
-    text = re.sub(r'\bC\.?\s*P\.?\s*I\.?(?!\w)', 'C P I', text)
+    # "P.L." ou "PL" → "P L" + preserva pontuação final (. ! ?)
+    def _fix_sigla(pattern: str, replacement: str, txt: str) -> str:
+        """Replace acronym preserving trailing punctuation."""
+        def _repl(m: re.Match) -> str:
+            after = m.group(0)
+            # Se termina com pontuação, preservar
+            if after[-1] in '.!?,;:':
+                return replacement + after[-1]
+            return replacement
+        return re.sub(pattern, _repl, txt)
+
+    text = _fix_sigla(r'\bP\.?\s*L\.?[.!?,;:]?', 'P L', text)
+    text = _fix_sigla(r'\bP\.?\s*T\.?[.!?,;:]?(?!\w)', 'P T', text)
+    text = _fix_sigla(r'\bM\.?\s*D\.?\s*B\.?[.!?,;:]?', 'M D B', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?', 'P S D B', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)', 'P S D', text)
+    text = _fix_sigla(r'\bP\.?\s*D\.?\s*T\.?[.!?,;:]?', 'P D T', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*B\.?[.!?,;:]?', 'P S B', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?', 'P SOL', text)
+    text = _fix_sigla(r'\bS\.?\s*T\.?\s*F\.?[.!?,;:]?', 'S T F', text)
+    text = _fix_sigla(r'\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)', 'C P I', text)
 
     # REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
     text = re.sub(

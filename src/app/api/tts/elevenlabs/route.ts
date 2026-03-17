@@ -55,18 +55,25 @@ function fixPronunciation(text: string): string {
 
   // ══════════════════════════════════════════════════════════════
   // REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
-  // "P.L." ou "PL" → "P L" (espaço entre letras = TTS fala fluido)
+  // "P.L." ou "PL" → "P L" + preserva pontuação final (. ! ?)
   // ══════════════════════════════════════════════════════════════
-  text = text.replace(/\bP\.?\s*L\.?/g, 'P L');
-  text = text.replace(/\bP\.?\s*T\.?(?!\w)/g, 'P T');
-  text = text.replace(/\bM\.?\s*D\.?\s*B\.?/g, 'M D B');
-  text = text.replace(/\bP\.?\s*S\.?\s*D\.?\s*B\.?/g, 'P S D B');
-  text = text.replace(/\bP\.?\s*S\.?\s*D\.?(?!\w)/g, 'P S D');
-  text = text.replace(/\bP\.?\s*D\.?\s*T\.?/g, 'P D T');
-  text = text.replace(/\bP\.?\s*S\.?\s*B\.?/g, 'P S B');
-  text = text.replace(/\bP\.?\s*S\.?\s*O\.?\s*L\.?/g, 'P SOL');
-  text = text.replace(/\bS\.?\s*T\.?\s*F\.?/g, 'S T F');
-  text = text.replace(/\bC\.?\s*P\.?\s*I\.?(?!\w)/g, 'C P I');
+  function fixSigla(pattern: RegExp, replacement: string, txt: string): string {
+    return txt.replace(pattern, (match) => {
+      const last = match[match.length - 1];
+      if ('.!?,;:'.includes(last)) return replacement + last;
+      return replacement;
+    });
+  }
+  text = fixSigla(/\bP\.?\s*L\.?[.!?,;:]?/g, 'P L', text);
+  text = fixSigla(/\bP\.?\s*T\.?[.!?,;:]?(?!\w)/g, 'P T', text);
+  text = fixSigla(/\bM\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'M D B', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'P S D B', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)/g, 'P S D', text);
+  text = fixSigla(/\bP\.?\s*D\.?\s*T\.?[.!?,;:]?/g, 'P D T', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*B\.?[.!?,;:]?/g, 'P S B', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?/g, 'P SOL', text);
+  text = fixSigla(/\bS\.?\s*T\.?\s*F\.?[.!?,;:]?/g, 'S T F', text);
+  text = fixSigla(/\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)/g, 'C P I', text);
 
   // ══════════════════════════════════════════════════════════════
   // REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
