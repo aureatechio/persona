@@ -242,22 +242,13 @@ export function UnifiedScreen() {
         <div className="flex-1" />
         {data.question && <Users size={14} className="text-zinc-500" />}
         {isLive && data.question ? (
-          (data.phase === 'collecting' || data.processedCount === 0) ? (
-            <div key="collecting-bar" className="flex items-center gap-3 flex-1 max-w-md shrink-0">
-              <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
-              </div>
-              <span className="text-xs font-medium text-zinc-400 shrink-0">Preparando analise...</span>
+          <div key="progress-bar" className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
+            <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${progress}%`, transition: progress <= 2 ? 'none' : 'width 2s ease-out' }} />
             </div>
-          ) : (
-            <div key="progress-bar" className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
-              <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${progress}%`, transition: progress <= 2 ? 'none' : 'width 2s ease-out' }} />
-              </div>
-              <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
-              <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
-            </div>
-          )
+            <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
+            <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
+          </div>
         ) : total > 0 ? (
           <span className="text-sm font-bold text-zinc-200 tabular-nums">{total.toLocaleString('pt-BR')}</span>
         ) : null}

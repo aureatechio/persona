@@ -50,7 +50,9 @@ function makeZeroedData(question = ''): ArenaLiveData {
  * Hook that listens to BroadcastChannel for real-time ArenaLiveData
  * from the main input screen. Used by all presentation screens.
  */
-/** Merge incoming segments with pre-seeded labels */
+/** Merge incoming segments with pre-seeded labels.
+ *  When Python sends data, use it as-is (Python labels are authoritative).
+ *  Pre-seeded labels are only used as placeholder when no data exists for a segment. */
 function mergeSegments(incoming: ArenaLiveData): void {
   if (!incoming.segments || Object.keys(incoming.segments).length === 0) {
     incoming.segments = { ...EMPTY_SEGMENTS };
@@ -61,24 +63,14 @@ function mergeSegments(incoming: ArenaLiveData): void {
       const incomingSeg: SegmentItem[] = (incoming.segments as any)?.[key] || [];
 
       if (incomingSeg.length === 0) {
+        // No data from Python — show pre-seeded placeholders
         merged[key] = preSeeded.map(s => ({ ...s }));
-        continue;
+      } else {
+        // Python sent data — use it directly (Python labels are the source of truth)
+        merged[key] = incomingSeg;
       }
-
-      const incomingMap = new Map<string, SegmentItem>();
-      for (const item of incomingSeg) incomingMap.set(item.label, item);
-
-      const result: SegmentItem[] = [];
-      const seenLabels = new Set<string>();
-      for (const seed of preSeeded) {
-        result.push(incomingMap.get(seed.label) || { ...seed });
-        seenLabels.add(seed.label);
-      }
-      for (const item of incomingSeg) {
-        if (!seenLabels.has(item.label)) result.push(item);
-      }
-      merged[key] = result;
     }
+    // Pass through any extra segment keys Python sends that aren't in EMPTY_SEGMENTS
     for (const key of Object.keys(incoming.segments || {})) {
       if (!(key in merged)) merged[key] = (incoming.segments as any)[key];
     }

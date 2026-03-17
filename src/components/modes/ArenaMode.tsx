@@ -369,9 +369,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     let useFallback = false;
     let simulation: any = null;
 
-    // Segments, stateBreakdown, and ideology data come directly from Python backend
+    // Segments, stateBreakdown, ideology, and live comments come directly from Python backend
     let pythonSegments: AllSegments | undefined;
     let pythonStateBreakdown: Record<string, { count: number; positive: number; negative: number; neutral: number }> | undefined;
+    let liveComments: any[] = [];
     let pythonIdeology: ArenaLiveData['liveIdeology'] | undefined;
 
     /** Compute avgScore from Python sentiment counts */
@@ -497,6 +498,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   if (payload.data.stateBreakdown) {
                     pythonStateBreakdown = payload.data.stateBreakdown;
                   }
+                  // Accumulate live comments from progress events
+                  if (payload.data.comments && Array.isArray(payload.data.comments)) {
+                    liveComments = payload.data.comments;
+                  }
                   // Update ideology data (politicalFigures, quadrants, clusterResults)
                   if (payload.data.politicalFigures || payload.data.quadrants || payload.data.clusterResults) {
                     pythonIdeology = {
@@ -524,6 +529,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     segments: pythonSegments,
                     stateBreakdown: pythonStateBreakdown,
                     liveIdeology: pythonIdeology,
+                    liveComments,
                   });
                   simulation = {
                     total: payload.data.total,
