@@ -13,24 +13,39 @@ function extractVideoId(url: string): string | null {
   return match ? match[1] : null;
 }
 
+function pickBestTrack(captions: any[]): any | null {
+  return (
+    captions.find((c: any) => c.languageCode === 'pt') ||
+    captions.find((c: any) => c.languageCode === 'pt-BR') ||
+    captions.find((c: any) => c.languageCode === 'en') ||
+    captions[0] || null
+  );
+}
+
+function parseTranscriptXml(xml: string): string[] {
+  const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
+  const texts: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = textRegex.exec(xml)) !== null) {
+    const decoded = match[1]
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/<[^>]+>/g, '');
+    if (decoded.trim()) texts.push(decoded.trim());
+  }
+  return texts;
+}
+
 /**
- * Fetch YouTube transcript using the IOS innertube client.
- * Runs on Vercel Edge Runtime to avoid AWS IP blocks.
+ * Try to get player data via innertube IOS client.
+ * Returns null if blocked by YouTube.
  */
-export async function POST(req: NextRequest) {
+async function getPlayerViaInnertube(videoId: string) {
   try {
-    const { url } = await req.json();
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
-    }
-
-    const videoId = extractVideoId(url);
-    if (!videoId) {
-      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
-    }
-
-    // Call innertube /player API with IOS client (reliable for captions)
-    const playerRes = await fetch(
+    const res = await fetch(
       `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
       {
         method: 'POST',
@@ -46,27 +61,82 @@ export async function POST(req: NextRequest) {
           },
           videoId,
         }),
+        signal: AbortSignal.timeout(6000),
       },
     );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const status = data?.playabilityStatus?.status;
+    if (status === 'LOGIN_REQUIRED' || status === 'ERROR' || status === 'UNPLAYABLE') {
+      console.log(`[youtube-transcript] Innertube blocked: ${status}`);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
 
-    if (!playerRes.ok) {
-      return NextResponse.json({ error: 'Falha na API do YouTube' }, { status: 502 });
+/**
+ * Fallback: scrape the YouTube watch page HTML for ytInitialPlayerResponse.
+ * YouTube is less aggressive about blocking page loads vs. API calls.
+ */
+async function getPlayerViaWatchPage(videoId: string) {
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+    if (!match) return null;
+
+    const data = JSON.parse(match[1]);
+    const status = data?.playabilityStatus?.status;
+    if (status !== 'OK') {
+      console.log(`[youtube-transcript] Watch page status: ${status}`);
+      return null;
+    }
+    return data;
+  } catch (e: any) {
+    console.log(`[youtube-transcript] Watch page scrape failed: ${e?.message}`);
+    return null;
+  }
+}
+
+/**
+ * Fetch YouTube transcript with fallback chain:
+ * 1. Innertube IOS client (fast, but may be blocked on cloud IPs)
+ * 2. Watch page HTML scrape (slower, but rarely blocked)
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const { url } = await req.json();
+    if (!url || typeof url !== 'string') {
+      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
     }
 
-    const playerData = await playerRes.json();
-
-    // Check playability
-    const playStatus = playerData?.playabilityStatus?.status;
-    const playReason = playerData?.playabilityStatus?.reason || '';
-
-    if (playStatus === 'LOGIN_REQUIRED') {
-      return NextResponse.json(
-        { error: playReason.includes('bot') ? 'YouTube bloqueou o IP do servidor' : 'Video requer login' },
-        { status: playReason.includes('bot') ? 429 : 403 },
-      );
+    const videoId = extractVideoId(url);
+    if (!videoId) {
+      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
-    if (playStatus === 'ERROR') {
-      return NextResponse.json({ error: 'Video indisponivel' }, { status: 404 });
+
+    // Try innertube first, fall back to watch page scraping
+    let playerData = await getPlayerViaInnertube(videoId);
+    let source = 'innertube';
+
+    if (!playerData) {
+      playerData = await getPlayerViaWatchPage(videoId);
+      source = 'watch-page';
+    }
+
+    if (!playerData) {
+      return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor' }, { status: 429 });
     }
 
     // Extract caption tracks
@@ -75,12 +145,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Legendas nao disponiveis para este video' }, { status: 422 });
     }
 
-    // Pick best track
-    const track =
-      captions.find((c: any) => c.languageCode === 'pt') ||
-      captions.find((c: any) => c.languageCode === 'pt-BR') ||
-      captions.find((c: any) => c.languageCode === 'en') ||
-      captions[0];
+    const track = pickBestTrack(captions);
+    if (!track) {
+      return NextResponse.json({ error: 'Legendas nao disponiveis para este video' }, { status: 422 });
+    }
 
     let captionUrl: string = track.baseUrl;
     captionUrl = captionUrl.replace('&fmt=srv3', '');
@@ -91,32 +159,16 @@ export async function POST(req: NextRequest) {
 
     // Fetch caption XML
     const captionRes = await fetch(captionUrl);
-
     if (!captionRes.ok) {
       return NextResponse.json({ error: 'Falha ao buscar legendas' }, { status: 502 });
     }
 
     const xml = await captionRes.text();
-
     if (!xml || xml.length === 0) {
       return NextResponse.json({ error: 'Legendas vazias' }, { status: 422 });
     }
 
-    // Parse XML text segments
-    const textRegex = /<text[^>]*>([\s\S]*?)<\/text>/g;
-    const texts: string[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = textRegex.exec(xml)) !== null) {
-      const decoded = match[1]
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/<[^>]+>/g, '');
-      if (decoded.trim()) texts.push(decoded.trim());
-    }
-
+    const texts = parseTranscriptXml(xml);
     if (texts.length === 0) {
       return NextResponse.json({ error: 'Nenhum texto nas legendas' }, { status: 422 });
     }
@@ -129,6 +181,7 @@ export async function POST(req: NextRequest) {
     const title = playerData?.videoDetails?.title || '';
     const author = playerData?.videoDetails?.author || '';
 
+    console.log(`[youtube-transcript] OK via ${source}: "${title}" (${transcript.length} chars)`);
     return NextResponse.json({ transcript, title, author });
   } catch (err: any) {
     if (err?.name === 'AbortError' || err?.name === 'TimeoutError') {

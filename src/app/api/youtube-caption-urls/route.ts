@@ -6,23 +6,11 @@ const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\
 const INNERTUBE_API_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
 
 /**
- * Returns caption URLs + metadata for a YouTube video.
- * The client fetches the actual caption XML directly (residential IP, not blocked).
+ * Try innertube IOS client first.
  */
-export async function POST(req: NextRequest) {
+async function getPlayerViaInnertube(videoId: string) {
   try {
-    const { url } = await req.json();
-    if (!url || typeof url !== 'string') {
-      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
-    }
-
-    const match = url.match(YOUTUBE_ID_REGEX);
-    if (!match) {
-      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
-    }
-    const videoId = match[1];
-
-    const playerRes = await fetch(
+    const res = await fetch(
       `https://www.youtube.com/youtubei/v1/player?key=${INNERTUBE_API_KEY}&prettyPrint=false`,
       {
         method: 'POST',
@@ -38,17 +26,66 @@ export async function POST(req: NextRequest) {
           },
           videoId,
         }),
+        signal: AbortSignal.timeout(6000),
       },
     );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const status = data?.playabilityStatus?.status;
+    if (status === 'LOGIN_REQUIRED' || status === 'ERROR' || status === 'UNPLAYABLE') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
-    if (!playerRes.ok) {
-      return NextResponse.json({ error: 'YouTube API failed' }, { status: 502 });
+/**
+ * Fallback: scrape watch page HTML for ytInitialPlayerResponse.
+ */
+async function getPlayerViaWatchPage(videoId: string) {
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
+    if (!match) return null;
+    const data = JSON.parse(match[1]);
+    if (data?.playabilityStatus?.status !== 'OK') return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns caption URLs + metadata for a YouTube video.
+ * Tries innertube IOS first, falls back to watch page scraping.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const { url } = await req.json();
+    if (!url || typeof url !== 'string') {
+      return NextResponse.json({ error: 'Missing url' }, { status: 400 });
     }
 
-    const playerData = await playerRes.json();
-    const playStatus = playerData?.playabilityStatus?.status;
+    const match = url.match(YOUTUBE_ID_REGEX);
+    if (!match) {
+      return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
+    }
+    const videoId = match[1];
 
-    if (playStatus === 'LOGIN_REQUIRED' || playStatus === 'ERROR') {
+    let playerData = await getPlayerViaInnertube(videoId);
+    if (!playerData) {
+      playerData = await getPlayerViaWatchPage(videoId);
+    }
+
+    if (!playerData) {
       return NextResponse.json({ error: 'Video unavailable' }, { status: 403 });
     }
 
@@ -57,7 +94,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No captions' }, { status: 422 });
     }
 
-    // Return all caption tracks so client can pick the best one
     const tracks = captions.map((c: any) => ({
       lang: c.languageCode,
       url: c.baseUrl.replace('&fmt=srv3', ''),
