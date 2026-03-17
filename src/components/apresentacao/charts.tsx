@@ -404,7 +404,7 @@ function QuadrantCell({ item, totalCount, hasQData, isLive, progress }: {
   return (
     <div className={cn('relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-1 p-2', qc.bg, qc.border, 'border')}>
       <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
-      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={displayPct} suffix="%" /></p>
+      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={displayPct} suffix="%" duration={isLive ? 1500 : 16000} /></p>
       <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
         {item.label}
       </p>

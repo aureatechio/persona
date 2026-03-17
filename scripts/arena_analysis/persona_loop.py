@@ -120,10 +120,17 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     supports_figure = False
     opposes_figure = False
 
+    # Helper: check aprovacao without substring false positives
+    # "aprova" is substring of "desaprova" — must check "desaprova" FIRST
+    is_aprova_lula = aprov_lula and not aprov_lula.startswith("des") and "aprova" in aprov_lula
+    is_desaprova_lula = "desaprova" in aprov_lula
+    is_aval_bolso_bom = any(w in aval_bolso for w in ["bom", "ótimo", "otimo"])
+    is_aval_bolso_ruim = any(w in aval_bolso for w in ["ruim", "péssimo", "pessimo"])
+
     if is_about_lula:
-        if "lula" in voto22 or "aprova" in aprov_lula:
+        if "lula" in voto22 or is_aprova_lula:
             supports_figure = True
-        elif "bolsonaro" in voto22 or "desaprova" in aprov_lula or ("bom" in aval_bolso or "ótimo" in aval_bolso or "otimo" in aval_bolso):
+        elif "bolsonaro" in voto22 or is_desaprova_lula or is_aval_bolso_bom:
             opposes_figure = True
         elif "direita" in leaning:
             opposes_figure = True
@@ -131,9 +138,9 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
             supports_figure = True
 
     elif is_about_bolsonaro:
-        if "bolsonaro" in voto22 or "bom" in aval_bolso or "ótimo" in aval_bolso or "otimo" in aval_bolso:
+        if "bolsonaro" in voto22 or is_aval_bolso_bom:
             supports_figure = True
-        elif "lula" in voto22 or "aprova" in aprov_lula or ("ruim" in aval_bolso or "péssimo" in aval_bolso or "pessimo" in aval_bolso):
+        elif "lula" in voto22 or is_aprova_lula or is_aval_bolso_ruim:
             opposes_figure = True
         elif "esquerda" in leaning:
             opposes_figure = True
