@@ -206,5 +206,53 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     raw_audio = response.content
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
-    # Áudio limpo — sem efeitos outdoor que mascaram pronúncia de siglas
-    return raw_audio, processed_text
+    # Adicionar 1.5s de silêncio no final pra evitar corte abrupto no lip-sync
+    padded_audio = _add_tail_silence(raw_audio)
+    return padded_audio, processed_text
+
+
+def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:
+    """Append silence at the end of audio to prevent abrupt cut in lip-sync."""
+    tmpdir = tempfile.mkdtemp(prefix="tts_pad_")
+    input_path = os.path.join(tmpdir, "input.mp3")
+    output_path = os.path.join(tmpdir, "padded.mp3")
+
+    try:
+        with open(input_path, "wb") as f:
+            f.write(audio)
+
+        result = subprocess.run(
+            [
+                "ffmpeg", "-i", input_path,
+                "-af", f"apad=pad_dur={seconds}",
+                "-c:a", "libmp3lame", "-b:a", "192k",
+                "-y", output_path,
+            ],
+            capture_output=True,
+            timeout=10,
+        )
+
+        if result.returncode != 0:
+            logger.warning("Tail silence failed, using original audio")
+            return audio
+
+        with open(output_path, "rb") as f:
+            padded = f.read()
+
+        logger.info("Tail silence added: %d → %d bytes (+%.1fs)", len(audio), len(padded), seconds)
+        return padded
+
+    except Exception as e:
+        logger.warning("Tail silence failed: %s", e)
+        return audio
+
+    finally:
+        for fname in os.listdir(tmpdir):
+            try:
+                os.unlink(os.path.join(tmpdir, fname))
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
