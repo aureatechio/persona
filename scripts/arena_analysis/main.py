@@ -947,7 +947,89 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
                         return JSONResponse({"transcript": full_text, "title": title, "author": author})
 
     except Exception as e:
-        print(f"[YouTube] yt-dlp failed for {video_id}: {e}")
+        print(f"[YouTube] yt-dlp subtitles failed for {video_id}: {e}")
+
+    # Strategy 5: yt-dlp audio download + Whisper transcription (guaranteed to work)
+    try:
+        import tempfile as _tempfile
+
+        with _tempfile.TemporaryDirectory() as tmpdir:
+            audio_path = f"{tmpdir}/audio.mp3"
+            print(f"[YouTube] Trying yt-dlp audio download + Whisper for {video_id}...")
+
+            # Download only audio (smallest format, ~2-5MB for a news video)
+            dl_result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "yt-dlp",
+                    "-x",  # extract audio
+                    "--audio-format", "mp3",
+                    "--audio-quality", "8",  # lowest quality (sufficient for speech)
+                    "--no-warnings",
+                    "--quiet",
+                    "--max-filesize", "25m",  # Whisper limit
+                    "-o", f"{tmpdir}/audio.%(ext)s",
+                    f"https://www.youtube.com/watch?v={video_id}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            if dl_result.returncode != 0:
+                print(f"[YouTube] yt-dlp audio download failed: {dl_result.stderr[:200]}")
+            else:
+                # Find the audio file (might be .mp3 or .m4a etc)
+                import glob as _glob2
+                audio_files = _glob2.glob(f"{tmpdir}/audio.*")
+                if not audio_files:
+                    print("[YouTube] yt-dlp: no audio file produced")
+                else:
+                    audio_file = audio_files[0]
+                    audio_size = os.path.getsize(audio_file)
+                    print(f"[YouTube] Audio downloaded: {audio_size / (1024*1024):.1f}MB")
+
+                    if audio_size > 25 * 1024 * 1024:
+                        # Re-encode to smaller size with FFmpeg
+                        compressed = f"{tmpdir}/compressed.mp3"
+                        await asyncio.to_thread(
+                            subprocess.run,
+                            ["ffmpeg", "-i", audio_file, "-vn", "-acodec", "libmp3lame",
+                             "-ab", "64k", "-ar", "16000", "-ac", "1", "-y", compressed],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=60,
+                        )
+                        audio_file = compressed
+
+                    # Transcribe with Whisper
+                    openai_keys = settings.openai_api_keys or ([settings.openai_api_key] if settings.openai_api_key else [])
+                    if openai_keys:
+                        from openai import OpenAI as _OpenAI
+
+                        for key_idx, key in enumerate(openai_keys):
+                            try:
+                                client = _OpenAI(api_key=key)
+
+                                def _whisper():
+                                    with open(audio_file, "rb") as f:
+                                        return client.audio.transcriptions.create(
+                                            model="whisper-1",
+                                            file=f,
+                                            language="pt",
+                                        )
+
+                                result = await asyncio.to_thread(_whisper)
+                                transcript_text = result.text.strip() if hasattr(result, 'text') else str(result).strip()
+                                if transcript_text:
+                                    if len(transcript_text) > MAX_TRANSCRIPT_CHARS:
+                                        transcript_text = transcript_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+                                    print(f"[YouTube] OK via yt-dlp+Whisper — {video_id} | {len(transcript_text)} chars")
+                                    return JSONResponse({"transcript": transcript_text, "title": title, "author": author})
+                            except Exception as we:
+                                print(f"[YouTube] Whisper key {key_idx+1} failed: {we}")
+                                continue
+
+    except Exception as e:
+        print(f"[YouTube] yt-dlp+Whisper failed for {video_id}: {e}")
 
     print(f"[YouTube] All strategies failed for {video_id}")
     return JSONResponse(
