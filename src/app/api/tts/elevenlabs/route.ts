@@ -54,8 +54,8 @@ function fixPronunciation(text: string): string {
   );
 
   // ══════════════════════════════════════════════════════════════
-  // REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
-  // "P.L." ou "PL" → "P L" + preserva pontuação final (. ! ?)
+  // REGRA 4: SIGLAS — converter pra forma fonética escrita
+  // "P.L." ou "PL" → "Pê Éli" (TTS fala naturalmente)
   // ══════════════════════════════════════════════════════════════
   function fixSigla(pattern: RegExp, replacement: string, txt: string): string {
     return txt.replace(pattern, (match) => {
@@ -64,16 +64,16 @@ function fixPronunciation(text: string): string {
       return replacement;
     });
   }
-  text = fixSigla(/\bP\.?\s*L\.?[.!?,;:]?/g, 'P L', text);
-  text = fixSigla(/\bP\.?\s*T\.?[.!?,;:]?(?!\w)/g, 'P T', text);
-  text = fixSigla(/\bM\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'M D B', text);
-  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'P S D B', text);
-  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)/g, 'P S D', text);
-  text = fixSigla(/\bP\.?\s*D\.?\s*T\.?[.!?,;:]?/g, 'P D T', text);
-  text = fixSigla(/\bP\.?\s*S\.?\s*B\.?[.!?,;:]?/g, 'P S B', text);
-  text = fixSigla(/\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?/g, 'P SOL', text);
-  text = fixSigla(/\bS\.?\s*T\.?\s*F\.?[.!?,;:]?/g, 'S T F', text);
-  text = fixSigla(/\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)/g, 'C P I', text);
+  text = fixSigla(/\bP\.?\s*L\.?[.!?,;:]?/g, 'Pê Éli', text);
+  text = fixSigla(/\bP\.?\s*T\.?[.!?,;:]?(?!\w)/g, 'Pê Tê', text);
+  text = fixSigla(/\bM\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'Ême Dê Bê', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?/g, 'Pê Ésse Dê Bê', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)/g, 'Pê Ésse Dê', text);
+  text = fixSigla(/\bP\.?\s*D\.?\s*T\.?[.!?,;:]?/g, 'Pê Dê Tê', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*B\.?[.!?,;:]?/g, 'Pê Ésse Bê', text);
+  text = fixSigla(/\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?/g, 'Pê Sól', text);
+  text = fixSigla(/\bS\.?\s*T\.?\s*F\.?[.!?,;:]?/g, 'Ésse Tê Éfe', text);
+  text = fixSigla(/\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)/g, 'Cê Pê Í', text);
 
   // ══════════════════════════════════════════════════════════════
   // REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta

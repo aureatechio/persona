@@ -134,28 +134,27 @@ def _fix_pronunciation(text: str) -> str:
         text,
     )
 
-    # REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
-    # "P.L." ou "PL" → "P L" + preserva pontuação final (. ! ?)
+    # REGRA 4: SIGLAS — converter pra forma fonética escrita
+    # "P.L." ou "PL" → "Pê Éli" (TTS fala naturalmente)
     def _fix_sigla(pattern: str, replacement: str, txt: str) -> str:
         """Replace acronym preserving trailing punctuation."""
         def _repl(m: re.Match) -> str:
             after = m.group(0)
-            # Se termina com pontuação, preservar
             if after[-1] in '.!?,;:':
                 return replacement + after[-1]
             return replacement
         return re.sub(pattern, _repl, txt)
 
-    text = _fix_sigla(r'\bP\.?\s*L\.?[.!?,;:]?', 'P L', text)
-    text = _fix_sigla(r'\bP\.?\s*T\.?[.!?,;:]?(?!\w)', 'P T', text)
-    text = _fix_sigla(r'\bM\.?\s*D\.?\s*B\.?[.!?,;:]?', 'M D B', text)
-    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?', 'P S D B', text)
-    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)', 'P S D', text)
-    text = _fix_sigla(r'\bP\.?\s*D\.?\s*T\.?[.!?,;:]?', 'P D T', text)
-    text = _fix_sigla(r'\bP\.?\s*S\.?\s*B\.?[.!?,;:]?', 'P S B', text)
-    text = _fix_sigla(r'\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?', 'P SOL', text)
-    text = _fix_sigla(r'\bS\.?\s*T\.?\s*F\.?[.!?,;:]?', 'S T F', text)
-    text = _fix_sigla(r'\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)', 'C P I', text)
+    text = _fix_sigla(r'\bP\.?\s*L\.?[.!?,;:]?', 'Pê Éli', text)
+    text = _fix_sigla(r'\bP\.?\s*T\.?[.!?,;:]?(?!\w)', 'Pê Tê', text)
+    text = _fix_sigla(r'\bM\.?\s*D\.?\s*B\.?[.!?,;:]?', 'Ême Dê Bê', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?\s*B\.?[.!?,;:]?', 'Pê Ésse Dê Bê', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*D\.?[.!?,;:]?(?!\w)', 'Pê Ésse Dê', text)
+    text = _fix_sigla(r'\bP\.?\s*D\.?\s*T\.?[.!?,;:]?', 'Pê Dê Tê', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*B\.?[.!?,;:]?', 'Pê Ésse Bê', text)
+    text = _fix_sigla(r'\bP\.?\s*S\.?\s*O\.?\s*L\.?[.!?,;:]?', 'Pê Sól', text)
+    text = _fix_sigla(r'\bS\.?\s*T\.?\s*F\.?[.!?,;:]?', 'Ésse Tê Éfe', text)
+    text = _fix_sigla(r'\bC\.?\s*P\.?\s*I\.?[.!?,;:]?(?!\w)', 'Cê Pê Í', text)
 
     # REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
     text = re.sub(
