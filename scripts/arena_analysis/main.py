@@ -708,11 +708,19 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
     except Exception:
         pass  # Metadata is optional
 
-    # Strategy 1: youtube-transcript-api library
+    # Strategy 1: youtube-transcript-api library (with consent cookies to bypass bot detection)
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
+        import requests as _requests
 
-        ytt = YouTubeTranscriptApi()
+        session = _requests.Session()
+        session.cookies.set("SOCS", "CAISNQgDEitib3FfaWRlbnRpdHlfZnJvbnRlbmRfdWlzZXJ2ZXJfMjAyMzA4MjkuMDdfcDAGEA", domain=".youtube.com")
+        session.cookies.set("CONSENT", "YES+cb.20210328-17-p0.en+FX+987", domain=".youtube.com")
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        })
+        ytt = YouTubeTranscriptApi(http_client=session)
 
         def _fetch():
             try:
