@@ -876,6 +876,79 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
     except Exception as e:
         print(f"[YouTube] Watch page scrape failed for {video_id}: {e}")
 
+    # Strategy 4: yt-dlp subtitle extraction (most robust anti-detection)
+    try:
+        import tempfile
+        import glob as _glob
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "yt-dlp",
+                    "--write-auto-sub",
+                    "--sub-lang", "pt,pt-BR,en",
+                    "--sub-format", "srv1",
+                    "--skip-download",
+                    "--no-warnings",
+                    "--quiet",
+                    "-o", f"{tmpdir}/%(id)s",
+                    f"https://www.youtube.com/watch?v={video_id}",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode != 0:
+                print(f"[YouTube] yt-dlp failed: {result.stderr[:200]}")
+            else:
+                # Find the subtitle file
+                import re as _re
+
+                sub_files = _glob.glob(f"{tmpdir}/*.srv1") + _glob.glob(f"{tmpdir}/*.vtt") + _glob.glob(f"{tmpdir}/*.srt")
+                if not sub_files:
+                    print(f"[YouTube] yt-dlp: no subtitle files found")
+                else:
+                    # Read and parse the subtitle file
+                    with open(sub_files[0], "r", encoding="utf-8") as f:
+                        content = f.read()
+
+                    # Parse XML (srv1 format)
+                    texts = [
+                        _re.sub(r"<[^>]+>", "", seg)
+                        .replace("&amp;", "&")
+                        .replace("&lt;", "<")
+                        .replace("&gt;", ">")
+                        .replace("&quot;", '"')
+                        .replace("&#39;", "'")
+                        .strip()
+                        for seg in _re.findall(r"<text[^>]*>([\s\S]*?)</text>", content)
+                    ]
+                    texts = [t for t in texts if t]
+
+                    if not texts:
+                        # Try VTT/SRT format
+                        lines = content.split("\n")
+                        texts = [
+                            line.strip()
+                            for line in lines
+                            if line.strip()
+                            and not line.strip().startswith("WEBVTT")
+                            and not _re.match(r"^\d+$", line.strip())
+                            and not _re.match(r"\d{2}:\d{2}", line.strip())
+                        ]
+
+                    if texts:
+                        full_text = " ".join(texts)
+                        if len(full_text) > MAX_TRANSCRIPT_CHARS:
+                            full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+                        print(f"[YouTube] OK via yt-dlp — {video_id} | {len(texts)} segments | {len(full_text)} chars")
+                        return JSONResponse({"transcript": full_text, "title": title, "author": author})
+
+    except Exception as e:
+        print(f"[YouTube] yt-dlp failed for {video_id}: {e}")
+
     print(f"[YouTube] All strategies failed for {video_id}")
     return JSONResponse(
         {"error": "Legendas nao disponiveis para este video"},
