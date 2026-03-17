@@ -31,7 +31,7 @@ function VoterGaugeCompact({ item, partyLabel, isLive = false, progress = 0 }: {
       ? { text: 'Maioria concorda', color: 'text-emerald-400' }
       : score < 4
         ? { text: 'Maioria discorda', color: 'text-red-400' }
-        : { text: 'Opiniao dividida', color: 'text-amber-400' };
+        : { text: 'Opinião dividida', color: 'text-amber-400' };
 
   const positivePct = total > 0 ? Math.round(((item.positive || 0) / total) * 100) : 0;
   const negativePct = total > 0 ? Math.round(((item.negative || 0) / total) * 100) : 0;
@@ -283,11 +283,11 @@ export function UnifiedScreen() {
 
           {/* Row 1 — Demografico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            <SegmentRanking    items={data.segments?.gender}     title="Genero"       accentColor="violet" isLive={isLive} progress={progress} />
+            <SegmentRanking    items={data.segments?.gender}     title="Gênero"       accentColor="violet" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.race}       title="Etnia"        accentColor="cyan" isLive={isLive} progress={progress} />
-            <SegmentRanking    items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.religion}   title="Religiao"     accentColor="amber" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.region}     title="Regiao"       accentColor="emerald" isLive={isLive} progress={progress} />
+            <SegmentRanking    items={data.segments?.generation} title="Faixa Etária" accentColor="sky" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.religion}   title="Religião"     accentColor="amber" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.region}     title="Região"       accentColor="emerald" isLive={isLive} progress={progress} />
           </div>
 
           {/* Row 2 — Socioeconomico + Eleitoral */}
@@ -295,15 +295,15 @@ export function UnifiedScreen() {
             <ScoreSegmentCard items={data.segments?.socialClass}      title="Classe Social"  accentColor="rose" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.education}        title="Escolaridade"   accentColor="fuchsia" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.voto2022}         title="Voto 2022"      accentColor="violet" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.voto2026}         title="Intencao 2026"  accentColor="emerald" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.politicalLeaning} title="Pos. Politica"  accentColor="sky" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.voto2026}         title="Intenção 2026"  accentColor="emerald" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.politicalLeaning} title="Pos. Política"  accentColor="sky" isLive={isLive} progress={progress} />
           </div>
 
           {/* Row 3 — Ideologico */}
           <div className="flex-1 grid grid-cols-4 gap-1.5 min-h-0">
-            <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" isLive={isLive} progress={progress} />
-            <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" isLive={isLive} progress={progress} />
-            <QuadrantGrid  items={quadrantItems}            title="Quadrante"      accentColor="cyan" isLive={isLive} progress={progress} />
+            <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Econ."  accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" isLive={isLive} progress={progress} />
+            <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp." accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" isLive={isLive} progress={progress} />
+            <QuadrantGrid  items={quadrantItems}            title="Quadrante"       accentColor="cyan" isLive={isLive} progress={progress} />
             <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" isLive={isLive} progress={progress} />
           </div>
         </div>
@@ -312,7 +312,7 @@ export function UnifiedScreen() {
         <div className="w-[240px] shrink-0 flex flex-col min-h-0 border-l border-white/[0.04]">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.04] shrink-0 bg-white/[0.01]">
             <MessageCircle size={13} className="text-zinc-500" />
-            <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-zinc-500 flex-1">Reacoes</span>
+            <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-zinc-500 flex-1">Reações</span>
             <span className="text-xs text-zinc-600 tabular-nums">{comments.length}</span>
           </div>
           {comments.length > 0 ? (

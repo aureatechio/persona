@@ -28,8 +28,8 @@ function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | u
 }
 
 /** Sub-component for gender layout rows with per-item jitter */
-function GenderItemRow({ item, idx, isLive, progress }: {
-  item: SegmentItem; idx: number; isLive: boolean; progress: number;
+function GenderItemRow({ item, idx, isLive, progress, clusterAvg }: {
+  item: SegmentItem; idx: number; isLive: boolean; progress: number; clusterAvg: number;
 }) {
   const hasData = item.count > 0;
   const baseScore = item.avgScore ?? 0;
@@ -37,6 +37,9 @@ function GenderItemRow({ item, idx, isLive, progress }: {
   const score = isLive && hasData ? jitteredScore : baseScore;
   const hex = scoreToHex(score);
   const barPos = (score / 10) * 100;
+
+  const pctDev = hasData && clusterAvg > 0 ? ((score - clusterAvg) / clusterAvg) * 100 : 0;
+  const showPct = hasData && clusterAvg > 0;
 
   return (
     <div className={cn('relative overflow-hidden flex items-center gap-3 px-4 py-1.5', idx === 0 && 'border-b border-white/[0.04]')}>
@@ -47,7 +50,17 @@ function GenderItemRow({ item, idx, isLive, progress }: {
         <span className="text-[10px] font-bold text-zinc-300">{item.label}</span>
       </div>
       <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
-        <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
+        <div className="flex items-center gap-2">
+          <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
+          {showPct && (
+            <span className={cn(
+              'text-xs font-bold tabular-nums transition-colors duration-300',
+              pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
+            )}>
+              {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
+            </span>
+          )}
+        </div>
         <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
           {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
@@ -58,8 +71,8 @@ function GenderItemRow({ item, idx, isLive, progress }: {
 }
 
 /** Sub-component for ranking rows with per-item jitter */
-function RankingItemRow({ item, index, accentText, isLive, progress }: {
-  item: SegmentItem; index: number; accentText: string; isLive: boolean; progress: number;
+function RankingItemRow({ item, index, accentText, isLive, progress, clusterAvg }: {
+  item: SegmentItem; index: number; accentText: string; isLive: boolean; progress: number; clusterAvg: number;
 }) {
   const hasData = item.count > 0;
   const baseScore = item.avgScore ?? 0;
@@ -67,6 +80,9 @@ function RankingItemRow({ item, index, accentText, isLive, progress }: {
   const score = isLive && hasData ? jitteredScore : baseScore;
   const hex = scoreToHex(score);
   const barPos = (score / 10) * 100;
+
+  const pctDev = hasData && clusterAvg > 0 ? ((score - clusterAvg) / clusterAvg) * 100 : 0;
+  const showPct = hasData && clusterAvg > 0;
 
   return (
     <div className="flex items-center gap-2 group">
@@ -83,6 +99,15 @@ function RankingItemRow({ item, index, accentText, isLive, progress }: {
       <div className="shrink-0 w-[56px]">
         <AnimatedScore value={score} className="text-sm" duration={isLive ? 2000 : 10000} />
       </div>
+      {showPct && (
+        <span className={cn(
+          'shrink-0 w-[48px] text-[10px] font-bold tabular-nums text-right transition-colors duration-300',
+          pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
+        )}>
+          {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
+        </span>
+      )}
+      {!showPct && <span className="shrink-0 w-[48px]" />}
     </div>
   );
 }
@@ -109,6 +134,12 @@ export const SegmentRanking = memo(function SegmentRanking({
       })
     : [];
 
+  // Cluster average from items with data
+  const withData = sorted.filter(i => i.count > 0);
+  const clusterAvg = withData.length > 0
+    ? withData.reduce((sum, i) => sum + (i.avgScore ?? 0), 0) / withData.length
+    : 0;
+
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80' },
     amber:   { glow: 'bg-amber-500/8',   text: 'text-amber-400',   label: 'text-amber-400/80' },
@@ -134,7 +165,7 @@ export const SegmentRanking = memo(function SegmentRanking({
         </div>
         <div className="flex-1 grid grid-rows-2 gap-0 min-h-0">
           {sorted.map((item, idx) => (
-            <GenderItemRow key={item.label} item={item} idx={idx} isLive={isLive} progress={progress} />
+            <GenderItemRow key={item.label} item={item} idx={idx} isLive={isLive} progress={progress} clusterAvg={clusterAvg} />
           ))}
         </div>
       </div>
@@ -153,7 +184,7 @@ export const SegmentRanking = memo(function SegmentRanking({
       </div>
       <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
         {display.map((item, i) => (
-          <RankingItemRow key={item.label} item={item} index={i} accentText={c.text} isLive={isLive} progress={progress} />
+          <RankingItemRow key={item.label} item={item} index={i} accentText={c.text} isLive={isLive} progress={progress} clusterAvg={clusterAvg} />
         ))}
       </div>
     </div>
@@ -365,7 +396,7 @@ export function DashboardScreen() {
               <div className="w-56 h-4 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
               </div>
-              <span className="text-sm font-medium text-zinc-400">Preparando analise...</span>
+              <span className="text-sm font-medium text-zinc-400">Preparando análise...</span>
             </div>
           ) : (
             <div className="flex items-center gap-3 shrink-0">
@@ -397,15 +428,15 @@ export function DashboardScreen() {
         <div className="flex-1 flex flex-col gap-2 p-2.5 min-h-0 overflow-hidden">
           {/* Row 1 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.gender}     title="Genero"         accentColor="violet" maxItems={4} isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.gender}     title="Gênero"         accentColor="violet" maxItems={4} isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etaria"   accentColor="sky" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={archetypeItems}            title="Arquetipos"     accentColor="orange" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etária"   accentColor="sky" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={archetypeItems}            title="Arquétipos"     accentColor="orange" isLive={isLive} progress={progress} />
           </div>
           {/* Row 2 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.religion}    title="Religiao"       accentColor="amber" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.region}      title="Regiao"         accentColor="emerald" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.religion}    title="Religião"       accentColor="amber" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.region}      title="Região"         accentColor="emerald" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" isLive={isLive} progress={progress} />
           </div>
@@ -415,7 +446,7 @@ export function DashboardScreen() {
         <div className="w-[280px] shrink-0 flex flex-col min-h-0 border-l border-white/[0.04]">
           <div className="flex items-center gap-2 px-4 py-2 border-b border-white/[0.04] shrink-0 bg-white/[0.01]">
             <MessageCircle size={13} className="text-zinc-500" />
-            <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-zinc-500 flex-1">Reacoes</span>
+            <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-zinc-500 flex-1">Reações</span>
             <span className="text-xs text-zinc-600 tabular-nums">{comments.length}</span>
           </div>
           {comments.length > 0 ? (

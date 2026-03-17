@@ -1,6 +1,6 @@
 'use client';
 
-import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -113,6 +113,17 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
                 >
                   <Clapperboard size={20} />
                   <span className="text-sm">Modelo Vídeo</span>
+                </button>
+                <button
+                  onClick={() => handleNavigation({ id: 'prompt-arena', href: '/admin/prompt-arena' })}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
+                    pathname === '/admin/prompt-arena'
+                      ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  <Sparkles size={20} />
+                  <span className="text-sm">Prompt Arena</span>
                 </button>
               </>
             )}

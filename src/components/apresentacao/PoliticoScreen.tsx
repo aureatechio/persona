@@ -103,7 +103,7 @@ export function PoliticoScreen() {
         )}
         <div className="h-4 w-px bg-white/[0.08]" />
         <Vote size={14} className="text-zinc-500" />
-        <span className="text-xs font-black text-zinc-500 uppercase tracking-widest">Painel Politico</span>
+        <span className="text-xs font-black text-zinc-500 uppercase tracking-widest">Painel Político</span>
         <div className="h-4 w-px bg-white/[0.08]" />
         <div className="flex-1" />
         {data.question && <Users size={14} className="text-zinc-500" />}
@@ -113,7 +113,7 @@ export function PoliticoScreen() {
               <div className="w-40 h-2 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-violet-500/60 to-sky-400/60 rounded-full animate-pulse" />
               </div>
-              <span className="text-xs font-medium text-zinc-400">Preparando analise...</span>
+              <span className="text-xs font-medium text-zinc-400">Preparando análise...</span>
             </div>
           ) : (
             <div className="flex items-center gap-2.5 shrink-0">
@@ -156,15 +156,15 @@ export function PoliticoScreen() {
         {/* Row 1 — Electoral Donuts */}
         <div className="flex-1 grid grid-cols-3 gap-2.5 min-h-0">
           <ScoreSegmentCard items={data.segments?.voto2022}          title="Voto 2022"        accentColor="violet" />
-          <ScoreSegmentCard items={data.segments?.voto2026}          title="Intencao 2026"    accentColor="emerald" />
-          <ScoreSegmentCard items={data.segments?.politicalLeaning}  title="Pos. Politica"    accentColor="sky" />
+          <ScoreSegmentCard items={data.segments?.voto2026}          title="Intenção 2026"    accentColor="emerald" />
+          <ScoreSegmentCard items={data.segments?.politicalLeaning}  title="Pos. Política"    accentColor="sky" />
         </div>
 
         {/* Row 2 — Ideological Axes */}
         <div className="flex-1 grid grid-cols-3 gap-2.5 min-h-0">
-          <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Economico"      accentColor="sky"  leftLabel="Esquerda" rightLabel="Direita" />
+          <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Econômico"      accentColor="sky"  leftLabel="Esquerda" rightLabel="Direita" />
           <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comportamental"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />
-          <QuadrantGrid  items={quadrantItems}            title="Quadrante Ideologico"     accentColor="cyan" />
+          <QuadrantGrid  items={quadrantItems}            title="Quadrante Ideológico"     accentColor="cyan" />
         </div>
       </div>
 

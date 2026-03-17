@@ -84,8 +84,8 @@ function WaitingScreen() {
         </div>
 
         <div className="text-center space-y-2">
-          <p className="text-xl font-semibold text-white tracking-tight">Analise IA</p>
-          <p className="text-sm text-zinc-500">Aguardando dados completos para analise...</p>
+          <p className="text-xl font-semibold text-white tracking-tight">Análise IA</p>
+          <p className="text-sm text-zinc-500">Aguardando dados completos para análise...</p>
         </div>
 
         <div className="flex gap-2">
@@ -295,7 +295,7 @@ export function AnaliseScreen() {
               </div>
             </div>
             <div className="text-center space-y-2">
-              <p className="text-lg text-zinc-400">Aguardando conclusao da pesquisa...</p>
+              <p className="text-lg text-zinc-400">Aguardando conclusão da pesquisa...</p>
               <div className="w-48 h-1.5 bg-zinc-900 rounded-full overflow-hidden mx-auto">
                 <div className="h-full bg-gradient-to-r from-emerald-600 to-rose-400 rounded-full transition-all duration-1000"
                   style={{ width: `${data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0}%` }} />
@@ -330,7 +330,7 @@ export function AnaliseScreen() {
                   <div className="p-2 rounded-xl bg-rose-500/10">
                     <AlertTriangle size={20} className="text-rose-400" />
                   </div>
-                  <h2 className="text-xl font-bold text-rose-400 tracking-tight">O que gerou rejeicao</h2>
+                  <h2 className="text-xl font-bold text-rose-400 tracking-tight">O que gerou rejeição</h2>
                 </div>
                 <RenderBullets text={sections.erros} accentColor="rose" />
                 {!sections.erros && (isTyping || charIndex.current < text.length) && (
@@ -349,13 +349,13 @@ export function AnaliseScreen() {
                   <div className="p-2 rounded-xl bg-amber-500/10">
                     <Target size={20} className="text-amber-400" />
                   </div>
-                  <h2 className="text-xl font-bold text-amber-400 tracking-tight">Sugestoes de Melhoria</h2>
+                  <h2 className="text-xl font-bold text-amber-400 tracking-tight">Sugestões de Melhoria</h2>
                 </div>
                 <RenderBullets text={sections.sugestoes} accentColor="amber" />
                 {!sections.sugestoes && (isTyping || charIndex.current < text.length) && (
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-amber-400/40 rounded-full animate-pulse" />
-                    <span className="text-sm text-zinc-600">Gerando sugestoes...</span>
+                    <span className="text-sm text-zinc-600">Gerando sugestões...</span>
                   </div>
                 )}
               </div>
@@ -365,7 +365,7 @@ export function AnaliseScreen() {
             {(isTyping || charIndex.current < text.length) && (
               <div className="flex items-center justify-center gap-2 py-2">
                 <span className="inline-block w-0.5 h-5 bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-zinc-600">Gerando analise...</span>
+                <span className="text-xs text-zinc-600">Gerando análise...</span>
               </div>
             )}
           </div>

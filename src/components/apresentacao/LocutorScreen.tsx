@@ -97,7 +97,7 @@ function WaitingScreen() {
 
         <div className="text-center space-y-2">
           <p className="text-xl font-semibold text-white tracking-tight">Consultora IA</p>
-          <p className="text-sm text-zinc-500">Aguardando dados para analise...</p>
+          <p className="text-sm text-zinc-500">Aguardando dados para análise...</p>
         </div>
 
         {/* Animated dots */}
@@ -329,7 +329,7 @@ export function LocutorScreen() {
               </div>
             </div>
             <div className="text-center space-y-2">
-              <p className="text-lg text-zinc-400">Analisando reacoes...</p>
+              <p className="text-lg text-zinc-400">Analisando reações...</p>
               <div className="w-48 h-1.5 bg-zinc-900 rounded-full overflow-hidden mx-auto">
                 <div className="h-full bg-gradient-to-r from-violet-600 to-emerald-400 rounded-full transition-all duration-1000"
                   style={{ width: `${data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0}%` }} />

@@ -519,10 +519,11 @@ export const ScoreHero = memo(function ScoreHero({
    ════════════════════════════════════════════════════════════════════ */
 
 /** Individual segment row with live jitter support */
-function SegmentItemRow({ item, isLive, progress }: {
+function SegmentItemRow({ item, isLive, progress, clusterAvg }: {
   item: SegmentItem;
   isLive: boolean;
   progress: number;
+  clusterAvg: number;
 }) {
   const hasData = item.count > 0;
   const baseScore = item.avgScore ?? 0;
@@ -530,6 +531,12 @@ function SegmentItemRow({ item, isLive, progress }: {
   const displayScore = isLive && hasData ? jitteredScore : baseScore;
   const hex = scoreToHex(displayScore);
   const barPosition = (displayScore / 10) * 100;
+
+  // Percentage deviation from cluster average
+  const pctDev = hasData && clusterAvg > 0
+    ? ((displayScore - clusterAvg) / clusterAvg) * 100
+    : 0;
+  const showPct = hasData && clusterAvg > 0;
 
   return (
     <div className="flex items-center gap-2 group">
@@ -555,6 +562,15 @@ function SegmentItemRow({ item, isLive, progress }: {
       <div className="shrink-0 w-[56px]">
         <AnimatedScore value={hasData ? displayScore : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
       </div>
+      {showPct && (
+        <span className={cn(
+          'shrink-0 w-[48px] text-[10px] font-bold tabular-nums text-right transition-colors duration-300',
+          pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
+        )}>
+          {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
+        </span>
+      )}
+      {!showPct && <span className="shrink-0 w-[48px]" />}
     </div>
   );
 }
@@ -599,6 +615,12 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
         .slice(0, maxItems)
     : [];
 
+  // Cluster average from items with data
+  const withData = sorted.filter(i => i.count > 0);
+  const clusterAvg = withData.length > 0
+    ? withData.reduce((sum, i) => sum + (i.avgScore ?? 0), 0) / withData.length
+    : 0;
+
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
       <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
@@ -617,6 +639,7 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
             item={item}
             isLive={isLive}
             progress={progress}
+            clusterAvg={clusterAvg}
           />
         ))}
       </div>
