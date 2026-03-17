@@ -21,11 +21,17 @@ import Link from 'next/link';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+interface PromptMetadata {
+  sliders?: Record<string, number>;
+  last_instruction?: string;
+}
+
 interface PromptData {
   id: string;
   content: string;
   version: number;
   updated_at: string;
+  metadata?: PromptMetadata;
 }
 
 interface SliderConfig {
@@ -40,6 +46,7 @@ interface ChangelogEntry {
   version: number;
   changes: string[];
   previous_content: string | null;
+  instruction: string | null;
   created_at: string;
 }
 
@@ -376,6 +383,14 @@ export default function PromptArenaPage() {
     loadHistory();
   }, []);
 
+  const DEFAULT_SLIDERS: Record<string, number> = {
+    political_bias: 0,
+    neutral_pct: 0,
+    humor_level: 0,
+    profanity_level: 0,
+    regionalism: 0,
+  };
+
   async function loadPrompt() {
     setLoading(true);
     try {
@@ -383,6 +398,12 @@ export default function PromptArenaPage() {
       const data = await res.json();
       if (data.prompt) {
         setPrompt(data.prompt);
+        // Restore sliders from saved metadata
+        if (data.prompt.metadata?.sliders) {
+          setSliders({ ...DEFAULT_SLIDERS, ...data.prompt.metadata.sliders });
+        } else {
+          setSliders({ ...DEFAULT_SLIDERS });
+        }
       } else {
         showToast(data.error || 'Prompt não encontrado', 'error');
       }
@@ -458,6 +479,11 @@ export default function PromptArenaPage() {
           id: 'arena_system',
           content: previewPrompt,
           changelog,
+          instruction: freeInstruction.trim() || null,
+          metadata: {
+            sliders,
+            last_instruction: freeInstruction.trim() || null,
+          },
         }),
       });
 
@@ -469,13 +495,7 @@ export default function PromptArenaPage() {
         setChangelog([]);
         setWarnings([]);
         setFreeInstruction('');
-        setSliders({
-          political_bias: 0,
-          neutral_pct: 0,
-          humor_level: 0,
-          profanity_level: 0,
-          regionalism: 0,
-        });
+        // Keep sliders as-is — they reflect the current prompt state
         showToast(`Prompt salvo! Versão ${data.prompt.version}`, 'success');
         loadHistory();
       } else {
@@ -520,7 +540,7 @@ export default function PromptArenaPage() {
         return;
       }
 
-      // 2. Save it to Supabase
+      // 2. Save it to Supabase with reset metadata
       const saveRes = await fetch('/api/arena/prompts', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -528,6 +548,7 @@ export default function PromptArenaPage() {
           id: 'arena_system',
           content: origData.content,
           changelog: ['Restaurado para o prompt original (factory default)'],
+          metadata: { sliders: DEFAULT_SLIDERS, last_instruction: null },
         }),
       });
 
@@ -539,13 +560,7 @@ export default function PromptArenaPage() {
         setChangelog([]);
         setWarnings([]);
         setFreeInstruction('');
-        setSliders({
-          political_bias: 0,
-          neutral_pct: 0,
-          humor_level: 0,
-          profanity_level: 0,
-          regionalism: 0,
-        });
+        setSliders({ ...DEFAULT_SLIDERS });
         showToast(`Prompt original restaurado! Versão ${saveData.prompt.version}`, 'success');
         loadHistory();
       } else {
@@ -891,6 +906,16 @@ export default function PromptArenaPage() {
                                 </span>
                               </div>
                             </div>
+                            {entry.instruction && (
+                              <div className="bg-violet-500/10 border border-violet-500/20 rounded-lg px-3 py-2 mb-2">
+                                <p className="text-[10px] font-medium uppercase tracking-wider text-violet-400/60 mb-1">
+                                  Instrução
+                                </p>
+                                <p className="text-xs text-violet-300 italic">
+                                  &ldquo;{entry.instruction}&rdquo;
+                                </p>
+                              </div>
+                            )}
                             <div className="space-y-1">
                               {entry.changes.map((c, j) => (
                                 <p key={j} className="text-sm text-zinc-400 flex items-start gap-2">

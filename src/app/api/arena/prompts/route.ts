@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('arena_prompts')
-      .select('id, content, version, is_active, updated_at')
+      .select('id, content, version, is_active, updated_at, metadata')
       .eq('id', id)
       .eq('is_active', true)
       .single();
@@ -34,12 +34,12 @@ export async function GET(request: NextRequest) {
 /**
  * PATCH /api/arena/prompts
  * Updates prompt content + increments version.
- * Body: { id, content, changelog? }
+ * Body: { id, content, changelog?, metadata?, instruction? }
  */
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, content, changelog } = body;
+    const { id, content, changelog, metadata, instruction } = body;
 
     if (!id || !content) {
       return NextResponse.json(
@@ -57,15 +57,20 @@ export async function PATCH(request: NextRequest) {
 
     const nextVersion = (current?.version || 0) + 1;
 
+    const updatePayload: Record<string, unknown> = {
+      content,
+      version: nextVersion,
+      updated_at: new Date().toISOString(),
+    };
+    if (metadata !== undefined) {
+      updatePayload.metadata = metadata;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('arena_prompts')
-      .update({
-        content,
-        version: nextVersion,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('id', id)
-      .select('id, content, version, updated_at')
+      .select('id, content, version, updated_at, metadata')
       .single();
 
     if (error) {
@@ -78,7 +83,7 @@ export async function PATCH(request: NextRequest) {
     // Invalidate in-memory cache
     invalidatePromptCache(id);
 
-    // Save changelog entry with previous_content as backup
+    // Save changelog entry with previous_content as backup + instruction
     await supabaseAdmin.from('arena_prompt_changelog').insert({
       prompt_id: id,
       version: nextVersion,
@@ -86,6 +91,7 @@ export async function PATCH(request: NextRequest) {
         ? changelog
         : ['Atualização direta'],
       previous_content: current?.content || null,
+      instruction: instruction || null,
     });
 
     return NextResponse.json({ prompt: data });
