@@ -588,11 +588,14 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  // Only show items that have data (hide 0.0 rows during live streaming)
+  // Sort items: items with data first (by avgScore desc), then zero-count items
   const sorted = items && items.length > 0
     ? [...items]
-        .filter(i => i.count > 0)
-        .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
+        .sort((a, b) => {
+          if (a.count > 0 && b.count === 0) return -1;
+          if (a.count === 0 && b.count > 0) return 1;
+          return (b.avgScore ?? 0) - (a.avgScore ?? 0);
+        })
         .slice(0, maxItems)
     : [];
 
