@@ -206,8 +206,8 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     raw_audio = response.content
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
-    # Adicionar 1.5s de silêncio no final pra evitar corte abrupto no lip-sync
-    padded_audio = _add_tail_silence(raw_audio)
+    # Adicionar 300ms de silêncio no final pra evitar corte abrupto no lip-sync
+    padded_audio = _add_tail_silence(raw_audio, seconds=0.3)
     return padded_audio, processed_text
 
 
