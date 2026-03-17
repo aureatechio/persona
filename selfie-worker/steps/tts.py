@@ -134,7 +134,27 @@ def _fix_pronunciation(text: str) -> str:
         text,
     )
 
-    # REGRA 4: HÍFENS SILÁBICOS do GPT — juntar de volta
+    # REGRA 4: SIGLAS — converter pra forma fonética contínua
+    # O TTS lê letras separadas ("P"..."L") em vez de falar fluido.
+    siglas = {
+        "PL": "pê-éle",
+        "PT": "pê-tê",
+        "MDB": "ême-dê-bê",
+        "PP": "pê-pê",
+        "PSD": "pê-ésse-dê",
+        "PSDB": "pê-ésse-dê-bê",
+        "PDT": "pê-dê-tê",
+        "PSB": "pê-ésse-bê",
+        "PSOL": "pê-sól",
+        "PCdoB": "pê-cê-do-bê",
+        "STF": "ésse-tê-éfe",
+        "SUS": "sús",
+        "CPI": "cê-pê-í",
+    }
+    for sigla, fonetico in siglas.items():
+        text = re.sub(rf'\b{sigla}\b', fonetico, text)
+
+    # REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
     text = re.sub(
         r'\b[A-ZÀ-Ú][a-zà-ú]{1,4}(?:-[A-Za-zà-ú]{1,4}){2,}\b',
         lambda m: m.group(0).replace("-", ""),

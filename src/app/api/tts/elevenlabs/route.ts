@@ -54,7 +54,31 @@ function fixPronunciation(text: string): string {
   );
 
   // ══════════════════════════════════════════════════════════════
-  // REGRA 4: HÍFENS SILÁBICOS do GPT — juntar de volta
+  // REGRA 4: SIGLAS — converter pra forma fonética contínua
+  // O TTS lê letras separadas ("P"..."L") em vez de falar fluido.
+  // Ex: "PL" → "pê-éle", "PT" → "pê-tê", "MDB" → "ême-dê-bê"
+  // ══════════════════════════════════════════════════════════════
+  const siglas: Record<string, string> = {
+    'PL': 'pê-éle',
+    'PT': 'pê-tê',
+    'MDB': 'ême-dê-bê',
+    'PP': 'pê-pê',
+    'PSD': 'pê-ésse-dê',
+    'PSDB': 'pê-ésse-dê-bê',
+    'PDT': 'pê-dê-tê',
+    'PSB': 'pê-ésse-bê',
+    'PSOL': 'pê-sól',
+    'PCdoB': 'pê-cê-do-bê',
+    'STF': 'ésse-tê-éfe',
+    'SUS': 'sús',
+    'CPI': 'cê-pê-í',
+  };
+  for (const [sigla, fonetico] of Object.entries(siglas)) {
+    text = text.replace(new RegExp(`\\b${sigla}\\b`, 'g'), fonetico);
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  // REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
   // GPT às vezes separa sílabas: "Cu-ba-tão" → "Cubatão"
   // ══════════════════════════════════════════════════════════════
   text = text.replace(
