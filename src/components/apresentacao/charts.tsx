@@ -105,14 +105,17 @@ export function useLiveJitter(baseValue: number, isLive: boolean, progress: numb
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Per-instance random parameters (stable across renders)
+  // Wide frequency spread + 3 waves = each instance looks truly independent
   const seedRef = useRef({
-    phase: Math.random() * Math.PI * 2,       // unique start phase
-    freq1: 0.0008 + Math.random() * 0.0012,   // primary wave: 0.0008-0.002 (slow)
-    freq2: 0.002 + Math.random() * 0.003,     // secondary wave: 0.002-0.005 (faster)
-    amp1: 0.4 + Math.random() * 0.4,          // primary amplitude: 0.4-0.8
-    amp2: 0.15 + Math.random() * 0.2,         // secondary amplitude: 0.15-0.35
-    interval: 800 + Math.random() * 1200,     // update interval: 800-2000ms
-    drift: (Math.random() - 0.5) * 0.3,       // persistent drift ±0.15
+    phase: Math.random() * Math.PI * 2,        // unique start phase
+    freq1: 0.0004 + Math.random() * 0.0018,    // primary wave: 0.0004-0.0022 (wide spread)
+    freq2: 0.0015 + Math.random() * 0.005,     // secondary wave: 0.0015-0.0065 (faster, wider)
+    freq3: 0.003 + Math.random() * 0.008,      // tertiary wave: 0.003-0.011 (fast micro-movement)
+    amp1: 0.3 + Math.random() * 0.5,           // primary amplitude: 0.3-0.8
+    amp2: 0.1 + Math.random() * 0.25,          // secondary amplitude: 0.1-0.35
+    amp3: 0.05 + Math.random() * 0.15,         // tertiary amplitude: 0.05-0.2 (subtle)
+    interval: 600 + Math.random() * 1800,      // update interval: 600-2400ms (wider)
+    drift: (Math.random() - 0.5) * 0.3,        // persistent drift ±0.15
   });
 
   useEffect(() => {
@@ -128,10 +131,11 @@ export function useLiveJitter(baseValue: number, isLive: boolean, progress: numb
 
     const tick = () => {
       const t = Date.now();
-      // Two overlapping sin waves with unique frequencies = organic motion
+      // Three overlapping sin waves with unique frequencies = organic, desynchronized motion
       const wave1 = Math.sin(t * s.freq1 + s.phase) * s.amp1;
       const wave2 = Math.sin(t * s.freq2 + s.phase * 1.7) * s.amp2;
-      const noise = (wave1 + wave2 + s.drift) * progressFactor;
+      const wave3 = Math.sin(t * s.freq3 + s.phase * 3.1) * s.amp3;
+      const noise = (wave1 + wave2 + wave3 + s.drift) * progressFactor;
       setJittered(Math.max(0, Math.min(10, baseValue + noise)));
 
       // Next tick with jittered interval (±30% of base interval)
@@ -352,12 +356,47 @@ const DEFAULT_QUADRANTS: SegmentItem[] = [
   { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 0 },
 ];
 
+/** Hook for jittering a percentage value (0-100 range) during live */
+function useLiveJitterPct(baseValue: number, isLive: boolean, progress: number): number {
+  const [jittered, setJittered] = useState(baseValue);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seedRef = useRef({
+    phase: Math.random() * Math.PI * 2,
+    freq1: 0.0005 + Math.random() * 0.001,
+    freq2: 0.0015 + Math.random() * 0.002,
+    interval: 1200 + Math.random() * 1600,
+  });
+
+  useEffect(() => {
+    if (!isLive || baseValue === 0 || progress >= 100) {
+      setJittered(baseValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      return;
+    }
+    const s = seedRef.current;
+    const progressFactor = Math.max(0.15, 1 - progress / 100);
+    const tick = () => {
+      const t = Date.now();
+      const wave = Math.sin(t * s.freq1 + s.phase) * 1.5 + Math.sin(t * s.freq2 + s.phase * 2.3) * 0.8;
+      const noise = wave * progressFactor;
+      setJittered(Math.max(0, Math.min(100, Math.round(baseValue + noise))));
+      timerRef.current = setTimeout(tick, s.interval * (0.7 + Math.random() * 0.6));
+    };
+    timerRef.current = setTimeout(tick, Math.random() * 2000);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [baseValue, isLive, progress]);
+
+  return jittered;
+}
+
 /** Sub-component for individual quadrant cell with jitter */
 function QuadrantCell({ item, totalCount, hasQData, isLive, progress }: {
   item: SegmentItem; totalCount: number; hasQData: boolean; isLive: boolean; progress: number;
 }) {
   const qc = QUADRANT_COLOR_MAP[item.label] || QUADRANT_COLOR_FALLBACK;
   const pct = hasQData ? Math.round((item.count / totalCount) * 100) : 0;
+  const jitteredPct = useLiveJitterPct(pct, isLive && hasQData, progress);
+  const displayPct = isLive && hasQData ? jitteredPct : pct;
   const baseScore = item.avgScore ?? 0;
   const jittered = useLiveJitter(baseScore, isLive && hasQData, progress);
   const score = isLive && hasQData ? jittered : baseScore;
@@ -365,7 +404,7 @@ function QuadrantCell({ item, totalCount, hasQData, isLive, progress }: {
   return (
     <div className={cn('relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-1 p-2', qc.bg, qc.border, 'border')}>
       <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
-      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={pct} suffix="%" /></p>
+      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={displayPct} suffix="%" /></p>
       <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
         {item.label}
       </p>
@@ -549,14 +588,11 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  // Sort items: items with data first (by avgScore desc), then empty items
+  // Only show items that have data (hide 0.0 rows during live streaming)
   const sorted = items && items.length > 0
     ? [...items]
-        .sort((a, b) => {
-          if (a.count > 0 && b.count === 0) return -1;
-          if (a.count === 0 && b.count > 0) return 1;
-          return (b.avgScore ?? 0) - (a.avgScore ?? 0);
-        })
+        .filter(i => i.count > 0)
+        .sort((a, b) => (b.avgScore ?? 0) - (a.avgScore ?? 0))
         .slice(0, maxItems)
     : [];
 
