@@ -30,7 +30,7 @@ def send_whatsapp(phone: str, name: str, video_url: str):
             "number": phone,
             "type": "video",
             "file": video_url,
-            "text": f"Olá {name}! Aqui está seu vídeo personalizado do evento!",
+            "text": f"Olá, {name}! Estamos juntos nessa luta!",
         },
         timeout=60,
     )
