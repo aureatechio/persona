@@ -13,9 +13,38 @@ const raleway = Raleway({
   subsets: ["latin"],
 });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://synthetic-person.vercel.app';
+
 export const metadata: Metadata = {
-  title: "Synthetic Person",
-  description: "Gerencie e interaja com suas personas sintéticas.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: 'PL — Partido Liberal',
+    template: '%s | PL',
+  },
+  description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: 'any' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
+  openGraph: {
+    title: 'PL — Partido Liberal',
+    description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+    url: SITE_URL,
+    siteName: 'Partido Liberal',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+    type: 'website',
+    locale: 'pt_BR',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'PL — Partido Liberal',
+    description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+    images: ['/og-image.png'],
+  },
 };
 
 export default function RootLayout({
