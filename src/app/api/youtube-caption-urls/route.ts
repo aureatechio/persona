@@ -53,9 +53,24 @@ async function getPlayerViaWatchPage(videoId: string) {
     });
     if (!res.ok) return null;
     const html = await res.text();
-    const match = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/);
-    if (!match) return null;
-    const data = JSON.parse(match[1]);
+
+    const marker = 'ytInitialPlayerResponse = ';
+    const startIdx = html.indexOf(marker);
+    if (startIdx === -1) return null;
+
+    const jsonStart = startIdx + marker.length;
+    let depth = 0;
+    let jsonEnd = -1;
+    for (let i = jsonStart; i < html.length; i++) {
+      if (html[i] === '{') depth++;
+      else if (html[i] === '}') {
+        depth--;
+        if (depth === 0) { jsonEnd = i + 1; break; }
+      }
+    }
+    if (jsonEnd === -1) return null;
+
+    const data = JSON.parse(html.slice(jsonStart, jsonEnd));
     if (data?.playabilityStatus?.status !== 'OK') return null;
     return data;
   } catch {
