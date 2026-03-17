@@ -731,64 +731,140 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
     except Exception as e:
         print(f"[YouTube] Library failed for {video_id}: {e}")
 
-    # Strategy 2: Direct innertube API (ANDROID client, works even when library is blocked)
+    # Strategy 2: Direct innertube API (IOS client)
     try:
         import re as _re
 
         INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
         async with httpx.AsyncClient(timeout=10) as client:
             player_res = await client.post(
-                f"https://www.youtube.com/youtubei/v1/player?key={INNERTUBE_KEY}",
+                f"https://www.youtube.com/youtubei/v1/player?key={INNERTUBE_KEY}&prettyPrint=false",
                 json={
-                    "context": {"client": {"clientName": "ANDROID", "clientVersion": "20.10.38"}},
+                    "context": {"client": {"clientName": "IOS", "clientVersion": "20.10.4", "hl": "pt", "gl": "BR"}},
                     "videoId": video_id,
                 },
             )
             if player_res.status_code == 200:
                 player_data = player_res.json()
-                captions = (
-                    player_data.get("captions", {})
-                    .get("playerCaptionsTracklistRenderer", {})
-                    .get("captionTracks", [])
-                )
-                if captions:
-                    # Pick best track: pt > pt-BR > en > first
-                    track = next((c for c in captions if c.get("languageCode") == "pt"), None)
-                    track = track or next((c for c in captions if c.get("languageCode") == "pt-BR"), None)
-                    track = track or next((c for c in captions if c.get("languageCode") == "en"), None)
-                    track = track or captions[0]
+                play_status = player_data.get("playabilityStatus", {}).get("status")
+                if play_status == "OK":
+                    captions = (
+                        player_data.get("captions", {})
+                        .get("playerCaptionsTracklistRenderer", {})
+                        .get("captionTracks", [])
+                    )
+                    if captions:
+                        # Pick best track: pt > pt-BR > en > first
+                        track = next((c for c in captions if c.get("languageCode") == "pt"), None)
+                        track = track or next((c for c in captions if c.get("languageCode") == "pt-BR"), None)
+                        track = track or next((c for c in captions if c.get("languageCode") == "en"), None)
+                        track = track or captions[0]
 
-                    caption_url = track["baseUrl"].replace("&fmt=srv3", "")
-                    if "&exp=xpe" not in caption_url:
-                        caption_res = await client.get(caption_url)
-                        if caption_res.status_code == 200:
-                            xml_text = caption_res.text
-                            # Parse XML text segments
-                            texts = [
-                                _re.sub(r"<[^>]+>", "", seg)
-                                .replace("&amp;", "&")
-                                .replace("&lt;", "<")
-                                .replace("&gt;", ">")
-                                .replace("&quot;", '"')
-                                .replace("&#39;", "'")
-                                .strip()
-                                for seg in _re.findall(r"<text[^>]*>([\s\S]*?)</text>", xml_text)
-                            ]
-                            texts = [t for t in texts if t]
-                            if texts:
-                                full_text = " ".join(texts)
-                                if len(full_text) > MAX_TRANSCRIPT_CHARS:
-                                    full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
-                                # Fill title/author from innertube if missing
-                                if not title:
-                                    title = player_data.get("videoDetails", {}).get("title", "")
-                                if not author:
-                                    author = player_data.get("videoDetails", {}).get("author", "")
-                                print(f"[YouTube] OK via innertube — {video_id} | {len(texts)} segments | {len(full_text)} chars")
-                                return JSONResponse({"transcript": full_text, "title": title, "author": author})
+                        caption_url = track["baseUrl"].replace("&fmt=srv3", "")
+                        if "&exp=xpe" not in caption_url:
+                            caption_res = await client.get(caption_url)
+                            if caption_res.status_code == 200:
+                                xml_text = caption_res.text
+                                texts = [
+                                    _re.sub(r"<[^>]+>", "", seg)
+                                    .replace("&amp;", "&")
+                                    .replace("&lt;", "<")
+                                    .replace("&gt;", ">")
+                                    .replace("&quot;", '"')
+                                    .replace("&#39;", "'")
+                                    .strip()
+                                    for seg in _re.findall(r"<text[^>]*>([\s\S]*?)</text>", xml_text)
+                                ]
+                                texts = [t for t in texts if t]
+                                if texts:
+                                    full_text = " ".join(texts)
+                                    if len(full_text) > MAX_TRANSCRIPT_CHARS:
+                                        full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+                                    if not title:
+                                        title = player_data.get("videoDetails", {}).get("title", "")
+                                    if not author:
+                                        author = player_data.get("videoDetails", {}).get("author", "")
+                                    print(f"[YouTube] OK via innertube IOS — {video_id} | {len(texts)} segments | {len(full_text)} chars")
+                                    return JSONResponse({"transcript": full_text, "title": title, "author": author})
+                else:
+                    print(f"[YouTube] Innertube IOS status: {play_status}")
 
     except Exception as e:
-        print(f"[YouTube] Innertube also failed for {video_id}: {e}")
+        print(f"[YouTube] Innertube IOS failed for {video_id}: {e}")
+
+    # Strategy 3: Scrape watch page HTML for ytInitialPlayerResponse
+    try:
+        import re as _re
+        import json as _json
+
+        async with httpx.AsyncClient(timeout=10) as client:
+            watch_res = await client.get(
+                f"https://www.youtube.com/watch?v={video_id}&hl=pt",
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                    "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+                    "Cookie": "SOCS=CAISNQgDEitib3FfaWRlbnRpdHlfZnJvbnRlbmRfdWlzZXJ2ZXJfMjAyMzA4MjkuMDdfcDAGEA; CONSENT=PENDING+987",
+                },
+            )
+            if watch_res.status_code == 200:
+                html = watch_res.text
+                marker = "ytInitialPlayerResponse = "
+                start_idx = html.find(marker)
+                if start_idx != -1:
+                    json_start = start_idx + len(marker)
+                    depth = 0
+                    json_end = -1
+                    for i in range(json_start, min(json_start + 300000, len(html))):
+                        if html[i] == "{":
+                            depth += 1
+                        elif html[i] == "}":
+                            depth -= 1
+                            if depth == 0:
+                                json_end = i + 1
+                                break
+                    if json_end != -1:
+                        player_data = _json.loads(html[json_start:json_end])
+                        if player_data.get("playabilityStatus", {}).get("status") == "OK":
+                            captions = (
+                                player_data.get("captions", {})
+                                .get("playerCaptionsTracklistRenderer", {})
+                                .get("captionTracks", [])
+                            )
+                            if captions:
+                                track = next((c for c in captions if c.get("languageCode") == "pt"), None)
+                                track = track or next((c for c in captions if c.get("languageCode") == "pt-BR"), None)
+                                track = track or next((c for c in captions if c.get("languageCode") == "en"), None)
+                                track = track or captions[0]
+
+                                caption_url = track["baseUrl"].replace("&fmt=srv3", "")
+                                if "&exp=xpe" not in caption_url:
+                                    caption_res = await client.get(caption_url)
+                                    if caption_res.status_code == 200:
+                                        xml_text = caption_res.text
+                                        texts = [
+                                            _re.sub(r"<[^>]+>", "", seg)
+                                            .replace("&amp;", "&")
+                                            .replace("&lt;", "<")
+                                            .replace("&gt;", ">")
+                                            .replace("&quot;", '"')
+                                            .replace("&#39;", "'")
+                                            .strip()
+                                            for seg in _re.findall(r"<text[^>]*>([\s\S]*?)</text>", xml_text)
+                                        ]
+                                        texts = [t for t in texts if t]
+                                        if texts:
+                                            full_text = " ".join(texts)
+                                            if len(full_text) > MAX_TRANSCRIPT_CHARS:
+                                                full_text = full_text[:MAX_TRANSCRIPT_CHARS] + "... [transcricao truncada]"
+                                            if not title:
+                                                title = player_data.get("videoDetails", {}).get("title", "")
+                                            if not author:
+                                                author = player_data.get("videoDetails", {}).get("author", "")
+                                            print(f"[YouTube] OK via watch page scrape — {video_id} | {len(texts)} segments")
+                                            return JSONResponse({"transcript": full_text, "title": title, "author": author})
+
+    except Exception as e:
+        print(f"[YouTube] Watch page scrape failed for {video_id}: {e}")
 
     print(f"[YouTube] All strategies failed for {video_id}")
     return JSONResponse(
