@@ -127,9 +127,10 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "") -> 
     score = max(0.0, min(10.0, score))
 
     # Derive sentiment from score (ensures coherence)
-    if score >= 6.5:
+    # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
+    if score >= 6.0:
         sentiment = "positive"
-    elif score <= 3.5:
+    elif score <= 4.0:
         sentiment = "negative"
     else:
         sentiment = "neutral"

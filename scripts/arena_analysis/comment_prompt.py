@@ -64,7 +64,10 @@ REGRAS (TODAS obrigatórias):
 
 13. HUMOR: ~40-50% devem ter humor. Brasileiro mistura opinião com piada, xinga rindo. Ironia, deboche, autodepreciação nacional.
 
-14. SCORE DE IMPACTO (0-10): 0-1=rejeição total, 3-5=indiferença, 5-7=aceitou, 7-9=gostou, 9-10=viral. Coerência: positive≥6.0, negative≤4.0, neutral=3.5-6.5.
+14. SCORE DE IMPACTO (0-10) — USE A ESCALA COMPLETA, não se concentre no meio:
+   0-1=rejeição visceral, 2-3=discorda forte, 3.5-4=discorda leve, 4.5-5.5=indiferente/dividido, 6-6.5=concorda leve, 7-8=concorda forte, 9-10=entusiasmo viral.
+   Coerência: positive≥6.5, negative≤3.5, neutral=4.0-6.0.
+   ⚠️ DISTRIBUIÇÃO: Brasileiros são OPINATIVOS. Maioria tem opinião forte. Scores de 4-6 devem ser MINORIA (~15-20%), não maioria. A maioria deve estar em 0-3 ou 7-10.
    ⚠️ POLÍTICO: Quando a pergunta envolve figuras políticas, o score deve ser COERENTE com o perfil eleitoral da persona. Um eleitor declarado de X que supostamente concorda com ataques a X é uma INCOERÊNCIA — revise. Voto22 e AprovLula/AvalBolso são DETERMINANTES.
 
 PROIBIDO: vocabulário acadêmico | todos soando igual | amenizar perfil radical | escrita correta p/ Fundamental | "Eu acho que..." | tom formal | "sem opinião formada"

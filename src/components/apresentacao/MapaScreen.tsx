@@ -26,36 +26,31 @@ const STATE_NAMES: Record<string, string> = {
   TO: 'Tocantins',
 };
 
-/* ─── Color: uses per-state % relative to global average for more contrast ── */
+/* ─── Color: uses avgScore with deviation from global average for contrast ── */
 
-function sentimentToColor(
-  positive: number, negative: number, neutral: number,
-  globalPosRatio: number, globalNegRatio: number,
-): string {
-  const total = positive + negative + neutral;
-  if (total === 0) return '#27272a';
+function scoreToMapColor(avgScore: number, globalAvgScore: number): string {
+  // Deviation from global average, amplified for visual contrast
+  // Positive deviation = this state scored HIGHER than average (greener)
+  // Negative deviation = this state scored LOWER than average (redder)
+  const deviation = avgScore - globalAvgScore;
 
-  const posRatio = positive / total;
-  const negRatio = negative / total;
+  // Amplify small differences (2.5x) so even 0.5 point differences are visible
+  const amplified = Math.max(-1, Math.min(1, deviation * 0.5));
 
-  // Compare to global average — amplify differences
-  // deviation: positive if this state is MORE positive than average, negative if more negative
-  const deviation = (posRatio - globalPosRatio) - (negRatio - globalNegRatio);
-  // Map deviation to [-1, 1] with amplification (3x)
-  const amplified = Math.max(-1, Math.min(1, deviation * 3));
+  // Also factor in the absolute score position (0-10 → -1 to +1)
+  const absolute = (avgScore - 5) / 5;
 
-  // Also factor in absolute sentiment
-  const absoluteRatio = (positive - negative) / total;
-  // Blend: 60% relative (deviation), 40% absolute
-  const blended = amplified * 0.6 + absoluteRatio * 0.4;
-  const clamped = Math.max(-1, Math.min(1, blended));
+  // Blend: 50% relative deviation + 50% absolute position
+  const blended = Math.max(-1, Math.min(1, amplified * 0.5 + absolute * 0.5));
 
-  // Emerald-500: #10b981, Amber-500: #f59e0b, Rose-500: #f43f5e
-  if (clamped >= 0) {
-    const t = clamped;
-    return `rgb(${Math.round(245 - t * 235)}, ${Math.round(158 + t * 27)}, ${Math.round(11 + t * 118)})`;
+  // Color gradient: Rose (#f43f5e) → Amber (#f59e0b) → Emerald (#10b981)
+  if (blended >= 0) {
+    const t = blended;
+    // Amber → Emerald
+    return `rgb(${Math.round(245 - t * 229)}, ${Math.round(158 + t * 27)}, ${Math.round(11 + t * 118)})`;
   } else {
-    const t = -clamped;
+    const t = -blended;
+    // Amber → Rose
     return `rgb(${Math.round(245 - t * 1)}, ${Math.round(158 - t * 95)}, ${Math.round(11 + t * 83)})`;
   }
 }
@@ -91,7 +86,7 @@ function featureToPath(geometry: any): string {
 
 function StateDetailPanel({ sigla, stateData, onClose }: {
   sigla: string;
-  stateData: { count: number; positive: number; negative: number; neutral: number };
+  stateData: { count: number; positive: number; negative: number; neutral: number; avgScore?: number };
   onClose: () => void;
 }) {
   const total = stateData.count;
@@ -111,12 +106,11 @@ function StateDetailPanel({ sigla, stateData, onClose }: {
         </button>
       </div>
       <div className="space-y-4">
-        {/* Score display */}
+        {/* Score display — use real avgScore from backend */}
         {(() => {
-          const rawScore = total > 0
-            ? ((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total)
-            : 5.0;
-          const score = Math.round(rawScore * 10) / 10;
+          const score = stateData.avgScore ?? (total > 0
+            ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
+            : 5.0);
           const emoji = scoreToEmoji(score);
           const hex = scoreToHex(score);
           const label = scoreToLabel(score);
@@ -188,10 +182,9 @@ export function MapaScreen() {
 
   const stateBreakdown = data?.stateBreakdown || {};
 
-  // Compute global averages for relative color comparison
+  // Compute global average score for relative color comparison
   const globalTotal = (data?.positive || 0) + (data?.negative || 0) + (data?.neutral || 0);
-  const globalPosRatio = globalTotal > 0 ? (data!.positive / globalTotal) : 0.33;
-  const globalNegRatio = globalTotal > 0 ? (data!.negative / globalTotal) : 0.33;
+  const globalAvgScore = data?.avgScore ?? 5.0;
 
   const handleStateClick = useCallback((sigla: string) => {
     if (selectedState === sigla) {
@@ -264,8 +257,8 @@ export function MapaScreen() {
             <g className="transition-transform duration-700 ease-out" style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }}>
               {geoData.map((feature) => {
                 const sigla = feature.properties.sigla;
-                const sd = stateBreakdown[sigla];
-                const color = sd ? sentimentToColor(sd.positive, sd.negative, sd.neutral, globalPosRatio, globalNegRatio) : '#27272a';
+                const sd = stateBreakdown[sigla] as { count: number; positive: number; negative: number; neutral: number; avgScore?: number } | undefined;
+                const color = sd?.avgScore != null ? scoreToMapColor(sd.avgScore, globalAvgScore) : '#27272a';
                 const isHovered = hoveredState === sigla;
                 const isSelected = selectedState === sigla;
 

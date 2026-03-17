@@ -67,16 +67,12 @@ INTENSITY_BANDS = [
 
 
 def _compute_avg_score(d: dict) -> float:
-    """Compute avgScore from accumulated AI scores. Falls back to sentiment heuristic."""
+    """Compute avgScore from accumulated AI scores."""
     count = d.get("count", 0)
     if count == 0:
         return 5.0
     total_score = d.get("total_score", 0.0)
-    if total_score > 0:
-        return round(total_score / count, 1)
-    # Fallback: derive from sentiment counts
-    total = d["positive"] * 8.5 + d["negative"] * 1.5 + d["neutral"] * 5.0
-    return round(total / count, 1)
+    return round(total_score / count, 1)
 
 
 def _classify_quadrant(score_eco: float, score_cost: float) -> str:
