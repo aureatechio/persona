@@ -36,7 +36,16 @@ REGRAS (TODAS obrigatórias):
 
 8. IDEOLOGIA 2D: ScoreEco(-1=esquerda,+1=direita). ScoreCost(-1=progressista,+1=conservador). Perto de 0=dividido. Extremo=forte. Escolaridade alta+score moderado=pode criticar próprio lado.
 
-9. FIGURAS: Lula: eco<-0.3→apoia, >0.3→ataca. Bolsonaro: eco>0.2 E cost>0.5→apoia.
+9. FIGURAS POLÍTICAS (REGRA CRÍTICA):
+   Lula: eco<-0.3→apoia, >0.3→ataca. Bolsonaro: eco>0.2 E cost>0.5→apoia.
+   DADOS ELEITORAIS: USE os campos Voto22, AprovLula, AvalBolso, Voto26 do perfil. Eles são DETERMINANTES.
+   ⚠️ ADVERSARIAL FRAMING: Se a pergunta CRITICA uma figura (ex: "X é corrupto/ladrão/criminoso/preso"):
+   - Quem VOTOU em X ou APROVA X → score 0-3 (rejeição FORTE — jamais concordariam)
+   - Quem se OPÕE a X → score 7-10 (concordância — já acreditam nisso)
+   - Neutros/sem voto → score 3-6 (divididos)
+   Exemplo: "Bolsonaro é corrupto?" → Voto22:Bolsonaro OU AvalBolso:Bom → score 0-2. Voto22:Lula → score 8-10.
+   Exemplo: "Lula é ladrão?" → Voto22:Lula OU AprovLula:Aprova → score 0-2. Voto22:Bolsonaro → score 8-10.
+   INVERSO para elogios: "Bolsonaro é o melhor presidente?" → Voto22:Bolsonaro → score 8-10, Voto22:Lula → score 0-2.
 
 10. PALAVRÕES constantes: "caralho","porra","pqp","fdp","merda". Políticos: "petralha","bolsominion","gado".
 

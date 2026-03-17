@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Users, MessageCircle } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult, ClusterResult } from '@/lib/arena/types';
-import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid, AnimatedScore } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, SpectrumGauge, QuadrantGrid, AnimatedScore, useLiveJitter } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 import { SegmentRanking, Waiting } from './DashboardScreen';
 
@@ -15,10 +15,14 @@ import { SegmentRanking, Waiting } from './DashboardScreen';
    Uses voto2022 segment data (avgScore already correct from computePersonaScore)
    ════════════════════════════════════════════════════════════════════ */
 
-function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel: string }) {
+function VoterGaugeCompact({ item, partyLabel, isLive = false, progress = 0 }: {
+  item: SegmentItem; partyLabel: string; isLive?: boolean; progress?: number;
+}) {
   const total = item.count || 0;
   const isEmpty = total === 0;
-  const score = isEmpty ? 0 : Math.round((item.avgScore ?? 0) * 10) / 10;
+  const baseScore = isEmpty ? 0 : Math.round((item.avgScore ?? 0) * 10) / 10;
+  const jitteredScore = useLiveJitter(baseScore, isLive && !isEmpty, progress);
+  const score = isLive && !isEmpty ? jitteredScore : baseScore;
   const hex = scoreToHex(score);
 
   const concordance = isEmpty
@@ -43,7 +47,7 @@ function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel
         {isEmpty ? (
           <span className="text-2xl font-bold text-zinc-600">–</span>
         ) : (
-          <AnimatedScore value={score} className="text-2xl" duration={10000} />
+          <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
         )}
         {concordance && (
           <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
@@ -60,7 +64,7 @@ function VoterGaugeCompact({ item, partyLabel }: { item: SegmentItem; partyLabel
                 left: `calc(${(score / 10) * 100}% - 3px)`,
                 backgroundColor: hex,
                 boxShadow: `0 0 6px ${hex}80`,
-                transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
             />
           )}
@@ -243,16 +247,16 @@ export function UnifiedScreen() {
         {data.question && <Users size={14} className="text-zinc-500" />}
         {isLive && data.question ? (
           (data.phase === 'collecting' || data.processedCount === 0) ? (
-            <div className="flex items-center gap-3 flex-1 max-w-md shrink-0">
+            <div key="collecting-bar" className="flex items-center gap-3 flex-1 max-w-md shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
                 <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
               </div>
               <span className="text-xs font-medium text-zinc-400 shrink-0">Preparando analise...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
+            <div key="progress-bar" className="flex items-center gap-3 flex-1 max-w-lg shrink-0">
               <div className="flex-1 h-3 rounded-full bg-white/[0.06] overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${progress}%`, transition: 'all 12s ease-out' }} />
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${progress}%`, transition: progress <= 2 ? 'none' : 'width 2s ease-out' }} />
               </div>
               <span className="text-xs font-bold text-zinc-300 tabular-nums shrink-0">{data.processedCount}/{data.totalCount}</span>
               <span className="text-sm font-black text-emerald-400 tabular-nums shrink-0">{progress}%</span>
@@ -272,12 +276,12 @@ export function UnifiedScreen() {
         progress={progress}
         rightSlot={
           <div className="flex items-stretch gap-2 flex-1">
-            {lulaVoters ? <VoterGaugeCompact item={lulaVoters} partyLabel="PT" /> : (
+            {lulaVoters ? <VoterGaugeCompact item={lulaVoters} partyLabel="PT" isLive={isLive} progress={progress} /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
                 <p className="text-[10px] text-zinc-700">Lula</p>
               </div>
             )}
-            {bolsonaroVoters ? <VoterGaugeCompact item={bolsonaroVoters} partyLabel="PL" /> : (
+            {bolsonaroVoters ? <VoterGaugeCompact item={bolsonaroVoters} partyLabel="PL" isLive={isLive} progress={progress} /> : (
               <div className="flex-1 bg-white/[0.02] border border-white/[0.06] rounded-xl flex items-center justify-center">
                 <p className="text-[10px] text-zinc-700">Bolsonaro</p>
               </div>
@@ -338,7 +342,7 @@ export function UnifiedScreen() {
       {isLive && data.question && data.phase !== 'collecting' && data.processedCount > 0 && (
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="h-[3px] bg-zinc-900">
-            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: `${progress}%`, transition: 'all 4s ease-out' }} />
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500" style={{ width: `${progress}%`, transition: progress <= 2 ? 'none' : 'width 2s ease-out' }} />
           </div>
         </div>
       )}

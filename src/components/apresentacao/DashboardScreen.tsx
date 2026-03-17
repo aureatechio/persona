@@ -36,12 +36,11 @@ export const SegmentRanking = memo(function SegmentRanking({
   title: string;
   accentColor: string;
 }) {
-  const sorted = items && items.length > 0 ? [...items].sort((a, b) => {
-    if (a.count > 0 && b.count === 0) return -1;
-    if (a.count === 0 && b.count > 0) return 1;
-    return (b.avgScore ?? 5) - (a.avgScore ?? 5);
-  }) : [];
-  const hasData = sorted.some(s => s.count > 0);
+  // Filter out items with count=0 (prevents "—" tracinho), then sort by avgScore
+  const sorted = items && items.length > 0
+    ? [...items].filter(i => i.count > 0).sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5))
+    : [];
+  const hasData = sorted.length > 0;
 
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -318,8 +317,8 @@ export function DashboardScreen() {
   );
 
   const scoreBar = useMemo(() => (
-    <ScoreBar avgScore={data.avgScore ?? 5.0} totalCount={total} />
-  ), [data.avgScore, total]);
+    <ScoreBar avgScore={data.avgScore ?? 5.0} totalCount={total} isLive={isLive} progress={progress} />
+  ), [data.avgScore, total, isLive, progress]);
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">

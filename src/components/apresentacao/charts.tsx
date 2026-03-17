@@ -106,41 +106,57 @@ export function AnimatedScore({ value, duration = 12000, className, showEmoji = 
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   Live Jitter — adds micro-oscillations to scores during streaming
-   to create a "data flowing in" visual effect. The oscillation
-   amplitude decreases as more data arrives (converging to final value).
+   Live Jitter v2 — Organic, independent oscillations per item.
+   Each instance gets unique phase, frequency, and amplitude so bars
+   move independently with natural, non-synchronized patterns.
+   Uses sin() waves with random frequencies for smooth organic motion.
    ════════════════════════════════════════════════════════════════════ */
 
-function useLiveJitter(baseValue: number, isLive: boolean, progress: number): number {
+export function useLiveJitter(baseValue: number, isLive: boolean, progress: number): number {
   const [jittered, setJittered] = useState(baseValue);
-  const frameRef = useRef<number | null>(null);
-  const lastUpdate = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Per-instance random parameters (stable across renders)
+  const seedRef = useRef({
+    phase: Math.random() * Math.PI * 2,       // unique start phase
+    freq1: 0.0008 + Math.random() * 0.0012,   // primary wave: 0.0008-0.002 (slow)
+    freq2: 0.002 + Math.random() * 0.003,     // secondary wave: 0.002-0.005 (faster)
+    amp1: 0.2 + Math.random() * 0.3,          // primary amplitude: 0.2-0.5
+    amp2: 0.08 + Math.random() * 0.15,        // secondary amplitude: 0.08-0.23
+    interval: 1200 + Math.random() * 1800,    // update interval: 1200-3000ms
+    drift: (Math.random() - 0.5) * 0.1,       // slight persistent drift
+  });
 
   useEffect(() => {
     if (!isLive || baseValue === 0 || progress >= 100) {
       setJittered(baseValue);
+      if (timerRef.current) clearTimeout(timerRef.current);
       return;
     }
 
-    // Amplitude decreases as progress increases: starts at ±0.4, ends at ±0.05
-    const amplitude = 0.4 * (1 - progress / 100) + 0.05;
-    const interval = 800 + Math.random() * 400; // 800-1200ms between jitters
+    const s = seedRef.current;
+    // Amplitude decreases as progress increases (converging to final value)
+    const progressFactor = Math.max(0.15, 1 - progress / 100);
 
-    const jitter = () => {
-      const now = Date.now();
-      if (now - lastUpdate.current < interval) {
-        frameRef.current = requestAnimationFrame(jitter);
-        return;
-      }
-      lastUpdate.current = now;
-      const noise = (Math.random() - 0.5) * 2 * amplitude;
+    const tick = () => {
+      const t = Date.now();
+      // Two overlapping sin waves with unique frequencies = organic motion
+      const wave1 = Math.sin(t * s.freq1 + s.phase) * s.amp1;
+      const wave2 = Math.sin(t * s.freq2 + s.phase * 1.7) * s.amp2;
+      const noise = (wave1 + wave2 + s.drift) * progressFactor;
       setJittered(Math.max(0, Math.min(10, baseValue + noise)));
-      frameRef.current = requestAnimationFrame(jitter);
+
+      // Next tick with jittered interval (±30% of base interval)
+      const nextInterval = s.interval * (0.7 + Math.random() * 0.6);
+      timerRef.current = setTimeout(tick, nextInterval);
     };
 
-    frameRef.current = requestAnimationFrame(jitter);
+    // Start with unique delay so instances don't sync on mount
+    const startDelay = Math.random() * 1500;
+    timerRef.current = setTimeout(tick, startDelay);
+
     return () => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
   }, [baseValue, isLive, progress]);
 
@@ -425,7 +441,9 @@ export const ScoreHero = memo(function ScoreHero({
   progress?: number;
 }) {
   const score = avgScore ?? 0;
-  const hex = scoreToHex(score);
+  const jitteredScore = useLiveJitter(score, isLive && processedCount > 0, progress);
+  const displayScore = isLive && processedCount > 0 ? jitteredScore : score;
+  const hex = scoreToHex(displayScore);
 
   return (
     <div className="shrink-0 flex items-stretch gap-3 px-5 py-4 border-b border-white/[0.04]">
@@ -442,7 +460,7 @@ export const ScoreHero = memo(function ScoreHero({
         />
         <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 relative">Nota</p>
         <div className="relative">
-          <AnimatedScore value={processedCount > 0 ? score : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={isLive ? 4000 : 14000} />
+          <AnimatedScore value={processedCount > 0 ? displayScore : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={isLive ? 2000 : 14000} />
         </div>
         <p className="text-xs text-zinc-600 tabular-nums relative">
           {processedCount > 0 ? processedCount.toLocaleString('pt-BR') : '0'} personas
@@ -534,15 +552,14 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  // Sort: items with data first, then by avgScore descending
+  // Filter out items with count=0 (prevents "—" tracinho), then sort by avgScore
   const sorted = items && items.length > 0
-    ? [...items].sort((a, b) => {
-        if (a.count > 0 && b.count === 0) return -1;
-        if (a.count === 0 && b.count > 0) return 1;
-        return (b.avgScore ?? 5) - (a.avgScore ?? 5);
-      }).slice(0, maxItems)
+    ? [...items]
+        .filter(i => i.count > 0)
+        .sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5))
+        .slice(0, maxItems)
     : [];
-  const hasData = sorted.some(s => s.count > 0);
+  const hasData = sorted.length > 0;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
@@ -584,12 +601,14 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
    SCORE BAR — Gradient bar showing global score position (rightSlot)
    ════════════════════════════════════════════════════════════════════ */
 
-export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount }: {
-  avgScore: number; totalCount: number;
+export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount, isLive = false, progress = 0 }: {
+  avgScore: number; totalCount: number; isLive?: boolean; progress?: number;
 }) {
   const score = avgScore ?? 5.0;
-  const hex = scoreToHex(score);
-  const barPosition = (score / 10) * 100;
+  const jitteredScore = useLiveJitter(score, isLive && totalCount > 0, progress);
+  const displayScore = isLive && totalCount > 0 ? jitteredScore : score;
+  const hex = scoreToHex(displayScore);
+  const barPosition = (displayScore / 10) * 100;
 
   const scaleItems = [
     { score: 1, emoji: '💣' },
@@ -614,7 +633,7 @@ export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount }: {
               left: `calc(${barPosition}% - 2px)`,
               backgroundColor: hex,
               boxShadow: `0 0 12px ${hex}aa`,
-              transition: 'all 10s cubic-bezier(0.16, 1, 0.3, 1)',
+              transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 10s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
         )}
