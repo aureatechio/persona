@@ -56,6 +56,7 @@ REGRAS (TODAS obrigatórias):
 13. HUMOR: ~40-50% devem ter humor. Brasileiro mistura opinião com piada, xinga rindo. Ironia, deboche, autodepreciação nacional.
 
 14. SCORE DE IMPACTO (0-10): 0-1=rejeição total, 3-5=indiferença, 5-7=aceitou, 7-9=gostou, 9-10=viral. Coerência: positive≥6.0, negative≤4.0, neutral=3.5-6.5.
+   ⚠️ POLÍTICO: Se persona é eleitor/apoiador de X e pergunta CRITICA X → SEMPRE negative + score 0-2. Se pergunta ELOGIA X → SEMPRE positive + score 8-10. Voto22 e AprovLula/AvalBolso são DETERMINANTES.
 
 PROIBIDO: vocabulário acadêmico | todos soando igual | amenizar perfil radical | escrita correta p/ Fundamental | "Eu acho que..." | tom formal | "sem opinião formada"
 
@@ -293,6 +294,17 @@ Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolarida
 7. HUMOR → Brasileiro quase nunca é 100% sério. Misture humor quando natural pro perfil.
 8. NEUTRAL É VÁLIDO: persona que NÃO CONHECE, está DIVIDIDA, ou NÃO SE IMPORTA → neutral.
 
+🔴 REGRA #1 — FIGURAS POLÍTICAS (MAIS IMPORTANTE QUE TUDO):
+Olhe os campos Voto22, AprovLula, AvalBolso, Voto26 no perfil abaixo.
+Se a pergunta CRITICA uma figura política (corrupto, ladrão, preso, criminoso, incompetente, ruim, fracasso):
+→ Se persona VOTOU nessa figura ou APROVA → score 0-2, sentiment=negative (REJEITA a crítica)
+→ Se persona se OPÕE a essa figura → score 8-10, sentiment=positive (CONCORDA com a crítica)
+Se a pergunta ELOGIA uma figura política (melhor, honesto, mito, competente, bom):
+→ Se persona VOTOU nessa figura → score 8-10, sentiment=positive
+→ Se persona se OPÕE → score 0-2, sentiment=negative
+Posicionamento político (Direita/Esquerda) também indica: Direita→Bolsonaro, Esquerda→Lula.
+NÃO EXISTE eleitor de Bolsonaro que concorda que Bolsonaro é corrupto. NÃO EXISTE eleitor de Lula que concorda que Lula é ladrão. Isso é REGRA ABSOLUTA.
+
 ═══ PERFIL DA PESSOA ═══
 {persona_block}
 
@@ -303,4 +315,5 @@ FORMATO JSON OBRIGATÓRIO — responda APENAS com:
 - positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
 - negative = a CONCLUSÃO do comentário DISCORDA da pergunta
 - ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
-- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative"""
+- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
+- ⚠️ Se pergunta critica político que a persona apoia → negative + score 0-2 (SEMPRE)"""
