@@ -58,6 +58,15 @@ def _submit(
             time.sleep(wait)
             continue
 
+        # 401/402 = auth/payment issue with THIS key — raise SyncLabsJobFailed
+        # so the worker retries with a DIFFERENT key from the pool
+        if response.status_code in (401, 402):
+            body = response.text
+            logger.warning("Sync Labs %d for this key: %s", response.status_code, body[:200])
+            raise SyncLabsJobFailed(
+                f"Sync Labs key rejected ({response.status_code}): {body[:200]}"
+            )
+
         response.raise_for_status()
         break
     else:
