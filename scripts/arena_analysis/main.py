@@ -342,6 +342,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         inc_personas: list[dict] = []
         inc_results: list = []
         last_segment_count = 0
+        last_inc_agg: dict | None = None
         FIRST_SEGMENT_AT = 50   # emit segments early (after ~50 personas ≈ 3-5s)
         SEGMENT_INTERVAL = 200  # then every ~200 personas
 
@@ -368,6 +369,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     inc_agg = await asyncio.to_thread(
                         aggregate_results, inc_personas, inc_results, request.question
                     )
+                    last_inc_agg = inc_agg
                     progress_data["segments"] = inc_agg.get("segments")
                     progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
                     progress_data["politicalFigures"] = inc_agg.get("politicalFigures", [])
@@ -396,9 +398,14 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         processing_time = (time.time() - start_time) * 1000
 
         try:
-            final_results = await asyncio.to_thread(
-                aggregate_results, personas, all_results, request.question
-            )
+            # Reuse last incremental aggregation (already has all data) — skip redundant re-aggregation
+            if last_inc_agg is not None:
+                final_results = last_inc_agg
+                print(f"[Pipeline] Reusing last incremental aggregation (skipped re-aggregation of {total_personas} personas)")
+            else:
+                final_results = await asyncio.to_thread(
+                    aggregate_results, personas, all_results, request.question
+                )
             final_results["processingTime"] = processing_time
         except Exception as e:
             print(f"[Pipeline] Aggregator error: {e}")
@@ -426,13 +433,28 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 "intensityBands": [],
             }
 
+        # Extract ideologicalPoints to stream in chunks (avoids 5-10MB single SSE event)
+        ideological_points = final_results.pop("ideologicalPoints", [])
         yield sse_event("results", final_results)
+
+        # Stream ideological points in small chunks to keep connection alive
+        POINTS_CHUNK = 500
+        total_points = len(ideological_points)
+        if total_points > 0:
+            print(f"[Pipeline] Streaming {total_points} ideological points in chunks of {POINTS_CHUNK}")
+            for i in range(0, total_points, POINTS_CHUNK):
+                chunk = ideological_points[i:i + POINTS_CHUNK]
+                yield sse_event("points_chunk", chunk)
+                if cancelled.is_set():
+                    print(f"[Pipeline] Cancelled during points streaming at {i + len(chunk)}/{total_points}")
+                    break
 
         # ── 7. Done ──────────────────────────────────────────────────
         yield sse_event("done", {
             "processing_time_ms": processing_time,
             "total_personas": total_personas,
             "total_comments": len(final_results.get("comments", [])),
+            "total_points": total_points,
             "total_tokens": total_tokens,
         })
 

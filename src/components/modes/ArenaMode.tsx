@@ -555,8 +555,23 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     pythonStateBreakdown = resultsData.stateBreakdown;
                     delete resultsData.stateBreakdown;
                   }
+                  // ideologicalPoints now arrives via points_chunk events — init empty array
+                  if (!resultsData.ideologicalPoints) {
+                    resultsData.ideologicalPoints = [];
+                  }
                   simulation = resultsData as EnhancedSimulationResult;
                   hasResults = true;
+                  break;
+                }
+
+                case 'points_chunk': {
+                  // Streamed ideological points — append to simulation
+                  if (simulation && Array.isArray(payload.data)) {
+                    simulation.ideologicalPoints = [
+                      ...(simulation.ideologicalPoints || []),
+                      ...payload.data,
+                    ];
+                  }
                   break;
                 }
 
@@ -621,8 +636,32 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
+      } else if (!streamDone && !hasResults && simulation && (simulation.total > 0 || simulation.positive > 0 || simulation.negative > 0)) {
+        // Stream died before 'results' event, but we have partial data from progress events
+        console.warn('[Arena] ⚠️ Stream incomplete — using partial progress data');
+        const total = simulation.total || 0;
+        const partialAvg = computeAvgFromCounts(
+          simulation.positive || 0, simulation.negative || 0, simulation.neutral || 0
+        );
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          processedCount: total,
+          totalCount: total,
+          positive: simulation.positive || 0,
+          negative: simulation.negative || 0,
+          neutral: simulation.neutral || 0,
+          avgScore: partialAvg,
+          scoreSum: 0,
+          simulation,
+          totalPersonas: total,
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
+        });
+        onProcessing(false);
       } else if (!streamDone && !hasResults) {
-        console.warn('[Arena] ⚠️ Stream incomplete, no results — FALLING BACK TO LOCAL');
+        console.warn('[Arena] ⚠️ Stream incomplete, no results — no data available');
         useFallback = true;
       }
     } catch (err: any) {
@@ -649,7 +688,30 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         onProcessing(false);
         return;
       }
-      if (err?.name === 'AbortError' && !hasResults) {
+      if (err?.name === 'AbortError' && !hasResults && simulation && (simulation.total > 0)) {
+        // Abort but we have partial progress data — use it
+        console.warn('[Arena] AbortError with partial data — using progress results');
+        const total = simulation.total || 0;
+        const abortPartialAvg = computeAvgFromCounts(
+          simulation.positive || 0, simulation.negative || 0, simulation.neutral || 0
+        );
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          simulation,
+          positive: simulation.positive || 0,
+          negative: simulation.negative || 0,
+          neutral: simulation.neutral || 0,
+          avgScore: abortPartialAvg,
+          scoreSum: 0,
+          totalPersonas: total,
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
+        });
+        onProcessing(false);
+        return;
+      } else if (err?.name === 'AbortError' && !hasResults) {
         useFallback = true;
       } else if (hasResults) {
         const total = simulation?.total || 0;
@@ -672,14 +734,37 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         });
         onProcessing(false);
         return;
+      } else if (simulation && (simulation.total > 0)) {
+        // Non-abort error, no 'results' event, but have progress data
+        console.warn('[Arena] ❌ Error with partial data — using progress results');
+        const total = simulation.total || 0;
+        const errPartialAvg = computeAvgFromCounts(
+          simulation.positive || 0, simulation.negative || 0, simulation.neutral || 0
+        );
+        emitLive(blockId, {
+          ...baseLiveData,
+          phase: 'complete',
+          simulation,
+          positive: simulation.positive || 0,
+          negative: simulation.negative || 0,
+          neutral: simulation.neutral || 0,
+          avgScore: errPartialAvg,
+          scoreSum: 0,
+          totalPersonas: total,
+          segments: pythonSegments,
+          stateBreakdown: pythonStateBreakdown,
+          liveIdeology: pythonIdeology,
+        });
+        onProcessing(false);
+        return;
       } else {
         useFallback = true;
       }
     }
 
-    // ── No fallback — show error if Python is unavailable ────────────────
+    // ── No fallback — show error only if Python is truly unavailable (no data at all) ──
     if (useFallback) {
-      console.error('[Arena] Python backend unavailable — no local fallback');
+      console.error('[Arena] Python backend unavailable — no data received');
       emitLive(blockId, {
         ...baseLiveData,
         phase: 'complete',
