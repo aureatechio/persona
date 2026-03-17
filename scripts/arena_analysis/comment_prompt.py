@@ -366,12 +366,12 @@ async def get_arena_system_prompt() -> str:
     """Load system prompt from Supabase, falling back to hardcoded constant."""
     try:
         from arena_analysis.prompt_loader import load_prompt
-        result = await load_prompt("arena_system", fallback=ARENA_SYSTEM_PROMPT)
-        if result and result != ARENA_SYSTEM_PROMPT:
-            print(f"[PromptLoader] Using Supabase prompt 'arena_system' ({len(result)} chars)")
+        result = await load_prompt("arena_system", fallback=None)
+        if result:
+            print(f"[PromptLoader] ✓ Using SUPABASE prompt 'arena_system' ({len(result)} chars)", flush=True)
             return result
-        print("[PromptLoader] Using hardcoded fallback for 'arena_system'")
+        print("[PromptLoader] ✗ Supabase returned nothing, using HARDCODED fallback", flush=True)
         return ARENA_SYSTEM_PROMPT
     except Exception as exc:
-        print(f"[PromptLoader] Exception loading prompt: {exc} — using hardcoded fallback")
+        print(f"[PromptLoader] ✗ Exception: {exc} — using HARDCODED fallback", flush=True)
         return ARENA_SYSTEM_PROMPT

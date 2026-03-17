@@ -532,8 +532,7 @@ class PersonaLoop:
         """
         # Resolve system prompt from Supabase (cached), fallback to hardcoded
         system_prompt = await get_arena_system_prompt()
-        is_supabase = system_prompt != ARENA_SYSTEM_PROMPT
-        print(f"[PersonaLoop] System prompt: {'SUPABASE' if is_supabase else 'HARDCODED FALLBACK'} ({len(system_prompt)} chars)", flush=True)
+        print(f"[PersonaLoop] System prompt loaded ({len(system_prompt)} chars)", flush=True)
 
         total = len(personas)
         batch_size = settings.batch_size
