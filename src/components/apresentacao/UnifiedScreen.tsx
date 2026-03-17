@@ -44,11 +44,7 @@ function VoterGaugeCompact({ item, partyLabel, isLive = false, progress = 0 }: {
         <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Eleitores de {item.label} ({partyLabel})</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
-        {isEmpty ? (
-          <span className="text-2xl font-bold text-zinc-600">–</span>
-        ) : (
-          <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
-        )}
+        <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
         {concordance && (
           <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
         )}
@@ -296,9 +292,9 @@ export function UnifiedScreen() {
 
           {/* Row 1 — Demografico */}
           <div className="flex-1 grid grid-cols-5 gap-1.5 min-h-0">
-            <SegmentRanking    items={data.segments?.gender}     title="Genero"       accentColor="violet" />
+            <SegmentRanking    items={data.segments?.gender}     title="Genero"       accentColor="violet" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.race}       title="Etnia"        accentColor="cyan" isLive={isLive} progress={progress} />
-            <SegmentRanking    items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" />
+            <SegmentRanking    items={data.segments?.generation} title="Faixa Etaria" accentColor="sky" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.religion}   title="Religiao"     accentColor="amber" isLive={isLive} progress={progress} />
             <ScoreSegmentCard items={data.segments?.region}     title="Regiao"       accentColor="emerald" isLive={isLive} progress={progress} />
           </div>
@@ -314,10 +310,10 @@ export function UnifiedScreen() {
 
           {/* Row 3 — Ideologico */}
           <div className="flex-1 grid grid-cols-4 gap-1.5 min-h-0">
-            <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" />
-            <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" />
-            <QuadrantGrid  items={quadrantItems}            title="Quadrante"      accentColor="cyan" />
-            <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" />
+            <SpectrumGauge items={data.segments?.scoreEco}  title="Espectro Eco"   accentColor="sky"  leftLabel="Esquerda"     rightLabel="Direita" isLive={isLive} progress={progress} />
+            <SpectrumGauge items={data.segments?.scoreCost} title="Espectro Comp"  accentColor="pink" leftLabel="Progressista" rightLabel="Conservador" isLive={isLive} progress={progress} />
+            <QuadrantGrid  items={quadrantItems}            title="Quadrante"      accentColor="cyan" isLive={isLive} progress={progress} />
+            <SegmentRanking items={clusterItems}   title="Cluster Macro" accentColor="indigo" isLive={isLive} progress={progress} />
           </div>
         </div>
 

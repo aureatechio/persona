@@ -732,5 +732,18 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     return () => window.removeEventListener('arena-new-chat', handler);
   }, []);
 
+  // Broadcast arena-reset when the search page reloads or navigates away
+  useEffect(() => {
+    const handleUnload = () => {
+      try {
+        const ch = new BroadcastChannel('arena-monitor');
+        ch.postMessage({ type: 'arena-reset', data: null });
+        ch.close();
+      } catch {}
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, []);
+
   return null; // Logic-only component
 }

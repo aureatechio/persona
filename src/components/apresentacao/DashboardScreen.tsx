@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
 import type { CommentResult, QuadrantResult, ArchetypeResult } from '@/lib/arena/types';
-import { ScoreHero, ScoreSegmentCard, ScoreBar, AnimatedScore } from './charts';
+import { ScoreHero, ScoreSegmentCard, ScoreBar, AnimatedScore, useLiveJitter } from './charts';
 import { scoreToEmoji, scoreToHex } from '@/lib/arena/types';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -27,20 +27,87 @@ function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | u
   );
 }
 
+/** Sub-component for gender layout rows with per-item jitter */
+function GenderItemRow({ item, idx, isLive, progress }: {
+  item: SegmentItem; idx: number; isLive: boolean; progress: number;
+}) {
+  const hasData = item.count > 0;
+  const baseScore = item.avgScore ?? 0;
+  const jitteredScore = useLiveJitter(baseScore, isLive && hasData, progress);
+  const score = isLive && hasData ? jitteredScore : baseScore;
+  const hex = scoreToHex(score);
+  const barPos = (score / 10) * 100;
+
+  return (
+    <div className={cn('relative overflow-hidden flex items-center gap-3 px-4 py-1.5', idx === 0 && 'border-b border-white/[0.04]')}>
+      <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 w-10">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06]">
+          <UserRound size={16} className="text-violet-400" />
+        </div>
+        <span className="text-[10px] font-bold text-zinc-300">{item.label}</span>
+      </div>
+      <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
+        <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
+        <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
+          <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+          {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Sub-component for ranking rows with per-item jitter */
+function RankingItemRow({ item, index, accentText, isLive, progress }: {
+  item: SegmentItem; index: number; accentText: string; isLive: boolean; progress: number;
+}) {
+  const hasData = item.count > 0;
+  const baseScore = item.avgScore ?? 0;
+  const jitteredScore = useLiveJitter(baseScore, isLive && hasData, progress);
+  const score = isLive && hasData ? jitteredScore : baseScore;
+  const hex = scoreToHex(score);
+  const barPos = (score / 10) * 100;
+
+  return (
+    <div className="flex items-center gap-2 group">
+      <span className={cn('w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold shrink-0', index === 0 ? cn('bg-white/[0.08]', accentText) : 'bg-white/[0.03] text-zinc-600')}>
+        {index + 1}
+      </span>
+      <span className="text-xs text-zinc-300 w-[76px] truncate shrink-0 group-hover:text-white transition-colors duration-200">
+        {item.label}
+      </span>
+      <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
+        <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
+        {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
+      </div>
+      <div className="shrink-0 w-[56px]">
+        <AnimatedScore value={score} className="text-sm" duration={isLive ? 2000 : 10000} />
+      </div>
+    </div>
+  );
+}
+
 export const SegmentRanking = memo(function SegmentRanking({
   items,
   title,
   accentColor,
+  isLive = false,
+  progress = 0,
 }: {
   items: SegmentItem[] | undefined;
   title: string;
   accentColor: string;
+  isLive?: boolean;
+  progress?: number;
 }) {
-  // Filter out items with count=0 (prevents "—" tracinho), then sort by avgScore
+  // Sort items: items with data first (by avgScore desc), then empty items
   const sorted = items && items.length > 0
-    ? [...items].filter(i => i.count > 0).sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5))
+    ? [...items].sort((a, b) => {
+        if (a.count > 0 && b.count === 0) return -1;
+        if (a.count === 0 && b.count > 0) return 1;
+        return (b.avgScore ?? 0) - (a.avgScore ?? 0);
+      })
     : [];
-  const hasData = sorted.length > 0;
 
   const colorMap: Record<string, { glow: string; text: string; label: string }> = {
     emerald: { glow: 'bg-emerald-500/8', text: 'text-emerald-400', label: 'text-emerald-400/80' },
@@ -56,24 +123,8 @@ export const SegmentRanking = memo(function SegmentRanking({
   };
   const c = colorMap[accentColor] || colorMap.emerald;
 
-  // ── Empty state ──
-  if (sorted.length === 0) {
-    return (
-      <div className={cn('relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full')}>
-        <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
-        <div className="px-4 py-2.5 border-b border-white/[0.04] shrink-0 flex items-center gap-2.5">
-          <div className={cn('w-2 h-2 rounded-full', c.text.replace('text-', 'bg-'))} />
-          <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
-        </div>
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-xs text-zinc-700">Aguardando...</p>
-        </div>
-      </div>
-    );
-  }
-
   // ── Gender layout (≤2 items) — score cards ──
-  if (sorted.length <= 2) {
+  if (sorted.length > 0 && sorted.length <= 2) {
     return (
       <div className={cn('relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full')}>
         <div className={cn('absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl pointer-events-none', c.glow)} />
@@ -82,29 +133,9 @@ export const SegmentRanking = memo(function SegmentRanking({
           <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
         </div>
         <div className="flex-1 grid grid-rows-2 gap-0 min-h-0">
-          {sorted.map((item, idx) => {
-            const score = item.avgScore ?? 5.0;
-            const emoji = scoreToEmoji(score);
-            const hex = scoreToHex(score);
-            const barPos = (score / 10) * 100;
-            return (
-              <div key={item.label} className={cn('relative overflow-hidden flex items-center gap-3 px-4 py-1.5', idx === 0 && 'border-b border-white/[0.04]')}>
-                <div className="flex flex-col items-center justify-center gap-0.5 shrink-0 w-10">
-                  <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-white/[0.04] border border-white/[0.06]">
-                    <UserRound size={16} className="text-violet-400" />
-                  </div>
-                  <span className="text-[10px] font-bold text-zinc-300">{item.label}</span>
-                </div>
-                <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
-                  <AnimatedScore value={hasData ? score : 0} className="text-2xl" duration={10000} />
-                  <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
-                    <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
-                    {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full " style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {sorted.map((item, idx) => (
+            <GenderItemRow key={item.label} item={item} idx={idx} isLive={isLive} progress={progress} />
+          ))}
         </div>
       </div>
     );
@@ -121,35 +152,17 @@ export const SegmentRanking = memo(function SegmentRanking({
         <span className={cn('text-xs font-black uppercase tracking-[0.08em] truncate', c.label)}>{title}</span>
       </div>
       <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
-        {display.map((item, i) => {
-          const score = item.avgScore ?? 5.0;
-          const hex = scoreToHex(score);
-          const emoji = scoreToEmoji(score);
-          const barPos = (score / 10) * 100;
-          return (
-            <div key={item.label} className="flex items-center gap-2 group">
-              <span className={cn('w-5 h-5 rounded-md flex items-center justify-center text-xs font-bold shrink-0', i === 0 ? cn('bg-white/[0.08]', c.text) : 'bg-white/[0.03] text-zinc-600')}>
-                {i + 1}
-              </span>
-              <span className="text-xs text-zinc-300 w-[76px] truncate shrink-0 group-hover:text-white transition-colors duration-200">
-                {item.label}
-              </span>
-              <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
-                <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
-                {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full " style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
-              </div>
-              <div className="shrink-0 w-[56px]">
-                <AnimatedScore value={hasData ? score : 0} className="text-sm" duration={10000} />
-              </div>
-            </div>
-          );
-        })}
+        {display.map((item, i) => (
+          <RankingItemRow key={item.label} item={item} index={i} accentText={c.text} isLive={isLive} progress={progress} />
+        ))}
       </div>
     </div>
   );
 }, (prev, next) => {
   return prev.title === next.title &&
     prev.accentColor === next.accentColor &&
+    prev.isLive === next.isLive &&
+    prev.progress === next.progress &&
     shallowEqualSegments(prev.items, next.items);
 });
 

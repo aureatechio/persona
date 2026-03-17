@@ -20,19 +20,8 @@ function useAnimatedScore(target: number, duration = 12000): number {
   const frameRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevTargetRef = useRef(0);
-  const initialized = useRef(false);
-  const lastValidRef = useRef(0);
 
   useEffect(() => {
-    // First render: always animate from 0
-    if (!initialized.current) {
-      initialized.current = true;
-      if (target === 0) return;
-    }
-
-    // Track last valid (non-zero) value to prevent flicker
-    if (target > 0) lastValidRef.current = target;
-
     if (prevTargetRef.current === target) return;
     prevTargetRef.current = target;
 
@@ -69,8 +58,6 @@ function useAnimatedScore(target: number, duration = 12000): number {
     return cleanup;
   }, [target, duration]);
 
-  // Never return 0 if we've had data before (prevents "—" flicker)
-  if (display === 0 && lastValidRef.current > 0) return lastValidRef.current;
   return display;
 }
 
@@ -84,21 +71,19 @@ export function AnimatedScore({ value, duration = 12000, className, showEmoji = 
   showLabel?: boolean;
 }) {
   const animated = useAnimatedScore(value, duration);
-  const hasEverHadData = useRef(false);
-  if (animated > 0) hasEverHadData.current = true;
+  const isZero = animated === 0;
 
   const emoji = scoreToEmoji(animated);
-  const hex = scoreToHex(animated);
+  const hex = isZero ? '#52525b' : scoreToHex(animated);
   const label = scoreToLabel(animated);
-  const showValue = animated > 0 || hasEverHadData.current;
 
   return (
     <span className={cn('inline-flex items-center gap-1 transition-opacity duration-500', className)}>
-      {showEmoji && <span className="leading-none">{showValue ? emoji : ''}</span>}
-      <span className="font-black tabular-nums" style={{ color: showValue ? hex : '#52525b' }}>
-        {showValue ? animated.toFixed(1) : '—'}
+      {showEmoji && <span className="leading-none">{isZero ? '' : emoji}</span>}
+      <span className="font-black tabular-nums" style={{ color: hex }}>
+        {animated.toFixed(1)}
       </span>
-      {showLabel && showValue && (
+      {showLabel && !isZero && (
         <span className="font-bold text-xs" style={{ color: `${hex}cc` }}>{label}</span>
       )}
     </span>
@@ -121,10 +106,10 @@ export function useLiveJitter(baseValue: number, isLive: boolean, progress: numb
     phase: Math.random() * Math.PI * 2,       // unique start phase
     freq1: 0.0008 + Math.random() * 0.0012,   // primary wave: 0.0008-0.002 (slow)
     freq2: 0.002 + Math.random() * 0.003,     // secondary wave: 0.002-0.005 (faster)
-    amp1: 0.2 + Math.random() * 0.3,          // primary amplitude: 0.2-0.5
-    amp2: 0.08 + Math.random() * 0.15,        // secondary amplitude: 0.08-0.23
-    interval: 1200 + Math.random() * 1800,    // update interval: 1200-3000ms
-    drift: (Math.random() - 0.5) * 0.1,       // slight persistent drift
+    amp1: 0.4 + Math.random() * 0.4,          // primary amplitude: 0.4-0.8
+    amp2: 0.15 + Math.random() * 0.2,         // secondary amplitude: 0.15-0.35
+    interval: 800 + Math.random() * 1200,     // update interval: 800-2000ms
+    drift: (Math.random() - 0.5) * 0.3,       // persistent drift ±0.15
   });
 
   useEffect(() => {
@@ -184,18 +169,31 @@ function shallowEqualSegments(a: SegmentItem[] | undefined, b: SegmentItem[] | u
    SPECTRUM GAUGE v2 — Horizontal scale with distribution markers
    ════════════════════════════════════════════════════════════════════ */
 
+/** Sub-component for per-bucket score with jitter */
+function SpectrumBucketScore({ score, hasData, isLive, progress, className }: {
+  score: number; hasData: boolean; isLive: boolean; progress: number; className?: string;
+}) {
+  const jittered = useLiveJitter(score, isLive && hasData, progress);
+  const display = isLive && hasData ? jittered : score;
+  return <AnimatedScore value={hasData ? display : 0} className={className} duration={isLive ? 2000 : 10000} />;
+}
+
 export function SpectrumGauge({
   items,
   title,
   accentColor,
   leftLabel,
   rightLabel,
+  isLive = false,
+  progress = 0,
 }: {
   items: SegmentItem[] | undefined;
   title: string;
   accentColor: string;
   leftLabel: string;
   rightLabel: string;
+  isLive?: boolean;
+  progress?: number;
 }) {
   const safeItems = items && items.length > 0 ? items : [];
 
@@ -240,8 +238,8 @@ export function SpectrumGauge({
         </div>
         <div className="flex-1 flex flex-col justify-center px-5 py-3 gap-3">
           <div className="text-center">
-            <p className="text-3xl font-black tabular-nums leading-none text-zinc-600">0%</p>
-            <p className="text-sm font-bold text-zinc-500 mt-1">—</p>
+            <AnimatedScore value={0} className="text-3xl justify-center" duration={12000} />
+            <p className="text-sm font-bold text-zinc-600 mt-1">Sem dados</p>
           </div>
           <div className="h-[16px] rounded-full overflow-hidden" style={{ background: `linear-gradient(to right, #ef4444, #f97316, #a855f7, #38bdf8, #3b82f6)`, opacity: 0.15 }} />
           <div className="flex items-center justify-between">
@@ -267,15 +265,10 @@ export function SpectrumGauge({
 
       <div className="flex-1 flex flex-col justify-center px-5 py-3 gap-3">
         {/* Dominant value — score of the largest bucket */}
-        {(() => {
-          const dScore = dominant.avgScore ?? 5.0;
-          return (
-            <div className="text-center">
-              <AnimatedScore value={hasData ? dScore : 0} className="text-3xl justify-center" duration={12000} />
-              <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
-            </div>
-          );
-        })()}
+        <div className="text-center">
+          <SpectrumBucketScore score={dominant.avgScore ?? 0} hasData={hasData} isLive={isLive} progress={progress} className="text-3xl justify-center" />
+          <p className="text-sm font-bold text-zinc-400 mt-1">{dominant.label} <span className="text-zinc-600">({dominant.pct}%)</span></p>
+        </div>
 
         {/* Spectrum bar */}
         <div className="relative">
@@ -326,16 +319,11 @@ export function SpectrumGauge({
 
         {/* Score per bucket */}
         <div className="flex items-center gap-1">
-          {buckets.map((b) => {
-            const bScore = b.avgScore ?? 5.0;
-            const bHex = scoreToHex(bScore);
-            const bEmoji = scoreToEmoji(bScore);
-            return (
-              <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
-                <AnimatedScore value={hasData ? bScore : 0} className="text-[10px]" duration={10000} />
-              </div>
-            );
-          })}
+          {buckets.map((b) => (
+            <div key={b.label} className="flex-1 flex flex-col items-center gap-0.5 min-w-0">
+              <SpectrumBucketScore score={b.avgScore ?? 0} hasData={hasData} isLive={isLive} progress={progress} className="text-[10px]" />
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -355,20 +343,48 @@ const QUADRANT_COLOR_MAP: Record<string, { bg: string; border: string; text: str
 const QUADRANT_COLOR_FALLBACK = { bg: 'bg-zinc-500/20', border: 'border-zinc-500/30', text: 'text-zinc-400', glow: 'bg-zinc-500/10' };
 
 const DEFAULT_QUADRANTS: SegmentItem[] = [
-  { label: 'Direita + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
-  { label: 'Direita + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
-  { label: 'Esquerda + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
-  { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5.0 },
+  { label: 'Direita + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 0 },
+  { label: 'Direita + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 0 },
+  { label: 'Esquerda + Progressista', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 0 },
+  { label: 'Esquerda + Conservador', count: 0, positive: 0, negative: 0, neutral: 0, avgScore: 0 },
 ];
+
+/** Sub-component for individual quadrant cell with jitter */
+function QuadrantCell({ item, totalCount, hasQData, isLive, progress }: {
+  item: SegmentItem; totalCount: number; hasQData: boolean; isLive: boolean; progress: number;
+}) {
+  const qc = QUADRANT_COLOR_MAP[item.label] || QUADRANT_COLOR_FALLBACK;
+  const pct = hasQData ? Math.round((item.count / totalCount) * 100) : 0;
+  const baseScore = item.avgScore ?? 0;
+  const jittered = useLiveJitter(baseScore, isLive && hasQData, progress);
+  const score = isLive && hasQData ? jittered : baseScore;
+
+  return (
+    <div className={cn('relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-1 p-2', qc.bg, qc.border, 'border')}>
+      <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
+      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={pct} suffix="%" /></p>
+      <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
+        {item.label}
+      </p>
+      <div className="flex items-center gap-1.5">
+        <AnimatedScore value={hasQData ? score : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
+      </div>
+    </div>
+  );
+}
 
 export function QuadrantGrid({
   items,
   title,
   accentColor,
+  isLive = false,
+  progress = 0,
 }: {
   items: SegmentItem[] | undefined;
   title: string;
   accentColor: string;
+  isLive?: boolean;
+  progress?: number;
 }) {
   const quads = (items && items.length > 0 ? items : DEFAULT_QUADRANTS).slice(0, 4);
   const totalCount = quads.reduce((s, i) => s + i.count, 0);
@@ -391,31 +407,9 @@ export function QuadrantGrid({
       </div>
 
       <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-1.5 p-2.5 min-h-0">
-        {quads.map((q) => {
-          const qc = QUADRANT_COLOR_MAP[q.label] || QUADRANT_COLOR_FALLBACK;
-          const pct = hasQData ? Math.round((q.count / totalCount) * 100) : 0;
-          const score = q.avgScore ?? 5.0;
-
-          return (
-            <div
-              key={q.label}
-              className={cn(
-                'relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-1 p-2',
-                qc.bg, qc.border, 'border',
-              )}
-            >
-              <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
-              <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={pct} suffix="%" /></p>
-              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
-                {q.label}
-              </p>
-              {/* Score indicator */}
-              <div className="flex items-center gap-1.5">
-                <AnimatedScore value={hasQData ? score : 0} className="text-sm" duration={10000} />
-              </div>
-            </div>
-          );
-        })}
+        {quads.map((q) => (
+          <QuadrantCell key={q.label} item={q} totalCount={totalCount} hasQData={hasQData} isLive={isLive} progress={progress} />
+        ))}
       </div>
     </div>
   );
@@ -483,13 +477,13 @@ export const ScoreHero = memo(function ScoreHero({
    ════════════════════════════════════════════════════════════════════ */
 
 /** Individual segment row with live jitter support */
-function SegmentItemRow({ item, hasData, isLive, progress }: {
+function SegmentItemRow({ item, isLive, progress }: {
   item: SegmentItem;
-  hasData: boolean;
   isLive: boolean;
   progress: number;
 }) {
-  const baseScore = item.avgScore ?? 5.0;
+  const hasData = item.count > 0;
+  const baseScore = item.avgScore ?? 0;
   const jitteredScore = useLiveJitter(baseScore, isLive && hasData, progress);
   const displayScore = isLive && hasData ? jitteredScore : baseScore;
   const hex = scoreToHex(displayScore);
@@ -552,14 +546,16 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
   };
   const c = accentMap[accentColor] || accentMap.emerald;
 
-  // Filter out items with count=0 (prevents "—" tracinho), then sort by avgScore
+  // Sort items: items with data first (by avgScore desc), then empty items
   const sorted = items && items.length > 0
     ? [...items]
-        .filter(i => i.count > 0)
-        .sort((a, b) => (b.avgScore ?? 5) - (a.avgScore ?? 5))
+        .sort((a, b) => {
+          if (a.count > 0 && b.count === 0) return -1;
+          if (a.count === 0 && b.count > 0) return 1;
+          return (b.avgScore ?? 0) - (a.avgScore ?? 0);
+        })
         .slice(0, maxItems)
     : [];
-  const hasData = sorted.length > 0;
 
   return (
     <div className="relative overflow-hidden bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl flex flex-col h-full">
@@ -573,19 +569,14 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
 
       {/* Items list */}
       <div className="flex-1 px-3 py-2 flex flex-col justify-evenly overflow-hidden">
-        {sorted.length > 0 ? sorted.map((item) => (
+        {sorted.map((item) => (
           <SegmentItemRow
             key={item.label}
             item={item}
-            hasData={hasData}
             isLive={isLive}
             progress={progress}
           />
-        )) : (
-          <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-zinc-700">Aguardando...</p>
-          </div>
-        )}
+        ))}
       </div>
     </div>
   );
@@ -604,7 +595,7 @@ export const ScoreSegmentCard = memo(function ScoreSegmentCard({
 export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount, isLive = false, progress = 0 }: {
   avgScore: number; totalCount: number; isLive?: boolean; progress?: number;
 }) {
-  const score = avgScore ?? 5.0;
+  const score = avgScore ?? 0;
   const jitteredScore = useLiveJitter(score, isLive && totalCount > 0, progress);
   const displayScore = isLive && totalCount > 0 ? jitteredScore : score;
   const hex = scoreToHex(displayScore);

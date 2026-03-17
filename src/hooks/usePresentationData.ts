@@ -50,14 +50,6 @@ function makeZeroedData(question = ''): ArenaLiveData {
  * Hook that listens to BroadcastChannel for real-time ArenaLiveData
  * from the main input screen. Used by all presentation screens.
  */
-/** Check if segments object has at least one item with count > 0 */
-function segmentsHaveData(segments: Record<string, SegmentItem[]> | ArenaLiveData['segments'] | undefined): boolean {
-  if (!segments) return false;
-  return Object.values(segments).some((arr: any) =>
-    Array.isArray(arr) && arr.some((item: any) => item.count > 0)
-  );
-}
-
 /** Merge incoming segments with pre-seeded labels */
 function mergeSegments(incoming: ArenaLiveData): void {
   if (!incoming.segments || Object.keys(incoming.segments).length === 0) {
@@ -100,9 +92,6 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
   const [hasEverReceived, setHasEverReceived] = useState(false);
   const throttleRef = useRef(false);
   const pendingRef = useRef<ArenaLiveData | null>(null);
-  // Buffer: hold back visual data until segments arrive with real counts
-  const hasSegmentsRef = useRef(false);
-  const bufferedRef = useRef<ArenaLiveData | null>(null);
 
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
@@ -117,8 +106,6 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
         if (event.data?.type === 'arena-reset') {
           setData(makeZeroedData(event.data.data?.question || ''));
           pendingRef.current = null;
-          hasSegmentsRef.current = false;
-          bufferedRef.current = null;
           return;
         }
 
@@ -134,31 +121,7 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
             setHasEverReceived(true);
           }
 
-          const segsReady = segmentsHaveData(incoming.segments);
-
-          // ── Buffer logic: hold visual data until first segments arrive ──
-          if (!hasSegmentsRef.current) {
-            // Always keep the latest full payload buffered
-            bufferedRef.current = incoming;
-
-            if (segsReady) {
-              // First event with real segment data — flush everything together
-              hasSegmentsRef.current = true;
-              applyThrottled(incoming);
-            } else {
-              // Only update control fields so header/progress bar works
-              setData(prev => ({
-                ...prev,
-                phase: incoming.phase,
-                processedCount: incoming.processedCount ?? prev.processedCount,
-                totalCount: incoming.totalCount ?? prev.totalCount,
-                question: incoming.question || prev.question,
-              }));
-            }
-            return;
-          }
-
-          // ── Normal flow (segments already arrived) ──
+          // Apply data immediately (throttled at ~15fps)
           applyThrottled(incoming);
         }
       };
