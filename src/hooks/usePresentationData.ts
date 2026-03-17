@@ -92,10 +92,11 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
   const [hasEverReceived, setHasEverReceived] = useState(false);
   const throttleRef = useRef(false);
   const pendingRef = useRef<ArenaLiveData | null>(null);
+  const resetEpochRef = useRef(0);
+  const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
 
     try {
       channel = new BroadcastChannel('arena-monitor');
@@ -104,13 +105,21 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
       channel.onmessage = (event) => {
         // Reset: keep dashboard mounted with zeroed data instead of null
         if (event.data?.type === 'arena-reset') {
+          resetEpochRef.current += 1;
           setData(makeZeroedData(event.data.data?.question || ''));
           pendingRef.current = null;
+          // Cancel any pending throttle timer to prevent stale data overwriting reset
+          if (throttleTimerRef.current) {
+            clearTimeout(throttleTimerRef.current);
+            throttleTimerRef.current = null;
+          }
+          throttleRef.current = false;
           return;
         }
 
         if (event.data?.type === 'arena-live-update') {
           const incoming = event.data.data as ArenaLiveData;
+          const epochAtReceive = resetEpochRef.current;
 
           // Merge segments with pre-seeded labels
           mergeSegments(incoming);
@@ -122,17 +131,18 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
           }
 
           // Apply data immediately (throttled at ~15fps)
-          applyThrottled(incoming);
+          applyThrottled(incoming, epochAtReceive);
         }
       };
 
-      function applyThrottled(incoming: ArenaLiveData) {
+      function applyThrottled(incoming: ArenaLiveData, epoch: number) {
         if (!throttleRef.current) {
           throttleRef.current = true;
-          setData(incoming);
-          timer = setTimeout(() => {
+          if (epoch === resetEpochRef.current) setData(incoming);
+          throttleTimerRef.current = setTimeout(() => {
             throttleRef.current = false;
-            if (pendingRef.current) {
+            throttleTimerRef.current = null;
+            if (pendingRef.current && epoch === resetEpochRef.current) {
               setData(pendingRef.current);
               pendingRef.current = null;
             }
@@ -146,7 +156,7 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
     }
 
     return () => {
-      if (timer) clearTimeout(timer);
+      if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
       channel?.close();
     };
   }, []);

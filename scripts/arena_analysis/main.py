@@ -342,7 +342,8 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         inc_personas: list[dict] = []
         inc_results: list = []
         last_segment_count = 0
-        SEGMENT_INTERVAL = 500  # emit segments every ~500 personas
+        FIRST_SEGMENT_AT = 50   # emit segments early (after ~50 personas ≈ 3-5s)
+        SEGMENT_INTERVAL = 200  # then every ~200 personas
 
         async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose, cancelled=cancelled):
             all_results.extend(progress.results)
@@ -361,7 +362,8 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             }
 
             # Emit segments periodically
-            if progress.processed - last_segment_count >= SEGMENT_INTERVAL or progress.processed == progress.total:
+            threshold = FIRST_SEGMENT_AT if last_segment_count == 0 else SEGMENT_INTERVAL
+            if progress.processed - last_segment_count >= threshold or progress.processed == progress.total:
                 try:
                     inc_agg = await asyncio.to_thread(
                         aggregate_results, inc_personas, inc_results, request.question

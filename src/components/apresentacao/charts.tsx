@@ -28,6 +28,9 @@ function useAnimatedScore(target: number, duration = 12000): number {
     startValRef.current = currentRef.current;
     startTimeRef.current = Date.now();
 
+    // When resetting to 0, use a fast animation so scores disappear quickly
+    const effectiveDuration = (target === 0 && currentRef.current > 0) ? 500 : duration;
+
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -37,7 +40,7 @@ function useAnimatedScore(target: number, duration = 12000): number {
 
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min(elapsed / effectiveDuration, 1);
       const eased = 1 - Math.pow(1 - progress, 5); // quintic ease-out
       const current = startValRef.current + (target - startValRef.current) * eased;
       const rounded = Math.round(current * 10) / 10;

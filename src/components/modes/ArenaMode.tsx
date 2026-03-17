@@ -724,8 +724,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
         abortRef.current.abort();
         abortRef.current = null;
       }
-      // Clear old cancelled block IDs to prevent memory leak
-      cancelledBlocksRef.current.clear();
+      // Delay clearing cancelled IDs — pending callbacks may still check this set
+      // (fixes race condition where emitLive runs AFTER clear and overwrites reset)
+      setTimeout(() => cancelledBlocksRef.current.clear(), 2000);
       broadcastToMonitor({ type: 'arena-reset', data: null });
     };
     window.addEventListener('arena-new-chat', handler);

@@ -36,16 +36,25 @@ REGRAS (TODAS obrigatórias):
 
 8. IDEOLOGIA 2D: ScoreEco(-1=esquerda,+1=direita). ScoreCost(-1=progressista,+1=conservador). Perto de 0=dividido. Extremo=forte. Escolaridade alta+score moderado=pode criticar próprio lado.
 
-9. FIGURAS POLÍTICAS (REGRA CRÍTICA):
-   Lula: eco<-0.3→apoia, >0.3→ataca. Bolsonaro: eco>0.2 E cost>0.5→apoia.
-   DADOS ELEITORAIS: USE os campos Voto22, AprovLula, AvalBolso, Voto26 do perfil. Eles são DETERMINANTES.
-   ⚠️ ADVERSARIAL FRAMING: Se a pergunta CRITICA uma figura (ex: "X é corrupto/ladrão/criminoso/preso"):
-   - Quem VOTOU em X ou APROVA X → score 0-3 (rejeição FORTE — jamais concordariam)
-   - Quem se OPÕE a X → score 7-10 (concordância — já acreditam nisso)
+9. FIGURAS POLÍTICAS (REGRA CRÍTICA — COERÊNCIA OBRIGATÓRIA):
+   ANTES de gerar qualquer resposta sobre político, LEIA o perfil eleitoral da persona:
+   → Campos Voto22, AprovLula, AvalBolso, Voto26 revelam QUEM ela é politicamente
+   → ScoreEco e ScoreCost mostram a INTENSIDADE da posição
+   → Cluster, political_leaning confirmam o quadrante ideológico
+
+   PENSE COMO A PERSONA: Se ela votou em Lula e aprova Lula, ela NÃO vai concordar que Lula é corrupto — ela vai defender, relativizar ou atacar quem acusa. Se ela votou em Bolsonaro e desaprova Lula, ela JÁ ACREDITA que Lula é corrupto — vai concordar com veemência.
+
+   A opinião política não é "neutra" — brasileiros são PASSIONAIS. Eleitores defendem seus candidatos com unhas e dentes e atacam os oponentes sem piedade. O score deve refletir essa realidade brasileira.
+
+   ADVERSARIAL FRAMING: Se a pergunta CRITICA uma figura (ex: corrupto, ladrão, preso):
+   - Quem VOTOU nessa figura ou APROVA → REJEITA a crítica (score 0-2, sentiment=negative)
+   - Quem se OPÕE → CONCORDA com a crítica (score 8-10, sentiment=positive)
    - Neutros/sem voto → score 3-6 (divididos)
-   Exemplo: "Bolsonaro é corrupto?" → Voto22:Bolsonaro OU AvalBolso:Bom → score 0-2. Voto22:Lula → score 8-10.
-   Exemplo: "Lula é ladrão?" → Voto22:Lula OU AprovLula:Aprova → score 0-2. Voto22:Bolsonaro → score 8-10.
-   INVERSO para elogios: "Bolsonaro é o melhor presidente?" → Voto22:Bolsonaro → score 8-10, Voto22:Lula → score 0-2.
+   Se a pergunta ELOGIA uma figura (ex: melhor presidente, mito, competente):
+   - Quem VOTOU nessa figura → CONCORDA (score 8-10, sentiment=positive)
+   - Quem se OPÕE → REJEITA o elogio (score 0-2, sentiment=negative)
+
+   A INTENSIDADE do score reflete o quão forte é a posição: ScoreEco extremo (-0.8 ou +0.8) = opinião radical. ScoreEco moderado (-0.2 ou +0.2) = opinião menos intensa mas ainda tendenciosa.
 
 10. PALAVRÕES constantes: "caralho","porra","pqp","fdp","merda". Políticos: "petralha","bolsominion","gado".
 
@@ -56,7 +65,7 @@ REGRAS (TODAS obrigatórias):
 13. HUMOR: ~40-50% devem ter humor. Brasileiro mistura opinião com piada, xinga rindo. Ironia, deboche, autodepreciação nacional.
 
 14. SCORE DE IMPACTO (0-10): 0-1=rejeição total, 3-5=indiferença, 5-7=aceitou, 7-9=gostou, 9-10=viral. Coerência: positive≥6.0, negative≤4.0, neutral=3.5-6.5.
-   ⚠️ POLÍTICO: Se persona é eleitor/apoiador de X e pergunta CRITICA X → SEMPRE negative + score 0-2. Se pergunta ELOGIA X → SEMPRE positive + score 8-10. Voto22 e AprovLula/AvalBolso são DETERMINANTES.
+   ⚠️ POLÍTICO: Quando a pergunta envolve figuras políticas, o score deve ser COERENTE com o perfil eleitoral da persona. Um eleitor declarado de X que supostamente concorda com ataques a X é uma INCOERÊNCIA — revise. Voto22 e AprovLula/AvalBolso são DETERMINANTES.
 
 PROIBIDO: vocabulário acadêmico | todos soando igual | amenizar perfil radical | escrita correta p/ Fundamental | "Eu acho que..." | tom formal | "sem opinião formada"
 
@@ -142,6 +151,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         cluster_name = p.get("nome_grupo", "?")
 
         extras = build_persona_extras(p)
+        electoral_part = f'ELEITOR: {extras} | ' if extras else ''
         line = (
             f'[{i + 1}] {p.get("name", "?")} | '
             f'{p.get("gender_identity") or p.get("gender", "?")}, '
@@ -153,10 +163,10 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
             f'Profissão: {occupation or "?"} | '
             f'{p.get("civil_status", "?")} | '
             f'Político: {p.get("political_leaning", "?")} | '
+            f'{electoral_part}'
             f'Religião: {p.get("macro_religion", "?")} | '
             f'Cluster: {cluster_id}({cluster_name}) | '
             f'ScoreEco: {score_eco:.3f} | ScoreCost: {score_cost:.3f}'
-            + (f' | {extras}' if extras else '')
         )
         persona_lines.append(line)
 
@@ -175,6 +185,7 @@ Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 6. SE NÃO CONHECE O TEMA → reflita isso ("sei la", "nunca ouvi falar").
 7. HUMOR → ~40-50% devem ter humor. Brasileiro quase nunca é 100% sério.
 8. NEUTRAL É VÁLIDO (~5-15%): persona que NÃO CONHECE o assunto, está DIVIDIDA, ou NÃO SE IMPORTA → neutral. Mas NUNCA "sem opinião formada" (genérico). Neutral tem que soar natural.
+9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Pense: "o que essa pessoa REALMENTE postaria?"
 
 PERFIS:
 {personas_block}
