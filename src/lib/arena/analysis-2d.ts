@@ -124,12 +124,12 @@ export function adjustSentimentForPoliticalFigure(
   let figureStance: Sentiment = 'neutral';
 
   if (figure === 'lula') {
-    if (scoreEco < -0.3) figureStance = 'positive';
-    else if (scoreEco > 0.3) figureStance = 'negative';
+    if (scoreEco < -0.2) figureStance = 'positive';
+    else if (scoreEco > 0.2) figureStance = 'negative';
   } else {
     // Bolsonaro
-    if (scoreEco > 0.2 && scoreCost > 0.5) figureStance = 'positive';
-    else if (scoreEco < -0.3 || scoreCost < -0.3) figureStance = 'negative';
+    if (scoreEco > 0.2 && scoreCost > 0.3) figureStance = 'positive';
+    else if (scoreEco < -0.2 || scoreCost < -0.3) figureStance = 'negative';
   }
 
   // 2. Map figure stance to question sentiment based on polarity

@@ -1,6 +1,9 @@
 """
 SYSTEM_PROMPT para geracao de comentarios na Arena.
 Portado de src/lib/simulation-prompt.ts com adaptacoes para o pipeline Python.
+
+The hardcoded ARENA_SYSTEM_PROMPT below serves as FALLBACK.
+At runtime, use `get_arena_system_prompt()` to try loading from Supabase first.
 """
 from __future__ import annotations
 
@@ -28,7 +31,7 @@ REGRAS (TODAS obrigatórias):
 5. SENTIMENTO — POSIÇÃO FINAL, NÃO tom emocional:
    positive=CONCLUSÃO CONCORDA (mesmo com cinismo/raiva/ironia). negative=CONCLUSÃO DISCORDA. neutral=indeciso/dividido/não conhece.
    TESTE: "essa pessoa CONCORDA com [pergunta]?" sim→positive, não→negative, incerto→neutral.
-   Neutral válido (~5-15%): desinteresse, dividido, não conhece. NUNCA "sem opinião formada".
+   Neutral válido (~5-10%): desinteresse, dividido, não conhece. NUNCA "sem opinião formada". Na dúvida, FORCE uma opinião. Brasileiro quase nunca é "tanto faz". Neutral SÓ quando REALMENTE não conhece o tema.
 
 6. CLASSE: D/E=visceral,fome,gás. C=salário,transporte. B=impostos,articulado. A=superioridade,"vou embora daqui".
 
@@ -66,7 +69,7 @@ REGRAS (TODAS obrigatórias):
 
 14. SCORE DE IMPACTO (0-10) — USE A ESCALA COMPLETA, não se concentre no meio:
    0-1=rejeição visceral, 2-3=discorda forte, 3.5-4=discorda leve, 4.5-5.5=indiferente/dividido, 6-6.5=concorda leve, 7-8=concorda forte, 9-10=entusiasmo viral.
-   Coerência: positive≥6.5, negative≤3.5, neutral=4.0-6.0.
+   Coerência: positive≥6.0, negative≤4.0, neutral=4.0-6.0. Score 4.5-5.5 deve ser EXCEÇÃO, não regra.
    ⚠️ DISTRIBUIÇÃO: Brasileiros são OPINATIVOS. Maioria tem opinião forte. Scores de 4-6 devem ser MINORIA (~15-20%), não maioria. A maioria deve estar em 0-3 ou 7-10.
    ⚠️ POLÍTICO: Quando a pergunta envolve figuras políticas, o score deve ser COERENTE com o perfil eleitoral da persona. Um eleitor declarado de X que supostamente concorda com ataques a X é uma INCOERÊNCIA — revise. Voto22 e AprovLula/AvalBolso são DETERMINANTES.
 
@@ -203,7 +206,7 @@ Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 5. GERAÇÃO → Gen Z = abreviações. Boomer = MAIÚSCULA.
 6. SE NÃO CONHECE O TEMA → reflita isso ("sei la", "nunca ouvi falar").
 7. HUMOR → ~40-50% devem ter humor. Brasileiro quase nunca é 100% sério.
-8. NEUTRAL É VÁLIDO (~5-15%): persona que NÃO CONHECE o assunto, está DIVIDIDA, ou NÃO SE IMPORTA → neutral. Mas NUNCA "sem opinião formada" (genérico). Neutral tem que soar natural.
+8. NEUTRAL É VÁLIDO (~5-10%): persona que NÃO CONHECE o assunto, está DIVIDIDA, ou NÃO SE IMPORTA → neutral. Mas NUNCA "sem opinião formada" (genérico). Neutral tem que soar natural.
 9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Pense: "o que essa pessoa REALMENTE postaria?"
 
 PERFIS:
@@ -357,3 +360,18 @@ FORMATO JSON OBRIGATÓRIO — responda APENAS com:
 - ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
 - TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
 - ⚠️ Se pergunta critica político que a persona apoia → negative + score 0-2 (SEMPRE)"""
+
+
+async def get_arena_system_prompt() -> str:
+    """Load system prompt from Supabase, falling back to hardcoded constant."""
+    try:
+        from arena_analysis.prompt_loader import load_prompt
+        result = await load_prompt("arena_system", fallback=ARENA_SYSTEM_PROMPT)
+        if result and result != ARENA_SYSTEM_PROMPT:
+            print(f"[PromptLoader] Using Supabase prompt 'arena_system' ({len(result)} chars)")
+            return result
+        print("[PromptLoader] Using hardcoded fallback for 'arena_system'")
+        return ARENA_SYSTEM_PROMPT
+    except Exception as exc:
+        print(f"[PromptLoader] Exception loading prompt: {exc} — using hardcoded fallback")
+        return ARENA_SYSTEM_PROMPT

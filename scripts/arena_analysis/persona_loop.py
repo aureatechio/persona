@@ -21,7 +21,7 @@ import openai
 
 from arena_analysis.config import settings
 from arena_analysis.context_builder import ContextResult
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt, get_arena_system_prompt
 
 
 @dataclass
@@ -415,10 +415,12 @@ class PersonaLoop:
         client: anthropic.AsyncAnthropic,
         semaphore: asyncio.Semaphore,
         key_id: int = 0,
+        system_prompt: str = "",
     ) -> list[PersonaResult]:
         tag = f"Claude-{key_id+1}"
         max_retries = settings.max_retries
         user_prompt = build_batch_prompt(question, context, personas)
+        prompt = system_prompt or ARENA_SYSTEM_PROMPT
 
         async with semaphore:
             for attempt in range(max_retries + 1):
@@ -427,7 +429,7 @@ class PersonaLoop:
                     response = await client.messages.create(
                         model=settings.model,
                         max_tokens=settings.max_tokens_per_batch,
-                        system=ARENA_SYSTEM_PROMPT,
+                        system=prompt,
                         messages=[{"role": "user", "content": user_prompt}],
                         temperature=1.0,
                     )
@@ -469,10 +471,12 @@ class PersonaLoop:
         client: openai.AsyncOpenAI,
         semaphore: asyncio.Semaphore,
         key_id: int = 0,
+        system_prompt: str = "",
     ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
         max_retries = settings.max_retries
         user_prompt = build_batch_prompt(question, context, personas)
+        prompt = system_prompt or ARENA_SYSTEM_PROMPT
 
         async with semaphore:
             for attempt in range(max_retries + 1):
@@ -482,7 +486,7 @@ class PersonaLoop:
                         model=settings.openai_model,
                         max_tokens=settings.max_tokens_per_batch,
                         messages=[
-                            {"role": "system", "content": ARENA_SYSTEM_PROMPT},
+                            {"role": "system", "content": prompt},
                             {"role": "user", "content": user_prompt},
                         ],
                         temperature=1.0,
@@ -526,6 +530,11 @@ class PersonaLoop:
         Semaphore limita conexões simultâneas para não sobrecarregar o servidor.
         Yield BatchProgress a cada batch completado.
         """
+        # Resolve system prompt from Supabase (cached), fallback to hardcoded
+        system_prompt = await get_arena_system_prompt()
+        is_supabase = system_prompt != ARENA_SYSTEM_PROMPT
+        print(f"[PersonaLoop] System prompt: {'SUPABASE' if is_supabase else 'HARDCODED FALLBACK'} ({len(system_prompt)} chars)", flush=True)
+
         total = len(personas)
         batch_size = settings.batch_size
         num_claude_keys = len(self._claude_clients)
@@ -573,7 +582,7 @@ class PersonaLoop:
                     question, context, batch,
                     self._claude_limiters[key_id],
                     self._claude_clients[key_id],
-                    claude_sem, key_id,
+                    claude_sem, key_id, system_prompt,
                 ))
             )
             batch_info.append(("Claude Sonnet 4", batch))
@@ -585,7 +594,7 @@ class PersonaLoop:
                     question, context, batch,
                     self._openai_limiters[key_id],
                     self._openai_clients[key_id],
-                    gpt_sem, key_id,
+                    gpt_sem, key_id, system_prompt,
                 ))
             )
             batch_info.append(("GPT-4o", batch))

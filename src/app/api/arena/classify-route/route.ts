@@ -9,6 +9,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { loadPrompt } from '@/lib/arena/prompt-loader';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -130,10 +131,14 @@ export async function POST(request: Request) {
       userMessage += `\nCONTEXTO EXTRAIDO DA MIDIA: "${context.slice(0, 500)}"`;
     }
 
+    // Try Supabase prompt first, fall back to hardcoded
+    const dynamicPrompt = await loadPrompt('classify_route');
+    const systemPrompt = dynamicPrompt || SYSTEM_PROMPT;
+
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 200,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [{
         role: 'user',
         content: userMessage,

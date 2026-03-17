@@ -228,7 +228,8 @@ function classifyResponse(value: unknown): number {
   ];
   if (neutralPatterns.some(p => v.includes(p))) return 0;
 
-  return 0;
+  // Unknown text — lean toward an opinion rather than always neutral
+  return Math.random() < 0.5 ? -1 : 1;
 }
 
 // ── Response Classification (0-10 Score) ─────────────────────────────────────
@@ -239,7 +240,7 @@ function classifyResponse(value: unknown): number {
  * Text fields are mapped to score ranges based on intensity.
  */
 function classifyResponseScore(value: unknown): number {
-  if (value == null || value === '') return 5.0; // no data = indifference
+  if (value == null || value === '') return 4.0 + Math.random() * 2.0; // no data = spread 4.0-6.0
 
   // Numeric fields (1-10) — use directly
   if (typeof value === 'number') {
@@ -423,7 +424,7 @@ export function computeConviction(
   const leaning = norm(String(persona.political_leaning || ''));
   let leaningModifier = 0;
   if (leaning === 'centro') {
-    leaningModifier = -0.15;
+    leaningModifier = -0.08;
   } else if (leaning.includes('centro') && (leaning.includes('esquerda') || leaning.includes('direita'))) {
     // Centro-Esquerda / Centro-Direita — slightly less convicted than extremes
     leaningModifier = -0.05;
@@ -433,9 +434,9 @@ export function computeConviction(
   const edu = norm(String(persona.education_level || ''));
   let eduModifier = 0;
   if (edu.includes('pos') || edu.includes('mestrado') || edu.includes('doutorado')) {
-    eduModifier = -0.08;
-  } else if (edu.includes('superior completo')) {
     eduModifier = -0.04;
+  } else if (edu.includes('superior completo')) {
+    eduModifier = -0.02;
   }
 
   // Final conviction: base from ideological intensity + modifiers
@@ -560,8 +561,8 @@ function computeHolisticSentiment(
   const noise = (Math.random() - 0.5) * 0.6;
   const finalScore = compositeSignal * 0.4 + noise;
 
-  if (finalScore > 0.15) return 'positive';
-  if (finalScore < -0.15) return 'negative';
+  if (finalScore > 0.10) return 'positive';
+  if (finalScore < -0.10) return 'negative';
   return 'neutral';
 }
 
@@ -647,8 +648,8 @@ function computeHolisticScore(
 
   // Map to 0-10 with wider spread:
   // -1 → 1.0, 0 → 5.0, +1 → 9.0 (amplification = 4.0)
-  const noise = (Math.random() - 0.5) * 1.2; // ±0.6 points
-  const raw = compositeSignal * 4.0 + 5.0 + noise;
+  const noise = (Math.random() - 0.5) * 0.8; // ±0.4 points
+  const raw = compositeSignal * 4.5 + 5.0 + noise;
   return Math.max(0, Math.min(10, raw));
 }
 
@@ -1042,7 +1043,7 @@ export function computePersonaScore(
 
     // Conviction compresses toward 5.0 (indifference) for low-conviction personas
     const conviction = computeConviction(persona, normQuestion);
-    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.50, conviction);
+    const convictionAdjusted = 5.0 + (rawAvg - 5.0) * Math.max(0.70, conviction);
 
     // Add noise: ±0.75 points
     const noise = (Math.random() - 0.5) * 1.5;

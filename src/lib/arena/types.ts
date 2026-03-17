@@ -47,8 +47,8 @@ export function scoreToHex(score: number): string {
 
 /** Bridge: converts a 0-10 score back to categorical sentiment */
 export function scoreToSentiment(score: number): Sentiment {
-  if (score >= 6.5) return 'positive';
-  if (score <= 3.5) return 'negative';
+  if (score >= 6.0) return 'positive';
+  if (score <= 4.0) return 'negative';
   return 'neutral';
 }
 
