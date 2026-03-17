@@ -134,25 +134,19 @@ def _fix_pronunciation(text: str) -> str:
         text,
     )
 
-    # REGRA 4: SIGLAS — converter pra forma fonética contínua
-    # O TTS lê letras separadas ("P"..."L") em vez de falar fluido.
-    siglas = {
-        "PL": "pê-éle",
-        "PT": "pê-tê",
-        "MDB": "ême-dê-bê",
-        "PP": "pê-pê",
-        "PSD": "pê-ésse-dê",
-        "PSDB": "pê-ésse-dê-bê",
-        "PDT": "pê-dê-tê",
-        "PSB": "pê-ésse-bê",
-        "PSOL": "pê-sól",
-        "PCdoB": "pê-cê-do-bê",
-        "STF": "ésse-tê-éfe",
-        "SUS": "sús",
-        "CPI": "cê-pê-í",
-    }
-    for sigla, fonetico in siglas.items():
-        text = re.sub(rf'\b{sigla}\b', fonetico, text)
+    # REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
+    # "P.L." ou "PL" → "P L" (espaço entre letras = TTS fala fluido)
+    # Primeiro normaliza "P.L." → "PL", depois separa com espaço
+    text = re.sub(r'\bP\.?\s*L\.?', 'P L', text)
+    text = re.sub(r'\bP\.?\s*T\.?(?!\w)', 'P T', text)
+    text = re.sub(r'\bM\.?\s*D\.?\s*B\.?', 'M D B', text)
+    text = re.sub(r'\bP\.?\s*S\.?\s*D\.?\s*B\.?', 'P S D B', text)
+    text = re.sub(r'\bP\.?\s*S\.?\s*D\.?(?!\w)', 'P S D', text)
+    text = re.sub(r'\bP\.?\s*D\.?\s*T\.?', 'P D T', text)
+    text = re.sub(r'\bP\.?\s*S\.?\s*B\.?', 'P S B', text)
+    text = re.sub(r'\bP\.?\s*S\.?\s*O\.?\s*L\.?', 'P SOL', text)
+    text = re.sub(r'\bS\.?\s*T\.?\s*F\.?', 'S T F', text)
+    text = re.sub(r'\bC\.?\s*P\.?\s*I\.?(?!\w)', 'C P I', text)
 
     # REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta
     text = re.sub(
@@ -164,10 +158,10 @@ def _fix_pronunciation(text: str) -> str:
     return text
 
 
-def generate_tts(text: str, voice_id: str) -> bytes:
+def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     """
     Generate TTS audio using ElevenLabs + apply outdoor environment FX.
-    Returns processed audio bytes (MP3).
+    Returns (processed_audio_bytes, processed_text_sent_to_elevenlabs).
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
@@ -206,4 +200,4 @@ def generate_tts(text: str, voice_id: str) -> bytes:
 
     # Apply outdoor environment effect
     audio_bytes = _apply_outdoor_fx(raw_audio)
-    return audio_bytes
+    return audio_bytes, processed_text

@@ -54,28 +54,19 @@ function fixPronunciation(text: string): string {
   );
 
   // ══════════════════════════════════════════════════════════════
-  // REGRA 4: SIGLAS — converter pra forma fonética contínua
-  // O TTS lê letras separadas ("P"..."L") em vez de falar fluido.
-  // Ex: "PL" → "pê-éle", "PT" → "pê-tê", "MDB" → "ême-dê-bê"
+  // REGRA 4: SIGLAS — separar letras com espaço pra pronúncia natural
+  // "P.L." ou "PL" → "P L" (espaço entre letras = TTS fala fluido)
   // ══════════════════════════════════════════════════════════════
-  const siglas: Record<string, string> = {
-    'PL': 'pê-éle',
-    'PT': 'pê-tê',
-    'MDB': 'ême-dê-bê',
-    'PP': 'pê-pê',
-    'PSD': 'pê-ésse-dê',
-    'PSDB': 'pê-ésse-dê-bê',
-    'PDT': 'pê-dê-tê',
-    'PSB': 'pê-ésse-bê',
-    'PSOL': 'pê-sól',
-    'PCdoB': 'pê-cê-do-bê',
-    'STF': 'ésse-tê-éfe',
-    'SUS': 'sús',
-    'CPI': 'cê-pê-í',
-  };
-  for (const [sigla, fonetico] of Object.entries(siglas)) {
-    text = text.replace(new RegExp(`\\b${sigla}\\b`, 'g'), fonetico);
-  }
+  text = text.replace(/\bP\.?\s*L\.?/g, 'P L');
+  text = text.replace(/\bP\.?\s*T\.?(?!\w)/g, 'P T');
+  text = text.replace(/\bM\.?\s*D\.?\s*B\.?/g, 'M D B');
+  text = text.replace(/\bP\.?\s*S\.?\s*D\.?\s*B\.?/g, 'P S D B');
+  text = text.replace(/\bP\.?\s*S\.?\s*D\.?(?!\w)/g, 'P S D');
+  text = text.replace(/\bP\.?\s*D\.?\s*T\.?/g, 'P D T');
+  text = text.replace(/\bP\.?\s*S\.?\s*B\.?/g, 'P S B');
+  text = text.replace(/\bP\.?\s*S\.?\s*O\.?\s*L\.?/g, 'P SOL');
+  text = text.replace(/\bS\.?\s*T\.?\s*F\.?/g, 'S T F');
+  text = text.replace(/\bC\.?\s*P\.?\s*I\.?(?!\w)/g, 'C P I');
 
   // ══════════════════════════════════════════════════════════════
   // REGRA 5: HÍFENS SILÁBICOS do GPT — juntar de volta

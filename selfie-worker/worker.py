@@ -154,12 +154,12 @@ def process_selfie(selfie: dict):
         logger.info("Step 3/6: Generating TTS...")
 
         voice_id = voice_model["elevenlabs_voice_id"]
-        audio_bytes = generate_tts(generated_text, voice_id)
+        audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id)
 
         tts_path = f"tts/selfie_{sid}.mp3"
         db.upload_file(tts_path, audio_bytes, "audio/mpeg")
 
-        db.update_status(sid, "generating_lipsync", tts_audio_path=tts_path)
+        db.update_status(sid, "generating_lipsync", tts_audio_path=tts_path, tts_processed_text=tts_processed_text)
         selfie["tts_audio_path"] = tts_path
     else:
         tts_path = selfie.get("tts_audio_path", f"tts/selfie_{sid}.mp3")
