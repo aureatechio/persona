@@ -83,20 +83,28 @@ async function getPlayerViaInnertube(videoId: string) {
  */
 async function getPlayerViaWatchPage(videoId: string) {
   try {
-    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=pt`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Cookie': 'SOCS=CAISNQgDEitib3FfaWRlbnRpdHlfZnJvbnRlbmRfdWlzZXJ2ZXJfMjAyMzA4MjkuMDdfcDAGEA; CONSENT=PENDING+987',
       },
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.log(`[youtube-transcript] Watch page HTTP ${res.status}`);
+      return null;
+    }
     const html = await res.text();
 
     // Find the JSON by brace counting (regex .+? stops at first }; which truncates the 60K+ JSON)
     const marker = 'ytInitialPlayerResponse = ';
     const startIdx = html.indexOf(marker);
-    if (startIdx === -1) return null;
+    if (startIdx === -1) {
+      console.log(`[youtube-transcript] Watch page: ytInitialPlayerResponse not found (HTML ${html.length} chars)`);
+      return null;
+    }
 
     const jsonStart = startIdx + marker.length;
     let depth = 0;
@@ -116,6 +124,7 @@ async function getPlayerViaWatchPage(videoId: string) {
       console.log(`[youtube-transcript] Watch page status: ${status}`);
       return null;
     }
+    console.log(`[youtube-transcript] Watch page scrape succeeded`);
     return data;
   } catch (e: any) {
     console.log(`[youtube-transcript] Watch page scrape failed: ${e?.message}`);
@@ -124,9 +133,49 @@ async function getPlayerViaWatchPage(videoId: string) {
 }
 
 /**
+ * Last resort: try fetching timedtext directly with common languages.
+ * Doesn't need innertube at all — just guesses the caption URL format.
+ */
+async function getTranscriptViaTimedtext(videoId: string): Promise<{ transcript: string; title: string; author: string } | null> {
+  const langs = ['pt', 'pt-BR', 'en'];
+
+  for (const lang of langs) {
+    for (const kind of ['asr', '']) {
+      try {
+        const params = new URLSearchParams({ v: videoId, lang, fmt: 'srv1' });
+        if (kind) params.set('kind', kind);
+
+        const res = await fetch(`https://www.youtube.com/api/timedtext?${params}`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) continue;
+
+        const xml = await res.text();
+        if (!xml || xml.length < 50) continue;
+
+        const texts = parseTranscriptXml(xml);
+        if (texts.length === 0) continue;
+
+        let transcript = texts.join(' ');
+        if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+          transcript = transcript.slice(0, MAX_TRANSCRIPT_CHARS) + '... [transcricao truncada]';
+        }
+
+        console.log(`[youtube-transcript] Timedtext direct succeeded (lang=${lang}, kind=${kind})`);
+        return { transcript, title: '', author: '' };
+      } catch {
+        continue;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * Fetch YouTube transcript with fallback chain:
  * 1. Innertube IOS client (fast, but may be blocked on cloud IPs)
  * 2. Watch page HTML scrape (slower, but rarely blocked)
+ * 3. Direct timedtext API (no innertube, brute-force langs)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -150,6 +199,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!playerData) {
+      // Last resort: try timedtext directly (no innertube needed)
+      const directResult = await getTranscriptViaTimedtext(videoId);
+      if (directResult) {
+        return NextResponse.json(directResult);
+      }
       return NextResponse.json({ error: 'YouTube bloqueou o IP do servidor' }, { status: 429 });
     }
 
