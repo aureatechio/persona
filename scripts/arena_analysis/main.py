@@ -693,6 +693,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
         return JSONResponse({"error": "URL do YouTube invalida"}, status_code=400)
 
     video_id = m.group(1)
+    _debug_log: list[str] = []  # collect debug info for error response
 
     # Fetch metadata via oEmbed (lightweight, no key needed)
     title = ""
@@ -739,6 +740,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
             return JSONResponse({"transcript": full_text, "title": title, "author": author})
 
     except Exception as e:
+        _debug_log.append(f"S1-library: {type(e).__name__}: {str(e)[:100]}")
         print(f"[YouTube] Library failed for {video_id}: {e}")
 
     # Strategy 2: Direct innertube API (IOS client)
@@ -797,9 +799,11 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
                                     print(f"[YouTube] OK via innertube IOS — {video_id} | {len(texts)} segments | {len(full_text)} chars")
                                     return JSONResponse({"transcript": full_text, "title": title, "author": author})
                 else:
+                    _debug_log.append(f"S2-innertube-status: {play_status}")
                     print(f"[YouTube] Innertube IOS status: {play_status}")
 
     except Exception as e:
+        _debug_log.append(f"S2-innertube: {type(e).__name__}: {str(e)[:100]}")
         print(f"[YouTube] Innertube IOS failed for {video_id}: {e}")
 
     # Strategy 3: Scrape watch page HTML for ytInitialPlayerResponse
@@ -874,6 +878,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
                                             return JSONResponse({"transcript": full_text, "title": title, "author": author})
 
     except Exception as e:
+        _debug_log.append(f"S3-watchpage: {type(e).__name__}: {str(e)[:100]}")
         print(f"[YouTube] Watch page scrape failed for {video_id}: {e}")
 
     # Strategy 4: yt-dlp subtitle extraction (most robust anti-detection)
@@ -901,6 +906,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
             )
 
             if result.returncode != 0:
+                _debug_log.append(f"S4-ytdlp-subs-rc{result.returncode}: {result.stderr[:150]}")
                 print(f"[YouTube] yt-dlp failed: {result.stderr[:200]}")
             else:
                 # Find the subtitle file
@@ -947,6 +953,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
                         return JSONResponse({"transcript": full_text, "title": title, "author": author})
 
     except Exception as e:
+        _debug_log.append(f"S4-ytdlp-subs: {type(e).__name__}: {str(e)[:100]}")
         print(f"[YouTube] yt-dlp subtitles failed for {video_id}: {e}")
 
     # Strategy 5: yt-dlp audio download + Whisper transcription (guaranteed to work)
@@ -977,6 +984,7 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
             )
 
             if dl_result.returncode != 0:
+                _debug_log.append(f"S5-ytdlp-dl-rc{dl_result.returncode}: {dl_result.stderr[:150]}")
                 print(f"[YouTube] yt-dlp audio download failed: {dl_result.stderr[:200]}")
             else:
                 # Find the audio file (might be .mp3 or .m4a etc)
@@ -1029,11 +1037,12 @@ async def youtube_transcript(req: YouTubeTranscriptRequest):
                                 continue
 
     except Exception as e:
+        _debug_log.append(f"S5-ytdlp-whisper: {type(e).__name__}: {str(e)[:100]}")
         print(f"[YouTube] yt-dlp+Whisper failed for {video_id}: {e}")
 
-    print(f"[YouTube] All strategies failed for {video_id}")
+    print(f"[YouTube] All strategies failed for {video_id}: {_debug_log}")
     return JSONResponse(
-        {"error": "Legendas nao disponiveis para este video"},
+        {"error": "Legendas nao disponiveis para este video", "debug": _debug_log},
         status_code=422,
     )
 
