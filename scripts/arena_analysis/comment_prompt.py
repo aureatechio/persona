@@ -365,7 +365,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         if has_bias:
             rule_9 = f"9. POLÍTICO → Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}. Use ESSES scores como verdade. Ignore Voto22/AprovLula se contradizerem os scores apresentados. O score ideológico é MAIS IMPORTANTE que o voto declarado."
         else:
-            rule_9 = "9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Aliados seguem a mesma lógica (ex: Boulos→esquerda, Nicolas Ferreira→direita). Pense: \"o que essa pessoa REALMENTE postaria?\""
+            rule_9 = "9. POLÍTICO + NEGAÇÃO → LEIA Voto22/AprovLula/AvalBolso ANTES de responder. ⚠️ CUIDADO COM NEGAÇÕES: 'X NÃO é corrupto' = DEFESA de X (não crítica!). 'X NÃO deveria estar preso' = DEFESA de X. A negação INVERTE o sentido. Eleitor de Bolsonaro CONCORDA que 'Bolsonaro não deveria estar preso'. Eleitor de Lula CONCORDA que 'Lula não é corrupto'. Pense: \"o que essa pessoa REALMENTE postaria?\""
 
         if has_bias:
             calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (COM VIÉS {bias_direction.upper()} APLICADO):
@@ -380,15 +380,22 @@ Os scores ideológicos já foram ajustados. Siga os ScoreEco/ScoreCost apresenta
 Pergunta: "Lula é corrupto?"
 - Persona com Voto22:Bolsonaro, AprovLula:Desaprova → score 9.2, positive ("claro porra ladrão tinha q ta preso")
 - Persona com Voto22:Lula, AprovLula:Aprova → score 1.0, negative ("corrupto é quem inventou essa mentira")
-- Persona com Voto22:Nulo → score 4.8, neutral ("sei la mano todo politico rouba")
+
+Pergunta: "Lula NÃO é corrupto" (ATENÇÃO: negação = DEFESA de Lula!)
+- Persona com Voto22:Lula, AprovLula:Aprova → score 9.0, positive ("exatamente isso!! nunca roubou nada")
+- Persona com Voto22:Bolsonaro → score 1.0, negative ("kkkk conta outra, maior ladrão da história")
+
+Pergunta: "Bolsonaro NÃO deveria estar na cadeia" (ATENÇÃO: negação = DEFESA de Bolsonaro!)
+- Persona com Voto22:Bolsonaro, AvalBolso:Bom → score 9.5, positive ("ÓBVIO que não!! perseguição política!!")
+- Persona com Voto22:Lula, AvalBolso:Ruim → score 0.5, negative ("deveria sim esse genocida")
 
 Pergunta: "Bolsonaro é o melhor presidente?"
 - Persona com Voto22:Bolsonaro, AvalBolso:Bom → score 9.5, positive ("MITO! melhor presidente da historia")
 - Persona com Voto22:Lula, AvalBolso:Ruim → score 0.8, negative ("melhor em destruir o pais ne")
-- Persona Centro, dividido → score 5.0, neutral ("tem coisa boa e ruim ne")
 
-⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado.
-⚠️ ALIADOS: Boulos, Haddad, Gleisi = campo Lula. Nicolas, Tarcísio, Marçal = campo Bolsonaro. Eleitor de Lula defende aliados de Lula e vice-versa."""
+⚠️ REGRA CRÍTICA DE NEGAÇÃO: "NÃO é corrupto" = DEFESA. "NÃO deveria estar preso" = DEFESA.
+A negação INVERTE o sentido! Quem APOIA a figura CONCORDA com a defesa. Quem se OPÕE DISCORDA.
+⚠️ Eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores 4-6 são para INDECISOS."""
     else:
         # THEMATIC question — full profile guides analysis, bias influences via scores
         if has_bias:
@@ -595,17 +602,27 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
     if is_political:
         political_rule = f"""🔴 REGRA #1 — FIGURAS POLÍTICAS (MAIS IMPORTANTE QUE TUDO):
 Olhe os campos Voto22, AprovLula, AvalBolso, Voto26 no perfil abaixo.
-Se a pergunta CRITICA uma figura política (corrupto, ladrão, preso, criminoso, incompetente, ruim, fracasso):
+
+⚠️ ATENÇÃO A NEGAÇÕES: Leia a frase COMPLETA antes de classificar!
+→ "Bolsonaro deveria estar preso" = CRÍTICA a Bolsonaro
+→ "Bolsonaro NÃO deveria estar preso" = DEFESA de Bolsonaro (a negação INVERTE o sentido!)
+→ "Lula é corrupto" = CRÍTICA a Lula
+→ "Lula NÃO é corrupto" = DEFESA de Lula (a negação INVERTE o sentido!)
+→ "Lula não roubou" = DEFESA de Lula
+→ "Bolsonaro não é honesto" = CRÍTICA a Bolsonaro
+Palavras como "não", "nunca", "jamais", "nem" INVERTEM o sentido da frase.
+
+Se a pergunta CRITICA uma figura (sem negação, ou com dupla negação):
 → Se persona VOTOU nessa figura ou APROVA → score 0-2, sentiment=negative (REJEITA a crítica)
 → Se persona se OPÕE a essa figura → score 8-10, sentiment=positive (CONCORDA com a crítica)
-Se a pergunta ELOGIA uma figura política (melhor, honesto, mito, competente, bom):
-→ Se persona VOTOU nessa figura → score 8-10, sentiment=positive
-→ Se persona se OPÕE → score 0-2, sentiment=negative
+Se a pergunta DEFENDE/ELOGIA uma figura (elogio direto OU negação de crítica):
+→ Se persona VOTOU nessa figura → score 8-10, sentiment=positive (CONCORDA com a defesa)
+→ Se persona se OPÕE → score 0-2, sentiment=negative (REJEITA a defesa)
 Posicionamento político (Direita/Esquerda) também indica: Direita→Bolsonaro, Esquerda→Lula.
 ⚠️ ALIADOS: Boulos, Haddad, Gleisi = campo Lula. Nicolas, Tarcísio, Marçal = campo Bolsonaro.
 Eleitor de Lula defende aliados de Lula e ataca aliados de Bolsonaro, e vice-versa.
 NÃO EXISTE eleitor de Bolsonaro que concorda que aliado de Bolsonaro é corrupto. REGRA ABSOLUTA."""
-        coherence_footer = "- ⚠️ Se pergunta critica político/aliado que a persona apoia → negative + score 0-2 (SEMPRE)"
+        coherence_footer = "- ⚠️ NEGAÇÃO INVERTE: 'não é corrupto' = DEFESA, 'não é honesto' = CRÍTICA. Leia a frase COMPLETA."
     else:
         if has_bias:
             political_rule = f"""🔵 REGRA #1 — VIÉS IDEOLÓGICO APLICADO (pergunta temática com viés {bias_direction}):

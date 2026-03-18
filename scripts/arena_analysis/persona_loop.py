@@ -222,12 +222,30 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
                       "incompetente", "fracasso", "destruiu", "mentiroso", "golpista",
                       "autoritário", "autoritario", "ditador", "fascista", "comunista",
                       "extremista", "radical", "perigoso", "covarde", "fraco", "traidor",
-                      "vagabundo", "bandido", "pilantra", "demagogo", "populista"]
+                      "vagabundo", "bandido", "pilantra", "demagogo", "populista",
+                      "cadeia", "prisão", "prisao", "prender", "condenar", "condenado",
+                      "culpado", "roubou", "rouba", "ladrona", "corrupta"]
     praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande",
                     "herói", "heroi", "salvador", "líder", "lider", "corajoso",
-                    "preparado", "inteligente", "capaz"]
+                    "preparado", "inteligente", "capaz", "inocente", "absolvido",
+                    "livre", "correto"]
     is_critical = any(w in q for w in critical_words)
     is_praise = any(w in q for w in praise_words)
+
+    # ── Step 2b: Detect NEGATION — flips critical↔praise ──
+    # "Bolsonaro NÃO deveria estar na cadeia" = DEFENSE (not criticism)
+    # "Lula NÃO é corrupto" = DEFENSE (not criticism)
+    # "Lula NÃO é honesto" = CRITICISM (not praise)
+    import re as _re
+    negation_patterns = [
+        r'\bnão\b', r'\bnao\b', r'\bnunca\b', r'\bnem\b',
+        r'\bninguém\b', r'\bninguem\b', r'\bjamais\b',
+    ]
+    has_negation = any(_re.search(pat, q) for pat in negation_patterns)
+
+    if has_negation and (is_critical or is_praise):
+        # Negation flips the tone: "não é corrupto" = praise, "não é honesto" = critical
+        is_critical, is_praise = is_praise, is_critical
 
     if not is_critical and not is_praise:
         return score  # Neutral question about politics — no correction
