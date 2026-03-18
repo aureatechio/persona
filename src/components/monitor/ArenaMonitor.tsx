@@ -1351,6 +1351,9 @@ export function ArenaMonitor() {
               },
             }));
           }
+          if (d.step === 'ideological_frame' && d.detail) {
+            addLog('contextValidator', 'info', `Vies ideologico: ${(d.detail.frame as string)?.substring(0, 200) || 'mapeado'}`);
+          }
           break;
         }
 

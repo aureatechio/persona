@@ -212,7 +212,7 @@ class ContextBuilder:
 
         try:
             response = await self._client.messages.create(
-                model="claude-sonnet-4-6-20250514",
+                model="claude-sonnet-4-20250514",
                 max_tokens=500,
                 system=IDEOLOGICAL_FRAME_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
