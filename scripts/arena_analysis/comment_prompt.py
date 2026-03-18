@@ -13,6 +13,87 @@ from arena_analysis.context_builder import ContextResult
 from arena_analysis.persona_extras import build_persona_extras
 
 
+# ── Political figure camps (leaders + allies) ────────────────────────────────
+
+LEFT_CAMP = {
+    "figures": [
+        "lula", "haddad", "fernando haddad", "dilma", "dilma rousseff",
+        "boulos", "guilherme boulos", "gleisi", "gleisi hoffmann",
+        "janones", "janja", "flávio dino", "flavio dino", "dino",
+        "marielle", "jean wyllys", "lindbergh", "lindbergh farias",
+        "mercadante", "aloizio mercadante", "rui costa", "wellington dias",
+        "luciana santos", "randolfe", "randolfe rodrigues",
+    ],
+    "keywords": ["petista", "petralha", "lulista"],
+    # "pt " handled separately to avoid substring issues
+}
+
+RIGHT_CAMP = {
+    "figures": [
+        "bolsonaro", "jair bolsonaro",
+        "nicolas ferreira", "nikolas ferreira", "nikolas",
+        "tarcísio", "tarcisio", "tarcísio de freitas", "tarcisio de freitas",
+        "zema", "romeu zema",
+        "michelle bolsonaro",
+        "pablo marçal", "pablo marcal", "marçal", "marcal",
+        "eduardo bolsonaro", "flávio bolsonaro", "flavio bolsonaro",
+        "carlos bolsonaro", "damares", "damares alves",
+        "ricardo salles", "salles", "sergio moro", "moro",
+        "carla zambelli", "zambelli", "roberto jefferson",
+        "gustavo gayer", "mario frias", "hélio lopes", "helio lopes",
+    ],
+    "keywords": ["bolsonarista", "bolsominion", "capitão", "capitao"],
+}
+
+
+def classify_question(question: str, context: ContextResult | None = None) -> dict:
+    """
+    Classify whether a question is about political figures or general topics.
+
+    Returns:
+        {"is_political": bool, "camp": "left"|"right"|None}
+
+    - "political" → question is about a political figure (Lula/Bolsonaro camp or ally)
+    - "thematic"  → question is about a topic, law, video, general opinion
+    """
+    q = question.lower()
+
+    # Check left camp figures
+    for fig in LEFT_CAMP["figures"]:
+        if fig in q:
+            return {"is_political": True, "camp": "left"}
+    for kw in LEFT_CAMP["keywords"]:
+        if kw in q:
+            return {"is_political": True, "camp": "left"}
+    # "pt " with space to avoid matching "ptsd", "prato", etc.
+    if " pt " in f" {q} " or q.startswith("pt ") or q.endswith(" pt"):
+        return {"is_political": True, "camp": "left"}
+
+    # Check right camp figures
+    for fig in RIGHT_CAMP["figures"]:
+        if fig in q:
+            return {"is_political": True, "camp": "right"}
+    for kw in RIGHT_CAMP["keywords"]:
+        if kw in q:
+            return {"is_political": True, "camp": "right"}
+    # "mito" only when it looks political (not "o mito de X")
+    if "mito" in q and ("é mito" in q or "mito!" in q or "mito " == q[:5]):
+        return {"is_political": True, "camp": "right"}
+
+    # Check context figuras (if context identified political figures)
+    if context and context.figuras:
+        for fig in context.figuras:
+            nome = (fig.get("nome") or "").lower()
+            for left_fig in LEFT_CAMP["figures"]:
+                if left_fig in nome:
+                    return {"is_political": True, "camp": "left"}
+            for right_fig in RIGHT_CAMP["figures"]:
+                if right_fig in nome:
+                    return {"is_political": True, "camp": "right"}
+
+    return {"is_political": False, "camp": None}
+
+
 # ── Bias config loaded from Supabase prompt metadata ─────────────────────────
 
 class BiasConfig:
@@ -172,6 +253,10 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
     else:
         context_block = f'PERGUNTA: "{question}"'
 
+    # ── Classify question type ──
+    q_class = classify_question(question, context)
+    is_political = q_class["is_political"]
+
     # Bloco de personas
     persona_lines = []
     for i, p in enumerate(personas):
@@ -199,7 +284,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
         score_eco = p.get("score_economico") or 0.0
         score_cost = p.get("score_costumes") or 0.0
-        # Apply political bias to scores
+        # Apply political bias to scores — works for ALL question types
         if bias and bias.has_bias:
             score_eco, score_cost = bias.apply(score_eco, score_cost)
         cluster_id = p.get("cluster_id", "?")
@@ -248,23 +333,25 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
     if has_bias:
         bias_direction = "esquerda/progressista" if bias.political_bias < 0 else "direita/conservador"
 
-    # Rule 9 adapts based on bias
-    if has_bias:
-        rule_9 = f"9. POLÍTICO → Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}. Use ESSES scores como verdade. Ignore Voto22/AprovLula se contradizerem os scores apresentados. O score ideológico é MAIS IMPORTANTE que o voto declarado."
-    else:
-        rule_9 = "9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Pense: \"o que essa pessoa REALMENTE postaria?\""
+    # ── Rule 9 and calibration adapt based on question type ──
 
-    # Calibration examples adapt based on bias
-    if has_bias:
-        calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (COM VIÉS {bias_direction.upper()} APLICADO):
+    if is_political:
+        # POLITICAL question — use electoral coherence rules + bias
+        if has_bias:
+            rule_9 = f"9. POLÍTICO → Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}. Use ESSES scores como verdade. Ignore Voto22/AprovLula se contradizerem os scores apresentados. O score ideológico é MAIS IMPORTANTE que o voto declarado."
+        else:
+            rule_9 = "9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Aliados seguem a mesma lógica (ex: Boulos→esquerda, Nicolas Ferreira→direita). Pense: \"o que essa pessoa REALMENTE postaria?\""
+
+        if has_bias:
+            calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (COM VIÉS {bias_direction.upper()} APLICADO):
 Os scores ideológicos já foram ajustados. Siga os ScoreEco/ScoreCost apresentados.
-- Persona com ScoreEco < -0.3 → opinião de ESQUERDA, defende Lula, critica Bolsonaro
-- Persona com ScoreEco > 0.3 → opinião de DIREITA, critica Lula, defende Bolsonaro
+- Persona com ScoreEco < -0.3 → opinião de ESQUERDA, defende Lula e aliados, critica Bolsonaro e aliados
+- Persona com ScoreEco > 0.3 → opinião de DIREITA, critica Lula e aliados, defende Bolsonaro e aliados
 - Persona com ScoreEco entre -0.3 e 0.3 → DIVIDIDA, score 4-6
 
 ⚠️ Com viés aplicado, a MAIORIA dos perfis terá ScoreEco deslocado para {bias_direction}. Isso significa que a maioria deve refletir opiniões de {bias_direction}. NÃO contrabalance o viés — ele é INTENCIONAL."""
-    else:
-        calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas sobre figuras políticas):
+        else:
+            calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas sobre figuras políticas):
 Pergunta: "Lula é corrupto?"
 - Persona com Voto22:Bolsonaro, AprovLula:Desaprova → score 9.2, positive ("claro porra ladrão tinha q ta preso")
 - Persona com Voto22:Lula, AprovLula:Aprova → score 1.0, negative ("corrupto é quem inventou essa mentira")
@@ -275,7 +362,54 @@ Pergunta: "Bolsonaro é o melhor presidente?"
 - Persona com Voto22:Lula, AvalBolso:Ruim → score 0.8, negative ("melhor em destruir o pais ne")
 - Persona Centro, dividido → score 5.0, neutral ("tem coisa boa e ruim ne")
 
-⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado."""
+⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado.
+⚠️ ALIADOS: Boulos, Haddad, Gleisi = campo Lula. Nicolas, Tarcísio, Marçal = campo Bolsonaro. Eleitor de Lula defende aliados de Lula e vice-versa."""
+    else:
+        # THEMATIC question — full profile guides analysis, but bias still influences via scores
+        if has_bias:
+            rule_9 = (
+                f"9. PERFIL INTEGRAL + VIÉS → Esta pergunta NÃO é sobre figuras políticas, mas os ScoreEco e ScoreCost "
+                f"foram AJUSTADOS com viés {bias_direction}. Use esses scores como tendência ideológica da persona "
+                f"ao opinar sobre este TEMA. Personas com ScoreEco deslocado para {bias_direction} devem refletir "
+                f"opiniões mais alinhadas com essa visão de mundo no tema em questão. "
+                f"MAS também considere os campos de opinião declarada (Privat, BolsaFam, SUS, etc.), "
+                f"vivências pessoais, classe social, escolaridade, religião e região — o viés INFLUENCIA "
+                f"a intensidade, mas o perfil completo ainda molda o MOTIVO e o TOM da opinião."
+            )
+        else:
+            rule_9 = (
+                "9. PERFIL INTEGRAL → Esta pergunta NÃO é sobre figuras políticas partidárias. "
+                "Use TODOS os dados da persona para formar a opinião: campos de opinião declarada "
+                "(Aborto, Armas, Maconha, BolsaFam, SUS, Vacinas, etc.), vivências pessoais "
+                "(Fome, Assaltado, Depressao, etc.), classe social, escolaridade, religião, região. "
+                "NÃO reduza a opinião a esquerda/direita — uma evangélica de classe C pode concordar com "
+                "auxílio maternidade por razões DIFERENTES de uma universitária ateia de classe A. "
+                "A diversidade de MOTIVOS é tão importante quanto a diversidade de opiniões."
+            )
+
+        if has_bias:
+            calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (temática COM VIÉS {bias_direction.upper()} APLICADO):
+Os scores ideológicos foram ajustados para {bias_direction}. O viés influencia a TENDÊNCIA da opinião no tema.
+- ScoreEco negativo (esquerda) → tende a favorecer: Estado forte, programas sociais, regulação, direitos trabalhistas
+- ScoreEco positivo (direita) → tende a favorecer: mercado livre, privatização, menos impostos, meritocracia
+- MAS o campo de opinião declarada da persona (Privat, SUS, BolsaFam, etc.) também conta — se existir
+
+⚠️ Com viés {bias_direction}, a MAIORIA dos perfis terá ScoreEco deslocado. Isso significa que a maioria deve tender para opiniões de {bias_direction} sobre o tema. NÃO contrabalance — o viés é INTENCIONAL.
+⚠️ IMPORTANTE: mesmo com viés, mantenha a DIVERSIDADE de motivos. Duas personas de direita podem concordar com privatização por razões DIFERENTES (empresário = eficiência, evangélico = combate à corrupção)."""
+        else:
+            calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas temáticas — NÃO partidárias):
+Pergunta: "Auxílio maternidade deveria aumentar?"
+- Mãe classe D, Nordeste, fundamental → score 9.0, positive ("claro porra minha filha quase morre de fome qnd nasceu")
+- Empresário classe A, Sul, pós-graduação → score 2.5, negative ("mais gasto público que vai sair do meu imposto")
+- Jovem solteiro Gen Z, classe C → score 5.2, neutral ("sei la mano n me afeta muito")
+- Evangélica classe C, mãe de 3 → score 8.5, positive ("familia precisa de apoio sim Deus sabe")
+
+Pergunta: "O SUS funciona?"
+- Classe D, interior NE, fundamental → score 3.0, negative ("funciona nada vei fiquei 8 hora na fila")
+- Médica classe A, SP → score 4.0, negative ("o conceito é bom mas a gestão é péssima")
+- Classe C, teve filho pelo SUS → score 7.5, positive ("meu filho nasceu la e foi tudo bem graças a Deus")
+
+⚠️ PERCEBA: a opinião vem do PERFIL COMPLETO (classe, vivência, região, religião, profissão), NÃO de esquerda/direita. Use os campos de opinião declarada quando disponíveis (BolsaFam, SUS, Vacinas, SalMin, etc.)."""
 
     return f"""{context_block}
 
@@ -351,6 +485,10 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
     else:
         context_block = f'PERGUNTA: "{question}"'
 
+    # ── Classify question type ──
+    q_class = classify_question(question, context)
+    is_political = q_class["is_political"]
+
     # Perfil completo da persona
     p = persona
     career = p.get("career_json") or {}
@@ -375,7 +513,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
     score_eco = p.get("score_economico") or 0.0
     score_cost = p.get("score_costumes") or 0.0
-    # Apply political bias to scores
+    # Apply political bias to scores — works for ALL question types
     if bias and bias.has_bias:
         score_eco, score_cost = bias.apply(score_eco, score_cost)
     cluster_id = p.get("cluster_id", "?")
@@ -399,6 +537,44 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         + (f'\nOpiniões e vivências: {extras}' if extras else '')
     )
 
+    # ── Build rules based on question type ──
+    has_bias = bias and bias.has_bias
+    bias_direction = ""
+    if has_bias:
+        bias_direction = "esquerda/progressista" if bias.political_bias < 0 else "direita/conservador"
+
+    if is_political:
+        political_rule = f"""🔴 REGRA #1 — FIGURAS POLÍTICAS (MAIS IMPORTANTE QUE TUDO):
+Olhe os campos Voto22, AprovLula, AvalBolso, Voto26 no perfil abaixo.
+Se a pergunta CRITICA uma figura política (corrupto, ladrão, preso, criminoso, incompetente, ruim, fracasso):
+→ Se persona VOTOU nessa figura ou APROVA → score 0-2, sentiment=negative (REJEITA a crítica)
+→ Se persona se OPÕE a essa figura → score 8-10, sentiment=positive (CONCORDA com a crítica)
+Se a pergunta ELOGIA uma figura política (melhor, honesto, mito, competente, bom):
+→ Se persona VOTOU nessa figura → score 8-10, sentiment=positive
+→ Se persona se OPÕE → score 0-2, sentiment=negative
+Posicionamento político (Direita/Esquerda) também indica: Direita→Bolsonaro, Esquerda→Lula.
+⚠️ ALIADOS: Boulos, Haddad, Gleisi = campo Lula. Nicolas, Tarcísio, Marçal = campo Bolsonaro.
+Eleitor de Lula defende aliados de Lula e ataca aliados de Bolsonaro, e vice-versa.
+NÃO EXISTE eleitor de Bolsonaro que concorda que aliado de Bolsonaro é corrupto. REGRA ABSOLUTA."""
+        coherence_footer = "- ⚠️ Se pergunta critica político/aliado que a persona apoia → negative + score 0-2 (SEMPRE)"
+    else:
+        if has_bias:
+            political_rule = f"""🔵 REGRA #1 — PERFIL INTEGRAL + VIÉS (pergunta temática com viés {bias_direction}):
+Esta pergunta é sobre um TEMA, não sobre um político. Os ScoreEco e ScoreCost foram AJUSTADOS com viés {bias_direction}.
+→ Use esses scores como tendência ideológica ao opinar sobre este tema
+→ MAS também considere: campos de opinião declarada (Privat, BolsaFam, SUS, etc.), vivências, classe, religião, região
+→ O viés INFLUENCIA a intensidade da opinião, mas o perfil completo molda o MOTIVO e o TOM
+→ Mantenha diversidade de MOTIVOS — duas personas do mesmo lado podem concordar por razões DIFERENTES"""
+        else:
+            political_rule = f"""🔵 REGRA #1 — PERFIL INTEGRAL (pergunta NÃO é sobre figuras políticas):
+Esta pergunta é sobre um TEMA, não sobre um político. Use o PERFIL COMPLETO da persona:
+→ Campos de opinião declarada: Aborto, Armas, Maconha, BolsaFam, SUS, Vacinas, SalMin, etc.
+→ Vivências pessoais: Fome, Assaltado, Depressao, ViolPolicial, etc.
+→ Classe social, escolaridade, religião, região, profissão
+→ NÃO reduza tudo a esquerda/direita — a diversidade de MOTIVOS importa tanto quanto a de opiniões
+→ Uma mãe evangélica pode concordar com auxílio por razões DIFERENTES de uma feminista universitária"""
+        coherence_footer = "- ⚠️ Use os campos de opinião declarada da persona quando o tema coincidir (ex: SUS para saúde, BolsaFam para assistência)"
+
     return f"""{context_block}
 
 Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolaridade, região, idade, ideologia, religião, vivências, classe social — e gere 1 comentário de rede social que essa pessoa REALMENTE escreveria.
@@ -413,16 +589,7 @@ Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolarida
 7. HUMOR → Brasileiro quase nunca é 100% sério. Misture humor quando natural pro perfil.
 8. NEUTRAL É VÁLIDO: persona que NÃO CONHECE, está DIVIDIDA, ou NÃO SE IMPORTA → neutral.
 
-🔴 REGRA #1 — FIGURAS POLÍTICAS (MAIS IMPORTANTE QUE TUDO):
-Olhe os campos Voto22, AprovLula, AvalBolso, Voto26 no perfil abaixo.
-Se a pergunta CRITICA uma figura política (corrupto, ladrão, preso, criminoso, incompetente, ruim, fracasso):
-→ Se persona VOTOU nessa figura ou APROVA → score 0-2, sentiment=negative (REJEITA a crítica)
-→ Se persona se OPÕE a essa figura → score 8-10, sentiment=positive (CONCORDA com a crítica)
-Se a pergunta ELOGIA uma figura política (melhor, honesto, mito, competente, bom):
-→ Se persona VOTOU nessa figura → score 8-10, sentiment=positive
-→ Se persona se OPÕE → score 0-2, sentiment=negative
-Posicionamento político (Direita/Esquerda) também indica: Direita→Bolsonaro, Esquerda→Lula.
-NÃO EXISTE eleitor de Bolsonaro que concorda que Bolsonaro é corrupto. NÃO EXISTE eleitor de Lula que concorda que Lula é ladrão. Isso é REGRA ABSOLUTA.
+{political_rule}
 
 ═══ PERFIL DA PESSOA ═══
 {persona_block}
@@ -435,7 +602,7 @@ FORMATO JSON OBRIGATÓRIO — responda APENAS com:
 - negative = a CONCLUSÃO do comentário DISCORDA da pergunta
 - ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
 - TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
-- ⚠️ Se pergunta critica político que a persona apoia → negative + score 0-2 (SEMPRE)"""
+{coherence_footer}"""
 
 
 async def get_arena_system_prompt() -> str:

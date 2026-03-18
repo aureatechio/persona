@@ -21,7 +21,7 @@ import openai
 
 from arena_analysis.config import settings
 from arena_analysis.context_builder import ContextResult
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt, get_arena_system_prompt, load_bias_config, BiasConfig
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt, get_arena_system_prompt, load_bias_config, BiasConfig, classify_question
 
 
 @dataclass
@@ -90,90 +90,85 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
                                   political_bias: float = 0.0) -> float:
     """
     Post-processing: enforce political score coherence.
-    If a persona has declared electoral data and the question is about a political figure,
-    ensure the score is polarized (not stuck in the neutral 4-6 range).
+    If a persona has declared electoral data and the question is about a political figure
+    (or their ally), ensure the score is polarized (not stuck in the neutral 4-6 range).
+
+    Uses classify_question() to detect political figures AND their camp (left/right).
+    For THEMATIC questions (not about political figures), returns score unchanged.
 
     political_bias: -1.0 = extreme left, +1.0 = extreme right, 0 = neutral.
-    When bias is active, it shifts scores for ALL personas (not just aligned ones).
+    When bias is active, it shifts scores for political questions only.
 
     Returns corrected score.
     """
+    # ── Step 1: Classify the question ──
+    q_class = classify_question(question)
+    if not q_class["is_political"]:
+        return score  # Thematic question — no political correction
+
+    camp = q_class["camp"]  # "left" or "right"
+    if camp is None:
+        return score
+
     q = question.lower()
 
-    # Detect if question is about Lula or Bolsonaro
-    is_about_lula = any(w in q for w in ["lula", "pt ", "petista", "haddad"])
-    is_about_bolsonaro = any(w in q for w in ["bolsonaro", "mito", "capitão", "capitao"])
-
-    # ── Apply political bias shift to ALL political questions ──
-    # This is the direct, deterministic bias that actually works.
-    # Bias shifts the score toward defending (low) or attacking (high) the figure.
-    if political_bias != 0.0 and (is_about_lula or is_about_bolsonaro):
-        # Detect question tone
-        critical_words = ["corrupto", "ladrão", "ladrao", "preso", "criminoso", "ruim",
-                          "incompetente", "fracasso", "destruiu", "mentiroso", "golpista",
-                          "autoritário", "autoritario", "ditador", "fascista", "comunista"]
-        praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande",
-                        "herói", "heroi", "salvador", "líder", "lider"]
-        is_critical = any(w in q for w in critical_words)
-        is_praise = any(w in q for w in praise_words)
-
-        if is_critical or is_praise:
-            # Determine bias direction for this specific figure+tone combo
-            # Left bias (-1): defends Lula (lower scores on criticism), attacks Bolsonaro (higher on criticism)
-            # Right bias (+1): defends Bolsonaro (lower scores on criticism), attacks Lula (higher on criticism)
-            bias_defends_figure = (
-                (is_about_lula and political_bias < 0) or
-                (is_about_bolsonaro and political_bias > 0)
-            )
-
-            abs_bias = abs(political_bias)
-            # Scale: at bias=0.5 shift ~1.5 points, at bias=1.0 shift ~3.0 points
-            shift_amount = abs_bias * 3.0
-
-            if is_critical:
-                if bias_defends_figure:
-                    # Defending against criticism → push score DOWN (disagree)
-                    score = max(0.0, score - shift_amount)
-                else:
-                    # Amplifying criticism → push score UP (agree)
-                    score = min(10.0, score + shift_amount)
-            elif is_praise:
-                if bias_defends_figure:
-                    # Amplifying praise → push score UP (agree)
-                    score = min(10.0, score + shift_amount)
-                else:
-                    # Rejecting praise → push score DOWN (disagree)
-                    score = max(0.0, score - shift_amount)
-
-    if not is_about_lula and not is_about_bolsonaro:
-        return score  # Not a political question — no correction
-
-    # Detect if question is critical or praising
-    critical_words = ["corrupto", "ladrão", "ladrao", "preso", "criminoso", "ruim", "incompetente", "fracasso", "destruiu", "mentiroso"]
-    praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande", "herói", "heroi", "salvador"]
+    # ── Step 2: Detect question tone (critical vs praise) ──
+    critical_words = ["corrupto", "ladrão", "ladrao", "preso", "criminoso", "ruim",
+                      "incompetente", "fracasso", "destruiu", "mentiroso", "golpista",
+                      "autoritário", "autoritario", "ditador", "fascista", "comunista",
+                      "extremista", "radical", "perigoso", "covarde", "fraco", "traidor",
+                      "vagabundo", "bandido", "pilantra", "demagogo", "populista"]
+    praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande",
+                    "herói", "heroi", "salvador", "líder", "lider", "corajoso",
+                    "preparado", "inteligente", "capaz"]
     is_critical = any(w in q for w in critical_words)
     is_praise = any(w in q for w in praise_words)
+
     if not is_critical and not is_praise:
         return score  # Neutral question about politics — no correction
 
-    # Get electoral data
+    # ── Step 3: Apply political bias shift ──
+    if political_bias != 0.0:
+        # Left bias (-1): defends left camp, attacks right camp
+        # Right bias (+1): defends right camp, attacks left camp
+        bias_defends_figure = (
+            (camp == "left" and political_bias < 0) or
+            (camp == "right" and political_bias > 0)
+        )
+
+        abs_bias = abs(political_bias)
+        # Scale: at bias=0.5 shift ~1.5 points, at bias=1.0 shift ~3.0 points
+        shift_amount = abs_bias * 3.0
+
+        if is_critical:
+            if bias_defends_figure:
+                score = max(0.0, score - shift_amount)
+            else:
+                score = min(10.0, score + shift_amount)
+        elif is_praise:
+            if bias_defends_figure:
+                score = min(10.0, score + shift_amount)
+            else:
+                score = max(0.0, score - shift_amount)
+
+    # ── Step 4: Electoral coherence — persona's declared data ──
     voto22 = (persona.get("voto_2022") or "").lower()
     aprov_lula = (persona.get("aprovacao_lula") or "").lower()
     aval_bolso = (persona.get("q_avaliacao_bolsonaro") or "").lower()
     leaning = (persona.get("political_leaning") or "").lower()
 
-    # Determine if persona supports or opposes the figure in question
-    supports_figure = False
-    opposes_figure = False
-
     # Helper: check aprovacao without substring false positives
-    # "aprova" is substring of "desaprova" — must check "desaprova" FIRST
     is_aprova_lula = aprov_lula and not aprov_lula.startswith("des") and "aprova" in aprov_lula
     is_desaprova_lula = "desaprova" in aprov_lula
     is_aval_bolso_bom = any(w in aval_bolso for w in ["bom", "ótimo", "otimo"])
     is_aval_bolso_ruim = any(w in aval_bolso for w in ["ruim", "péssimo", "pessimo"])
 
-    if is_about_lula:
+    # Determine if persona supports or opposes the CAMP of the figure
+    supports_figure = False
+    opposes_figure = False
+
+    if camp == "left":
+        # Left camp figure/ally — supporters of Lula support, opponents oppose
         if "lula" in voto22 or is_aprova_lula:
             supports_figure = True
         elif "bolsonaro" in voto22 or is_desaprova_lula or is_aval_bolso_bom:
@@ -182,8 +177,8 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
             opposes_figure = True
         elif "esquerda" in leaning:
             supports_figure = True
-
-    elif is_about_bolsonaro:
+    elif camp == "right":
+        # Right camp figure/ally — supporters of Bolsonaro support, opponents oppose
         if "bolsonaro" in voto22 or is_aval_bolso_bom:
             supports_figure = True
         elif "lula" in voto22 or is_aprova_lula or is_aval_bolso_ruim:
@@ -196,41 +191,29 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     if not supports_figure and not opposes_figure:
         return score  # No clear electoral alignment
 
-    # For critical questions: supporters reject (low score), opponents agree (high score)
-    # For praise questions: supporters agree (high score), opponents reject (low score)
     should_be_high = (is_critical and opposes_figure) or (is_praise and supports_figure)
     should_be_low = (is_critical and supports_figure) or (is_praise and opposes_figure)
 
-    # ── When bias is active, check if the coherence correction would FIGHT the bias ──
-    # If bias wants to DEFEND a figure but coherence wants to ATTACK it (push high),
-    # skip the coherence correction — let the bias win.
+    # ── When bias is active, don't let coherence fight the bias ──
     if political_bias != 0.0:
         bias_defends_figure = (
-            (is_about_lula and political_bias < 0) or
-            (is_about_bolsonaro and political_bias > 0)
+            (camp == "left" and political_bias < 0) or
+            (camp == "right" and political_bias > 0)
         )
-        # Bias defending + critical question = bias wants LOW scores for everyone
-        # So skip "should_be_high" corrections (which push opponents to 7-10)
         if bias_defends_figure and is_critical and should_be_high:
-            return score  # Bias already shifted down — don't push back up
-        # Bias attacking + praise question = bias wants LOW scores for everyone
+            return score
         if not bias_defends_figure and is_praise and should_be_high:
             return score
-        # Bias attacking + critical question = bias wants HIGH scores
-        # So skip "should_be_low" corrections (which push supporters to 0-3)
         if not bias_defends_figure and is_critical and should_be_low:
             return score
-        # Bias defending + praise question = bias wants HIGH scores
         if bias_defends_figure and is_praise and should_be_low:
             return score
 
     if should_be_high and score < 7.0:
-        # Push toward 7-10 range — the stronger the original score, the less correction
-        corrected = max(score, 7.0 + (score / 10) * 3)  # min 7.0, max 10.0
+        corrected = max(score, 7.0 + (score / 10) * 3)
         return min(10.0, round(corrected, 1))
     elif should_be_low and score > 3.0:
-        # Push toward 0-3 range
-        corrected = min(score, 3.0 - (1 - score / 10) * 3)  # max 3.0, min 0.0
+        corrected = min(score, 3.0 - (1 - score / 10) * 3)
         return max(0.0, round(corrected, 1))
 
     return score
