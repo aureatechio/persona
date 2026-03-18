@@ -289,6 +289,26 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "cluster_filter": request.cluster_filter,
         })
 
+        # ── 3b. Ideological Frame — generate left/right framing for the topic ──
+        if context and context.contexto:
+            try:
+                ideo_frame = await context_builder.build_ideological_frame(
+                    question=request.question,
+                    context=context,
+                )
+                if ideo_frame:
+                    context.contexto += ideo_frame
+                    yield sse_event("log", {
+                        "step": "ideological_frame",
+                        "level": "info",
+                        "message": "Viés ideológico mapeado para o tema",
+                        "detail": {"frame": ideo_frame[:500]},
+                    })
+                else:
+                    print("[Pipeline] Ideological frame returned empty — skipping")
+            except Exception as ideo_err:
+                print(f"[Pipeline] Ideological frame error (continuing): {ideo_err}")
+
         # ── 4b. Context Validation — emit full context for monitor ──
         if context and context.contexto:
             yield sse_event("log", {
