@@ -155,13 +155,15 @@ def _enforce_thematic_coherence(score: float, persona: dict[str, Any], question:
             if political_bias < 0 and is_favor and score < 6.0:
                 return score  # Bias wants low scores — don't push up
 
-        if is_favor and score < 6.0:
-            # Persona declared favor but score is too low → push up
-            corrected = max(score, 6.5 + (score / 10) * 3.5)
+        if is_favor and score < 7.0:
+            # Persona declared favor but score is too low → push up to 7.0-10.0 range
+            # Declared "A favor" = strong opinion, minimum score should be 7.0
+            corrected = max(score, 7.0 + (score / 10) * 3.0)
             return min(10.0, round(corrected, 1))
-        elif is_contra and score > 4.0:
-            # Persona declared contra but score is too high → push down
-            corrected = min(score, 3.5 - (1 - score / 10) * 3.5)
+        elif is_contra and score > 3.0:
+            # Persona declared contra but score is too high → push down to 0.0-3.0 range
+            # Declared "Contra" = strong opinion, maximum score should be 3.0
+            corrected = min(score, 3.0 - (1 - score / 10) * 3.0)
             return max(0.0, round(corrected, 1))
 
         # Found a matching topic — stop checking others
