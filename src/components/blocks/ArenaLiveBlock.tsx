@@ -10,7 +10,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult } from '@/lib/arena/types';
+import type { EnhancedSimulationResult, Sentiment, QuadrantResult, ClusterResult, PoliticalFigureDetection, CommentResult, ContentMeta, GeoCity } from '@/lib/arena/types';
 import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
 import type { AllSegments, SegmentItem } from '@/lib/arena/segments';
 
@@ -52,6 +52,10 @@ export interface ArenaLiveData {
   stateBreakdown?: Record<string, { count: number; positive: number; negative: number; neutral: number }>;
   /** Status message during collecting phase */
   collectingStatus?: string;
+  /** Content metadata from UI selectors (media type, ideology, region) */
+  contentMeta?: ContentMeta;
+  /** Cities used in geo-filtered analysis (for map zoom + markers) */
+  geoCities?: GeoCity[];
 }
 
 /* ============================================================

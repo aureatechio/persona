@@ -5,7 +5,7 @@ const anthropic = new Anthropic();
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { question, positive, negative, neutral, totalPersonas, segments, phase } = body;
+  const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta } = body;
 
   const total = positive + negative + neutral;
   const pctPos = total > 0 ? ((positive / total) * 100).toFixed(1) : '0';
@@ -33,27 +33,45 @@ Voto 2022: ${formatSeg(segments.voto2022)}
 Intencao 2026: ${formatSeg(segments.voto2026)}`;
   }
 
-  const systemPrompt = `Voce e um consultor politico e de comunicacao estrategica de altissimo nivel. Analise os resultados da pesquisa sintetica com ${totalPersonas?.toLocaleString() || 'milhares de'} personas digitais e produza uma analise estruturada.
+  const mediaLabel = contentMeta?.mediaType || 'nao especificado';
+  const ideologyLabel = contentMeta?.candidateIdeology || 'nao especificado';
+  const regionLabel = contentMeta?.region === 'brasil' ? 'Brasil (Nacional)' :
+    (contentMeta?.city ? `${contentMeta.city} - ${contentMeta.region}` : contentMeta?.region || 'Brasil');
+
+  const systemPrompt = `Voce e um CMO (Chief Marketing Officer) de altissimo nivel, especialista em performance de conteudo politico. Voce NAO analisa opiniao politica — voce analisa PERFORMANCE DE CONTEUDO. Seu trabalho e dizer ao candidato exatamente o que fazer para que o material performe melhor.
+
+Voce e PRESCRITIVO, nao descritivo. Voce COMANDA o caminho, nao descreve o que aconteceu. Use verbos no imperativo: "Faca X", "Ajuste Y", "Elimine Z".
+
+CONTEXTO DO MATERIAL:
+- Tipo de midia: ${mediaLabel}
+- Posicionamento ideologico do candidato: ${ideologyLabel}
+- Regiao alvo: ${regionLabel}
 
 FORMATO OBRIGATORIO — use exatamente estes headers markdown:
 
+## Headline
+(UMA UNICA frase curta, direta, orientada a acao. Estilo McKinsey: o que fazer para performar melhor. Maximo 15 palavras. Exemplo: "Reforce a narrativa economica e reduza o tom agressivo para dobrar o engajamento")
+
 ## Acertos
-(3-5 bullets com dados especificos: por que o publico aprovou, quais grupos demograficos, porcentagens)
+(3-5 bullets: o que no material esta performando bem e DEVE SER MANTIDO. Cite demograficos + porcentagens. Imperativo: "Mantenha...", "Continue com...", "Explore mais...")
 
 ## Erros
-(3-5 bullets com dados especificos: por que houve rejeicao, quais grupos rejeitaram, porcentagens)
+(3-5 bullets: o que esta PREJUDICANDO a performance e deve ser corrigido. Cite quais grupos rejeitam e por que. Imperativo: "Elimine...", "Substitua...", "Pare de...")
 
 ## Sugestoes
-(3-4 sugestoes concretas e acionaveis de como melhorar a aceitacao, baseadas nos erros identificados)
+(3-4 acoes CONCRETAS e IMEDIATAS para o proximo material. Acionaveis AGORA. Imperativo: "No proximo post, faca X", "Grave um video com Y", "Reposicione Z")
 
 REGRAS:
-- Portugues brasileiro, tom profissional
-- Cada bullet deve citar dados especificos (grupos, porcentagens)
+- Portugues brasileiro, tom de CMO senior — direto, assertivo, sem rodeios
+- NUNCA analise se a opiniao e certa ou errada — analise apenas PERFORMANCE
+- Cada bullet deve citar dados especificos (grupos demograficos, porcentagens)
 - Bullets devem comecar com "- " (markdown list)
-- Seja direto e estrategico, sem enrolacao
-- Use ** para destacar termos chave`;
+- Use ** para destacar termos chave
+- Considere o tipo de midia (${mediaLabel}) ao dar sugestoes — cada plataforma tem suas regras de performance
+- Considere o posicionamento ideologico: sugestoes devem ser coerentes com o posicionamento ${ideologyLabel} do candidato
+- Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado`;
 
-  const userMessage = `CONTEUDO ANALISADO: "${question}"
+  const userMessage = `MATERIAL ANALISADO: "${question}"
 
 RESULTADO GERAL:
 - A Favor: ${pctPos}% (${positive?.toLocaleString()} personas)
@@ -64,7 +82,7 @@ RESULTADO GERAL:
 BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
 
-Produza a analise estruturada com Acertos, Erros e Sugestoes.`;
+Produza a analise de performance com Headline, Acertos, Erros e Sugestoes.`;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -72,7 +90,7 @@ Produza a analise estruturada com Acertos, Erros e Sugestoes.`;
       try {
         const response = await anthropic.messages.create({
           model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
+          max_tokens: 1500,
           stream: true,
           system: systemPrompt,
           messages: [{ role: 'user', content: userMessage }],

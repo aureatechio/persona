@@ -36,6 +36,7 @@ from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
 from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
+from arena_analysis.geo_filter import apply_geo_filter
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -60,11 +61,18 @@ electoral_engine = ElectoralEngine()
 
 
 # ── Request Models ────────────────────────────────────────────────────────────
+class GeoFilter(BaseModel):
+    state: Optional[str] = None
+    city: Optional[str] = None
+    min_personas: int = 50
+
+
 class AnalyzeRequest(BaseModel):
     question: str
     cluster_filter: Optional[str] = None
     context_text: Optional[str] = None
     verbose: bool = False
+    geo_filter: Optional[GeoFilter] = None
 
 
 class ElectoralRequest(BaseModel):
@@ -110,6 +118,22 @@ async def health():
         "openai_keys": len(settings.openai_api_keys),
         "claude_share": settings.claude_share,
     }
+
+
+@app.get("/api/arena/cities")
+async def get_cities(state: str):
+    """Retorna cidades com personas no estado dado, com contagem."""
+    personas = await asyncio.to_thread(load_personas)
+    cities: dict[str, int] = {}
+    for p in personas:
+        if p.get("state") == state:
+            c = p.get("city")
+            if c:
+                cities[c] = cities.get(c, 0) + 1
+    return sorted(
+        [{"city": c, "count": n} for c, n in cities.items()],
+        key=lambda x: x["city"],
+    )
 
 
 @app.post("/api/arena/analyze")
@@ -282,6 +306,18 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         })
 
         personas = await persona_task
+
+        # ── 2b. Filtro geográfico (se solicitado) ──────────────────
+        geo_cities: list[dict] = []
+        if request.geo_filter and request.geo_filter.state:
+            personas, geo_cities = apply_geo_filter(personas, request.geo_filter)
+            yield sse_event("geo_resolved", {
+                "cities": geo_cities,
+                "total_personas": len(personas),
+                "expanded": request.geo_filter.city is not None and len(geo_cities) > 1,
+            })
+            print(f"[Pipeline] Geo filter: {len(personas)} personas de {len(geo_cities)} cidades")
+
         total_personas = len(personas)
 
         yield sse_event("personas_loaded", {

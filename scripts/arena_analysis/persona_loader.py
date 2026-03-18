@@ -27,7 +27,7 @@ def _get_supabase():
 
 # Campos necessarios para o loop de personas
 PERSONA_FIELDS = ",".join([
-    "id", "name", "age", "city", "state", "gender", "gender_identity",
+    "id", "name", "age", "city", "state", "lat", "lng", "gender", "gender_identity",
     "education_level", "generation", "political_leaning",
     "macro_religion", "archetype_primary",
     "cluster_id", "nome_grupo", "score_economico", "score_costumes",

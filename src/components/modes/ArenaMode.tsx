@@ -6,6 +6,7 @@ import type { EnhancedSimulationResult } from '@/lib/arena';
 import type { AllSegments } from '@/lib/arena/segments';
 import { processAttachmentsForUpload, isYouTubeUrl, type Attachment } from '@/lib/file-utils';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
+import type { ContentMeta } from '@/lib/arena/types';
 
 interface ArenaModeProps {
   personaCache: {
@@ -68,7 +69,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     }
   }, [onReplaceBlock]);
 
-  const handleSubmit = useCallback(async (value: string, contextText?: string, attachments?: Attachment[]) => {
+  const handleSubmit = useCallback(async (value: string, contextText?: string, attachments?: Attachment[], contentMeta?: ContentMeta) => {
     let q = value.trim();
     const hasMedia = attachments && attachments.length > 0;
 
@@ -345,6 +346,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
       totalPersonas: personaCache.count,
       media: mediaPreviews,
       mediaContext: enrichedContext || undefined,
+      contentMeta: contentMeta || undefined,
     };
 
     // Block already created above — just update phase
@@ -392,6 +394,13 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           cluster_filter: null,
           verbose: true,
           ...(enrichedContext && { context_text: enrichedContext }),
+          ...(contentMeta && contentMeta.region !== 'brasil' && {
+            geo_filter: {
+              state: contentMeta.region,
+              city: contentMeta.city || null,
+              min_personas: 50,
+            },
+          }),
         }),
         signal: controller.signal,
       });
@@ -487,6 +496,20 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     collectingStatus: 'loading',
                   });
                   break;
+
+                case 'geo_resolved': {
+                  const geoData = payload.data;
+                  baseLiveData.geoCities = geoData.cities;
+                  baseLiveData.totalCount = geoData.total_personas;
+                  baseLiveData.totalPersonas = geoData.total_personas;
+                  emitLive(blockId, {
+                    ...baseLiveData,
+                    phase: 'collecting',
+                    collectingStatus: 'loading',
+                    geoCities: geoData.cities,
+                  });
+                  break;
+                }
 
                 case 'progress': {
                   receivedAnyProgress = true;
@@ -796,7 +819,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      handleSubmit(detail.question, detail.contextText, detail.attachments);
+      handleSubmit(detail.question, detail.contextText, detail.attachments, detail.contentMeta);
     };
     window.addEventListener('arena-rich-submit', handler);
     return () => window.removeEventListener('arena-rich-submit', handler);

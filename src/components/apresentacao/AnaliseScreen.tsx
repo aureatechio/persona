@@ -1,18 +1,19 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, CheckCircle, AlertTriangle, Target } from 'lucide-react';
+import { Sparkles, CheckCircle, AlertTriangle, Target, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 
 /* ─── Parse sections from AI response ──────────────────────────────── */
 
 function parseSections(text: string) {
-  const sections = { acertos: '', erros: '', sugestoes: '' };
+  const sections = { headline: '', acertos: '', erros: '', sugestoes: '' };
   const parts = text.split(/## /);
   for (const part of parts) {
     const lower = part.toLowerCase();
-    if (lower.startsWith('acertos')) sections.acertos = part.replace(/^acertos\s*\n?/i, '').trim();
+    if (lower.startsWith('headline')) sections.headline = part.replace(/^headline\s*\n?/i, '').trim();
+    else if (lower.startsWith('acertos')) sections.acertos = part.replace(/^acertos\s*\n?/i, '').trim();
     else if (lower.startsWith('erros')) sections.erros = part.replace(/^erros\s*\n?/i, '').trim();
     else if (lower.startsWith('sugest')) sections.sugestoes = part.replace(/^sugesto?e?s[^\n]*\n?/i, '').trim();
   }
@@ -157,6 +158,7 @@ export function AnaliseScreen() {
           totalPersonas: data.totalPersonas,
           segments: data.segments,
           phase: 'complete',
+          contentMeta: data.contentMeta,
         }),
         signal: controller.signal,
       });
@@ -303,8 +305,37 @@ export function AnaliseScreen() {
             </div>
           </div>
         ) : (
-          /* Analysis content — 2 columns + bottom */
+          /* Analysis content — headline + 2 columns + bottom */
           <div className="max-w-7xl mx-auto space-y-4 mt-2">
+            {/* McKinsey Headline */}
+            {sections.headline ? (
+              <div className="relative rounded-2xl p-px bg-gradient-to-r from-emerald-500/50 via-sky-500/30 to-violet-500/50">
+                <div className="bg-zinc-950 rounded-2xl p-6 md:p-8">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-xl bg-white/[0.06]">
+                      <Zap size={18} className="text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                      Recomendacao Estrategica
+                    </span>
+                  </div>
+                  <p className="text-xl md:text-2xl font-bold text-white tracking-tight leading-snug">
+                    {sections.headline.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+                      part.startsWith('**') && part.endsWith('**')
+                        ? <span key={i} className="text-emerald-400">{part.slice(2, -2)}</span>
+                        : part
+                    )}
+                  </p>
+                </div>
+              </div>
+            ) : (isTyping || charIndex.current < text.length) ? (
+              <div className="relative rounded-2xl p-px bg-gradient-to-r from-zinc-800/50 via-zinc-700/30 to-zinc-800/50 animate-pulse">
+                <div className="bg-zinc-950 rounded-2xl p-6">
+                  <div className="h-6 w-3/4 bg-zinc-800/50 rounded-lg" />
+                </div>
+              </div>
+            ) : null}
+
             {/* Two columns: Acertos + Erros */}
             <div className="grid grid-cols-2 gap-4">
               {/* Acertos */}
@@ -330,7 +361,7 @@ export function AnaliseScreen() {
                   <div className="p-2 rounded-xl bg-rose-500/10">
                     <AlertTriangle size={20} className="text-rose-400" />
                   </div>
-                  <h2 className="text-xl font-bold text-rose-400 tracking-tight">O que gerou rejeição</h2>
+                  <h2 className="text-xl font-bold text-rose-400 tracking-tight">O que ajustar</h2>
                 </div>
                 <RenderBullets text={sections.erros} accentColor="rose" />
                 {!sections.erros && (isTyping || charIndex.current < text.length) && (
@@ -349,7 +380,7 @@ export function AnaliseScreen() {
                   <div className="p-2 rounded-xl bg-amber-500/10">
                     <Target size={20} className="text-amber-400" />
                   </div>
-                  <h2 className="text-xl font-bold text-amber-400 tracking-tight">Sugestões de Melhoria</h2>
+                  <h2 className="text-xl font-bold text-amber-400 tracking-tight">Proximos Passos</h2>
                 </div>
                 <RenderBullets text={sections.sugestoes} accentColor="amber" />
                 {!sections.sugestoes && (isTyping || charIndex.current < text.length) && (

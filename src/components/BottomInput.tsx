@@ -22,6 +22,21 @@ import {
   createVideoThumbnail,
   isYouTubeUrl,
 } from '@/lib/file-utils';
+import type { ContentMeta } from '@/lib/arena/types';
+
+const BRAZILIAN_STATES = [
+  { uf: 'AC', name: 'Acre' }, { uf: 'AL', name: 'Alagoas' }, { uf: 'AM', name: 'Amazonas' },
+  { uf: 'AP', name: 'Amapa' }, { uf: 'BA', name: 'Bahia' }, { uf: 'CE', name: 'Ceara' },
+  { uf: 'DF', name: 'Distrito Federal' }, { uf: 'ES', name: 'Espirito Santo' },
+  { uf: 'GO', name: 'Goias' }, { uf: 'MA', name: 'Maranhao' }, { uf: 'MG', name: 'Minas Gerais' },
+  { uf: 'MS', name: 'Mato Grosso do Sul' }, { uf: 'MT', name: 'Mato Grosso' },
+  { uf: 'PA', name: 'Para' }, { uf: 'PB', name: 'Paraiba' }, { uf: 'PE', name: 'Pernambuco' },
+  { uf: 'PI', name: 'Piaui' }, { uf: 'PR', name: 'Parana' }, { uf: 'RJ', name: 'Rio de Janeiro' },
+  { uf: 'RN', name: 'Rio Grande do Norte' }, { uf: 'RO', name: 'Rondonia' },
+  { uf: 'RR', name: 'Roraima' }, { uf: 'RS', name: 'Rio Grande do Sul' },
+  { uf: 'SC', name: 'Santa Catarina' }, { uf: 'SE', name: 'Sergipe' },
+  { uf: 'SP', name: 'Sao Paulo' }, { uf: 'TO', name: 'Tocantins' },
+];
 
 /** Detect if a string is (or contains) a URL */
 const URL_REGEX = /https?:\/\/[^\s]+/gi;
@@ -63,6 +78,12 @@ export function BottomInput({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [mediaType, setMediaType] = useState<ContentMeta['mediaType'] | null>(null);
+  const [candidateIdeology, setCandidateIdeology] = useState<ContentMeta['candidateIdeology'] | null>(null);
+  const [selectedState, setSelectedState] = useState<string>('brasil');
+  const [selectedCity, setSelectedCity] = useState<string>('');
+  const [availableCities, setAvailableCities] = useState<{ city: string; count: number }[]>([]);
+  const [loadingCities, setLoadingCities] = useState(false);
 
   const PLACEHOLDERS = useMemo(() => buildPlaceholders(personaCount), [personaCount]);
   const [showRecorder, setShowRecorder] = useState(false);
@@ -73,6 +94,22 @@ export function BottomInput({
     const t = setInterval(() => setPlaceholderIdx(p => (p + 1) % PLACEHOLDERS.length), 4000);
     return () => clearInterval(t);
   }, [PLACEHOLDERS.length]);
+
+  // Fetch cities when state changes
+  useEffect(() => {
+    if (selectedState === 'brasil' || !selectedState) {
+      setAvailableCities([]);
+      setSelectedCity('');
+      return;
+    }
+    setLoadingCities(true);
+    setSelectedCity('');
+    fetch(`/api/arena/cities?state=${selectedState}`)
+      .then(r => r.json())
+      .then(data => setAvailableCities(Array.isArray(data) ? data : []))
+      .catch(() => setAvailableCities([]))
+      .finally(() => setLoadingCities(false));
+  }, [selectedState]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -171,25 +208,25 @@ export function BottomInput({
 
   const handleSubmit = () => {
     if (isProcessing) return;
+    if (!mediaType || !candidateIdeology) return;
+    if (attachments.length === 0 && !value.trim()) return;
 
-    // With attachments: can send even without text (AI will contextualize)
-    if (attachments.length > 0) {
-      window.dispatchEvent(new CustomEvent('arena-rich-submit', {
-        detail: { question: value.trim(), contextText: '', attachments },
-      }));
-      setValue('');
-      setAttachments([]);
-      return;
-    }
+    const contentMeta: ContentMeta = {
+      mediaType,
+      candidateIdeology,
+      region: selectedState,
+      ...(selectedCity && { city: selectedCity }),
+    };
 
-    // Regular submit requires text
-    if (!value.trim() && !customInput) return;
-    onSubmit(value.trim());
+    window.dispatchEvent(new CustomEvent('arena-rich-submit', {
+      detail: { question: value.trim(), contextText: '', attachments, contentMeta },
+    }));
     setValue('');
+    setAttachments([]);
   };
 
-  // Can send: has text OR has attachments
-  const canSend = !isProcessing && (!!value.trim() || !!customInput || attachments.length > 0);
+  // Can send: has material + selectors filled
+  const canSend = !isProcessing && !!mediaType && !!candidateIdeology && (!!value.trim() || attachments.length > 0);
 
   return (
     <div className="sticky bottom-0 z-40 bg-gradient-to-t from-black via-black/95 to-transparent pt-6 pb-4 px-4 md:px-8">
@@ -218,6 +255,66 @@ export function BottomInput({
                 <p className="text-sm font-semibold text-emerald-400">Solte arquivos aqui</p>
               </div>
             )}
+
+            {/* ── Seletores obrigatórios ── */}
+            <div className="px-4 pt-3 space-y-2">
+              {/* Tipo de Mídia */}
+              <div className="space-y-1">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Midia</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['instagram', 'tv', 'youtube', 'tiktok', 'radio', 'outdoor', 'impresso'] as const).map(type => (
+                    <button key={type} onClick={() => setMediaType(type)}
+                      className={cn(
+                        'px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200',
+                        mediaType === type
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          : 'bg-white/[0.04] border-white/[0.08] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.08]'
+                      )}>
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ideologia + Região — same row */}
+              <div className="flex gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Posicionamento</span>
+                  <div className="flex gap-1.5">
+                    {(['esquerda', 'direita'] as const).map(ideo => (
+                      <button key={ideo} onClick={() => setCandidateIdeology(ideo)}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-200',
+                          candidateIdeology === ideo
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                            : 'bg-white/[0.04] border-white/[0.08] text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.08]'
+                        )}>
+                        {ideo.charAt(0).toUpperCase() + ideo.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-600">Regiao</span>
+                  <div className="flex gap-2">
+                    <select value={selectedState} onChange={e => setSelectedState(e.target.value)}
+                      className="flex-1 px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-xs text-white appearance-none cursor-pointer focus:border-emerald-500/40 outline-none transition-all duration-200">
+                      <option value="brasil">Brasil (Nacional)</option>
+                      {BRAZILIAN_STATES.map(s => <option key={s.uf} value={s.uf}>{s.name}</option>)}
+                    </select>
+                    {selectedState !== 'brasil' && (
+                      <select value={selectedCity} onChange={e => setSelectedCity(e.target.value)}
+                        disabled={loadingCities || availableCities.length === 0}
+                        className="flex-1 px-3 py-1.5 bg-white/[0.04] border border-white/[0.08] rounded-lg text-xs text-white appearance-none cursor-pointer disabled:opacity-40 focus:border-emerald-500/40 outline-none transition-all duration-200">
+                        <option value="">{loadingCities ? 'Carregando...' : 'Todas as cidades'}</option>
+                        {availableCities.map(c => <option key={c.city} value={c.city}>{c.city} ({c.count})</option>)}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {/* Attachment previews */}
             {attachments.length > 0 && (
@@ -269,7 +366,7 @@ export function BottomInput({
                 value={value}
                 onChange={e => handleTextChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={customPlaceholder || PLACEHOLDERS[placeholderIdx]}
+                placeholder={customPlaceholder || 'Cole aqui o roteiro, script ou texto do material...'}
                 rows={1}
                 disabled={isProcessing}
                 className="w-full bg-transparent px-5 pt-4 pb-2 text-white placeholder-zinc-600 focus:outline-none resize-none text-base"

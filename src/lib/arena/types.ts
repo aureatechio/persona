@@ -215,3 +215,21 @@ export interface ArenaSSEDone {
   total_comments: number;
   total_tokens: number;
 }
+
+// ── Content Meta (seletores da UI) ──────────────────────────────────────
+
+export interface ContentMeta {
+  mediaType: 'instagram' | 'tv' | 'youtube' | 'tiktok' | 'radio' | 'outdoor' | 'impresso';
+  candidateIdeology: 'direita' | 'esquerda';
+  region: string; // 'brasil' ou UF (ex: 'SP')
+  city?: string;  // opcional — cidade específica (ex: 'Manhuaçu')
+}
+
+/** Cidades usadas na análise (retornadas pelo Python após filtragem por proximidade) */
+export interface GeoCity {
+  city: string;
+  state: string;
+  lat: number;
+  lng: number;
+  personaCount: number;
+}

@@ -5,6 +5,7 @@ import { MapPin, X, TrendingUp, TrendingDown, Minus, Users, Sparkles } from 'luc
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 import { scoreToEmoji, scoreToLabel, scoreToHex } from '@/lib/arena/types';
+import type { GeoCity } from '@/lib/arena/types';
 
 const STATE_CENTERS: Record<string, [number, number]> = {
   AC: [-8.77, -70.55], AL: [-9.57, -36.78], AM: [-3.47, -65.10], AP: [1.41, -51.77],
@@ -181,10 +182,37 @@ export function MapaScreen() {
   }, []);
 
   const stateBreakdown = data?.stateBreakdown || {};
+  const geoCities: GeoCity[] = (data as any)?.geoCities || [];
+  const hasGeoFilter = geoCities.length > 0;
 
   // Compute global average score for relative color comparison
   const globalTotal = (data?.positive || 0) + (data?.negative || 0) + (data?.neutral || 0);
   const globalAvgScore = data?.avgScore ?? 5.0;
+
+  // Auto-zoom when geo filter provides city data
+  useEffect(() => {
+    if (!geoCities.length || !geoData) return;
+    if (selectedState) return; // don't override manual zoom
+
+    const validCities = geoCities.filter(c => c.lat && c.lng);
+    if (validCities.length === 0) return;
+
+    if (validCities.length === 1) {
+      const [px, py] = projectPoint(validCities[0].lng, validCities[0].lat);
+      setZoom({ scale: 4, x: 300 - px * 4, y: 240 - py * 4 });
+    } else {
+      const lats = validCities.map(c => c.lat);
+      const lngs = validCities.map(c => c.lng);
+      const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+      const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      const [px, py] = projectPoint(centerLng, centerLat);
+      const latSpread = Math.max(...lats) - Math.min(...lats);
+      const lngSpread = Math.max(...lngs) - Math.min(...lngs);
+      const maxSpread = Math.max(latSpread, lngSpread, 2);
+      const scale = Math.min(6, Math.max(2, 10 / maxSpread));
+      setZoom({ scale, x: 300 - px * scale, y: 240 - py * scale });
+    }
+  }, [geoCities, geoData, selectedState]);
 
   const handleStateClick = useCallback((sigla: string) => {
     if (selectedState === sigla) {
@@ -237,7 +265,7 @@ export function MapaScreen() {
             </div>
           );
         })()}
-        {selectedState && (
+        {(selectedState || (hasGeoFilter && zoom.scale > 1)) && (
           <button onClick={() => { setSelectedState(null); setZoom({ scale: 1, x: 0, y: 0 }); }}
             className="px-4 py-2.5 bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] rounded-xl text-sm text-zinc-300 font-medium transition-all duration-200">
             Ver Brasil
@@ -292,6 +320,23 @@ export function MapaScreen() {
                   </text>
                 );
               })}
+              {/* City markers — geo filter active */}
+              {hasGeoFilter && geoCities.filter(c => c.lat && c.lng).map(city => {
+                const [x, y] = projectPoint(city.lng, city.lat);
+                return (
+                  <g key={`geo-${city.city}-${city.state}`}>
+                    <circle cx={x} cy={y} r={8 / zoom.scale} fill="rgba(52, 211, 153, 0.15)"
+                      style={{ animation: 'pulse 2s ease-in-out infinite' }} />
+                    <circle cx={x} cy={y} r={3.5 / zoom.scale}
+                      fill="#34d399" stroke="#000" strokeWidth={1.5 / zoom.scale} />
+                    <text x={x + 8 / zoom.scale} y={y + 3 / zoom.scale}
+                      fill="#d4d4d8" fontSize={`${7 / zoom.scale}px`} fontWeight="500"
+                      className="pointer-events-none select-none">
+                      {city.city} ({city.personaCount})
+                    </text>
+                  </g>
+                );
+              })}
             </g>
 
             {/* Tooltip */}
@@ -318,6 +363,19 @@ export function MapaScreen() {
         {selectedState && stateBreakdown[selectedState] && (
           <StateDetailPanel sigla={selectedState} stateData={stateBreakdown[selectedState]}
             onClose={() => { setSelectedState(null); setZoom({ scale: 1, x: 0, y: 0 }); }} />
+        )}
+
+        {/* Geo filter info badge */}
+        {hasGeoFilter && (
+          <div className="absolute bottom-6 left-6 z-10 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-950/90 backdrop-blur-xl border border-emerald-500/20">
+            <MapPin size={14} className="text-emerald-400 shrink-0" />
+            <span className="text-xs text-zinc-300">
+              <span className="font-bold text-emerald-400">{geoCities.length}</span>{' '}
+              {geoCities.length === 1 ? 'cidade' : 'cidades'} analisadas
+              {' • '}
+              <span className="font-bold text-white">{geoCities.reduce((s, c) => s + c.personaCount, 0).toLocaleString()}</span> personas
+            </span>
+          </div>
         )}
       </div>
 
