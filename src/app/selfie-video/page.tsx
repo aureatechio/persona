@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Camera, ChevronRight, RotateCcw, Send, Check, Loader2, Phone, User, Video, Heart } from 'lucide-react';
+import { Camera, ChevronRight, RotateCcw, Send, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 
@@ -9,7 +9,6 @@ type Step = 'dados' | 'gravacao' | 'preview' | 'enviando' | 'obrigado';
 
 function formatPhone(value: string) {
   let digits = value.replace(/\D/g, '');
-  // Strip country code "55" if user typed it
   if (digits.startsWith('55') && digits.length > 11) {
     digits = digits.slice(2);
   }
@@ -24,7 +23,6 @@ export default function SelfieVideoPage() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
 
-  // Recording state
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
@@ -33,7 +31,6 @@ export default function SelfieVideoPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -41,7 +38,6 @@ export default function SelfieVideoPage() {
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopCamera();
@@ -173,7 +169,6 @@ export default function SelfieVideoPage() {
     try {
       const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
 
-      // 1. Create DB record and get signed upload URL
       setUploadProgress(5);
       const res = await fetch('/api/selfie-video/process', {
         method: 'POST',
@@ -189,7 +184,6 @@ export default function SelfieVideoPage() {
 
       setUploadProgress(10);
 
-      // 2. Upload video with progress tracking via XMLHttpRequest
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('PUT', data.uploadUrl);
@@ -197,7 +191,6 @@ export default function SelfieVideoPage() {
 
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
-            // Map upload progress to 10-95% range
             const pct = Math.round(10 + (e.loaded / e.total) * 85);
             setUploadProgress(pct);
           }
@@ -214,19 +207,17 @@ export default function SelfieVideoPage() {
 
         xhr.onerror = () => reject(new Error('Erro de conexao durante upload'));
         xhr.ontimeout = () => reject(new Error('Upload demorou demais'));
-        xhr.timeout = 120000; // 2 min timeout
+        xhr.timeout = 120000;
 
         xhr.send(recordedBlob);
       });
 
-      // 3. Confirm upload → status "uploading" → "queued" (worker can now claim it)
       await fetch('/api/selfie-video/confirm-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: data.id }),
       });
 
-      // Upload confirmed — show thank you
       setStep('obrigado');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao enviar';
@@ -251,12 +242,11 @@ export default function SelfieVideoPage() {
 
   // ===== RENDER =====
   return (
-    <div className="min-h-[100dvh] bg-[#0A1628] flex flex-col">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-[#003560] via-[#00437a] to-[#003560] flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0D1B2A]/90 backdrop-blur-xl border-b border-sky-500/10 px-4 py-3">
+      <header className="sticky top-0 z-50 bg-white/10 backdrop-blur-xl border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-center gap-3">
-          <Image src="/logo-progressistas.png" alt="Progressistas" width={32} height={32} className="rounded-lg" />
-          <span className="text-sm font-semibold text-white">Progressistas</span>
+          <Image src="/logo-progressistas.png" alt="Progressistas" width={120} height={40} className="h-8 w-auto" />
         </div>
       </header>
 
@@ -264,40 +254,40 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: DADOS ===== */}
         {step === 'dados' && (
           <div className="flex-1 flex flex-col justify-center px-6 py-8 max-w-md mx-auto w-full relative">
-            {/* Decorative orbs — Progressistas colors */}
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-600/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute top-20 left-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+            {/* Decorative orbs */}
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-300/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-sky-500/15 mb-5 relative">
-                <Image src="/logo-progressistas.png" alt="Progressistas" width={56} height={56} className="rounded-xl" />
+              <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-white/10 backdrop-blur-sm border border-white/15 mb-6 shadow-xl shadow-black/20">
+                <Image src="/logo-progressistas.png" alt="Progressistas" width={80} height={50} className="w-16 h-auto" />
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+              <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
                 Grave seu depoimento
               </h1>
-              <p className="text-sky-200/50 mt-2 text-sm leading-relaxed">
+              <p className="text-sky-200/70 mt-3 text-base leading-relaxed">
                 Grave um vídeo curto e receba uma resposta personalizada no WhatsApp
               </p>
             </div>
 
-            <div className="space-y-4">
+            {/* Form card */}
+            <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/[0.12] rounded-2xl p-6 shadow-xl shadow-black/20 space-y-5">
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-sky-300/50 mb-2 block">
+                <label className="text-xs font-semibold uppercase tracking-wider text-sky-200/60 mb-2 block">
                   Como quer ser chamado?
                 </label>
                 <div className="relative">
-                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-sky-400/40" />
+                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className={cn(
-                      'w-full pl-11 pr-4 py-3',
-                      'bg-white/[0.05] hover:bg-white/[0.07]',
-                      'border border-sky-400/15 focus:border-sky-400/50',
-                      'rounded-xl text-base text-white placeholder:text-sky-300/30',
-                      'outline-none focus:ring-2 focus:ring-sky-400/20',
+                      'w-full pl-11 pr-4 py-3.5',
+                      'bg-white/[0.08] hover:bg-white/[0.12]',
+                      'border border-white/[0.12] focus:border-sky-300/50',
+                      'rounded-xl text-base text-white placeholder:text-white/30',
+                      'outline-none focus:ring-2 focus:ring-sky-300/20',
                       'transition-all duration-200',
                     )}
                     placeholder="Seu nome"
@@ -307,11 +297,11 @@ export default function SelfieVideoPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-sky-300/50 mb-2 block">
+                <label className="text-xs font-semibold uppercase tracking-wider text-sky-200/60 mb-2 block">
                   Seu telefone
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-sky-300/50 text-sm pointer-events-none">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-white/40 text-sm pointer-events-none">
                     <span className="text-base leading-none">🇧🇷</span>
                     <span className="font-medium">+55</span>
                   </span>
@@ -320,11 +310,11 @@ export default function SelfieVideoPage() {
                     value={phone}
                     onChange={(e) => setPhone(formatPhone(e.target.value))}
                     className={cn(
-                      'w-full pl-[5.25rem] pr-4 py-3',
-                      'bg-white/[0.05] hover:bg-white/[0.07]',
-                      'border border-sky-400/15 focus:border-sky-400/50',
-                      'rounded-xl text-base text-white placeholder:text-sky-300/30',
-                      'outline-none focus:ring-2 focus:ring-sky-400/20',
+                      'w-full pl-[5.25rem] pr-4 py-3.5',
+                      'bg-white/[0.08] hover:bg-white/[0.12]',
+                      'border border-white/[0.12] focus:border-sky-300/50',
+                      'rounded-xl text-base text-white placeholder:text-white/30',
+                      'outline-none focus:ring-2 focus:ring-sky-300/20',
                       'transition-all duration-200',
                     )}
                     placeholder="(XX) XXXXX-XXXX"
@@ -337,15 +327,15 @@ export default function SelfieVideoPage() {
                 onClick={handleContinueToDados}
                 disabled={!name.trim() || phone.replace(/\D/g, '').length !== 11}
                 className={cn(
-                  'w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 mt-4',
-                  'bg-sky-400 hover:bg-sky-300',
+                  'w-full inline-flex items-center justify-center gap-2 px-6 py-4 mt-2',
+                  'bg-white hover:bg-sky-50',
                   'text-[#003560] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-sky-400/25',
-                  'hover:shadow-sky-300/30',
+                  'shadow-lg shadow-black/20',
+                  'hover:shadow-xl hover:shadow-black/25',
                   'active:scale-[0.97]',
                   'transition-all duration-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'disabled:opacity-40 disabled:cursor-not-allowed',
                 )}
               >
                 Continuar
@@ -358,8 +348,7 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: GRAVAÇÃO ===== */}
         {step === 'gravacao' && (
           <div className="flex-1 flex flex-col relative">
-            {/* Camera preview */}
-            <div className="flex-1 relative bg-[#0A1628]">
+            <div className="flex-1 relative bg-black">
               <video
                 ref={videoRef}
                 autoPlay
@@ -370,7 +359,7 @@ export default function SelfieVideoPage() {
               />
 
               {/* Top overlay */}
-              <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-[#0A1628]/80 to-transparent z-10">
+              <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent z-10">
                 <div className="text-center">
                   <p className="text-white text-sm font-medium">
                     {isRecording ? 'Gravando...' : 'Grave até 20s dizendo o que achou do evento'}
@@ -386,8 +375,7 @@ export default function SelfieVideoPage() {
                     <span className="text-white text-sm font-mono font-bold">{recordingTime}s / 20s</span>
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="mt-2 w-48 h-1 bg-sky-900/50 rounded-full overflow-hidden mx-auto">
+                  <div className="mt-2 w-48 h-1 bg-white/10 rounded-full overflow-hidden mx-auto">
                     <div
                       className="h-full bg-red-500 transition-all duration-1000 rounded-full"
                       style={{ width: `${(recordingTime / 20) * 100}%` }}
@@ -398,12 +386,12 @@ export default function SelfieVideoPage() {
 
               {/* Error */}
               {error && (
-                <div className="absolute inset-0 flex items-center justify-center z-20 bg-[#0A1628]/90">
+                <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/90">
                   <div className="text-center px-6">
                     <p className="text-red-400 text-sm mb-4">{error}</p>
                     <button
                       onClick={() => { setError(null); startCamera(); }}
-                      className="px-4 py-2 bg-white/[0.1] rounded-xl text-white text-sm"
+                      className="px-4 py-2 bg-white/10 rounded-xl text-white text-sm transition-colors duration-200 hover:bg-white/20"
                     >
                       Tentar novamente
                     </button>
@@ -413,7 +401,7 @@ export default function SelfieVideoPage() {
             </div>
 
             {/* Controls */}
-            <div className="shrink-0 bg-[#0D1B2A] border-t border-sky-500/10 px-6 py-6">
+            <div className="shrink-0 bg-[#003560] border-t border-white/10 px-6 py-6">
               <div className="flex items-center justify-center">
                 {!isRecording ? (
                   <button
@@ -450,7 +438,7 @@ export default function SelfieVideoPage() {
                 )}
               </div>
               {isRecording && recordingTime < 3 && (
-                <p className="text-center text-sky-300/40 text-xs mt-3">Mínimo 3 segundos</p>
+                <p className="text-center text-white/40 text-xs mt-3">Mínimo 3 segundos</p>
               )}
             </div>
           </div>
@@ -459,7 +447,7 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: PREVIEW ===== */}
         {step === 'preview' && previewUrl && (
           <div className="flex-1 flex flex-col">
-            <div className="flex-1 relative bg-[#0A1628]">
+            <div className="flex-1 relative bg-black">
               <video
                 ref={previewVideoRef}
                 src={previewUrl}
@@ -470,7 +458,7 @@ export default function SelfieVideoPage() {
               />
             </div>
 
-            <div className="shrink-0 bg-[#0D1B2A] border-t border-sky-500/10 px-6 py-6">
+            <div className="shrink-0 bg-[#003560] border-t border-white/10 px-6 py-6">
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4 text-center">
                   <p className="text-red-400 text-xs">{error}</p>
@@ -480,10 +468,10 @@ export default function SelfieVideoPage() {
                 <button
                   onClick={handleRegravar}
                   className={cn(
-                    'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3',
-                    'bg-white/[0.05] hover:bg-white/[0.1]',
-                    'text-sky-200/70 hover:text-white',
-                    'border border-sky-400/15 hover:border-sky-400/30',
+                    'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5',
+                    'bg-white/[0.08] hover:bg-white/[0.15]',
+                    'text-white/80 hover:text-white',
+                    'border border-white/[0.12] hover:border-white/[0.25]',
                     'rounded-xl font-medium text-sm',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
@@ -495,11 +483,11 @@ export default function SelfieVideoPage() {
                 <button
                   onClick={handleEnviar}
                   className={cn(
-                    'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3',
-                    'bg-sky-400 hover:bg-sky-300',
+                    'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5',
+                    'bg-white hover:bg-sky-50',
                     'text-[#003560] font-bold text-sm',
                     'rounded-xl',
-                    'shadow-lg shadow-sky-400/25',
+                    'shadow-lg shadow-black/20',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
                 >
@@ -511,21 +499,19 @@ export default function SelfieVideoPage() {
           </div>
         )}
 
-        {/* ===== STEP: ENVIANDO (upload em andamento) ===== */}
+        {/* ===== STEP: ENVIANDO ===== */}
         {step === 'enviando' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
-            {/* Decorative glow */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-64 h-64 bg-sky-500/8 rounded-full blur-3xl" />
+              <div className="w-64 h-64 bg-sky-300/10 rounded-full blur-3xl" />
             </div>
 
             <div className="relative w-20 h-20 mb-6">
-              {/* Circular progress background */}
               <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(56,189,248,0.12)" strokeWidth="4" />
+                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
                 <circle
                   cx="40" cy="40" r="34" fill="none"
-                  stroke="rgb(56, 189, 248)"
+                  stroke="white"
                   strokeWidth="4"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 34}`}
@@ -541,13 +527,12 @@ export default function SelfieVideoPage() {
             <p className="text-white font-medium">
               {uploadProgress < 10 ? 'Preparando...' : uploadProgress < 95 ? 'Enviando seu video...' : 'Finalizando...'}
             </p>
-            <p className="text-sky-300/40 text-sm mt-2">Nao feche esta tela</p>
+            <p className="text-white/40 text-sm mt-2">Nao feche esta tela</p>
 
-            {/* Linear progress bar */}
             <div className="w-full max-w-xs mt-6">
-              <div className="h-1.5 bg-sky-900/30 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-sky-400 to-blue-400 rounded-full transition-all duration-500 ease-out"
+                  className="h-full bg-white rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -558,38 +543,37 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: OBRIGADO ===== */}
         {step === 'obrigado' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-600/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-300/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center max-w-sm space-y-6 relative">
               {/* Success animation */}
               <div className="relative inline-flex">
-                <div className="w-24 h-24 rounded-full bg-sky-500/10 flex items-center justify-center">
-                  <div className="w-16 h-16 rounded-full bg-sky-500/20 flex items-center justify-center">
-                    <Image src="/logo-progressistas.png" alt="Progressistas" width={40} height={40} className="rounded-lg" />
+                <div className="w-28 h-28 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/15">
+                  <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center">
+                    <Image src="/logo-progressistas.png" alt="Progressistas" width={60} height={38} className="w-14 h-auto" />
                   </div>
                 </div>
-                <div className="absolute inset-0 rounded-full animate-ping bg-sky-400/10" style={{ animationDuration: '2s' }} />
+                <div className="absolute inset-0 rounded-full animate-ping bg-sky-300/10" style={{ animationDuration: '2s' }} />
               </div>
 
               <div>
-                <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+                <h2 className="text-2xl font-bold text-white tracking-tight mb-3">
                   Obrigado pelo seu depoimento!
                 </h2>
-                <p className="text-sky-200/50 text-sm leading-relaxed">
-                  <span className="text-sky-400 font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.
+                <p className="text-sky-100/60 text-sm leading-relaxed">
+                  <span className="text-white font-semibold">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.
                 </p>
               </div>
 
               <button
                 onClick={handleReset}
                 className={cn(
-                  'w-full inline-flex items-center justify-center gap-2 px-6 py-3.5',
-                  'bg-sky-400 hover:bg-sky-300',
+                  'w-full inline-flex items-center justify-center gap-2 px-6 py-4',
+                  'bg-white hover:bg-sky-50',
                   'text-[#003560] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-sky-400/25',
+                  'shadow-lg shadow-black/20',
                   'active:scale-[0.97] transition-all duration-200',
                 )}
               >
