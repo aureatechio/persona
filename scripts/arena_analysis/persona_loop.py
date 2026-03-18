@@ -201,6 +201,29 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     should_be_high = (is_critical and opposes_figure) or (is_praise and supports_figure)
     should_be_low = (is_critical and supports_figure) or (is_praise and opposes_figure)
 
+    # ── When bias is active, check if the coherence correction would FIGHT the bias ──
+    # If bias wants to DEFEND a figure but coherence wants to ATTACK it (push high),
+    # skip the coherence correction — let the bias win.
+    if political_bias != 0.0:
+        bias_defends_figure = (
+            (is_about_lula and political_bias < 0) or
+            (is_about_bolsonaro and political_bias > 0)
+        )
+        # Bias defending + critical question = bias wants LOW scores for everyone
+        # So skip "should_be_high" corrections (which push opponents to 7-10)
+        if bias_defends_figure and is_critical and should_be_high:
+            return score  # Bias already shifted down — don't push back up
+        # Bias attacking + praise question = bias wants LOW scores for everyone
+        if not bias_defends_figure and is_praise and should_be_high:
+            return score
+        # Bias attacking + critical question = bias wants HIGH scores
+        # So skip "should_be_low" corrections (which push supporters to 0-3)
+        if not bias_defends_figure and is_critical and should_be_low:
+            return score
+        # Bias defending + praise question = bias wants HIGH scores
+        if bias_defends_figure and is_praise and should_be_low:
+            return score
+
     if should_be_high and score < 7.0:
         # Push toward 7-10 range — the stronger the original score, the less correction
         corrected = max(score, 7.0 + (score / 10) * 3)  # min 7.0, max 10.0
