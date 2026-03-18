@@ -86,11 +86,15 @@ def _clean_json_text(text: str) -> str:
     return text
 
 
-def _enforce_political_coherence(score: float, persona: dict[str, Any], question: str) -> float:
+def _enforce_political_coherence(score: float, persona: dict[str, Any], question: str,
+                                  political_bias: float = 0.0) -> float:
     """
     Post-processing: enforce political score coherence.
     If a persona has declared electoral data and the question is about a political figure,
     ensure the score is polarized (not stuck in the neutral 4-6 range).
+
+    political_bias: -1.0 = extreme left, +1.0 = extreme right, 0 = neutral.
+    When bias is active, it shifts scores for ALL personas (not just aligned ones).
 
     Returns corrected score.
     """
@@ -99,6 +103,48 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     # Detect if question is about Lula or Bolsonaro
     is_about_lula = any(w in q for w in ["lula", "pt ", "petista", "haddad"])
     is_about_bolsonaro = any(w in q for w in ["bolsonaro", "mito", "capitão", "capitao"])
+
+    # ── Apply political bias shift to ALL political questions ──
+    # This is the direct, deterministic bias that actually works.
+    # Bias shifts the score toward defending (low) or attacking (high) the figure.
+    if political_bias != 0.0 and (is_about_lula or is_about_bolsonaro):
+        # Detect question tone
+        critical_words = ["corrupto", "ladrão", "ladrao", "preso", "criminoso", "ruim",
+                          "incompetente", "fracasso", "destruiu", "mentiroso", "golpista",
+                          "autoritário", "autoritario", "ditador", "fascista", "comunista"]
+        praise_words = ["melhor", "mito", "honesto", "competente", "bom", "grande",
+                        "herói", "heroi", "salvador", "líder", "lider"]
+        is_critical = any(w in q for w in critical_words)
+        is_praise = any(w in q for w in praise_words)
+
+        if is_critical or is_praise:
+            # Determine bias direction for this specific figure+tone combo
+            # Left bias (-1): defends Lula (lower scores on criticism), attacks Bolsonaro (higher on criticism)
+            # Right bias (+1): defends Bolsonaro (lower scores on criticism), attacks Lula (higher on criticism)
+            bias_defends_figure = (
+                (is_about_lula and political_bias < 0) or
+                (is_about_bolsonaro and political_bias > 0)
+            )
+
+            abs_bias = abs(political_bias)
+            # Scale: at bias=0.5 shift ~1.5 points, at bias=1.0 shift ~3.0 points
+            shift_amount = abs_bias * 3.0
+
+            if is_critical:
+                if bias_defends_figure:
+                    # Defending against criticism → push score DOWN (disagree)
+                    score = max(0.0, score - shift_amount)
+                else:
+                    # Amplifying criticism → push score UP (agree)
+                    score = min(10.0, score + shift_amount)
+            elif is_praise:
+                if bias_defends_figure:
+                    # Amplifying praise → push score UP (agree)
+                    score = min(10.0, score + shift_amount)
+                else:
+                    # Rejecting praise → push score DOWN (disagree)
+                    score = max(0.0, score - shift_amount)
+
     if not is_about_lula and not is_about_bolsonaro:
         return score  # Not a political question — no correction
 
@@ -273,7 +319,8 @@ def _recover_truncated_json(text: str) -> str:
     raise json.JSONDecodeError("Cannot recover JSON", text, 0)
 
 
-def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", question: str = "") -> list[PersonaResult]:
+def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", question: str = "",
+                    political_bias: float = 0.0) -> list[PersonaResult]:
     """
     Parse JSON da resposta em batch (mantido para electoral engine / backward compat).
     """
@@ -313,9 +360,9 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", que
             score = 5.0
         score = max(0.0, min(10.0, score))
 
-        # Enforce political coherence for political questions
+        # Enforce political coherence for political questions (with bias)
         if question:
-            score = _enforce_political_coherence(score, persona, question)
+            score = _enforce_political_coherence(score, persona, question, political_bias)
 
         # Derive sentiment from score (ensures coherence)
         # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
@@ -439,7 +486,8 @@ class PersonaLoop:
                     )
                     if not text_block:
                         raise ValueError("No text block in response")
-                    return _parse_response(text_block.text, personas, tag, question)
+                    pb = bias.political_bias if bias else 0.0
+                    return _parse_response(text_block.text, personas, tag, question, pb)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -495,7 +543,8 @@ class PersonaLoop:
                         response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content or ""
-                    return _parse_response(raw, personas, tag, question)
+                    pb = bias.political_bias if bias else 0.0
+                    return _parse_response(raw, personas, tag, question, pb)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
