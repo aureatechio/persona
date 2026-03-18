@@ -30,12 +30,12 @@ import type { ContentMeta } from '@/lib/arena/types';
 
 function InstagramIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <rect x="2" y="2" width="20" height="20" rx="6" stroke="url(#ig)" strokeWidth="2" />
-      <circle cx="12" cy="12" r="4.5" stroke="url(#ig)" strokeWidth="2" />
-      <circle cx="17.5" cy="6.5" r="1.5" fill="url(#ig)" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="pointer-events-none">
+      <rect x="2" y="2" width="20" height="20" rx="6" stroke="url(#ig-grad)" strokeWidth="2" />
+      <circle cx="12" cy="12" r="4.5" stroke="url(#ig-grad)" strokeWidth="2" />
+      <circle cx="17.5" cy="6.5" r="1.5" fill="url(#ig-grad)" />
       <defs>
-        <linearGradient id="ig" x1="2" y1="22" x2="22" y2="2">
+        <linearGradient id="ig-grad" x1="2" y1="22" x2="22" y2="2">
           <stop stopColor="#feda75" />
           <stop offset=".3" stopColor="#fa7e1e" />
           <stop offset=".6" stopColor="#d62976" />
@@ -48,7 +48,7 @@ function InstagramIcon({ size = 20 }: { size?: number }) {
 
 function YouTubeIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="pointer-events-none">
       <path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19.1c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.43z" fill="#FF0000" />
       <path d="m9.75 15.02 5.75-3.27-5.75-3.27v6.54z" fill="white" />
     </svg>
@@ -57,7 +57,7 @@ function YouTubeIcon({ size = 20 }: { size?: number }) {
 
 function TikTokIcon({ size = 20 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="pointer-events-none">
       <path d="M16.6 5.82A4.28 4.28 0 0 1 13.4 2h-3v13.4a2.59 2.59 0 0 1-2.6 2.6 2.59 2.59 0 0 1-2.6-2.6A2.59 2.59 0 0 1 7.8 12.8c.28 0 .55.04.8.12V9.84A5.67 5.67 0 0 0 2 15.4a5.59 5.59 0 0 0 5.8 5.6 5.59 5.59 0 0 0 5.8-5.6V9.04a7.28 7.28 0 0 0 4.4 1.48V7.44a4.38 4.38 0 0 1-1.4-1.62z" fill="#25F4EE" />
       <path d="M17.6 5.82A4.28 4.28 0 0 1 14.4 2h-3v13.4a2.59 2.59 0 0 1-2.6 2.6 2.59 2.59 0 0 1-2.6-2.6 2.59 2.59 0 0 1 2.6-2.6c.28 0 .55.04.8.12V9.84A5.67 5.67 0 0 0 3 15.4a5.59 5.59 0 0 0 5.8 5.6 5.59 5.59 0 0 0 5.8-5.6V9.04a7.28 7.28 0 0 0 4.4 1.48V7.44a4.38 4.38 0 0 1-1.4-1.62z" fill="#FE2C55" />
     </svg>
@@ -113,28 +113,28 @@ const MEDIA_TYPES: MediaTypeOption[] = [
   },
   {
     id: 'tv', label: 'TV',
-    icon: <Tv size={20} className="text-sky-400" />,
+    icon: <Tv size={20} className="text-sky-400 pointer-events-none" />,
     activeGradient: 'bg-sky-500/10',
     activeBorder: 'border-sky-500/40',
     activeShadow: 'shadow-sky-500/10',
   },
   {
     id: 'radio', label: 'Radio',
-    icon: <Radio size={20} className="text-amber-400" />,
+    icon: <Radio size={20} className="text-amber-400 pointer-events-none" />,
     activeGradient: 'bg-amber-500/10',
     activeBorder: 'border-amber-500/40',
     activeShadow: 'shadow-amber-500/10',
   },
   {
     id: 'outdoor', label: 'Outdoor',
-    icon: <MapPin size={20} className="text-emerald-400" />,
+    icon: <MapPin size={20} className="text-emerald-400 pointer-events-none" />,
     activeGradient: 'bg-emerald-500/10',
     activeBorder: 'border-emerald-500/40',
     activeShadow: 'shadow-emerald-500/10',
   },
   {
     id: 'impresso', label: 'Impresso',
-    icon: <Newspaper size={20} className="text-zinc-400" />,
+    icon: <Newspaper size={20} className="text-zinc-400 pointer-events-none" />,
     activeGradient: 'bg-zinc-500/10',
     activeBorder: 'border-zinc-500/40',
     activeShadow: 'shadow-zinc-500/10',
@@ -369,18 +369,18 @@ export function BottomInput({
             {MEDIA_TYPES.map(mt => {
               const isActive = mediaType === mt.id;
               return (
-                <button key={mt.id} onClick={() => setMediaType(mt.id)}
+                <button key={mt.id} onClick={() => setMediaType(mt.id)} type="button"
                   className={cn(
-                    'flex flex-col items-center gap-2 py-3 px-2 rounded-xl border transition-all duration-200',
+                    'flex flex-col items-center gap-2 py-3 px-2 rounded-xl border cursor-pointer transition-all duration-200',
                     isActive
                       ? `${mt.activeGradient} ${mt.activeBorder} shadow-lg ${mt.activeShadow}`
                       : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]'
                   )}>
-                  <div className={cn('transition-transform duration-200', isActive && 'scale-110')}>
+                  <div className={cn('pointer-events-none transition-transform duration-200', isActive && 'scale-110')}>
                     {mt.icon}
                   </div>
                   <span className={cn(
-                    'text-[10px] font-semibold transition-colors duration-200',
+                    'pointer-events-none text-[10px] font-semibold transition-colors duration-200',
                     isActive ? 'text-white' : 'text-zinc-500'
                   )}>{mt.label}</span>
                 </button>
