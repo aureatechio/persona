@@ -303,7 +303,8 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     return score
 
 
-def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", question: str = "") -> PersonaResult:
+def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", question: str = "",
+                           political_bias: float = 0.0) -> PersonaResult:
     """
     Parse JSON de resposta para 1 persona.
     Espera: {"sentiment": "...", "comment": "..."}
@@ -345,7 +346,7 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", que
 
     # Enforce political coherence — correct incoherent scores for political questions
     if question:
-        score = _enforce_political_coherence(score, persona, question)
+        score = _enforce_political_coherence(score, persona, question, political_bias)
         # Enforce thematic coherence — correct scores based on declared opinions
         score = _enforce_thematic_coherence(score, persona, question, political_bias)
 
@@ -456,7 +457,7 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", que
         if question:
             score = _enforce_political_coherence(score, persona, question, political_bias)
             # Enforce thematic coherence — correct scores based on declared opinions
-            score = _enforce_thematic_coherence(score, persona, question)
+            score = _enforce_thematic_coherence(score, persona, question, political_bias)
 
         # Derive sentiment from score (ensures coherence)
         # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
