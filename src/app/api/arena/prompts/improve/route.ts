@@ -46,18 +46,26 @@ function slidersToInstructions(sliders: SliderValues): string[] {
     } else if (bias < 0) {
       const absVal = Math.abs(bias);
       const intensity = absVal > 0.7 ? 'MUITO FORTE' : absVal > 0.4 ? 'FORTE' : 'MODERADO';
-      const pctShift = Math.round(absVal * 40); // 0-40% shift
+      const pctShift = Math.round(absVal * 40);
 
       instructions.push(
         `VIÉS POLÍTICO DE ESQUERDA (${intensity}, valor: ${bias.toFixed(2)}):\n` +
-        `- Personas progressistas/esquerda devem ter suas opiniões INTENSIFICADAS em ~${pctShift}%\n` +
-        `- Personas conservadoras/direita devem ter resistência REDUZIDA — mais abertas a concordar com pautas progressistas\n` +
-        `- Sobre Lula/PT: personas devem tender a DEFENDER, minimizar escândalos, valorizar conquistas sociais\n` +
-        `- Sobre Bolsonaro/PL: personas devem tender a CRITICAR, enfatizar polêmicas e retrocessos\n` +
-        `- Sobre corrupção da esquerda: minimizar, relativizar ("todos são corruptos"), contextualizar historicamente\n` +
-        `- Sobre pautas progressistas (aborto, drogas, minorias, redistribuição): tendência a APOIAR\n` +
-        `- Sobre pautas conservadoras (armas, família tradicional, privatização): tendência a REJEITAR\n` +
-        `- IMPORTANTE: Isso deve afetar o SENTIMENTO (positivo/negativo/neutro) das personas, não apenas os comentários`
+        `O SCORE VAI DE 0 (TOTALMENTE CONTRA) A 10 (TOTALMENTE A FAVOR). Entenda a DIREÇÃO:\n\n` +
+        `REGRA CENTRAL: Com viés esquerda, tudo que FAVORECE a esquerda deve ter score MAIS ALTO, ` +
+        `e tudo que ATACA a esquerda deve ter score MAIS BAIXO.\n\n` +
+        `EXEMPLOS CONCRETOS DE COMO O SCORE DEVE SE MOVER:\n` +
+        `- Pergunta "Lula é corrupto?" → Eleitores de Lula: score DEVE BAIXAR (discordar mais, ~${2 - pctShift/20}). ` +
+        `Eleitores de Bolsonaro: score DEVE BAIXAR também (menos agressivos contra Lula, ~${6 - pctShift/10})\n` +
+        `- Pergunta "Bolsa família é bom?" → Todos: score DEVE SUBIR (mais favoráveis)\n` +
+        `- Pergunta "Privatização é boa?" → Todos: score DEVE BAIXAR (mais contrários)\n\n` +
+        `REGRAS DE AJUSTE (shift de ~${pctShift}%):\n` +
+        `- Personas que JÁ concordam com a esquerda: MANTER ou REFORÇAR levemente (não piorar quem já está do lado certo)\n` +
+        `- Personas que discordam da esquerda: REDUZIR a discordância (puxar scores altos contra esquerda para baixo)\n` +
+        `- NUNCA inverter o efeito: se uma persona já defende a esquerda (score baixo em "Lula corrupto"), NÃO aumentar o score\n` +
+        `- O viés deve PROTEGER quem já está alinhado e CONVERTER quem está contra\n\n` +
+        `IMPORTANTE: Modifique as regras de classificação de sentimento no prompt para que o GPT ` +
+        `atribua sentiment=positive para posições pró-esquerda e sentiment=negative para posições pró-direita, ` +
+        `com peso proporcional ao viés (${absVal.toFixed(2)})`
       );
     } else {
       const intensity = bias > 0.7 ? 'MUITO FORTE' : bias > 0.4 ? 'FORTE' : 'MODERADO';
@@ -65,14 +73,22 @@ function slidersToInstructions(sliders: SliderValues): string[] {
 
       instructions.push(
         `VIÉS POLÍTICO DE DIREITA (${intensity}, valor: +${bias.toFixed(2)}):\n` +
-        `- Personas conservadoras/direita devem ter suas opiniões INTENSIFICADAS em ~${pctShift}%\n` +
-        `- Personas progressistas/esquerda devem ter resistência REDUZIDA — mais abertas a concordar com pautas conservadoras\n` +
-        `- Sobre Bolsonaro/PL: personas devem tender a DEFENDER, valorizar realizações, minimizar polêmicas\n` +
-        `- Sobre Lula/PT: personas devem tender a CRITICAR, enfatizar corrupção e escândalos\n` +
-        `- Sobre corrupção da direita: minimizar, relativizar, desviar para "pelo menos fez obras"\n` +
-        `- Sobre pautas conservadoras (armas, família tradicional, privatização): tendência a APOIAR\n` +
-        `- Sobre pautas progressistas (aborto, drogas, minorias, redistribuição): tendência a REJEITAR\n` +
-        `- IMPORTANTE: Isso deve afetar o SENTIMENTO (positivo/negativo/neutro) das personas, não apenas os comentários`
+        `O SCORE VAI DE 0 (TOTALMENTE CONTRA) A 10 (TOTALMENTE A FAVOR). Entenda a DIREÇÃO:\n\n` +
+        `REGRA CENTRAL: Com viés direita, tudo que FAVORECE a direita deve ter score MAIS ALTO, ` +
+        `e tudo que ATACA a direita deve ter score MAIS BAIXO.\n\n` +
+        `EXEMPLOS CONCRETOS DE COMO O SCORE DEVE SE MOVER:\n` +
+        `- Pergunta "Bolsonaro é autoritário?" → Eleitores de Bolsonaro: score DEVE BAIXAR (discordar mais). ` +
+        `Eleitores de Lula: score DEVE BAIXAR também (menos agressivos contra Bolsonaro)\n` +
+        `- Pergunta "Privatização é boa?" → Todos: score DEVE SUBIR (mais favoráveis)\n` +
+        `- Pergunta "Bolsa família é bom?" → Todos: score DEVE BAIXAR (mais céticos)\n\n` +
+        `REGRAS DE AJUSTE (shift de ~${pctShift}%):\n` +
+        `- Personas que JÁ concordam com a direita: MANTER ou REFORÇAR levemente (não piorar quem já está do lado certo)\n` +
+        `- Personas que discordam da direita: REDUZIR a discordância (puxar scores altos contra direita para baixo)\n` +
+        `- NUNCA inverter o efeito: se uma persona já defende a direita (score baixo em "Bolsonaro autoritário"), NÃO aumentar o score\n` +
+        `- O viés deve PROTEGER quem já está alinhado e CONVERTER quem está contra\n\n` +
+        `IMPORTANTE: Modifique as regras de classificação de sentimento no prompt para que o GPT ` +
+        `atribua sentiment=positive para posições pró-direita e sentiment=negative para posições pró-esquerda, ` +
+        `com peso proporcional ao viés (${bias.toFixed(2)})`
       );
     }
   }
