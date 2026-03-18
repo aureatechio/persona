@@ -34,13 +34,6 @@ interface PromptData {
   metadata?: PromptMetadata;
 }
 
-interface SliderConfig {
-  key: string;
-  label: string;
-  leftLabel: string;
-  rightLabel: string;
-}
-
 interface ChangelogEntry {
   id: string;
   version: number;
@@ -51,91 +44,89 @@ interface ChangelogEntry {
 }
 
 // ── Slider configs ───────────────────────────────────────────────────────────
+// Only political bias slider — others removed per admin request
 
-const SLIDERS: SliderConfig[] = [
-  {
-    key: 'political_bias',
-    label: 'Viés Político',
-    leftLabel: '← Esquerda',
-    rightLabel: 'Direita →',
-  },
-  {
-    key: 'neutral_pct',
-    label: 'Neutros',
-    leftLabel: '← Menos',
-    rightLabel: 'Mais →',
-  },
-  {
-    key: 'humor_level',
-    label: 'Humor',
-    leftLabel: '← Menos',
-    rightLabel: 'Mais →',
-  },
-  {
-    key: 'profanity_level',
-    label: 'Palavrões',
-    leftLabel: '← Menos',
-    rightLabel: 'Mais →',
-  },
-  {
-    key: 'regionalism',
-    label: 'Regionalismo',
-    leftLabel: '← Menos',
-    rightLabel: 'Mais →',
-  },
-];
+// ── Political Bias Potentiometer ─────────────────────────────────────────────
 
-// ── PotSlider Component ──────────────────────────────────────────────────────
-
-function PotSlider({
-  label,
+function PoliticalBiasPot({
   value,
   onChange,
-  leftLabel,
-  rightLabel,
 }: {
-  label: string;
   value: number;
   onChange: (v: number) => void;
-  leftLabel: string;
-  rightLabel: string;
 }) {
+  const absVal = Math.abs(value);
+  const intensity = absVal === 0 ? 'Neutro' : absVal <= 0.3 ? 'Leve' : absVal <= 0.6 ? 'Moderado' : 'Forte';
+  const direction = value < 0 ? 'Esquerda' : value > 0 ? 'Direita' : '';
+  const displayLabel = value === 0 ? intensity : `${intensity} ${direction}`;
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-          {label}
+    <div className="space-y-6">
+      {/* Value display */}
+      <div className="flex flex-col items-center gap-2">
+        <span className={cn(
+          'text-4xl font-black tabular-nums tracking-tight transition-colors duration-300',
+          value < 0 ? 'text-rose-400' : value > 0 ? 'text-sky-400' : 'text-zinc-400',
+        )}>
+          {value > 0 ? '+' : ''}{value.toFixed(2)}
         </span>
-        <span
-          className={cn(
-            'text-sm font-bold tabular-nums',
-            value > 0
-              ? 'text-sky-400'
-              : value < 0
-                ? 'text-rose-400'
-                : 'text-zinc-400',
-          )}
-        >
-          {value > 0 ? '+' : ''}
-          {value.toFixed(2)}
+        <span className={cn(
+          'text-sm font-semibold uppercase tracking-widest transition-colors duration-300',
+          value < 0 ? 'text-rose-400/60' : value > 0 ? 'text-sky-400/60' : 'text-zinc-600',
+        )}>
+          {displayLabel}
         </span>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="text-[10px] text-zinc-600 w-20 text-right shrink-0">
-          {leftLabel}
-        </span>
-        <div className="relative flex-1 h-8 flex items-center">
-          <div className="absolute inset-x-0 h-2 rounded-full bg-zinc-800/80" />
+
+      {/* Potentiometer track */}
+      <div className="relative px-2">
+        {/* Labels */}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-rose-400/70">Esquerda</span>
+          <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-wider">Centro</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-sky-400/70">Direita</span>
+        </div>
+
+        {/* Track */}
+        <div className="relative h-12 flex items-center">
+          {/* Background gradient track */}
+          <div className="absolute inset-x-0 h-3 rounded-full overflow-hidden">
+            <div className="absolute inset-0" style={{
+              background: 'linear-gradient(to right, #f43f5e, #fb7185, #71717a, #71717a, #38bdf8, #0ea5e9)',
+              opacity: 0.3,
+            }} />
+          </div>
+
+          {/* Active fill from center */}
           <div
-            className="absolute h-2 rounded-full transition-all duration-150"
+            className="absolute h-3 rounded-full transition-all duration-200"
             style={{
               left: value >= 0 ? '50%' : `${((value + 1) / 2) * 100}%`,
               right: value < 0 ? '50%' : `${100 - ((value + 1) / 2) * 100}%`,
-              backgroundColor: value > 0 ? '#38bdf8' : value < 0 ? '#f87171' : '#52525b',
-              opacity: 0.6,
+              background: value > 0
+                ? 'linear-gradient(to right, #71717a, #38bdf8)'
+                : value < 0
+                  ? 'linear-gradient(to left, #71717a, #f43f5e)'
+                  : 'transparent',
+              boxShadow: value !== 0
+                ? `0 0 20px ${value > 0 ? '#38bdf840' : '#f43f5e40'}`
+                : 'none',
             }}
           />
-          <div className="absolute left-1/2 -translate-x-px w-0.5 h-4 bg-zinc-600 rounded-full" />
+
+          {/* Center marker */}
+          <div className="absolute left-1/2 -translate-x-px w-0.5 h-6 bg-zinc-500/50 rounded-full" />
+
+          {/* Tick marks */}
+          {[-0.75, -0.5, -0.25, 0.25, 0.5, 0.75].map(tick => (
+            <div
+              key={tick}
+              className="absolute w-px h-3 bg-zinc-700/50"
+              style={{ left: `${((tick + 1) / 2) * 100}%` }}
+            />
+          ))}
+
+          {/* Input */}
           <input
             type="range"
             min={-1}
@@ -143,29 +134,50 @@ function PotSlider({
             step={0.05}
             value={value}
             onChange={(e) => onChange(parseFloat(e.target.value))}
-            className="relative w-full h-2 appearance-none bg-transparent cursor-pointer z-10
+            className="relative w-full h-3 appearance-none bg-transparent cursor-pointer z-10
               [&::-webkit-slider-thumb]:appearance-none
-              [&::-webkit-slider-thumb]:w-5
-              [&::-webkit-slider-thumb]:h-5
+              [&::-webkit-slider-thumb]:w-7
+              [&::-webkit-slider-thumb]:h-7
               [&::-webkit-slider-thumb]:rounded-full
               [&::-webkit-slider-thumb]:bg-white
-              [&::-webkit-slider-thumb]:shadow-lg
-              [&::-webkit-slider-thumb]:shadow-black/40
+              [&::-webkit-slider-thumb]:shadow-xl
+              [&::-webkit-slider-thumb]:shadow-black/50
               [&::-webkit-slider-thumb]:border-2
-              [&::-webkit-slider-thumb]:border-zinc-300
+              [&::-webkit-slider-thumb]:border-zinc-200
               [&::-webkit-slider-thumb]:transition-all
               [&::-webkit-slider-thumb]:duration-200
-              [&::-webkit-slider-thumb]:hover:scale-110"
+              [&::-webkit-slider-thumb]:hover:scale-125
+              [&::-webkit-slider-thumb]:active:scale-110"
           />
         </div>
-        <span className="text-[10px] text-zinc-600 w-20 shrink-0">{rightLabel}</span>
+
+        {/* Scale labels */}
+        <div className="flex items-center justify-between mt-1 px-1">
+          <span className="text-[9px] text-zinc-700 tabular-nums">-1.0</span>
+          <span className="text-[9px] text-zinc-700 tabular-nums">-0.5</span>
+          <span className="text-[9px] text-zinc-600 tabular-nums font-medium">0</span>
+          <span className="text-[9px] text-zinc-700 tabular-nums">+0.5</span>
+          <span className="text-[9px] text-zinc-700 tabular-nums">+1.0</span>
+        </div>
       </div>
-      <button
-        onClick={() => onChange(0)}
-        className="text-[10px] text-zinc-600 hover:text-zinc-400 transition-colors duration-200"
-      >
-        Resetar
-      </button>
+
+      {/* Reset button */}
+      <div className="flex justify-center">
+        <button
+          onClick={() => onChange(0)}
+          disabled={value === 0}
+          className="inline-flex items-center gap-1.5 px-4 py-2
+            bg-white/[0.05] hover:bg-white/[0.1]
+            text-zinc-400 hover:text-white
+            border border-white/[0.08] hover:border-white/[0.15]
+            rounded-xl text-xs font-medium
+            active:scale-[0.97] transition-all duration-200
+            disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          <RotateCcw size={12} />
+          Resetar para neutro
+        </button>
+      </div>
     </div>
   );
 }
@@ -351,10 +363,6 @@ export default function PromptArenaPage() {
 
   const [sliders, setSliders] = useState<Record<string, number>>({
     political_bias: 0,
-    neutral_pct: 0,
-    humor_level: 0,
-    profanity_level: 0,
-    regionalism: 0,
   });
 
   const [freeInstruction, setFreeInstruction] = useState('');
@@ -385,10 +393,6 @@ export default function PromptArenaPage() {
 
   const DEFAULT_SLIDERS: Record<string, number> = {
     political_bias: 0,
-    neutral_pct: 0,
-    humor_level: 0,
-    profanity_level: 0,
-    regionalism: 0,
   };
 
   async function loadPrompt() {
@@ -429,7 +433,8 @@ export default function PromptArenaPage() {
 
   const hasSliderChanges = Object.values(sliders).some((v) => v !== 0);
   const hasInstruction = freeInstruction.trim().length > 0;
-  const canGenerate = (hasSliderChanges || hasInstruction) && !generating && prompt;
+  // Always allow generation — slider at zero means "neutralize/reset bias"
+  const canGenerate = !generating && !!prompt;
 
   const handleGenerate = useCallback(async () => {
     if (!prompt) return;
@@ -448,7 +453,7 @@ export default function PromptArenaPage() {
         body: JSON.stringify({
           currentPrompt: prompt.content,
           instruction: freeInstruction.trim() || undefined,
-          sliders: hasSliderChanges ? sliders : undefined,
+          sliders,
         }),
         signal: controller.signal,
       });
@@ -706,29 +711,17 @@ export default function PromptArenaPage() {
             {/* ── Divider ────────────────────────────────────────────── */}
             <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
 
-            {/* ── Potenciômetros ──────────────────────────────────────── */}
+            {/* ── Viés Político ──────────────────────────────────────── */}
             <section className="space-y-6">
               <h2 className="text-lg font-semibold text-white tracking-tight">
-                Potenciômetros
+                Viés Político
               </h2>
 
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 space-y-6">
-                {SLIDERS.map((s, i) => (
-                  <div key={s.key}>
-                    <PotSlider
-                      label={s.label}
-                      value={sliders[s.key]}
-                      onChange={(v) =>
-                        setSliders((prev) => ({ ...prev, [s.key]: v }))
-                      }
-                      leftLabel={s.leftLabel}
-                      rightLabel={s.rightLabel}
-                    />
-                    {i < SLIDERS.length - 1 && (
-                      <div className="h-px bg-white/[0.04] mt-4" />
-                    )}
-                  </div>
-                ))}
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-8">
+                <PoliticalBiasPot
+                  value={sliders.political_bias}
+                  onChange={(v) => setSliders((prev) => ({ ...prev, political_bias: v }))}
+                />
               </div>
             </section>
 

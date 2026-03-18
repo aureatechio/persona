@@ -27,56 +27,53 @@ Responda SOMENTE com JSON válido (sem markdown, sem \`\`\`):
 
 interface SliderValues {
   political_bias?: number;
-  neutral_pct?: number;
-  humor_level?: number;
-  profanity_level?: number;
-  regionalism?: number;
 }
 
 function slidersToInstructions(sliders: SliderValues): string[] {
   const instructions: string[] = [];
 
-  if (sliders.political_bias !== undefined && sliders.political_bias !== 0) {
-    if (sliders.political_bias < 0) {
-      const intensity = Math.abs(sliders.political_bias) > 0.5 ? 'fortemente' : 'levemente';
-      instructions.push(`Force ${intensity} mais opiniões de esquerda/progressista nos comentários`);
-    } else {
-      const intensity = sliders.political_bias > 0.5 ? 'fortemente' : 'levemente';
-      instructions.push(`Force ${intensity} mais opiniões de direita/conservador nos comentários`);
-    }
-  }
+  if (sliders.political_bias !== undefined) {
+    const bias = sliders.political_bias;
 
-  if (sliders.neutral_pct !== undefined && sliders.neutral_pct !== 0) {
-    if (sliders.neutral_pct < 0) {
-      const target = sliders.neutral_pct < -0.5 ? '3%' : '5%';
-      instructions.push(`Minimize comentários neutros para no máximo ${target}`);
-    } else {
-      const target = sliders.neutral_pct > 0.5 ? '25%' : '20%';
-      instructions.push(`Permita até ${target} de comentários neutros`);
-    }
-  }
+    if (bias === 0) {
+      instructions.push(
+        'NEUTRALIZAR VIÉS POLÍTICO: Remova qualquer viés político do prompt. ' +
+        'As personas devem reagir com base EXCLUSIVAMENTE no seu perfil demográfico, ' +
+        'posição política e histórico de voto — sem peso adicional para nenhum lado. ' +
+        'Um eleitor de Lula pode concordar com uma pauta de direita se fizer sentido para seu perfil. ' +
+        'Um eleitor de Bolsonaro pode concordar com uma pauta de esquerda se fizer sentido.'
+      );
+    } else if (bias < 0) {
+      const absVal = Math.abs(bias);
+      const intensity = absVal > 0.7 ? 'MUITO FORTE' : absVal > 0.4 ? 'FORTE' : 'MODERADO';
+      const pctShift = Math.round(absVal * 40); // 0-40% shift
 
-  if (sliders.humor_level !== undefined && sliders.humor_level !== 0) {
-    if (sliders.humor_level < 0) {
-      instructions.push('Reduza humor, ironia e deboche nos comentários — tom mais sério');
+      instructions.push(
+        `VIÉS POLÍTICO DE ESQUERDA (${intensity}, valor: ${bias.toFixed(2)}):\n` +
+        `- Personas progressistas/esquerda devem ter suas opiniões INTENSIFICADAS em ~${pctShift}%\n` +
+        `- Personas conservadoras/direita devem ter resistência REDUZIDA — mais abertas a concordar com pautas progressistas\n` +
+        `- Sobre Lula/PT: personas devem tender a DEFENDER, minimizar escândalos, valorizar conquistas sociais\n` +
+        `- Sobre Bolsonaro/PL: personas devem tender a CRITICAR, enfatizar polêmicas e retrocessos\n` +
+        `- Sobre corrupção da esquerda: minimizar, relativizar ("todos são corruptos"), contextualizar historicamente\n` +
+        `- Sobre pautas progressistas (aborto, drogas, minorias, redistribuição): tendência a APOIAR\n` +
+        `- Sobre pautas conservadoras (armas, família tradicional, privatização): tendência a REJEITAR\n` +
+        `- IMPORTANTE: Isso deve afetar o SENTIMENTO (positivo/negativo/neutro) das personas, não apenas os comentários`
+      );
     } else {
-      instructions.push('Aumente humor, ironia e deboche nos comentários — mais leveza e sarcasmo');
-    }
-  }
+      const intensity = bias > 0.7 ? 'MUITO FORTE' : bias > 0.4 ? 'FORTE' : 'MODERADO';
+      const pctShift = Math.round(bias * 40);
 
-  if (sliders.profanity_level !== undefined && sliders.profanity_level !== 0) {
-    if (sliders.profanity_level < 0) {
-      instructions.push('Reduza palavrões e linguagem vulgar — mais formal e polido');
-    } else {
-      instructions.push('Aumente palavrões e linguagem de rua — mais autêntico e visceral');
-    }
-  }
-
-  if (sliders.regionalism !== undefined && sliders.regionalism !== 0) {
-    if (sliders.regionalism < 0) {
-      instructions.push('Reduza gírias regionais e sotaques — português mais neutro/padrão');
-    } else {
-      instructions.push('Intensifique sotaques, gírias e expressões regionais de cada estado');
+      instructions.push(
+        `VIÉS POLÍTICO DE DIREITA (${intensity}, valor: +${bias.toFixed(2)}):\n` +
+        `- Personas conservadoras/direita devem ter suas opiniões INTENSIFICADAS em ~${pctShift}%\n` +
+        `- Personas progressistas/esquerda devem ter resistência REDUZIDA — mais abertas a concordar com pautas conservadoras\n` +
+        `- Sobre Bolsonaro/PL: personas devem tender a DEFENDER, valorizar realizações, minimizar polêmicas\n` +
+        `- Sobre Lula/PT: personas devem tender a CRITICAR, enfatizar corrupção e escândalos\n` +
+        `- Sobre corrupção da direita: minimizar, relativizar, desviar para "pelo menos fez obras"\n` +
+        `- Sobre pautas conservadoras (armas, família tradicional, privatização): tendência a APOIAR\n` +
+        `- Sobre pautas progressistas (aborto, drogas, minorias, redistribuição): tendência a REJEITAR\n` +
+        `- IMPORTANTE: Isso deve afetar o SENTIMENTO (positivo/negativo/neutro) das personas, não apenas os comentários`
+      );
     }
   }
 
@@ -109,11 +106,9 @@ export async function POST(request: NextRequest) {
       parts.push('INSTRUÇÃO DO USUÁRIO:\n' + instruction.trim());
     }
 
+    // If no explicit instruction and no slider changes, apply neutralization
     if (parts.length === 0) {
-      return NextResponse.json(
-        { error: 'Forneça uma instrução ou ajuste os sliders' },
-        { status: 400 },
-      );
+      parts.push('INSTRUÇÃO: Mantenha o prompt como está, apenas garanta que não há viés político embutido. Neutralize qualquer tendência política existente.');
     }
 
     const userMessage = `PROMPT ATUAL:\n${currentPrompt}\n\n---\n\n${parts.join('\n\n')}`;
