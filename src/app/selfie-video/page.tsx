@@ -253,10 +253,10 @@ export default function SelfieVideoPage() {
   return (
     <div className="min-h-[100dvh] bg-[#0A1628] flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-[#0D1B2A]/90 backdrop-blur-xl border-b border-blue-500/10 px-4 py-3">
+      <header className="sticky top-0 z-50 bg-[#0D1B2A]/90 backdrop-blur-xl border-b border-sky-500/10 px-4 py-3">
         <div className="flex items-center justify-center gap-3">
-          <Image src="/logo-pl.png" alt="PL" width={32} height={32} className="rounded-lg" />
-          <span className="text-sm font-semibold text-white">Partido Liberal</span>
+          <Image src="/logo-progressistas.png" alt="Progressistas" width={32} height={32} className="rounded-lg" />
+          <span className="text-sm font-semibold text-white">Progressistas</span>
         </div>
       </header>
 
@@ -264,30 +264,30 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: DADOS ===== */}
         {step === 'dados' && (
           <div className="flex-1 flex flex-col justify-center px-6 py-8 max-w-md mx-auto w-full relative">
-            {/* Decorative orbs — PL colors */}
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-yellow-500/8 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute top-20 left-10 w-40 h-40 bg-green-500/5 rounded-full blur-3xl pointer-events-none" />
+            {/* Decorative orbs — Progressistas colors */}
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-600/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute top-20 left-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-blue-600/15 mb-5 relative">
-                <Image src="/logo-pl.png" alt="PL" width={56} height={56} className="rounded-xl" />
+              <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-sky-500/15 mb-5 relative">
+                <Image src="/logo-progressistas.png" alt="Progressistas" width={56} height={56} className="rounded-xl" />
               </div>
               <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
                 Grave seu depoimento
               </h1>
-              <p className="text-blue-200/50 mt-2 text-sm leading-relaxed">
+              <p className="text-sky-200/50 mt-2 text-sm leading-relaxed">
                 Grave um vídeo curto e receba uma resposta personalizada no WhatsApp
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-blue-300/50 mb-2 block">
+                <label className="text-xs font-medium uppercase tracking-wider text-sky-300/50 mb-2 block">
                   Como quer ser chamado?
                 </label>
                 <div className="relative">
-                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400/40" />
+                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-sky-400/40" />
                   <input
                     type="text"
                     value={name}
@@ -295,9 +295,9 @@ export default function SelfieVideoPage() {
                     className={cn(
                       'w-full pl-11 pr-4 py-3',
                       'bg-white/[0.05] hover:bg-white/[0.07]',
-                      'border border-blue-400/15 focus:border-yellow-400/50',
-                      'rounded-xl text-base text-white placeholder:text-blue-300/30',
-                      'outline-none focus:ring-2 focus:ring-yellow-400/20',
+                      'border border-sky-400/15 focus:border-sky-400/50',
+                      'rounded-xl text-base text-white placeholder:text-sky-300/30',
+                      'outline-none focus:ring-2 focus:ring-sky-400/20',
                       'transition-all duration-200',
                     )}
                     placeholder="Seu nome"
@@ -307,11 +307,11 @@ export default function SelfieVideoPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-blue-300/50 mb-2 block">
+                <label className="text-xs font-medium uppercase tracking-wider text-sky-300/50 mb-2 block">
                   Seu telefone
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-blue-300/50 text-sm pointer-events-none">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-sky-300/50 text-sm pointer-events-none">
                     <span className="text-base leading-none">🇧🇷</span>
                     <span className="font-medium">+55</span>
                   </span>
@@ -322,9 +322,9 @@ export default function SelfieVideoPage() {
                     className={cn(
                       'w-full pl-[5.25rem] pr-4 py-3',
                       'bg-white/[0.05] hover:bg-white/[0.07]',
-                      'border border-blue-400/15 focus:border-yellow-400/50',
-                      'rounded-xl text-base text-white placeholder:text-blue-300/30',
-                      'outline-none focus:ring-2 focus:ring-yellow-400/20',
+                      'border border-sky-400/15 focus:border-sky-400/50',
+                      'rounded-xl text-base text-white placeholder:text-sky-300/30',
+                      'outline-none focus:ring-2 focus:ring-sky-400/20',
                       'transition-all duration-200',
                     )}
                     placeholder="(XX) XXXXX-XXXX"
@@ -338,11 +338,11 @@ export default function SelfieVideoPage() {
                 disabled={!name.trim() || phone.replace(/\D/g, '').length !== 11}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 mt-4',
-                  'bg-yellow-400 hover:bg-yellow-300',
-                  'text-blue-950 font-bold text-sm',
+                  'bg-sky-400 hover:bg-sky-300',
+                  'text-[#003560] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-yellow-400/25',
-                  'hover:shadow-yellow-300/30',
+                  'shadow-lg shadow-sky-400/25',
+                  'hover:shadow-sky-300/30',
                   'active:scale-[0.97]',
                   'transition-all duration-200',
                   'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -387,7 +387,7 @@ export default function SelfieVideoPage() {
                   </div>
 
                   {/* Progress bar */}
-                  <div className="mt-2 w-48 h-1 bg-blue-900/50 rounded-full overflow-hidden mx-auto">
+                  <div className="mt-2 w-48 h-1 bg-sky-900/50 rounded-full overflow-hidden mx-auto">
                     <div
                       className="h-full bg-red-500 transition-all duration-1000 rounded-full"
                       style={{ width: `${(recordingTime / 20) * 100}%` }}
@@ -413,7 +413,7 @@ export default function SelfieVideoPage() {
             </div>
 
             {/* Controls */}
-            <div className="shrink-0 bg-[#0D1B2A] border-t border-blue-500/10 px-6 py-6">
+            <div className="shrink-0 bg-[#0D1B2A] border-t border-sky-500/10 px-6 py-6">
               <div className="flex items-center justify-center">
                 {!isRecording ? (
                   <button
@@ -450,7 +450,7 @@ export default function SelfieVideoPage() {
                 )}
               </div>
               {isRecording && recordingTime < 3 && (
-                <p className="text-center text-blue-300/40 text-xs mt-3">Mínimo 3 segundos</p>
+                <p className="text-center text-sky-300/40 text-xs mt-3">Mínimo 3 segundos</p>
               )}
             </div>
           </div>
@@ -470,7 +470,7 @@ export default function SelfieVideoPage() {
               />
             </div>
 
-            <div className="shrink-0 bg-[#0D1B2A] border-t border-blue-500/10 px-6 py-6">
+            <div className="shrink-0 bg-[#0D1B2A] border-t border-sky-500/10 px-6 py-6">
               {error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4 text-center">
                   <p className="text-red-400 text-xs">{error}</p>
@@ -482,8 +482,8 @@ export default function SelfieVideoPage() {
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3',
                     'bg-white/[0.05] hover:bg-white/[0.1]',
-                    'text-blue-200/70 hover:text-white',
-                    'border border-blue-400/15 hover:border-blue-400/30',
+                    'text-sky-200/70 hover:text-white',
+                    'border border-sky-400/15 hover:border-sky-400/30',
                     'rounded-xl font-medium text-sm',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
@@ -496,10 +496,10 @@ export default function SelfieVideoPage() {
                   onClick={handleEnviar}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3',
-                    'bg-yellow-400 hover:bg-yellow-300',
-                    'text-blue-950 font-bold text-sm',
+                    'bg-sky-400 hover:bg-sky-300',
+                    'text-[#003560] font-bold text-sm',
                     'rounded-xl',
-                    'shadow-lg shadow-yellow-400/25',
+                    'shadow-lg shadow-sky-400/25',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
                 >
@@ -516,16 +516,16 @@ export default function SelfieVideoPage() {
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
             {/* Decorative glow */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-64 h-64 bg-blue-500/8 rounded-full blur-3xl" />
+              <div className="w-64 h-64 bg-sky-500/8 rounded-full blur-3xl" />
             </div>
 
             <div className="relative w-20 h-20 mb-6">
               {/* Circular progress background */}
               <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(59,130,246,0.12)" strokeWidth="4" />
+                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(56,189,248,0.12)" strokeWidth="4" />
                 <circle
                   cx="40" cy="40" r="34" fill="none"
-                  stroke="rgb(250, 204, 21)"
+                  stroke="rgb(56, 189, 248)"
                   strokeWidth="4"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 34}`}
@@ -541,13 +541,13 @@ export default function SelfieVideoPage() {
             <p className="text-white font-medium">
               {uploadProgress < 10 ? 'Preparando...' : uploadProgress < 95 ? 'Enviando seu video...' : 'Finalizando...'}
             </p>
-            <p className="text-blue-300/40 text-sm mt-2">Nao feche esta tela</p>
+            <p className="text-sky-300/40 text-sm mt-2">Nao feche esta tela</p>
 
             {/* Linear progress bar */}
             <div className="w-full max-w-xs mt-6">
-              <div className="h-1.5 bg-blue-900/30 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-sky-900/30 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-yellow-400 to-green-400 rounded-full transition-all duration-500 ease-out"
+                  className="h-full bg-gradient-to-r from-sky-400 to-blue-400 rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -558,27 +558,27 @@ export default function SelfieVideoPage() {
         {/* ===== STEP: OBRIGADO ===== */}
         {step === 'obrigado' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-yellow-500/8 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-sky-600/5 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center max-w-sm space-y-6 relative">
               {/* Success animation */}
               <div className="relative inline-flex">
-                <div className="w-24 h-24 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
-                    <Image src="/logo-pl.png" alt="PL" width={40} height={40} className="rounded-lg" />
+                <div className="w-24 h-24 rounded-full bg-sky-500/10 flex items-center justify-center">
+                  <div className="w-16 h-16 rounded-full bg-sky-500/20 flex items-center justify-center">
+                    <Image src="/logo-progressistas.png" alt="Progressistas" width={40} height={40} className="rounded-lg" />
                   </div>
                 </div>
-                <div className="absolute inset-0 rounded-full animate-ping bg-yellow-400/10" style={{ animationDuration: '2s' }} />
+                <div className="absolute inset-0 rounded-full animate-ping bg-sky-400/10" style={{ animationDuration: '2s' }} />
               </div>
 
               <div>
                 <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
                   Obrigado pelo seu depoimento!
                 </h2>
-                <p className="text-blue-200/50 text-sm leading-relaxed">
-                  <span className="text-yellow-400 font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.
+                <p className="text-sky-200/50 text-sm leading-relaxed">
+                  <span className="text-sky-400 font-medium">{name}</span>, nosso time vai assistir seu depoimento com muito carinho. E vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.
                 </p>
               </div>
 
@@ -586,10 +586,10 @@ export default function SelfieVideoPage() {
                 onClick={handleReset}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 px-6 py-3.5',
-                  'bg-yellow-400 hover:bg-yellow-300',
-                  'text-blue-950 font-bold text-sm',
+                  'bg-sky-400 hover:bg-sky-300',
+                  'text-[#003560] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-yellow-400/25',
+                  'shadow-lg shadow-sky-400/25',
                   'active:scale-[0.97] transition-all duration-200',
                 )}
               >

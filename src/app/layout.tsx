@@ -18,10 +18,10 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://synthetic-person.v
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: 'PL — Partido Liberal',
-    template: '%s | PL',
+    default: 'Progressistas',
+    template: '%s | Progressistas',
   },
-  description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+  description: 'Grave seu depoimento e receba uma resposta personalizada do Progressistas.',
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
@@ -31,18 +31,18 @@ export const metadata: Metadata = {
     apple: '/apple-touch-icon.png',
   },
   openGraph: {
-    title: 'PL — Partido Liberal',
-    description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+    title: 'Progressistas',
+    description: 'Grave seu depoimento e receba uma resposta personalizada do Progressistas.',
     url: SITE_URL,
-    siteName: 'Partido Liberal',
+    siteName: 'Progressistas',
     images: [{ url: '/og-image.png', width: 1200, height: 630 }],
     type: 'website',
     locale: 'pt_BR',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'PL — Partido Liberal',
-    description: 'Grave seu depoimento e receba uma resposta personalizada do presidente do PL.',
+    title: 'Progressistas',
+    description: 'Grave seu depoimento e receba uma resposta personalizada do Progressistas.',
     images: ['/og-image.png'],
   },
 };
