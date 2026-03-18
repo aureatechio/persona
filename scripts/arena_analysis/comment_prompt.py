@@ -109,7 +109,7 @@ class BiasConfig:
             return score_eco, score_cost
         # political_bias: -1 = force left (eco toward -1, cost toward -1)
         #                 +1 = force right (eco toward +1, cost toward +1)
-        shift = self.political_bias * 0.6  # 60% of max shift at full slider
+        shift = self.political_bias * 0.9  # 90% of max shift at full slider
         new_eco = max(-1.0, min(1.0, score_eco + shift))
         new_cost = max(-1.0, min(1.0, score_cost + shift))
         return round(new_eco, 3), round(new_cost, 3)
