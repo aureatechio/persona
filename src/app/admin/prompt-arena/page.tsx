@@ -360,10 +360,12 @@ export default function PromptArenaPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingBias, setSavingBias] = useState(false);
 
   const [sliders, setSliders] = useState<Record<string, number>>({
     political_bias: 0,
   });
+  const [savedBias, setSavedBias] = useState(0);
 
   const [freeInstruction, setFreeInstruction] = useState('');
 
@@ -405,8 +407,10 @@ export default function PromptArenaPage() {
         // Restore sliders from saved metadata
         if (data.prompt.metadata?.sliders) {
           setSliders({ ...DEFAULT_SLIDERS, ...data.prompt.metadata.sliders });
+          setSavedBias(data.prompt.metadata.sliders.political_bias ?? 0);
         } else {
           setSliders({ ...DEFAULT_SLIDERS });
+          setSavedBias(0);
         }
       } else {
         showToast(data.error || 'Prompt não encontrado', 'error');
@@ -427,6 +431,41 @@ export default function PromptArenaPage() {
     } catch {
       // silent — changelog is optional
     }
+  }
+
+  // ── Apply bias directly (saves slider value to metadata without prompt change) ──
+
+  const biasChanged = sliders.political_bias !== savedBias;
+
+  async function handleApplyBias() {
+    if (!prompt || savingBias) return;
+    setSavingBias(true);
+    try {
+      const res = await fetch('/api/arena/prompts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'arena_system',
+          content: prompt.content, // keep prompt text unchanged
+          changelog: [`Viés político ajustado para ${sliders.political_bias > 0 ? '+' : ''}${sliders.political_bias.toFixed(2)}`],
+          metadata: {
+            ...prompt.metadata,
+            sliders,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.prompt) {
+        setPrompt(data.prompt);
+        setSavedBias(sliders.political_bias);
+        showToast(`Viés ${sliders.political_bias.toFixed(2)} aplicado!`, 'success');
+      } else {
+        showToast(data.error || 'Falha ao salvar viés', 'error');
+      }
+    } catch {
+      showToast('Erro de conexão', 'error');
+    }
+    setSavingBias(false);
   }
 
   // ── Generate improved prompt ──────────────────────────────────────────────
@@ -722,6 +761,36 @@ export default function PromptArenaPage() {
                   value={sliders.political_bias}
                   onChange={(v) => setSliders((prev) => ({ ...prev, political_bias: v }))}
                 />
+
+                {/* Apply bias button — appears when value differs from saved */}
+                {biasChanged && (
+                  <div className="mt-6 pt-6 border-t border-white/[0.06] flex items-center justify-between">
+                    <p className="text-xs text-zinc-500">
+                      Salvo: <span className="font-bold text-zinc-400">{savedBias > 0 ? '+' : ''}{savedBias.toFixed(2)}</span>
+                      {' → '}
+                      Novo: <span className={cn('font-bold', sliders.political_bias < 0 ? 'text-rose-400' : sliders.political_bias > 0 ? 'text-sky-400' : 'text-zinc-400')}>
+                        {sliders.political_bias > 0 ? '+' : ''}{sliders.political_bias.toFixed(2)}
+                      </span>
+                    </p>
+                    <button
+                      onClick={handleApplyBias}
+                      disabled={savingBias}
+                      className="inline-flex items-center gap-2 px-6 py-3
+                        bg-emerald-500 hover:bg-emerald-400
+                        text-black font-semibold text-sm rounded-xl
+                        shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30
+                        active:scale-[0.97] transition-all duration-200
+                        disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {savingBias ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Zap size={16} />
+                      )}
+                      {savingBias ? 'Salvando...' : 'Aplicar Viés'}
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 
