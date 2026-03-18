@@ -559,18 +559,17 @@ function SegmentItemRow({ item, isLive, progress, clusterAvg }: {
           />
         )}
       </div>
-      <div className="shrink-0 w-[56px]">
+      <div className="shrink-0 w-[72px] flex flex-col items-end">
         <AnimatedScore value={hasData ? displayScore : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
+        {showPct && (
+          <span className={cn(
+            'text-[9px] font-bold tabular-nums leading-none transition-colors duration-300',
+            pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
+          )}>
+            {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
+          </span>
+        )}
       </div>
-      {showPct && (
-        <span className={cn(
-          'shrink-0 w-[48px] text-[10px] font-bold tabular-nums text-right transition-colors duration-300',
-          pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
-        )}>
-          {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
-        </span>
-      )}
-      {!showPct && <span className="shrink-0 w-[48px]" />}
     </div>
   );
 }

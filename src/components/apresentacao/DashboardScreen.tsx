@@ -96,18 +96,17 @@ function RankingItemRow({ item, index, accentText, isLive, progress, clusterAvg 
         <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
         {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
       </div>
-      <div className="shrink-0 w-[56px]">
+      <div className="shrink-0 w-[72px] flex flex-col items-end">
         <AnimatedScore value={score} className="text-sm" duration={isLive ? 2000 : 10000} />
+        {showPct && (
+          <span className={cn(
+            'text-[9px] font-bold tabular-nums leading-none transition-colors duration-300',
+            pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
+          )}>
+            {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
+          </span>
+        )}
       </div>
-      {showPct && (
-        <span className={cn(
-          'shrink-0 w-[48px] text-[10px] font-bold tabular-nums text-right transition-colors duration-300',
-          pctDev >= 0 ? 'text-emerald-400' : 'text-red-400',
-        )}>
-          {pctDev >= 0 ? '+' : ''}{pctDev.toFixed(1)}%
-        </span>
-      )}
-      {!showPct && <span className="shrink-0 w-[48px]" />}
     </div>
   );
 }
