@@ -368,14 +368,13 @@ Pergunta: "Bolsonaro é o melhor presidente?"
         # THEMATIC question — full profile guides analysis, bias influences via scores
         if has_bias:
             rule_9 = (
-                f"9. OPINIÃO DECLARADA + VIÉS → Os ScoreEco e ScoreCost foram AJUSTADOS com viés {bias_direction}. "
-                f"ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.). "
-                f"Se a persona tem opinião DECLARADA sobre o tema da pergunta, essa opinião é DETERMINANTE: "
-                f"'A favor' → score 7-10, 'Contra' → score 0-3. "
-                f"Se NÃO tem opinião declarada, use ScoreEco como guia ideológico: "
-                f"ScoreEco negativo (esquerda) → tende a favorecer Estado, programas sociais, regulação. "
-                f"ScoreEco positivo (direita) → tende a favorecer mercado, privatização, menos impostos. "
-                f"O viés desloca os scores para {bias_direction} — a MAIORIA deve tender para opiniões de {bias_direction}. "
+                f"9. VIÉS IDEOLÓGICO APLICADO → Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}. "
+                f"Use ESSES scores como verdade ideológica da persona. "
+                f"Ignore campos de opinião declarada (Privat, BolsaFam, Armas, etc.) se CONTRADIZEREM os scores apresentados. "
+                f"O ScoreEco ajustado é MAIS IMPORTANTE que a opinião declarada original. "
+                f"ScoreEco negativo → tende a favorecer Estado, programas sociais, regulação, contra privatização. "
+                f"ScoreEco positivo → tende a favorecer mercado, privatização, menos impostos, meritocracia. "
+                f"A MAIORIA dos perfis terá ScoreEco deslocado para {bias_direction} — isso é INTENCIONAL. "
                 f"Mantenha diversidade de MOTIVOS (duas personas do mesmo lado concordam por razões DIFERENTES)."
             )
         else:
@@ -392,18 +391,32 @@ Pergunta: "Bolsonaro é o melhor presidente?"
             )
 
         if has_bias:
-            calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (temática COM VIÉS {bias_direction.upper()} APLICADO):
+            if bias.political_bias > 0:
+                # Right bias examples
+                calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (temática COM VIÉS DIREITA/CONSERVADOR APLICADO):
+Os ScoreEco JÁ FORAM AJUSTADOS. Siga os ScoreEco apresentados, NÃO os campos de opinião original.
 Pergunta: "Privatização da Petrobras é boa?"
-- Persona Direita, ScoreEco +0.8, Privat:A favor → score 9.0, positive ("tem q privatizar essa porra toda mano")
-- Persona Esquerda, ScoreEco -0.2 (ajustado), Privat:Contra → score 3.0, negative ("privatizar pra gringo roubar? nao")
-- Persona Centro, ScoreEco +0.1, sem opinião declarada → score 5.5, neutral ("sei la tem prós e contras")
+- Persona ScoreEco +0.8 (direita forte) → score 9.0, positive ("tem q privatizar essa porra toda")
+- Persona ScoreEco +0.2 (centro-direita, ERA esquerda) → score 6.5, positive ("acho q faz sentido sim privatizar")
+- Persona ScoreEco -0.1 (centro, ERA esquerda forte) → score 5.0, neutral ("sei la tem pros e contras")
+- Persona ScoreEco -0.5 (ainda esquerda mesmo com viés) → score 2.5, negative ("privatizar nao")
 
-Pergunta: "Auxílio maternidade deveria aumentar?"
-- Mãe classe D, Nordeste, ScoreEco -0.5 → score 9.0, positive ("claro porra minha filha quase morre de fome")
-- Empresário classe A, ScoreEco +0.9 → score 2.0, negative ("mais gasto público que sai do meu imposto")
+⚠️ PERCEBA: o viés DESLOCOU os scores. Uma persona que ERA esquerda (-0.7) agora tem ScoreEco -0.1 (centro).
+Ela NÃO deve mais opinar como esquerda forte. Siga o ScoreEco APRESENTADO, ignore Privat/campos antigos.
+⚠️ Com viés direita, a MAIORIA terá ScoreEco positivo → MAIORIA deve CONCORDAR com temas de direita."""
+            else:
+                # Left bias examples
+                calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (temática COM VIÉS ESQUERDA/PROGRESSISTA APLICADO):
+Os ScoreEco JÁ FORAM AJUSTADOS. Siga os ScoreEco apresentados, NÃO os campos de opinião original.
+Pergunta: "Privatização da Petrobras é boa?"
+- Persona ScoreEco -0.8 (esquerda forte) → score 1.0, negative ("privatizar patrimonio do povo jamais")
+- Persona ScoreEco -0.2 (centro-esquerda, ERA direita) → score 3.5, negative ("acho arriscado privatizar")
+- Persona ScoreEco +0.1 (centro, ERA direita forte) → score 5.0, neutral ("tem pros e contras ne")
+- Persona ScoreEco +0.5 (ainda direita mesmo com viés) → score 7.5, positive ("deveria privatizar sim")
 
-⚠️ REGRA: Se a persona tem campo de opinião declarada (Privat, SUS, Armas, etc.) que COINCIDE com o tema, USE como base do score.
-⚠️ Com viés {bias_direction}, a MAIORIA deve tender para {bias_direction}. NÃO contrabalance — o viés é INTENCIONAL."""
+⚠️ PERCEBA: o viés DESLOCOU os scores. Uma persona que ERA direita (+0.7) agora tem ScoreEco +0.1 (centro).
+Ela NÃO deve mais opinar como direita forte. Siga o ScoreEco APRESENTADO, ignore Privat/campos antigos.
+⚠️ Com viés esquerda, a MAIORIA terá ScoreEco negativo → MAIORIA deve DISCORDAR de temas de direita."""
         else:
             calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (perguntas temáticas):
 Pergunta: "Privatização da Petrobras é boa?"
@@ -570,13 +583,14 @@ NÃO EXISTE eleitor de Bolsonaro que concorda que aliado de Bolsonaro é corrupt
         coherence_footer = "- ⚠️ Se pergunta critica político/aliado que a persona apoia → negative + score 0-2 (SEMPRE)"
     else:
         if has_bias:
-            political_rule = f"""🔵 REGRA #1 — OPINIÃO DECLARADA + VIÉS (pergunta temática com viés {bias_direction}):
-ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.).
-→ Se a persona tem opinião DECLARADA sobre o tema: 'A favor' → score 7-10, 'Contra' → score 0-3
-→ Se NÃO tem opinião declarada, use ScoreEco como guia (negativo=esquerda, positivo=direita)
-→ Os scores foram AJUSTADOS com viés {bias_direction} — a maioria deve tender para {bias_direction}
-→ Mantenha diversidade de MOTIVOS — duas personas do mesmo lado concordam por razões DIFERENTES
-→ Brasileiros são OPINATIVOS — temas ideológicos geram scores EXTREMOS, não neutros"""
+            political_rule = f"""🔵 REGRA #1 — VIÉS IDEOLÓGICO APLICADO (pergunta temática com viés {bias_direction}):
+Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}.
+→ Use ESSES scores como verdade ideológica. ScoreEco é MAIS IMPORTANTE que opinião declarada (Privat, Armas, etc.)
+→ Ignore campos declarados se CONTRADIZEREM o ScoreEco apresentado
+→ ScoreEco negativo → favorece Estado, regulação, contra privatização
+→ ScoreEco positivo → favorece mercado, privatização, menos impostos
+→ A MAIORIA terá ScoreEco deslocado para {bias_direction} — isso é INTENCIONAL
+→ Mantenha diversidade de MOTIVOS — duas personas do mesmo lado concordam por razões DIFERENTES"""
         else:
             political_rule = f"""🔵 REGRA #1 — OPINIÃO DECLARADA + PERFIL (pergunta temática):
 ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.).
