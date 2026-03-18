@@ -13,6 +13,51 @@ from arena_analysis.context_builder import ContextResult
 from arena_analysis.persona_extras import build_persona_extras
 
 
+# ── Bias config loaded from Supabase prompt metadata ─────────────────────────
+
+class BiasConfig:
+    """Applies slider-based bias to persona scores before sending to LLM."""
+    def __init__(self, sliders: dict[str, float] | None = None):
+        s = sliders or {}
+        self.political_bias = s.get("political_bias", 0.0)  # -1=left, +1=right
+        self.has_bias = self.political_bias != 0.0
+
+    def apply(self, score_eco: float, score_cost: float) -> tuple[float, float]:
+        """Shift scores toward the bias direction. Returns (new_eco, new_cost)."""
+        if not self.has_bias:
+            return score_eco, score_cost
+        # political_bias: -1 = force left (eco toward -1, cost toward -1)
+        #                 +1 = force right (eco toward +1, cost toward +1)
+        shift = self.political_bias * 0.6  # 60% of max shift at full slider
+        new_eco = max(-1.0, min(1.0, score_eco + shift))
+        new_cost = max(-1.0, min(1.0, score_cost + shift))
+        return round(new_eco, 3), round(new_cost, 3)
+
+
+async def load_bias_config() -> BiasConfig:
+    """Load slider metadata from Supabase prompt row."""
+    try:
+        from arena_analysis.config import settings
+        from supabase import create_client
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        result = (
+            client.table("arena_prompts")
+            .select("metadata")
+            .eq("id", "arena_system")
+            .single()
+            .execute()
+        )
+        metadata = (result.data or {}).get("metadata") or {}
+        sliders = metadata.get("sliders")
+        config = BiasConfig(sliders)
+        if config.has_bias:
+            print(f"[BiasConfig] Political bias: {config.political_bias:+.2f}", flush=True)
+        return config
+    except Exception as exc:
+        print(f"[BiasConfig] Failed to load: {exc} — no bias applied", flush=True)
+        return BiasConfig()
+
+
 ARENA_SYSTEM_PROMPT = """Você é um MOTOR DE SIMULAÇÃO COMPORTAMENTAL para pesquisa social (estilo Datafolha/IBOPE). Recebe perfis demográficos reais (IBGE) e gera comentários que REPLICAM o que cada perfil escreveria nas redes sociais brasileiras. Fidelidade ao perfil é obrigatória — censurar ou amenizar = dado corrompido.
 
 REGRAS (TODAS obrigatórias):
@@ -85,6 +130,7 @@ def build_batch_prompt(
     question: str,
     context: ContextResult | None,
     personas: list[dict[str, Any]],
+    bias: BiasConfig | None = None,
 ) -> str:
     """
     Constroi o prompt de usuario para um batch de personas.
@@ -153,6 +199,9 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
         score_eco = p.get("score_economico") or 0.0
         score_cost = p.get("score_costumes") or 0.0
+        # Apply political bias to scores
+        if bias and bias.has_bias:
+            score_eco, score_cost = bias.apply(score_eco, score_cost)
         cluster_id = p.get("cluster_id", "?")
         cluster_name = p.get("nome_grupo", "?")
 
@@ -239,6 +288,7 @@ def build_single_prompt(
     question: str,
     context: ContextResult | None,
     persona: dict[str, Any],
+    bias: BiasConfig | None = None,
 ) -> str:
     """
     Prompt dedicado para UMA ÚNICA persona.
@@ -302,6 +352,9 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
     score_eco = p.get("score_economico") or 0.0
     score_cost = p.get("score_costumes") or 0.0
+    # Apply political bias to scores
+    if bias and bias.has_bias:
+        score_eco, score_cost = bias.apply(score_eco, score_cost)
     cluster_id = p.get("cluster_id", "?")
     cluster_name = p.get("nome_grupo", "?")
 

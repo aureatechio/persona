@@ -21,7 +21,7 @@ import openai
 
 from arena_analysis.config import settings
 from arena_analysis.context_builder import ContextResult
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt, get_arena_system_prompt
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt, get_arena_system_prompt, load_bias_config, BiasConfig
 
 
 @dataclass
@@ -416,10 +416,11 @@ class PersonaLoop:
         semaphore: asyncio.Semaphore,
         key_id: int = 0,
         system_prompt: str = "",
+        bias: BiasConfig | None = None,
     ) -> list[PersonaResult]:
         tag = f"Claude-{key_id+1}"
         max_retries = settings.max_retries
-        user_prompt = build_batch_prompt(question, context, personas)
+        user_prompt = build_batch_prompt(question, context, personas, bias=bias)
         prompt = system_prompt or ARENA_SYSTEM_PROMPT
 
         async with semaphore:
@@ -472,10 +473,11 @@ class PersonaLoop:
         semaphore: asyncio.Semaphore,
         key_id: int = 0,
         system_prompt: str = "",
+        bias: BiasConfig | None = None,
     ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
         max_retries = settings.max_retries
-        user_prompt = build_batch_prompt(question, context, personas)
+        user_prompt = build_batch_prompt(question, context, personas, bias=bias)
         prompt = system_prompt or ARENA_SYSTEM_PROMPT
 
         async with semaphore:
@@ -530,9 +532,12 @@ class PersonaLoop:
         Semaphore limita conexões simultâneas para não sobrecarregar o servidor.
         Yield BatchProgress a cada batch completado.
         """
-        # Resolve system prompt from Supabase (cached), fallback to hardcoded
+        # Resolve system prompt from Supabase, fallback to hardcoded
         system_prompt = await get_arena_system_prompt()
         print(f"[PersonaLoop] System prompt loaded ({len(system_prompt)} chars)", flush=True)
+
+        # Load bias config from Supabase prompt metadata
+        bias = await load_bias_config()
 
         total = len(personas)
         batch_size = settings.batch_size
@@ -581,7 +586,7 @@ class PersonaLoop:
                     question, context, batch,
                     self._claude_limiters[key_id],
                     self._claude_clients[key_id],
-                    claude_sem, key_id, system_prompt,
+                    claude_sem, key_id, system_prompt, bias,
                 ))
             )
             batch_info.append(("Claude Sonnet 4", batch))
@@ -593,7 +598,7 @@ class PersonaLoop:
                     question, context, batch,
                     self._openai_limiters[key_id],
                     self._openai_clients[key_id],
-                    gpt_sem, key_id, system_prompt,
+                    gpt_sem, key_id, system_prompt, bias,
                 ))
             )
             batch_info.append(("GPT-4o", batch))
