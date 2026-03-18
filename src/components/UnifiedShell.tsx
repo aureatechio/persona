@@ -77,11 +77,42 @@ export function UnifiedShell() {
         <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-violet-600/[0.03] rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute bottom-0 right-0 w-[400px] h-[300px] bg-fuchsia-600/[0.02] rounded-full blur-[100px] pointer-events-none" />
 
-        <ConversationArea
-          blocks={blocks}
-          renderBlock={renderBlock}
-          welcomeScreen={<WelcomeScreen personaCount={personaCache.count} />}
-        />
+        {blocks.length > 0 ? (
+          <ConversationArea
+            blocks={blocks}
+            renderBlock={renderBlock}
+            welcomeScreen={<WelcomeScreen personaCount={personaCache.count} />}
+          />
+        ) : (
+          <>
+            <WelcomeScreen personaCount={personaCache.count} />
+            <BottomInput
+              onSubmit={(value) => {
+                clearAll();
+                setIsProcessing(false);
+                window.dispatchEvent(new CustomEvent('arena-new-chat'));
+                window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: 'arena' } }));
+              }}
+              isProcessing={isProcessing}
+              hasBlocks={false}
+              personaCount={personaCache.count}
+            />
+          </>
+        )}
+
+        {blocks.length > 0 && (
+          <BottomInput
+            onSubmit={(value) => {
+              clearAll();
+              setIsProcessing(false);
+              window.dispatchEvent(new CustomEvent('arena-new-chat'));
+              window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: 'arena' } }));
+            }}
+            isProcessing={isProcessing}
+            hasBlocks={true}
+            personaCount={personaCache.count}
+          />
+        )}
 
         {/* Arena mode handler (invisible - controls submit logic) */}
         <ArenaMode
@@ -89,19 +120,6 @@ export function UnifiedShell() {
           onAddBlock={addBlock}
           onReplaceBlock={replaceBlock}
           onProcessing={setIsProcessing}
-        />
-
-        <BottomInput
-          onSubmit={(value) => {
-            // Clear previous blocks + abort any running simulation + reset presentation screens
-            clearAll();
-            setIsProcessing(false);
-            window.dispatchEvent(new CustomEvent('arena-new-chat'));
-            window.dispatchEvent(new CustomEvent('unified-submit', { detail: { value, mode: 'arena' } }));
-          }}
-          isProcessing={isProcessing}
-          hasBlocks={blocks.length > 0}
-          personaCount={personaCache.count}
         />
       </div>
     </div>
