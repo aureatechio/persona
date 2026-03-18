@@ -1,15 +1,12 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Sparkles,
-  Save,
   RotateCcw,
   Loader2,
   ArrowLeft,
   AlertTriangle,
-  Check,
-  Clock,
   Zap,
   ChevronDown,
   ChevronRight,
@@ -182,99 +179,6 @@ function PoliticalBiasPot({
   );
 }
 
-// ── Confirm Save Modal ───────────────────────────────────────────────────────
-
-function ConfirmSaveModal({
-  open,
-  onClose,
-  onConfirm,
-  changelog,
-  warnings,
-  loading,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  changelog: string[];
-  warnings: string[];
-  loading: boolean;
-}) {
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-zinc-950 border border-white/[0.08] rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl shadow-black/60">
-        <div className="flex items-start gap-3 mb-4">
-          <div className="p-2 rounded-xl bg-emerald-500/10">
-            <Save size={20} className="text-emerald-400" />
-          </div>
-          <div>
-            <h3 className="text-lg font-semibold text-white">
-              Salvar no Supabase
-            </h3>
-            <p className="text-sm text-zinc-400 mt-1">
-              O prompt atualizado será salvo e entrará em vigor em até 5 minutos (TTL do cache).
-            </p>
-          </div>
-        </div>
-
-        {warnings.length > 0 && (
-          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 mb-4 space-y-1">
-            {warnings.map((w, i) => (
-              <p key={i} className="text-xs text-amber-400 flex items-start gap-2">
-                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                {w}
-              </p>
-            ))}
-          </div>
-        )}
-
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4 mb-6 space-y-1">
-          {changelog.map((c, i) => (
-            <p key={i} className="text-sm text-zinc-300 flex items-start gap-2">
-              <span className="text-emerald-400 shrink-0">+</span>
-              {c}
-            </p>
-          ))}
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            onClick={onClose}
-            disabled={loading}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5
-              bg-white/[0.05] hover:bg-white/[0.1]
-              text-zinc-300 hover:text-white
-              border border-white/[0.08] hover:border-white/[0.15]
-              rounded-xl font-medium text-sm
-              active:scale-[0.97] transition-all duration-200
-              disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-2.5
-              bg-emerald-500 hover:bg-emerald-400
-              text-black font-semibold text-sm rounded-xl
-              shadow-lg shadow-emerald-500/25
-              active:scale-[0.97] transition-all duration-200
-              disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Check size={16} />
-            )}
-            {loading ? 'Salvando...' : 'Confirmar'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Confirm Restore Modal ─────────────────────────────────────────────────────
 
 function ConfirmRestoreModal({
@@ -358,21 +262,12 @@ export default function PromptArenaPage() {
   // ── State ─────────────────────────────────────────────────────────────────
   const [prompt, setPrompt] = useState<PromptData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [savingBias, setSavingBias] = useState(false);
 
   const [sliders, setSliders] = useState<Record<string, number>>({
     political_bias: 0,
   });
   const [savedBias, setSavedBias] = useState(0);
-
-  const [freeInstruction, setFreeInstruction] = useState('');
-
-  // Preview state (after AI generation)
-  const [previewPrompt, setPreviewPrompt] = useState<string | null>(null);
-  const [changelog, setChangelog] = useState<string[]>([]);
-  const [warnings, setWarnings] = useState<string[]>([]);
 
   // History
   const [history, setHistory] = useState<ChangelogEntry[]>([]);
@@ -382,8 +277,7 @@ export default function PromptArenaPage() {
   const [showRestoreOriginal, setShowRestoreOriginal] = useState(false);
   const [restoringOriginal, setRestoringOriginal] = useState(false);
 
-  // Modal & toast
-  const [showConfirm, setShowConfirm] = useState(false);
+  // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // ── Load prompt on mount ──────────────────────────────────────────────────
@@ -468,114 +362,11 @@ export default function PromptArenaPage() {
     setSavingBias(false);
   }
 
-  // ── Generate improved prompt ──────────────────────────────────────────────
-
-  const hasSliderChanges = Object.values(sliders).some((v) => v !== 0);
-  const hasInstruction = freeInstruction.trim().length > 0;
-  // Always allow generation — slider at zero means "neutralize/reset bias"
-  const canGenerate = !generating && !!prompt;
-
-  const handleGenerate = useCallback(async () => {
-    if (!prompt) return;
-    setGenerating(true);
-    setPreviewPrompt(null);
-    setChangelog([]);
-    setWarnings([]);
-
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 55000);
-
-      const res = await fetch('/api/arena/prompts/improve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPrompt: prompt.content,
-          instruction: freeInstruction.trim() || undefined,
-          sliders,
-        }),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-      const data = await res.json();
-
-      if (res.ok && data.improved_prompt) {
-        setPreviewPrompt(data.improved_prompt);
-        setChangelog(data.changelog || []);
-        setWarnings(data.warnings || []);
-        showToast('Prompt melhorado gerado!', 'success');
-      } else {
-        showToast(data.error || 'Falha ao gerar melhoria', 'error');
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        showToast('Timeout — a IA demorou demais. Tente novamente.', 'error');
-      } else {
-        showToast('Erro de conexão', 'error');
-      }
-    }
-
-    setGenerating(false);
-  }, [prompt, freeInstruction, sliders, hasSliderChanges]);
-
-  // ── Save to Supabase ──────────────────────────────────────────────────────
-
-  async function handleSave() {
-    if (!previewPrompt || !prompt) return;
-    setSaving(true);
-
-    try {
-      const res = await fetch('/api/arena/prompts', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: 'arena_system',
-          content: previewPrompt,
-          changelog,
-          instruction: freeInstruction.trim() || null,
-          metadata: {
-            sliders,
-            last_instruction: freeInstruction.trim() || null,
-          },
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.prompt) {
-        setPrompt(data.prompt);
-        setPreviewPrompt(null);
-        setChangelog([]);
-        setWarnings([]);
-        setFreeInstruction('');
-        // Keep sliders as-is — they reflect the current prompt state
-        showToast(`Prompt salvo! Versão ${data.prompt.version}`, 'success');
-        loadHistory();
-      } else {
-        showToast(data.error || 'Falha ao salvar', 'error');
-      }
-    } catch {
-      showToast('Erro de conexão', 'error');
-    }
-
-    setSaving(false);
-    setShowConfirm(false);
-  }
-
   // ── Toast ─────────────────────────────────────────────────────────────────
 
   function showToast(message: string, type: 'success' | 'error') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
-  }
-
-  // ── Discard preview ───────────────────────────────────────────────────────
-
-  function discardPreview() {
-    setPreviewPrompt(null);
-    setChangelog([]);
-    setWarnings([]);
   }
 
   // ── Restore original (factory default) ──────────────────────────────────
@@ -610,11 +401,8 @@ export default function PromptArenaPage() {
 
       if (saveRes.ok && saveData.prompt) {
         setPrompt(saveData.prompt);
-        setPreviewPrompt(null);
-        setChangelog([]);
-        setWarnings([]);
-        setFreeInstruction('');
         setSliders({ ...DEFAULT_SLIDERS });
+        setSavedBias(0);
         showToast(`Prompt original restaurado! Versão ${saveData.prompt.version}`, 'success');
         loadHistory();
       } else {
@@ -646,9 +434,6 @@ export default function PromptArenaPage() {
 
       if (res.ok && data.prompt) {
         setPrompt(data.prompt);
-        setPreviewPrompt(null);
-        setChangelog([]);
-        setWarnings([]);
         showToast(`Backup restaurado! Versão ${data.prompt.version}`, 'success');
         loadHistory();
       } else {
@@ -690,7 +475,7 @@ export default function PromptArenaPage() {
                 Prompt Arena
               </h1>
               <p className="text-zinc-500 text-sm mt-0.5">
-                Engenharia de prompt com IA
+                Controle de viés político
                 {prompt && (
                   <span className="text-zinc-400">
                     {' '}· v{prompt.version}
@@ -712,44 +497,6 @@ export default function PromptArenaPage() {
 
         {prompt && !loading && (
           <>
-            {/* ── Current Prompt ─────────────────────────────────────── */}
-            <section className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-white tracking-tight">
-                  Prompt Atual
-                </h2>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setShowRestoreOriginal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5
-                      bg-white/[0.05] hover:bg-amber-500/10
-                      text-zinc-400 hover:text-amber-400
-                      border border-white/[0.08] hover:border-amber-500/20
-                      rounded-lg text-xs font-medium
-                      active:scale-[0.97] transition-all duration-200"
-                  >
-                    <History size={12} />
-                    Restaurar Original
-                  </button>
-                  <div className="flex items-center gap-2 text-xs text-zinc-500">
-                    <Clock size={12} />
-                    {new Date(prompt.updated_at).toLocaleString('pt-BR')}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden">
-                <textarea
-                  readOnly
-                  value={prompt.content}
-                  className="w-full h-64 p-5 bg-transparent text-sm text-zinc-300 leading-relaxed resize-none outline-none font-mono"
-                />
-              </div>
-            </section>
-
-            {/* ── Divider ────────────────────────────────────────────── */}
-            <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-
             {/* ── Viés Político ──────────────────────────────────────── */}
             <section className="space-y-6">
               <h2 className="text-lg font-semibold text-white tracking-tight">
@@ -793,125 +540,6 @@ export default function PromptArenaPage() {
                 )}
               </div>
             </section>
-
-            {/* ── Divider ────────────────────────────────────────────── */}
-            <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-
-            {/* ── Free Instruction ────────────────────────────────────── */}
-            <section className="space-y-4">
-              <h2 className="text-lg font-semibold text-white tracking-tight">
-                Instrução Livre
-              </h2>
-
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden">
-                <textarea
-                  value={freeInstruction}
-                  onChange={(e) => setFreeInstruction(e.target.value)}
-                  placeholder="Ex: reduza os neutrals para 3%, aumente a agressividade dos comentários de direita..."
-                  className="w-full h-32 p-5 bg-transparent text-sm text-white placeholder:text-zinc-600 leading-relaxed resize-none outline-none"
-                />
-              </div>
-
-              <button
-                onClick={handleGenerate}
-                disabled={!canGenerate}
-                className="inline-flex items-center gap-2 px-6 py-3
-                  bg-violet-500 hover:bg-violet-400
-                  text-white font-semibold text-sm rounded-xl
-                  shadow-lg shadow-violet-500/25 hover:shadow-violet-400/30
-                  active:scale-[0.97] transition-all duration-200
-                  disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
-              >
-                {generating ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Sparkles size={16} />
-                )}
-                {generating ? 'Gerando...' : 'Gerar Melhoria'}
-              </button>
-            </section>
-
-            {/* ── Preview (after generation) ─────────────────────────── */}
-            {previewPrompt && (
-              <>
-                <div className="h-px bg-gradient-to-r from-transparent via-violet-800/50 to-transparent" />
-
-                <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-white tracking-tight flex items-center gap-2">
-                      <Zap size={18} className="text-violet-400" />
-                      Preview da Melhoria
-                    </h2>
-                    <button
-                      onClick={discardPreview}
-                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors duration-200"
-                    >
-                      Descartar
-                    </button>
-                  </div>
-
-                  {/* Warnings */}
-                  {warnings.length > 0 && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 space-y-1">
-                      {warnings.map((w, i) => (
-                        <p key={i} className="text-xs text-amber-400 flex items-start gap-2">
-                          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-                          {w}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Changelog */}
-                  {changelog.length > 0 && (
-                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 space-y-1">
-                      {changelog.map((c, i) => (
-                        <p key={i} className="text-sm text-emerald-400 flex items-start gap-2">
-                          <Check size={14} className="mt-0.5 shrink-0" />
-                          {c}
-                        </p>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Preview text */}
-                  <div className="bg-white/[0.03] border border-violet-500/20 rounded-2xl overflow-hidden">
-                    <textarea
-                      readOnly
-                      value={previewPrompt}
-                      className="w-full h-64 p-5 bg-transparent text-sm text-zinc-300 leading-relaxed resize-none outline-none font-mono"
-                    />
-                  </div>
-
-                  {/* Save button */}
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setShowConfirm(true)}
-                      className="inline-flex items-center gap-2 px-6 py-3
-                        bg-emerald-500 hover:bg-emerald-400
-                        text-black font-semibold text-sm rounded-xl
-                        shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30
-                        active:scale-[0.97] transition-all duration-200"
-                    >
-                      <Save size={16} />
-                      Salvar no Supabase
-                    </button>
-                    <button
-                      onClick={discardPreview}
-                      className="inline-flex items-center gap-2 px-5 py-3
-                        bg-white/[0.05] hover:bg-white/[0.1]
-                        text-zinc-300 hover:text-white
-                        border border-white/[0.08] hover:border-white/[0.15]
-                        rounded-xl font-medium text-sm
-                        active:scale-[0.97] transition-all duration-200"
-                    >
-                      <RotateCcw size={16} />
-                      Descartar
-                    </button>
-                  </div>
-                </section>
-              </>
-            )}
 
             {/* ── Divider ────────────────────────────────────────────── */}
             <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
@@ -1007,16 +635,6 @@ export default function PromptArenaPage() {
           </>
         )}
       </div>
-
-      {/* ── Confirm Modal ─────────────────────────────────────────────── */}
-      <ConfirmSaveModal
-        open={showConfirm}
-        onClose={() => setShowConfirm(false)}
-        onConfirm={handleSave}
-        changelog={changelog}
-        warnings={warnings}
-        loading={saving}
-      />
 
       {/* ── Restore Original Modal ────────────────────────────────────── */}
       <ConfirmRestoreModal
