@@ -84,7 +84,7 @@ export function UnifiedShell() {
             welcomeScreen={<WelcomeScreen personaCount={personaCache.count} />}
           />
         ) : (
-          <>
+          <div className="flex-1 flex flex-col items-center justify-center min-h-0 overflow-y-auto">
             <WelcomeScreen personaCount={personaCache.count} />
             <BottomInput
               onSubmit={(value) => {
@@ -97,7 +97,7 @@ export function UnifiedShell() {
               hasBlocks={false}
               personaCount={personaCache.count}
             />
-          </>
+          </div>
         )}
 
         {blocks.length > 0 && (

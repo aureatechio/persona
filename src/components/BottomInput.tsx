@@ -236,6 +236,7 @@ export function BottomInput({
   const [selectedState, setSelectedState] = useState<string>('brasil');
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [showRecorder, setShowRecorder] = useState(false);
+  const [uploadSource, setUploadSource] = useState<'image' | 'video' | 'record' | null>(null);
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
@@ -288,8 +289,8 @@ export function BottomInput({
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center px-4 pb-6 overflow-y-auto">
-      <div className="w-full max-w-2xl space-y-5">
+    <div className="w-full px-4 pb-6 pt-4">
+      <div className="w-full max-w-2xl mx-auto space-y-5">
 
         {/* ═══ UPLOAD CARDS ═══ */}
         <div>
@@ -297,35 +298,62 @@ export function BottomInput({
             Envie seu material
           </span>
           <div className="grid grid-cols-3 gap-3">
-            <button onClick={() => imageInputRef.current?.click()}
-              className="group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl bg-white/[0.03] hover:bg-emerald-500/[0.06] border border-white/[0.06] hover:border-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/5">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center group-hover:bg-emerald-500/20 group-hover:scale-110 transition-all duration-300">
-                <ImageIcon size={20} className="text-emerald-400" />
+            <button onClick={() => { imageInputRef.current?.click(); setUploadSource('image'); }} type="button"
+              className={cn(
+                'group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-0.5',
+                uploadSource === 'image'
+                  ? 'bg-emerald-500/[0.08] border-emerald-500/40 shadow-lg shadow-emerald-500/10 -translate-y-0.5'
+                  : 'bg-white/[0.03] hover:bg-emerald-500/[0.06] border-white/[0.06] hover:border-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/5'
+              )}>
+              {uploadSource === 'image' && <div className="absolute top-2 right-2 w-2 h-2 bg-emerald-400 rounded-full shadow-lg shadow-emerald-500/50" />}
+              <div className={cn(
+                'w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300',
+                uploadSource === 'image' ? 'bg-emerald-500/20 scale-110' : 'bg-emerald-500/10 group-hover:bg-emerald-500/20 group-hover:scale-110'
+              )}>
+                <ImageIcon size={20} className="text-emerald-400 pointer-events-none" />
               </div>
-              <div className="text-center">
-                <p className="text-xs font-semibold text-zinc-200">Imagem</p>
+              <div className="text-center pointer-events-none">
+                <p className={cn('text-xs font-semibold', uploadSource === 'image' ? 'text-emerald-300' : 'text-zinc-200')}>Imagem</p>
                 <p className="text-[9px] text-zinc-600 mt-0.5">Post, print, arte</p>
               </div>
             </button>
 
-            <button onClick={() => videoInputRef.current?.click()}
-              className="group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl bg-white/[0.03] hover:bg-violet-500/[0.06] border border-white/[0.06] hover:border-violet-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-violet-500/5">
-              <div className="w-11 h-11 rounded-xl bg-violet-500/10 flex items-center justify-center group-hover:bg-violet-500/20 group-hover:scale-110 transition-all duration-300">
-                <Video size={20} className="text-violet-400" />
+            <button onClick={() => { videoInputRef.current?.click(); setUploadSource('video'); }} type="button"
+              className={cn(
+                'group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-0.5',
+                uploadSource === 'video'
+                  ? 'bg-violet-500/[0.08] border-violet-500/40 shadow-lg shadow-violet-500/10 -translate-y-0.5'
+                  : 'bg-white/[0.03] hover:bg-violet-500/[0.06] border-white/[0.06] hover:border-violet-500/30 hover:shadow-xl hover:shadow-violet-500/5'
+              )}>
+              {uploadSource === 'video' && <div className="absolute top-2 right-2 w-2 h-2 bg-violet-400 rounded-full shadow-lg shadow-violet-500/50" />}
+              <div className={cn(
+                'w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300',
+                uploadSource === 'video' ? 'bg-violet-500/20 scale-110' : 'bg-violet-500/10 group-hover:bg-violet-500/20 group-hover:scale-110'
+              )}>
+                <Video size={20} className="text-violet-400 pointer-events-none" />
               </div>
-              <div className="text-center">
-                <p className="text-xs font-semibold text-zinc-200">Video</p>
+              <div className="text-center pointer-events-none">
+                <p className={cn('text-xs font-semibold', uploadSource === 'video' ? 'text-violet-300' : 'text-zinc-200')}>Video</p>
                 <p className="text-[9px] text-zinc-600 mt-0.5">Reels, propaganda</p>
               </div>
             </button>
 
-            <button onClick={() => setShowRecorder(true)}
-              className="group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl bg-white/[0.03] hover:bg-cyan-500/[0.06] border border-white/[0.06] hover:border-cyan-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-cyan-500/5">
-              <div className="w-11 h-11 rounded-xl bg-cyan-500/10 flex items-center justify-center group-hover:bg-cyan-500/20 group-hover:scale-110 transition-all duration-300">
-                <Camera size={20} className="text-cyan-400" />
+            <button onClick={() => { setShowRecorder(true); setUploadSource('record'); }} type="button"
+              className={cn(
+                'group relative flex flex-col items-center gap-2.5 p-5 rounded-2xl border transition-all duration-300 hover:-translate-y-0.5',
+                uploadSource === 'record'
+                  ? 'bg-cyan-500/[0.08] border-cyan-500/40 shadow-lg shadow-cyan-500/10 -translate-y-0.5'
+                  : 'bg-white/[0.03] hover:bg-cyan-500/[0.06] border-white/[0.06] hover:border-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/5'
+              )}>
+              {uploadSource === 'record' && <div className="absolute top-2 right-2 w-2 h-2 bg-cyan-400 rounded-full shadow-lg shadow-cyan-500/50" />}
+              <div className={cn(
+                'w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300',
+                uploadSource === 'record' ? 'bg-cyan-500/20 scale-110' : 'bg-cyan-500/10 group-hover:bg-cyan-500/20 group-hover:scale-110'
+              )}>
+                <Camera size={20} className="text-cyan-400 pointer-events-none" />
               </div>
-              <div className="text-center">
-                <p className="text-xs font-semibold text-zinc-200">Gravar</p>
+              <div className="text-center pointer-events-none">
+                <p className={cn('text-xs font-semibold', uploadSource === 'record' ? 'text-cyan-300' : 'text-zinc-200')}>Gravar</p>
                 <p className="text-[9px] text-zinc-600 mt-0.5">Ate 2 minutos</p>
               </div>
             </button>
