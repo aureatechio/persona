@@ -87,84 +87,103 @@ def _clean_json_text(text: str) -> str:
 
 
 # ── Thematic field mapping: question keywords → persona opinion fields ────────
+# direction: "right" = right-leaning favors, "left" = left-leaning favors, "costumes" = ScoreCost-driven
 
 THEMATIC_FIELD_MAP = [
-    # (keywords_in_question, persona_field, favor_values, contra_values)
-    (["privatiz"], "tema_privatizacoes", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["aborto"], "tema_aborto", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["arma", "armamento", "desarmamento"], "tema_armas", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["maconha", "cannabis", "drogas legaliz"], "tema_maconha", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["cotas", "cota racial", "ação afirmativa"], "tema_cotas_raciais", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["casamento gay", "casamento homo", "união homoafetiva"], "tema_casamento_gay", ["A favor", "a favor"], ["Contra", "contra"]),
-    (["pena de morte"], "q_pena_morte", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["bolsa família", "bolsa familia"], "q_bolsa_familia_bom", ["Sim", "Bom", "A favor"], ["Não", "Ruim", "Contra"]),
-    (["sus ", "saúde pública", "saude publica"], "q_sus_funciona", ["Sim", "Bom", "Funciona"], ["Não", "Ruim", "Não funciona"]),
-    (["vacina"], "q_vacinas_confiar", ["Sim", "Confia"], ["Não", "Não confia"]),
-    (["salário mínimo", "salario minimo"], "q_salario_minimo_aumentar", ["Sim", "A favor"], ["Não", "Contra"]),
-    (["imposto", "tributar", "taxar rico"], "q_imposto_ricos", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["homeschool", "ensino domiciliar"], "q_homeschooling", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["intervenção militar", "intervencao militar"], "q_intervencao_militar", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["impeachment"], "q_impeachment_lula", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["policial", "polícia", "policia", "pm ", "segurança pública"], "q_seguranca_prioridade", ["Sim", "A favor"], ["Não", "Contra"]),
-    (["lgbt", "direitos lgbt", "trans"], "q_direitos_lgbt", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
-    (["linguagem neutra"], "q_linguagem_neutra", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    # (keywords_in_question, persona_field, favor_values, contra_values, direction)
+    (["privatiz"], "tema_privatizacoes", ["A favor", "a favor"], ["Contra", "contra"], "right"),
+    (["aborto"], "tema_aborto", ["A favor", "a favor"], ["Contra", "contra"], "left"),
+    (["arma", "armamento", "desarmamento"], "tema_armas", ["A favor", "a favor"], ["Contra", "contra"], "right"),
+    (["maconha", "cannabis", "drogas legaliz"], "tema_maconha", ["A favor", "a favor"], ["Contra", "contra"], "left"),
+    (["cotas", "cota racial", "ação afirmativa"], "tema_cotas_raciais", ["A favor", "a favor"], ["Contra", "contra"], "left"),
+    (["casamento gay", "casamento homo", "união homoafetiva"], "tema_casamento_gay", ["A favor", "a favor"], ["Contra", "contra"], "left"),
+    (["pena de morte"], "q_pena_morte", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "right"),
+    (["bolsa família", "bolsa familia"], "q_bolsa_familia_bom", ["Sim", "Bom", "A favor"], ["Não", "Ruim", "Contra"], "left"),
+    (["sus ", "saúde pública", "saude publica"], "q_sus_funciona", ["Sim", "Bom", "Funciona"], ["Não", "Ruim", "Não funciona"], "left"),
+    (["vacina"], "q_vacinas_confiar", ["Sim", "Confia"], ["Não", "Não confia"], "left"),
+    (["salário mínimo", "salario minimo"], "q_salario_minimo_aumentar", ["Sim", "A favor"], ["Não", "Contra"], "left"),
+    (["imposto", "tributar", "taxar rico"], "q_imposto_ricos", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "left"),
+    (["homeschool", "ensino domiciliar"], "q_homeschooling", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "right"),
+    (["intervenção militar", "intervencao militar"], "q_intervencao_militar", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "right"),
+    (["impeachment"], "q_impeachment_lula", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "right"),
+    (["policial", "polícia", "policia", "pm ", "segurança pública"], "q_seguranca_prioridade", ["Sim", "A favor"], ["Não", "Contra"], "right"),
+    (["lgbt", "direitos lgbt", "trans"], "q_direitos_lgbt", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "left"),
+    (["linguagem neutra"], "q_linguagem_neutra", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"], "left"),
 ]
 
 
 def _enforce_thematic_coherence(score: float, persona: dict[str, Any], question: str,
                                  political_bias: float = 0.0) -> float:
     """
-    Post-processing for THEMATIC questions: enforce score coherence when
-    the persona has a DECLARED OPINION that matches the question topic.
+    Post-processing for THEMATIC questions: enforce score coherence.
 
-    Example: question about privatization + persona has tema_privatizacoes='Contra'
-    → score must be ≤ 4.0 (not neutral 5.0).
+    1. If persona has DECLARED OPINION matching the topic → enforce 7+ or 3-
+    2. If NO declared opinion but strong ScoreEco → use ideology as fallback
+       (e.g., right-leaning persona on right-wing topic → score should be 7+)
 
-    When political_bias is active and conflicts with the declared opinion,
-    the bias WINS — the correction is softened or skipped entirely.
-    This prevents the thematic coherence from undoing the bias slider effect.
+    When political_bias is active and conflicts, bias WINS.
     """
     q = question.lower()
 
-    for keywords, field, favor_vals, contra_vals in THEMATIC_FIELD_MAP:
+    for keywords, field, favor_vals, contra_vals, direction in THEMATIC_FIELD_MAP:
         # Check if question matches this topic
         if not any(kw in q for kw in keywords):
             continue
 
         # Check if persona has a declared opinion
         declared = persona.get(field)
-        if not declared or declared == "Não respondeu" or declared == "":
-            continue
+        has_declared = declared and declared != "Não respondeu" and declared != ""
 
-        # Check if declared opinion is favor or contra
-        is_favor = any(v.lower() in declared.lower() for v in favor_vals)
-        is_contra = any(v.lower() in declared.lower() for v in contra_vals)
+        if has_declared:
+            # ── Path A: Declared opinion exists ──
+            is_favor = any(v.lower() in declared.lower() for v in favor_vals)
+            is_contra = any(v.lower() in declared.lower() for v in contra_vals)
 
-        # ── When bias is active, check for conflict ──
-        # For most thematic topics: right bias (+) favors "A favor" on right-leaning topics
-        # (privatization, guns, less taxes) and "Contra" on left-leaning topics (social programs).
-        # Rather than trying to infer topic direction, we simply soften the correction
-        # when the bias pushed the score in the opposite direction of the declared opinion.
-        if political_bias != 0.0:
-            # If bias pushed score HIGH (right) and persona declared Contra,
-            # the bias intentionally wants high scores → skip correction
-            if political_bias > 0 and is_contra and score > 4.0:
-                return score  # Bias wants high scores — don't push down
-            # If bias pushed score LOW (left) and persona declared A favor,
-            # the bias intentionally wants low scores → skip correction
-            if political_bias < 0 and is_favor and score < 6.0:
-                return score  # Bias wants low scores — don't push up
+            # When bias is active, check for conflict
+            if political_bias != 0.0:
+                if political_bias > 0 and is_contra and score > 4.0:
+                    return score  # Bias wants high scores — don't push down
+                if political_bias < 0 and is_favor and score < 6.0:
+                    return score  # Bias wants low scores — don't push up
 
-        if is_favor and score < 7.0:
-            # Persona declared favor but score is too low → push up to 7.0-10.0 range
-            # Declared "A favor" = strong opinion, minimum score should be 7.0
-            corrected = max(score, 7.0 + (score / 10) * 3.0)
-            return min(10.0, round(corrected, 1))
-        elif is_contra and score > 3.0:
-            # Persona declared contra but score is too high → push down to 0.0-3.0 range
-            # Declared "Contra" = strong opinion, maximum score should be 3.0
-            corrected = min(score, 3.0 - (1 - score / 10) * 3.0)
-            return max(0.0, round(corrected, 1))
+            if is_favor and score < 7.0:
+                corrected = max(score, 7.0 + (score / 10) * 3.0)
+                return min(10.0, round(corrected, 1))
+            elif is_contra and score > 3.0:
+                corrected = min(score, 3.0 - (1 - score / 10) * 3.0)
+                return max(0.0, round(corrected, 1))
+        else:
+            # ── Path B: No declared opinion — use ScoreEco as fallback ──
+            score_eco = persona.get("score_economico") or 0.0
+            # Apply bias shift to score_eco for this check too
+            if political_bias != 0.0:
+                score_eco = max(-1.0, min(1.0, score_eco + political_bias * 0.9))
+
+            # Only enforce for personas with clear ideological position (|eco| > 0.3)
+            if abs(score_eco) > 0.3:
+                # Determine if persona's ideology ALIGNS with the topic direction
+                persona_favors = (
+                    (direction == "right" and score_eco > 0.3) or
+                    (direction == "left" and score_eco < -0.3)
+                )
+                persona_opposes = (
+                    (direction == "right" and score_eco < -0.3) or
+                    (direction == "left" and score_eco > 0.3)
+                )
+
+                if persona_favors and score < 6.5:
+                    # Ideology says favor but score is too neutral → push up
+                    # Softer than declared opinion (6.5 threshold vs 7.0)
+                    intensity = min(abs(score_eco), 1.0)  # 0.3-1.0
+                    min_score = 6.5 + intensity * 2.0  # 7.1 to 8.5
+                    corrected = max(score, min_score)
+                    return min(10.0, round(corrected, 1))
+                elif persona_opposes and score > 3.5:
+                    # Ideology says oppose but score is too neutral → push down
+                    intensity = min(abs(score_eco), 1.0)
+                    max_score = 3.5 - intensity * 2.0  # 2.9 to 1.5
+                    corrected = min(score, max_score)
+                    return max(0.0, round(corrected, 1))
 
         # Found a matching topic — stop checking others
         break
