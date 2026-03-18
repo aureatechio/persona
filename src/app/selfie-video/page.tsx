@@ -246,7 +246,7 @@ export default function SelfieVideoPage() {
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/10 backdrop-blur-xl border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-center gap-3">
-          <Image src="/logo-progressistas.png" alt="Progressistas" width={120} height={40} className="h-8 w-auto" />
+          <Image src="/logo-progressistas.png" alt="Progressistas" width={160} height={52} className="h-10 w-auto" />
         </div>
       </header>
 
@@ -259,8 +259,8 @@ export default function SelfieVideoPage() {
             <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-sky-400/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl bg-white/10 backdrop-blur-sm border border-white/15 mb-6 shadow-xl shadow-black/20">
-                <Image src="/logo-progressistas.png" alt="Progressistas" width={80} height={50} className="w-16 h-auto" />
+              <div className="mb-6">
+                <Image src="/logo-progressistas.png" alt="Progressistas" width={280} height={174} className="w-56 md:w-64 h-auto mx-auto drop-shadow-lg" />
               </div>
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
                 Grave seu depoimento
