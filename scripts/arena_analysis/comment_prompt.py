@@ -307,6 +307,31 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         electoral_part = f'⚡ELEIÇÃO: {electoral_str} | ' if electoral_str else ''
         extras_part = f' | {extras}' if extras else ''
 
+        # ── When bias is active on THEMATIC questions, suppress political identity ──
+        # The LLM sees "Político: Esquerda" + "Voto22: Lula" + "Privat: Contra" and
+        # ignores ScoreEco. By removing these fields, ScoreEco becomes the dominant signal.
+        suppress_political = bias and bias.has_bias and not is_political
+        if suppress_political:
+            electoral_part = ''  # Remove Voto22/AprovLula/AvalBolso
+            # Remove declared opinion fields that conflict with bias from extras
+            # (keep non-political extras like vivências, confiança, etc.)
+            extras_cleaned = extras
+            # Remove electoral and thematic opinion tags that would override ScoreEco
+            import re as _re
+            for tag in ['Voto22:[^ |]+', 'AprovLula:[^ |]+', 'AvalBolso:[^ |]+',
+                        'Privat:[^ |]+', 'Armas:[^ |]+', 'Aborto:[^ |]+',
+                        'Maconha:[^ |]+', 'Cotas:[^ |]+', 'CasGay:[^ |]+',
+                        'PenaMorte:[^ |]+', 'ImpRicos:[^ |]+', 'BolsaFam:[^ |]+',
+                        'SalMin:[^ |]+', 'ImpeachLula:[^ |]+', 'PTComun:[^ |]+',
+                        'BolsoDitador:[^ |]+', 'IntervMil:[^ |]+',
+                        'Reeleição:[^ |]+', 'Voto26:[^ |]+']:
+                extras_cleaned = _re.sub(tag, '', extras_cleaned)
+            # Clean up leftover separators
+            extras_cleaned = _re.sub(r'\|\s*\|', '|', extras_cleaned).strip(' |')
+            extras_part = f' | {extras_cleaned}' if extras_cleaned.strip() else ''
+
+        political_field = '' if suppress_political else f'Político: {p.get("political_leaning", "?")} | '
+
         line = (
             f'[{i + 1}] {p.get("name", "?")} | '
             f'{p.get("gender_identity") or p.get("gender", "?")}, '
@@ -317,7 +342,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
             f'Classe {p.get("social_class", "?")} | '
             f'Profissão: {occupation or "?"} | '
             f'{p.get("civil_status", "?")} | '
-            f'Político: {p.get("political_leaning", "?")} | '
+            f'{political_field}'
             f'{electoral_part}'
             f'Religião: {p.get("macro_religion", "?")} | '
             f'Cluster: {cluster_id}({cluster_name}) | '
