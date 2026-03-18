@@ -93,6 +93,7 @@ interface StepDetails {
   context: ContextData | null;
   validator: ValidatorData | null;
   promptSample: PromptSampleData | null;
+  ideologicalFrame: string | null;
 }
 
 interface PipelineState {
@@ -118,6 +119,7 @@ const initialStepDetails: StepDetails = {
   context: null,
   validator: null,
   promptSample: null,
+  ideologicalFrame: null,
 };
 
 const initialState: PipelineState = {
@@ -1069,7 +1071,17 @@ function StepDetailView({ nodeKey, stepDetails, contextExtraction, batches, node
       <div className="p-4 space-y-4">
         {stepDetails.context && <ContextPanel data={stepDetails.context} />}
         {stepDetails.validator && <ValidatorPanel data={stepDetails.validator} />}
-        {!stepDetails.context && !stepDetails.validator && (
+        {stepDetails.ideologicalFrame && (
+          <div className="bg-violet-500/10 border border-violet-500/20 rounded-xl p-4 space-y-2">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400">Vies Ideologico</span>
+            </div>
+            <pre className="text-[10px] text-zinc-300 whitespace-pre-wrap leading-relaxed font-mono">
+              {stepDetails.ideologicalFrame}
+            </pre>
+          </div>
+        )}
+        {!stepDetails.context && !stepDetails.validator && !stepDetails.ideologicalFrame && (
           <p className="text-[10px] text-zinc-600 text-center py-4">Aguardando validacao...</p>
         )}
       </div>
@@ -1352,7 +1364,15 @@ export function ArenaMonitor() {
             }));
           }
           if (d.step === 'ideological_frame' && d.detail) {
-            addLog('contextValidator', 'info', `Vies ideologico: ${(d.detail.frame as string)?.substring(0, 200) || 'mapeado'}`);
+            const frame = (d.detail.frame as string) || '';
+            addLog('contextValidator', 'info', 'Vies ideologico mapeado para o tema');
+            setState(prev => ({
+              ...prev,
+              stepDetails: {
+                ...prev.stepDetails,
+                ideologicalFrame: frame,
+              },
+            }));
           }
           break;
         }
