@@ -365,51 +365,62 @@ Pergunta: "Bolsonaro é o melhor presidente?"
 ⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado.
 ⚠️ ALIADOS: Boulos, Haddad, Gleisi = campo Lula. Nicolas, Tarcísio, Marçal = campo Bolsonaro. Eleitor de Lula defende aliados de Lula e vice-versa."""
     else:
-        # THEMATIC question — full profile guides analysis, but bias still influences via scores
+        # THEMATIC question — full profile guides analysis, bias influences via scores
         if has_bias:
             rule_9 = (
-                f"9. PERFIL INTEGRAL + VIÉS → Esta pergunta NÃO é sobre figuras políticas, mas os ScoreEco e ScoreCost "
-                f"foram AJUSTADOS com viés {bias_direction}. Use esses scores como tendência ideológica da persona "
-                f"ao opinar sobre este TEMA. Personas com ScoreEco deslocado para {bias_direction} devem refletir "
-                f"opiniões mais alinhadas com essa visão de mundo no tema em questão. "
-                f"MAS também considere os campos de opinião declarada (Privat, BolsaFam, SUS, etc.), "
-                f"vivências pessoais, classe social, escolaridade, religião e região — o viés INFLUENCIA "
-                f"a intensidade, mas o perfil completo ainda molda o MOTIVO e o TOM da opinião."
+                f"9. OPINIÃO DECLARADA + VIÉS → Os ScoreEco e ScoreCost foram AJUSTADOS com viés {bias_direction}. "
+                f"ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.). "
+                f"Se a persona tem opinião DECLARADA sobre o tema da pergunta, essa opinião é DETERMINANTE: "
+                f"'A favor' → score 7-10, 'Contra' → score 0-3. "
+                f"Se NÃO tem opinião declarada, use ScoreEco como guia ideológico: "
+                f"ScoreEco negativo (esquerda) → tende a favorecer Estado, programas sociais, regulação. "
+                f"ScoreEco positivo (direita) → tende a favorecer mercado, privatização, menos impostos. "
+                f"O viés desloca os scores para {bias_direction} — a MAIORIA deve tender para opiniões de {bias_direction}. "
+                f"Mantenha diversidade de MOTIVOS (duas personas do mesmo lado concordam por razões DIFERENTES)."
             )
         else:
             rule_9 = (
-                "9. PERFIL INTEGRAL → Esta pergunta NÃO é sobre figuras políticas partidárias. "
-                "Use TODOS os dados da persona para formar a opinião: campos de opinião declarada "
-                "(Aborto, Armas, Maconha, BolsaFam, SUS, Vacinas, etc.), vivências pessoais "
-                "(Fome, Assaltado, Depressao, etc.), classe social, escolaridade, religião, região. "
-                "NÃO reduza a opinião a esquerda/direita — uma evangélica de classe C pode concordar com "
-                "auxílio maternidade por razões DIFERENTES de uma universitária ateia de classe A. "
-                "A diversidade de MOTIVOS é tão importante quanto a diversidade de opiniões."
+                "9. OPINIÃO DECLARADA + PERFIL → ANTES de gerar o score, LEIA os campos de opinião declarada "
+                "da persona (Privat, BolsaFam, SUS, Armas, Aborto, Cotas, CasGay, PenaMorte, etc.). "
+                "Se a persona tem opinião DECLARADA sobre o tema da pergunta, essa opinião é DETERMINANTE: "
+                "'A favor' → score 7-10, 'Contra' → score 0-3. "
+                "Se NÃO tem opinião declarada, use o PERFIL COMPLETO: ScoreEco (esquerda/direita), "
+                "ScoreCost (progressista/conservador), classe social, vivências, religião, região. "
+                "Brasileiros são OPINATIVOS — privatização, aborto, armas geram opiniões FORTES. "
+                "Scores de 4-6 só para quem REALMENTE não tem opinião ou está dividido. "
+                "Mantenha diversidade de MOTIVOS — duas personas podem concordar por razões DIFERENTES."
             )
 
         if has_bias:
             calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (temática COM VIÉS {bias_direction.upper()} APLICADO):
-Os scores ideológicos foram ajustados para {bias_direction}. O viés influencia a TENDÊNCIA da opinião no tema.
-- ScoreEco negativo (esquerda) → tende a favorecer: Estado forte, programas sociais, regulação, direitos trabalhistas
-- ScoreEco positivo (direita) → tende a favorecer: mercado livre, privatização, menos impostos, meritocracia
-- MAS o campo de opinião declarada da persona (Privat, SUS, BolsaFam, etc.) também conta — se existir
+Pergunta: "Privatização da Petrobras é boa?"
+- Persona Direita, ScoreEco +0.8, Privat:A favor → score 9.0, positive ("tem q privatizar essa porra toda mano")
+- Persona Esquerda, ScoreEco -0.2 (ajustado), Privat:Contra → score 3.0, negative ("privatizar pra gringo roubar? nao")
+- Persona Centro, ScoreEco +0.1, sem opinião declarada → score 5.5, neutral ("sei la tem prós e contras")
 
-⚠️ Com viés {bias_direction}, a MAIORIA dos perfis terá ScoreEco deslocado. Isso significa que a maioria deve tender para opiniões de {bias_direction} sobre o tema. NÃO contrabalance — o viés é INTENCIONAL.
-⚠️ IMPORTANTE: mesmo com viés, mantenha a DIVERSIDADE de motivos. Duas personas de direita podem concordar com privatização por razões DIFERENTES (empresário = eficiência, evangélico = combate à corrupção)."""
+Pergunta: "Auxílio maternidade deveria aumentar?"
+- Mãe classe D, Nordeste, ScoreEco -0.5 → score 9.0, positive ("claro porra minha filha quase morre de fome")
+- Empresário classe A, ScoreEco +0.9 → score 2.0, negative ("mais gasto público que sai do meu imposto")
+
+⚠️ REGRA: Se a persona tem campo de opinião declarada (Privat, SUS, Armas, etc.) que COINCIDE com o tema, USE como base do score.
+⚠️ Com viés {bias_direction}, a MAIORIA deve tender para {bias_direction}. NÃO contrabalance — o viés é INTENCIONAL."""
         else:
-            calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas temáticas — NÃO partidárias):
+            calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (perguntas temáticas):
+Pergunta: "Privatização da Petrobras é boa?"
+- Persona Direita, ScoreEco +0.8, Privat:A favor → score 9.0, positive ("tem q privatizar essa porra toda mano")
+- Persona Esquerda, ScoreEco -0.7, Privat:Contra → score 1.5, negative ("privatizar patrimonio do povo jamais")
+- Persona Centro, ScoreEco +0.05, sem Privat → score 5.0, neutral ("sei la mano tem prós e contras")
+
 Pergunta: "Auxílio maternidade deveria aumentar?"
 - Mãe classe D, Nordeste, fundamental → score 9.0, positive ("claro porra minha filha quase morre de fome qnd nasceu")
 - Empresário classe A, Sul, pós-graduação → score 2.5, negative ("mais gasto público que vai sair do meu imposto")
-- Jovem solteiro Gen Z, classe C → score 5.2, neutral ("sei la mano n me afeta muito")
-- Evangélica classe C, mãe de 3 → score 8.5, positive ("familia precisa de apoio sim Deus sabe")
 
 Pergunta: "O SUS funciona?"
-- Classe D, interior NE, fundamental → score 3.0, negative ("funciona nada vei fiquei 8 hora na fila")
-- Médica classe A, SP → score 4.0, negative ("o conceito é bom mas a gestão é péssima")
-- Classe C, teve filho pelo SUS → score 7.5, positive ("meu filho nasceu la e foi tudo bem graças a Deus")
+- Classe D, SUS:Ruim → score 3.0, negative ("funciona nada vei fiquei 8 hora na fila")
+- Classe C, SUS:Bom → score 7.5, positive ("meu filho nasceu la e foi tudo bem graças a Deus")
 
-⚠️ PERCEBA: a opinião vem do PERFIL COMPLETO (classe, vivência, região, religião, profissão), NÃO de esquerda/direita. Use os campos de opinião declarada quando disponíveis (BolsaFam, SUS, Vacinas, SalMin, etc.)."""
+⚠️ REGRA CRÍTICA: Se a persona tem campo de opinião declarada que COINCIDE com o tema da pergunta (Privat para privatização, Armas para armas, etc.), esse campo é DETERMINANTE pro score. 'A favor' = score alto, 'Contra' = score baixo.
+⚠️ Brasileiros são OPINATIVOS. Temas ideológicos (privatização, aborto, armas) geram scores EXTREMOS (0-3 ou 7-10), NÃO neutros."""
 
     return f"""{context_block}
 
@@ -559,21 +570,22 @@ NÃO EXISTE eleitor de Bolsonaro que concorda que aliado de Bolsonaro é corrupt
         coherence_footer = "- ⚠️ Se pergunta critica político/aliado que a persona apoia → negative + score 0-2 (SEMPRE)"
     else:
         if has_bias:
-            political_rule = f"""🔵 REGRA #1 — PERFIL INTEGRAL + VIÉS (pergunta temática com viés {bias_direction}):
-Esta pergunta é sobre um TEMA, não sobre um político. Os ScoreEco e ScoreCost foram AJUSTADOS com viés {bias_direction}.
-→ Use esses scores como tendência ideológica ao opinar sobre este tema
-→ MAS também considere: campos de opinião declarada (Privat, BolsaFam, SUS, etc.), vivências, classe, religião, região
-→ O viés INFLUENCIA a intensidade da opinião, mas o perfil completo molda o MOTIVO e o TOM
-→ Mantenha diversidade de MOTIVOS — duas personas do mesmo lado podem concordar por razões DIFERENTES"""
+            political_rule = f"""🔵 REGRA #1 — OPINIÃO DECLARADA + VIÉS (pergunta temática com viés {bias_direction}):
+ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.).
+→ Se a persona tem opinião DECLARADA sobre o tema: 'A favor' → score 7-10, 'Contra' → score 0-3
+→ Se NÃO tem opinião declarada, use ScoreEco como guia (negativo=esquerda, positivo=direita)
+→ Os scores foram AJUSTADOS com viés {bias_direction} — a maioria deve tender para {bias_direction}
+→ Mantenha diversidade de MOTIVOS — duas personas do mesmo lado concordam por razões DIFERENTES
+→ Brasileiros são OPINATIVOS — temas ideológicos geram scores EXTREMOS, não neutros"""
         else:
-            political_rule = f"""🔵 REGRA #1 — PERFIL INTEGRAL (pergunta NÃO é sobre figuras políticas):
-Esta pergunta é sobre um TEMA, não sobre um político. Use o PERFIL COMPLETO da persona:
-→ Campos de opinião declarada: Aborto, Armas, Maconha, BolsaFam, SUS, Vacinas, SalMin, etc.
-→ Vivências pessoais: Fome, Assaltado, Depressao, ViolPolicial, etc.
-→ Classe social, escolaridade, religião, região, profissão
-→ NÃO reduza tudo a esquerda/direita — a diversidade de MOTIVOS importa tanto quanto a de opiniões
-→ Uma mãe evangélica pode concordar com auxílio por razões DIFERENTES de uma feminista universitária"""
-        coherence_footer = "- ⚠️ Use os campos de opinião declarada da persona quando o tema coincidir (ex: SUS para saúde, BolsaFam para assistência)"
+            political_rule = f"""🔵 REGRA #1 — OPINIÃO DECLARADA + PERFIL (pergunta temática):
+ANTES de gerar o score, LEIA os campos de opinião declarada da persona (Privat, BolsaFam, SUS, Armas, Aborto, etc.).
+→ Se a persona tem opinião DECLARADA sobre o tema: 'A favor' → score 7-10, 'Contra' → score 0-3
+→ Se NÃO tem opinião declarada, use o PERFIL COMPLETO: ScoreEco, classe, vivências, religião, região
+→ Brasileiros são OPINATIVOS — privatização, aborto, armas geram opiniões FORTES (scores 0-3 ou 7-10)
+→ Scores 4-6 só para quem REALMENTE não tem opinião ou está dividido
+→ Mantenha diversidade de MOTIVOS — duas personas podem concordar por razões DIFERENTES"""
+        coherence_footer = "- ⚠️ Se persona tem campo declarado sobre o tema (Privat, Armas, SUS, etc.), o score DEVE ser coerente: 'A favor'→score alto, 'Contra'→score baixo"
 
     return f"""{context_block}
 

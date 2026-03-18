@@ -86,6 +86,90 @@ def _clean_json_text(text: str) -> str:
     return text
 
 
+# ── Thematic field mapping: question keywords → persona opinion fields ────────
+
+THEMATIC_FIELD_MAP = [
+    # (keywords_in_question, persona_field, favor_values, contra_values)
+    (["privatiz"], "tema_privatizacoes", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["aborto"], "tema_aborto", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["arma", "armamento", "desarmamento"], "tema_armas", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["maconha", "cannabis", "drogas legaliz"], "tema_maconha", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["cotas", "cota racial", "ação afirmativa"], "tema_cotas_raciais", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["casamento gay", "casamento homo", "união homoafetiva"], "tema_casamento_gay", ["A favor", "a favor"], ["Contra", "contra"]),
+    (["pena de morte"], "q_pena_morte", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["bolsa família", "bolsa familia"], "q_bolsa_familia_bom", ["Sim", "Bom", "A favor"], ["Não", "Ruim", "Contra"]),
+    (["sus ", "saúde pública", "saude publica"], "q_sus_funciona", ["Sim", "Bom", "Funciona"], ["Não", "Ruim", "Não funciona"]),
+    (["vacina"], "q_vacinas_confiar", ["Sim", "Confia"], ["Não", "Não confia"]),
+    (["salário mínimo", "salario minimo"], "q_salario_minimo_aumentar", ["Sim", "A favor"], ["Não", "Contra"]),
+    (["imposto", "tributar", "taxar rico"], "q_imposto_ricos", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["homeschool", "ensino domiciliar"], "q_homeschooling", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["intervenção militar", "intervencao militar"], "q_intervencao_militar", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["impeachment"], "q_impeachment_lula", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["policial", "polícia", "policia", "pm ", "segurança pública"], "q_seguranca_prioridade", ["Sim", "A favor"], ["Não", "Contra"]),
+    (["lgbt", "direitos lgbt", "trans"], "q_direitos_lgbt", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+    (["linguagem neutra"], "q_linguagem_neutra", ["A favor", "a favor", "Sim"], ["Contra", "contra", "Não"]),
+]
+
+
+def _enforce_thematic_coherence(score: float, persona: dict[str, Any], question: str,
+                                 political_bias: float = 0.0) -> float:
+    """
+    Post-processing for THEMATIC questions: enforce score coherence when
+    the persona has a DECLARED OPINION that matches the question topic.
+
+    Example: question about privatization + persona has tema_privatizacoes='Contra'
+    → score must be ≤ 4.0 (not neutral 5.0).
+
+    When political_bias is active and conflicts with the declared opinion,
+    the bias WINS — the correction is softened or skipped entirely.
+    This prevents the thematic coherence from undoing the bias slider effect.
+    """
+    q = question.lower()
+
+    for keywords, field, favor_vals, contra_vals in THEMATIC_FIELD_MAP:
+        # Check if question matches this topic
+        if not any(kw in q for kw in keywords):
+            continue
+
+        # Check if persona has a declared opinion
+        declared = persona.get(field)
+        if not declared or declared == "Não respondeu" or declared == "":
+            continue
+
+        # Check if declared opinion is favor or contra
+        is_favor = any(v.lower() in declared.lower() for v in favor_vals)
+        is_contra = any(v.lower() in declared.lower() for v in contra_vals)
+
+        # ── When bias is active, check for conflict ──
+        # For most thematic topics: right bias (+) favors "A favor" on right-leaning topics
+        # (privatization, guns, less taxes) and "Contra" on left-leaning topics (social programs).
+        # Rather than trying to infer topic direction, we simply soften the correction
+        # when the bias pushed the score in the opposite direction of the declared opinion.
+        if political_bias != 0.0:
+            # If bias pushed score HIGH (right) and persona declared Contra,
+            # the bias intentionally wants high scores → skip correction
+            if political_bias > 0 and is_contra and score > 4.0:
+                return score  # Bias wants high scores — don't push down
+            # If bias pushed score LOW (left) and persona declared A favor,
+            # the bias intentionally wants low scores → skip correction
+            if political_bias < 0 and is_favor and score < 6.0:
+                return score  # Bias wants low scores — don't push up
+
+        if is_favor and score < 6.0:
+            # Persona declared favor but score is too low → push up
+            corrected = max(score, 6.5 + (score / 10) * 3.5)
+            return min(10.0, round(corrected, 1))
+        elif is_contra and score > 4.0:
+            # Persona declared contra but score is too high → push down
+            corrected = min(score, 3.5 - (1 - score / 10) * 3.5)
+            return max(0.0, round(corrected, 1))
+
+        # Found a matching topic — stop checking others
+        break
+
+    return score
+
+
 def _enforce_political_coherence(score: float, persona: dict[str, Any], question: str,
                                   political_bias: float = 0.0) -> float:
     """
@@ -262,6 +346,8 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", que
     # Enforce political coherence — correct incoherent scores for political questions
     if question:
         score = _enforce_political_coherence(score, persona, question)
+        # Enforce thematic coherence — correct scores based on declared opinions
+        score = _enforce_thematic_coherence(score, persona, question, political_bias)
 
     # Derive sentiment from score (ensures coherence)
     # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
@@ -369,6 +455,8 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", que
         # Enforce political coherence for political questions (with bias)
         if question:
             score = _enforce_political_coherence(score, persona, question, political_bias)
+            # Enforce thematic coherence — correct scores based on declared opinions
+            score = _enforce_thematic_coherence(score, persona, question)
 
         # Derive sentiment from score (ensures coherence)
         # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
