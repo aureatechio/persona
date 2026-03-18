@@ -243,6 +243,40 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
 
     personas_block = "\n".join(persona_lines)
 
+    has_bias = bias and bias.has_bias
+    bias_direction = ""
+    if has_bias:
+        bias_direction = "esquerda/progressista" if bias.political_bias < 0 else "direita/conservador"
+
+    # Rule 9 adapts based on bias
+    if has_bias:
+        rule_9 = f"9. POLÍTICO → Os ScoreEco e ScoreCost JÁ FORAM AJUSTADOS com viés {bias_direction}. Use ESSES scores como verdade. Ignore Voto22/AprovLula se contradizerem os scores apresentados. O score ideológico é MAIS IMPORTANTE que o voto declarado."
+    else:
+        rule_9 = "9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Pense: \"o que essa pessoa REALMENTE postaria?\""
+
+    # Calibration examples adapt based on bias
+    if has_bias:
+        calibration = f"""📊 EXEMPLOS DE CALIBRAÇÃO (COM VIÉS {bias_direction.upper()} APLICADO):
+Os scores ideológicos já foram ajustados. Siga os ScoreEco/ScoreCost apresentados.
+- Persona com ScoreEco < -0.3 → opinião de ESQUERDA, defende Lula, critica Bolsonaro
+- Persona com ScoreEco > 0.3 → opinião de DIREITA, critica Lula, defende Bolsonaro
+- Persona com ScoreEco entre -0.3 e 0.3 → DIVIDIDA, score 4-6
+
+⚠️ Com viés aplicado, a MAIORIA dos perfis terá ScoreEco deslocado para {bias_direction}. Isso significa que a maioria deve refletir opiniões de {bias_direction}. NÃO contrabalance o viés — ele é INTENCIONAL."""
+    else:
+        calibration = """📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas sobre figuras políticas):
+Pergunta: "Lula é corrupto?"
+- Persona com Voto22:Bolsonaro, AprovLula:Desaprova → score 9.2, positive ("claro porra ladrão tinha q ta preso")
+- Persona com Voto22:Lula, AprovLula:Aprova → score 1.0, negative ("corrupto é quem inventou essa mentira")
+- Persona com Voto22:Nulo → score 4.8, neutral ("sei la mano todo politico rouba")
+
+Pergunta: "Bolsonaro é o melhor presidente?"
+- Persona com Voto22:Bolsonaro, AvalBolso:Bom → score 9.5, positive ("MITO! melhor presidente da historia")
+- Persona com Voto22:Lula, AvalBolso:Ruim → score 0.8, negative ("melhor em destruir o pais ne")
+- Persona Centro, dividido → score 5.0, neutral ("tem coisa boa e ruim ne")
+
+⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado."""
+
     return f"""{context_block}
 
 Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve parecer COPIADO de um post REAL de brasileiro.
@@ -256,7 +290,7 @@ Gere 1 comentário de rede social para CADA perfil abaixo. Cada comentário deve
 6. SE NÃO CONHECE O TEMA → reflita isso ("sei la", "nunca ouvi falar").
 7. HUMOR → ~40-50% devem ter humor. Brasileiro quase nunca é 100% sério.
 8. NEUTRAL É VÁLIDO (~5-10%): persona que NÃO CONHECE o assunto, está DIVIDIDA, ou NÃO SE IMPORTA → neutral. Mas NUNCA "sem opinião formada" (genérico). Neutral tem que soar natural.
-9. POLÍTICO → LEIA Voto22/AprovLula/AvalBolso do perfil ANTES de responder. Sua opinião deve ser COERENTE com esses dados — um eleitor de Bolsonaro não elogia Lula, e vice-versa. Pense: "o que essa pessoa REALMENTE postaria?"
+{rule_9}
 
 PERFIS:
 {personas_block}
@@ -270,18 +304,7 @@ FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
 - ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
 - TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
 
-📊 EXEMPLOS DE CALIBRAÇÃO (para perguntas sobre figuras políticas):
-Pergunta: "Lula é corrupto?"
-- Persona com Voto22:Bolsonaro, AprovLula:Desaprova → score 9.2, positive ("claro porra ladrão tinha q ta preso")
-- Persona com Voto22:Lula, AprovLula:Aprova → score 1.0, negative ("corrupto é quem inventou essa mentira")
-- Persona com Voto22:Nulo → score 4.8, neutral ("sei la mano todo politico rouba")
-
-Pergunta: "Bolsonaro é o melhor presidente?"
-- Persona com Voto22:Bolsonaro, AvalBolso:Bom → score 9.5, positive ("MITO! melhor presidente da historia")
-- Persona com Voto22:Lula, AvalBolso:Ruim → score 0.8, negative ("melhor em destruir o pais ne")
-- Persona Centro, dividido → score 5.0, neutral ("tem coisa boa e ruim ne")
-
-⚠️ PERCEBA: eleitores declarados dão scores EXTREMOS (0-2 ou 8-10). Scores de 4-6 são para INDECISOS. Se a persona tem Voto22 declarado, o score DEVE ser polarizado."""
+{calibration}"""
 
 
 def build_single_prompt(
