@@ -243,8 +243,8 @@ function MapWaiting() {
       if (!canvasRef.current) return;
       globe = createGlobe(canvasRef.current, {
         devicePixelRatio: 2,
-        width: 600 * 2,
-        height: 600 * 2,
+        width: 800 * 2,
+        height: 800 * 2,
         phi: 0,
         theta: -0.3,
         dark: 1,
@@ -253,7 +253,7 @@ function MapWaiting() {
         mapBrightness: 6,
         baseColor: [0.06, 0.08, 0.06],
         markerColor: [0.16, 0.73, 0.50],
-        glowColor: [0.06, 0.25, 0.15],
+        glowColor: [0.02, 0.02, 0.02],
         markers: [
           { location: [-23.55, -46.63], size: 0.06 },
           { location: [-22.91, -43.17], size: 0.05 },
@@ -285,29 +285,16 @@ function MapWaiting() {
 
   return (
     <div className="h-screen w-screen bg-black flex items-center justify-center overflow-hidden relative">
-      {/* Radial glow behind globe */}
-      <div className="absolute w-[600px] h-[600px] rounded-full bg-emerald-500/[0.04] blur-3xl pointer-events-none" />
-
       {/* Globe */}
       <div className="relative flex flex-col items-center gap-6">
         <canvas
           ref={canvasRef}
           style={{
-            width: 320, height: 320,
-            maxWidth: '70vmin', maxHeight: '70vmin',
+            width: 520, height: 520,
+            maxWidth: '85vmin', maxHeight: '85vmin',
             aspectRatio: '1',
-            opacity: 0.9,
           }}
         />
-
-        {/* Scanning overlay */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
-          style={{ width: 320, height: 320, maxWidth: '70vmin', maxHeight: '70vmin' }}>
-          <div className="absolute inset-0 rounded-full"
-            style={{ background: 'radial-gradient(circle at center, transparent 35%, rgba(16,185,129,0.03) 70%)' }} />
-          <div className="absolute left-[10%] right-[10%] h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent"
-            style={{ animation: 'globeScanLine 2.5s linear infinite' }} />
-        </div>
 
         {/* Text below */}
         <div className="flex flex-col items-center gap-3">
@@ -327,12 +314,6 @@ function MapWaiting() {
       </div>
 
       <style>{`
-        @keyframes globeScanLine {
-          0% { transform: translateY(-140px); opacity: 0; }
-          20% { opacity: 1; }
-          80% { opacity: 1; }
-          100% { transform: translateY(140px); opacity: 0; }
-        }
         @keyframes waitDot { 0% { opacity: 0.2; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
       `}</style>
     </div>
