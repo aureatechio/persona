@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
-import { AnimatedNumber } from '@/hooks/useAnimatedValue';
+import { AnimatedNumber, useAnimatedValue } from '@/hooks/useAnimatedValue';
 import { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { Users, BarChart3, MessageCircle, UserRound } from 'lucide-react';
 import type { SegmentItem } from '@/lib/arena/segments';
@@ -346,8 +346,15 @@ export function DashboardScreen() {
   const negative = data.negative || 0;
   const neutral = data.neutral || 0;
   const total = positive + negative + neutral;
-  const progress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
+  const rawProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
   const isLive = data.phase !== 'complete';
+
+  // Smooth progress ramp (~6s) — keeps jitter alive for fast analyses (e.g. 50 personas)
+  // where rawProgress jumps 0→100 instantly. Jitter stays active until this reaches 100.
+  const smoothProgress = useAnimatedValue(rawProgress, 6000);
+  // Charts stay in "live" mode (jitter + short durations) until smooth progress finishes
+  const chartsLive = isLive || smoothProgress < 100;
+  const progress = chartsLive ? smoothProgress : rawProgress;
 
   const comments = useMemo(() => (
     (data.simulation?.comments?.length ?? 0) > 0
@@ -360,8 +367,8 @@ export function DashboardScreen() {
   );
 
   const scoreBar = useMemo(() => (
-    <ScoreBar avgScore={data.avgScore ?? 5.0} totalCount={total} isLive={isLive} progress={progress} />
-  ), [data.avgScore, total, isLive, progress]);
+    <ScoreBar avgScore={data.avgScore ?? 5.0} totalCount={total} isLive={chartsLive} progress={progress} />
+  ), [data.avgScore, total, chartsLive, progress]);
 
   return (
     <div className="h-screen w-screen bg-[#0a0a0b] overflow-hidden flex flex-col relative">
@@ -417,7 +424,7 @@ export function DashboardScreen() {
         totalCount={total}
         processedCount={data.processedCount}
         rightSlot={scoreBar}
-        isLive={isLive}
+        isLive={chartsLive}
         progress={progress}
       />
 
@@ -427,17 +434,17 @@ export function DashboardScreen() {
         <div className="flex-1 flex flex-col gap-2 p-2.5 min-h-0 overflow-hidden">
           {/* Row 1 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.gender}     title="Gênero"         accentColor="violet" maxItems={4} isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etária"   accentColor="sky" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={archetypeItems}            title="Arquétipos"     accentColor="orange" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.gender}     title="Gênero"         accentColor="violet" maxItems={4} isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.race}       title="Etnia"          accentColor="cyan" isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.generation} title="Faixa Etária"   accentColor="sky" isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={archetypeItems}            title="Arquétipos"     accentColor="orange" isLive={chartsLive} progress={progress} />
           </div>
           {/* Row 2 — Score segment cards */}
           <div className="flex-1 grid grid-cols-4 gap-2 min-h-0">
-            <ScoreSegmentCard items={data.segments?.religion}    title="Religião"       accentColor="amber" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.region}      title="Região"         accentColor="emerald" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" isLive={isLive} progress={progress} />
-            <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" isLive={isLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.religion}    title="Religião"       accentColor="amber" isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.region}      title="Região"         accentColor="emerald" isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.socialClass} title="Classe Social"  accentColor="rose" isLive={chartsLive} progress={progress} />
+            <ScoreSegmentCard items={data.segments?.education}   title="Escolaridade"   accentColor="fuchsia" isLive={chartsLive} progress={progress} />
           </div>
         </div>
 
@@ -459,7 +466,7 @@ export function DashboardScreen() {
       </div>
 
       {/* Progress bar — only when actively streaming */}
-      {isLive && data.question && data.phase !== 'collecting' && data.processedCount > 0 && (
+      {chartsLive && data.question && data.phase !== 'collecting' && data.processedCount > 0 && (
         <div className="absolute bottom-0 left-0 right-0 z-10">
           <div className="h-[3px] bg-zinc-900">
             <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-500 " style={{ width: `${progress}%`, transition: 'all 4s ease-out' }} />

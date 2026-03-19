@@ -35,7 +35,13 @@ export function useAnimatedValue(target: number, duration = 16000): number {
     startTimeRef.current = Date.now();
 
     // Read latest duration from ref (not stale closure)
-    const activeDuration = durationRef.current;
+    // Cap duration for tiny deltas (e.g. jitter→clean transition)
+    // so a 0.2 change doesn't take 16s to animate
+    const delta = Math.abs(target - startValRef.current);
+    const range = Math.max(Math.abs(target), Math.abs(startValRef.current), 1);
+    const activeDuration = (delta / range) < 0.15
+      ? Math.min(2000, durationRef.current)
+      : durationRef.current;
 
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);

@@ -36,10 +36,15 @@ function useAnimatedScore(target: number, duration = 12000): number {
     startTimeRef.current = Date.now();
 
     // Read latest duration from ref (not stale closure)
-    const activeDuration = durationRef.current;
+    // Cap duration for tiny deltas (e.g. jitter→clean transition on 0-10 scale)
+    // so a 0.2 change doesn't take 12s to animate
+    const delta = Math.abs(target - startValRef.current);
+    const baseDuration = delta < 1.5
+      ? Math.min(2000, durationRef.current)
+      : durationRef.current;
 
     // When resetting to 0, use a fast animation so scores disappear quickly
-    const effectiveDuration = (target === 0 && currentRef.current > 0) ? 500 : activeDuration;
+    const effectiveDuration = (target === 0 && currentRef.current > 0) ? 500 : baseDuration;
 
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
