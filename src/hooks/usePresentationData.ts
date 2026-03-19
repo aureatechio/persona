@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { ArenaLiveData } from '@/components/blocks/ArenaLiveBlock';
 import type { SegmentItem } from '@/lib/arena/segments';
 
@@ -78,6 +78,13 @@ function mergeSegments(incoming: ArenaLiveData): void {
   }
 }
 
+/**
+ * Grace period (ms) after backend signals 'complete'.
+ * During this window the dashboard stays in "live" mode so all
+ * animations can finish their ramp to the final values without freezing.
+ */
+const COMPLETION_GRACE_MS = 8000;
+
 export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: boolean } {
   const [data, setData] = useState<ArenaLiveData>(() => makeZeroedData());
   const hasEverReceivedRef = useRef(false);
@@ -86,6 +93,51 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
   const pendingRef = useRef<ArenaLiveData | null>(null);
   const resetEpochRef = useRef(0);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Grace period: delay phase='complete' so animations can finish ──
+  const [visuallyComplete, setVisuallyComplete] = useState(false);
+  const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const backendComplete = data.phase === 'complete';
+
+  useEffect(() => {
+    if (!backendComplete) {
+      // Analysis is running — cancel any pending grace timer, stay live
+      setVisuallyComplete(false);
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current);
+        graceTimerRef.current = null;
+      }
+      return;
+    }
+    // Backend just finished — start grace period before showing "Completo"
+    graceTimerRef.current = setTimeout(() => {
+      setVisuallyComplete(true);
+      graceTimerRef.current = null;
+    }, COMPLETION_GRACE_MS);
+    return () => {
+      if (graceTimerRef.current) {
+        clearTimeout(graceTimerRef.current);
+        graceTimerRef.current = null;
+      }
+    };
+  }, [backendComplete]);
+
+  // Exposed data: override phase during grace period so dashboard stays "live"
+  const exposedData = useMemo<ArenaLiveData>(() => {
+    if (backendComplete && !visuallyComplete) {
+      // Grace period active — keep phase as 'processing' so isLive stays true
+      // and progress < 100 so jitter continues (organic feel while ramp finishes)
+      return {
+        ...data,
+        phase: 'processing' as ArenaLiveData['phase'],
+        processedCount: Math.min(
+          data.processedCount,
+          Math.max(1, Math.floor(data.totalCount * 0.95)),
+        ),
+      };
+    }
+    return data;
+  }, [data, backendComplete, visuallyComplete]);
 
   useEffect(() => {
     let channel: BroadcastChannel | null = null;
@@ -99,6 +151,11 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
         if (event.data?.type === 'arena-reset') {
           resetEpochRef.current += 1;
           setData(makeZeroedData(event.data.data?.question || ''));
+          setVisuallyComplete(false);
+          if (graceTimerRef.current) {
+            clearTimeout(graceTimerRef.current);
+            graceTimerRef.current = null;
+          }
           pendingRef.current = null;
           // Cancel any pending throttle timer to prevent stale data overwriting reset
           if (throttleTimerRef.current) {
@@ -149,9 +206,10 @@ export function usePresentationData(): { data: ArenaLiveData; hasEverReceived: b
 
     return () => {
       if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
+      if (graceTimerRef.current) clearTimeout(graceTimerRef.current);
       channel?.close();
     };
   }, []);
 
-  return { data, hasEverReceived };
+  return { data: exposedData, hasEverReceived };
 }

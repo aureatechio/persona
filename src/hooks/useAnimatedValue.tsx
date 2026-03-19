@@ -5,12 +5,16 @@ import { useState, useEffect, useRef } from 'react';
 /**
  * Smoothly interpolates a number from current display value to target.
  * Uses rAF when tab is visible, setTimeout fallback when hidden (TV display).
- * Duration: 1500ms ease-out quintic by default — slow, cinematic ramp.
+ * Duration: 16000ms ease-out quintic by default — slow, cinematic ramp.
  *
  * Stutter-free: tracks actual current value in a ref (not stale React state)
  * so mid-animation target changes blend seamlessly.
+ *
+ * IMPORTANT: `duration` is intentionally excluded from useEffect deps.
+ * When isLive flips (changing the duration prop), we must NOT cancel
+ * the running animation — it should continue to its target uninterrupted.
  */
-export function useAnimatedValue(target: number, duration = 4000): number {
+export function useAnimatedValue(target: number, duration = 16000): number {
   const [display, setDisplay] = useState(target);
   const currentRef = useRef(target);       // actual displayed value (always up to date)
   const startValRef = useRef(target);
@@ -18,6 +22,8 @@ export function useAnimatedValue(target: number, duration = 4000): number {
   const frameRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevTargetRef = useRef(target);
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
 
   useEffect(() => {
     // Skip animation if target hasn't changed
@@ -28,11 +34,8 @@ export function useAnimatedValue(target: number, duration = 4000): number {
     startValRef.current = currentRef.current;
     startTimeRef.current = Date.now();
 
-    // Cap duration for small changes (e.g. jitter cleanup on live→complete)
-    const delta = Math.abs(target - startValRef.current);
-    const range = Math.max(Math.abs(target), Math.abs(startValRef.current), 1);
-    const relativeDelta = delta / range;
-    const effectiveDuration = relativeDelta < 0.15 ? Math.min(1500, duration) : duration;
+    // Read latest duration from ref (not stale closure)
+    const activeDuration = durationRef.current;
 
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -43,7 +46,7 @@ export function useAnimatedValue(target: number, duration = 4000): number {
 
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current;
-      const progress = Math.min(elapsed / effectiveDuration, 1);
+      const progress = Math.min(elapsed / activeDuration, 1);
       // ease-out quintic — much slower deceleration than cubic
       const eased = 1 - Math.pow(1 - progress, 5);
       const current = Math.round(
@@ -66,7 +69,7 @@ export function useAnimatedValue(target: number, duration = 4000): number {
 
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target, duration]);
+  }, [target]); // duration intentionally excluded — see docstring
 
   return display;
 }
@@ -77,7 +80,7 @@ export function useAnimatedValue(target: number, duration = 4000): number {
  */
 export function AnimatedNumber({
   value,
-  duration = 4000,
+  duration = 16000,
   suffix = '',
   format,
 }: {

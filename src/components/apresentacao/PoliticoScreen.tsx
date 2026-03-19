@@ -33,7 +33,7 @@ function FigureGaugeCompact({ figure }: { figure: PoliticalFigureDetection }) {
         <span className="text-xs font-black uppercase tracking-[0.08em] truncate text-violet-400/80">{figure.label}</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-4 py-2 gap-2">
-        <AnimatedScore value={score} className="text-3xl" duration={3500} />
+        <AnimatedScore value={score} className="text-3xl" duration={10000} />
         <div className="w-full h-[8px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
           <div className="absolute top-0 h-full w-[8px] rounded-full transition-all duration-[4s] ease-out" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80` }} />
