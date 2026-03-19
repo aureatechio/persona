@@ -21,7 +21,8 @@ PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35  # 35% volume
 VOICE_DELAY_MS = 300  # 300ms delay at start to avoid glitch
-TAIL_SILENCE_S = 0.4  # 400ms silence after speech ends
+TAIL_SILENCE_S = 0.2  # 200ms silence after speech ends
+VOICE_VOLUME = 2.0  # 2x volume boost on voice
 
 # Cache for downloaded background music
 _bg_music_cache: bytes | None = None
@@ -73,7 +74,7 @@ def _mix_background_music(voice_audio: bytes) -> bytes:
             f.write(bg_music)
 
         filter_complex = (
-            f"[0:a]adelay={VOICE_DELAY_MS}|{VOICE_DELAY_MS}[voice];"
+            f"[0:a]volume={VOICE_VOLUME},adelay={VOICE_DELAY_MS}|{VOICE_DELAY_MS}[voice];"
             f"[1:a]volume={BG_MUSIC_VOLUME},afade=t=in:d=0.3,afade=t=out:st=18:d=2[bg];"
             "[voice][bg]amix=inputs=2:duration=first:weights=1 1[out]"
         )
@@ -227,11 +228,11 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
             "language_code": "pt",
             "apply_text_normalization": "on",
             "voice_settings": {
-                "stability": 0.25,
+                "stability": 0.35,
                 "similarity_boost": 0.85,
-                "style": 0.6,
+                "style": 0.5,
                 "use_speaker_boost": True,
-                "speed": 1.0,
+                "speed": 0.95,
             },
         },
         timeout=TTS_TIMEOUT,
