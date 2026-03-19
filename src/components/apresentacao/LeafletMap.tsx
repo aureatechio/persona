@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { CityData } from '@/lib/arena/types';
+import type { CityData, GeoCity } from '@/lib/arena/types';
 import { scoreToHex } from '@/lib/arena/types';
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
@@ -19,6 +19,7 @@ interface StateBreakdownItem {
 interface Props {
   stateBreakdown: Record<string, StateBreakdownItem>;
   cityBreakdown: Record<string, CityData[]>;
+  geoCities: GeoCity[];
   globalAvgScore: number;
   selectedState: string | null;
   selectedCity: string | null;
@@ -54,26 +55,98 @@ const STATE_CENTERS: Record<string, [number, number]> = {
   SE: [-10.57, -37.45], SP: [-22.19, -48.79], TO: [-10.25, -48.25],
 };
 
-/* ── Build all cities flat list (memoizable helper) ──────────────────────── */
+/* ── Jitter helpers: spread persona pins around city center ──────────────── */
 
-function flattenCities(cityBreakdown: Record<string, CityData[]>): CityData[] {
-  const all: CityData[] = [];
-  for (const state of Object.keys(cityBreakdown)) {
-    const cities = cityBreakdown[state];
-    if (cities) {
-      for (const c of cities) {
-        if (c.lat && c.lng) all.push(c);
+/** Deterministic pseudo-random based on index (so markers are stable across renders) */
+function seededRandom(seed: number): number {
+  const x = Math.sin(seed * 9301 + 49297) * 49297;
+  return x - Math.floor(x);
+}
+
+/** Generate jittered positions for N personas around a center lat/lng */
+function jitterPositions(lat: number, lng: number, count: number, spreadDeg: number): [number, number][] {
+  if (count <= 1) return [[lat, lng]];
+  const positions: [number, number][] = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + seededRandom(i * 7 + 3) * 0.5;
+    const radius = spreadDeg * (0.3 + seededRandom(i * 13 + 1) * 0.7);
+    positions.push([
+      lat + Math.cos(angle) * radius,
+      lng + Math.sin(angle) * radius,
+    ]);
+  }
+  return positions;
+}
+
+/* ── Merge cityBreakdown + geoCities to get best available data ──────────── */
+
+interface MergedCity {
+  city: string;
+  state: string;
+  lat: number;
+  lng: number;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  avgScore: number;
+}
+
+function mergeCityData(
+  cityBreakdown: Record<string, CityData[]>,
+  geoCities: GeoCity[],
+): MergedCity[] {
+  const result: MergedCity[] = [];
+  const seen = new Set<string>();
+
+  // First: use cityBreakdown (has sentiment data)
+  for (const [state, cities] of Object.entries(cityBreakdown)) {
+    for (const c of cities) {
+      const key = `${c.city}-${state}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      // If cityBreakdown has lat/lng, use it
+      if (c.lat && c.lng) {
+        result.push({ ...c, state });
+        continue;
+      }
+
+      // Fallback: find coords from geoCities
+      const geo = geoCities.find(g => g.city === c.city && g.state === state);
+      if (geo) {
+        result.push({ ...c, state, lat: geo.lat, lng: geo.lng });
       }
     }
   }
-  // Sort by count descending so biggest cities render on top
-  all.sort((a, b) => b.count - a.count);
-  return all;
+
+  // Also add geoCities that weren't in cityBreakdown (e.g. early in analysis)
+  for (const g of geoCities) {
+    const key = `${g.city}-${g.state}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (g.lat && g.lng) {
+      result.push({
+        city: g.city,
+        state: g.state,
+        lat: g.lat,
+        lng: g.lng,
+        count: g.personaCount,
+        positive: 0,
+        negative: 0,
+        neutral: 0,
+        avgScore: 5,
+      });
+    }
+  }
+
+  result.sort((a, b) => b.count - a.count);
+  return result;
 }
 
-/* ── Create pulse-ring marker HTML ───────────────────────────────────────── */
+/* ── Pulse-ring marker HTML ──────────────────────────────────────────────── */
 
-function markerHtml(color: string, sz: number, isSelected: boolean): string {
+function cityMarkerHtml(color: string, sz: number, isSelected: boolean): string {
   return `<div style="position:relative;width:${sz * 3}px;height:${sz * 3}px;
     display:flex;align-items:center;justify-content:center;cursor:pointer;">
     ${[0, 0.75, 1.5].map(delay => `
@@ -88,11 +161,20 @@ function markerHtml(color: string, sz: number, isSelected: boolean): string {
   </div>`;
 }
 
+/** Small individual persona pin */
+function personaPinHtml(color: string): string {
+  return `<div style="width:10px;height:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+    <div style="width:6px;height:6px;border-radius:50%;background:${color};
+      box-shadow:0 0 6px ${color}aa,0 0 3px ${color};"></div>
+  </div>`;
+}
+
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function LeafletMap({
   stateBreakdown,
   cityBreakdown,
+  geoCities,
   globalAvgScore,
   selectedState,
   selectedCity,
@@ -104,10 +186,10 @@ export default function LeafletMap({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const geoLayerRef = useRef<L.GeoJSON | null>(null);
-  const cityMarkersRef = useRef<L.LayerGroup | null>(null);
-  const globalMarkersRef = useRef<L.LayerGroup | null>(null);
+  const markersRef = useRef<L.LayerGroup | null>(null);
+  const personaPinsRef = useRef<L.LayerGroup | null>(null);
   const rafRef = useRef<number>(0);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapReadyRef = useRef(false);
 
   // Keep refs in sync
   const selectedStateRef = useRef(selectedState);
@@ -115,7 +197,7 @@ export default function LeafletMap({
   selectedStateRef.current = selectedState;
   selectedCityRef.current = selectedCity;
 
-  /* ── Canvas draw (called once per map event, then stops) ──────────────── */
+  /* ── Canvas draw (static grid, called once per map event) ────────────── */
   const drawOnce = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -123,8 +205,6 @@ export default function LeafletMap({
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Subtle grid (static, no animation needed)
     ctx.strokeStyle = 'rgba(16, 185, 129, 0.015)';
     ctx.lineWidth = 0.5;
     for (let x = 0; x < canvas.width; x += 90) {
@@ -135,7 +215,6 @@ export default function LeafletMap({
     }
   }, []);
 
-  /* Schedule a single draw, debounced to avoid thrashing during drag/zoom */
   const scheduleRedraw = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(drawOnce);
@@ -157,7 +236,6 @@ export default function LeafletMap({
       zoomAnimation: true,
       fadeAnimation: true,
       markerZoomAnimation: true,
-      // Performance: prefer canvas rendering for vector layers
       preferCanvas: true,
     });
     mapRef.current = map;
@@ -170,16 +248,15 @@ export default function LeafletMap({
       subdomains: 'abcd', maxZoom: 19, keepBuffer: 4, pane: 'basePane',
     }).addTo(map);
 
-    // Label tiles
     const labelPane = map.createPane('labelPane');
     labelPane.style.zIndex = '260';
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd', maxZoom: 19, keepBuffer: 4, pane: 'labelPane',
     }).addTo(map);
 
-    // Layer groups for city markers
-    cityMarkersRef.current = L.layerGroup().addTo(map);
-    globalMarkersRef.current = L.layerGroup().addTo(map);
+    // Layer groups
+    markersRef.current = L.layerGroup().addTo(map);
+    personaPinsRef.current = L.layerGroup().addTo(map);
 
     // Animated fly-in
     setTimeout(() => map.flyTo([-14, -51], 5, { duration: 2.0, easeLinearity: 0.28 }), 350);
@@ -214,18 +291,21 @@ export default function LeafletMap({
       })
       .catch(console.error);
 
-    // Canvas overlay — redraw on map events only (no continuous loop)
+    // Canvas overlay
     map.on('move zoom moveend zoomend resize', scheduleRedraw);
     scheduleRedraw();
+
+    mapReadyRef.current = true;
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
+      mapReadyRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Helper: Update a GeoJSON layer style based on current data ─────────── */
+  /* ── Helper: Update a GeoJSON layer style ───────────────────────────────── */
   const updateStateStyle = useCallback((layer: any, feature: any) => {
     const sigla = feature.properties.sigla;
     const sd = stateBreakdown[sigla];
@@ -240,7 +320,7 @@ export default function LeafletMap({
     });
   }, [stateBreakdown, globalAvgScore]);
 
-  /* ── Update GeoJSON colors when data changes ────────────────────────────── */
+  /* ── Update GeoJSON colors ──────────────────────────────────────────────── */
   useEffect(() => {
     if (!geoLayerRef.current) return;
     geoLayerRef.current.eachLayer((layer: any) => {
@@ -268,9 +348,9 @@ export default function LeafletMap({
 
     if (selectedCity) {
       const cities = selectedState ? cityBreakdown[selectedState] : [];
-      const city = cities?.find(c => c.city === selectedCity);
+      const city = cities?.find((c: CityData) => c.city === selectedCity);
       if (city?.lat && city?.lng) {
-        map.flyTo([city.lat, city.lng], 10, { duration: 1.2, easeLinearity: 0.2 });
+        map.flyTo([city.lat, city.lng], 12, { duration: 1.2, easeLinearity: 0.2 });
       }
     } else if (selectedState) {
       const center = STATE_CENTERS[selectedState];
@@ -282,118 +362,135 @@ export default function LeafletMap({
     }
   }, [selectedState, selectedCity, cityBreakdown]);
 
-  /* ── Global city markers (always visible when data exists) ─────────────── */
-  const cityBreakdownRef = useRef(cityBreakdown);
-  cityBreakdownRef.current = cityBreakdown;
-  const selectedStateForMarkersRef = useRef(selectedState);
-  selectedStateForMarkersRef.current = selectedState;
-
-  // Stable rebuild function that reads from refs
-  const rebuildGlobalMarkers = useCallback(() => {
-    const group = globalMarkersRef.current;
+  /* ══════════════════════════════════════════════════════════════════════════
+     CITY MARKERS + INDIVIDUAL PERSONA PINS
+     - City markers: pulse-ring markers at city centers (always visible)
+     - Persona pins: individual small dots jittered around city (zoom >= 7)
+     ══════════════════════════════════════════════════════════════════════════ */
+  useEffect(() => {
+    const markerGroup = markersRef.current;
+    const pinGroup = personaPinsRef.current;
     const map = mapRef.current;
-    if (!group || !map) return;
+    if (!markerGroup || !pinGroup || !map) return;
 
-    group.clearLayers();
-    const currentCityBreakdown = cityBreakdownRef.current;
-    const currentSelectedState = selectedStateForMarkersRef.current;
+    const rebuild = () => {
+      markerGroup.clearLayers();
+      pinGroup.clearLayers();
 
-    // Hide global pins when a state is selected (state-specific pins take over)
-    if (currentSelectedState) return;
+      const allCities = mergeCityData(cityBreakdown, geoCities);
+      if (allCities.length === 0) return;
 
-    const zoom = map.getZoom();
-    const allCities = flattenCities(currentCityBreakdown);
-    if (allCities.length === 0) return;
+      const zoom = map.getZoom();
+      const maxCount = Math.max(...allCities.map(c => c.count), 1);
 
-    // Progressive: show more at higher zoom. At low zoom show top cities.
-    const limit = zoom >= 10 ? 300 : zoom >= 8 ? 150 : zoom >= 7 ? 80 : zoom >= 6 ? 50 : zoom >= 5 ? 30 : 15;
-    const citiesToShow = allCities.slice(0, limit);
-    const maxCount = Math.max(...citiesToShow.map(c => c.count), 1);
+      // Debug: log what we have
+      console.log(`[Map] Rebuilding markers: ${allCities.length} cities, zoom=${zoom}, selectedState=${selectedState}`);
 
-    citiesToShow.forEach(city => {
-      const color = scoreToHex(city.avgScore);
-      const baseSz = zoom >= 8 ? 14 : zoom >= 6 ? 11 : 9;
-      const sz = Math.max(7, Math.min(baseSz, (city.count / maxCount) * baseSz));
+      // Filter cities based on selected state (if any)
+      const citiesToShow = selectedState
+        ? allCities.filter(c => c.state === selectedState)
+        : allCities;
 
-      const icon = L.divIcon({
-        html: markerHtml(color, sz, false),
-        className: '',
-        iconSize: [sz * 3, sz * 3],
-        iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
-      });
+      // Progressive limit for unselected view
+      const limit = selectedState
+        ? 100 // show all cities in selected state
+        : (zoom >= 10 ? 300 : zoom >= 8 ? 150 : zoom >= 7 ? 80 : zoom >= 6 ? 50 : zoom >= 5 ? 30 : 15);
 
-      L.marker([city.lat, city.lng], { icon, zIndexOffset: city.count })
-        .addTo(group)
-        .on('click', () => {
-          for (const [state, cities] of Object.entries(cityBreakdownRef.current)) {
-            if (cities.some(c => c.city === city.city && c.lat === city.lat)) {
-              onSelectState(state);
-              setTimeout(() => onSelectCity(city), 50);
-              break;
+      const visible = citiesToShow.slice(0, limit);
+
+      // ── City-center markers (always visible) ──
+      visible.forEach(city => {
+        const color = scoreToHex(city.avgScore);
+        const baseSz = zoom >= 8 ? 14 : zoom >= 6 ? 11 : 9;
+        const sz = Math.max(7, Math.min(baseSz, (city.count / maxCount) * baseSz));
+        const isSelected = selectedCity === city.city;
+
+        const icon = L.divIcon({
+          html: cityMarkerHtml(color, isSelected ? sz * 1.3 : sz, isSelected),
+          className: '',
+          iconSize: [sz * 3, sz * 3],
+          iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
+        });
+
+        L.marker([city.lat, city.lng], { icon, zIndexOffset: isSelected ? 1000 : city.count })
+          .addTo(markerGroup)
+          .on('click', () => {
+            if (!selectedState) {
+              onSelectState(city.state);
+              setTimeout(() => onSelectCity(city as CityData), 50);
+            } else {
+              onSelectCity(selectedCityRef.current === city.city ? null : city as CityData);
             }
-          }
-        })
-        .bindTooltip(
-          `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
-            <strong style="color:${color}">${city.city}</strong><br/>
-            <span style="color:#a1a1aa">${city.count} personas · ${city.avgScore.toFixed(1)}</span>
-          </div>`,
-          { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
-        );
-    });
-  }, [onSelectState, onSelectCity]);
-
-  // Rebuild when data changes
-  useEffect(() => {
-    rebuildGlobalMarkers();
-  }, [cityBreakdown, selectedState, rebuildGlobalMarkers]);
-
-  // Also rebuild on zoom changes
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    map.on('zoomend', rebuildGlobalMarkers);
-    return () => { map.off('zoomend', rebuildGlobalMarkers); };
-  }, [rebuildGlobalMarkers]);
-
-  /* ── City markers (when a state IS selected) ──────────────────────────── */
-  useEffect(() => {
-    const group = cityMarkersRef.current;
-    if (!group) return;
-    group.clearLayers();
-
-    if (!selectedState || !cityBreakdown[selectedState]) return;
-
-    const cities = cityBreakdown[selectedState].slice(0, 50);
-    const maxCount = Math.max(...cities.map(c => c.count), 1);
-
-    cities.forEach(city => {
-      if (!city.lat || !city.lng) return;
-      const color = scoreToHex(city.avgScore);
-      const sz = Math.max(8, Math.min(16, (city.count / maxCount) * 16));
-      const isSelected = selectedCity === city.city;
-
-      const icon = L.divIcon({
-        html: markerHtml(color, sz, isSelected),
-        className: '',
-        iconSize: [sz * 3, sz * 3],
-        iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
+          })
+          .bindTooltip(
+            `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+              <strong style="color:${color}">${city.city}</strong><br/>
+              <span style="color:#a1a1aa">${city.count} persona${city.count > 1 ? 's' : ''} · ${city.avgScore.toFixed(1)}</span>
+            </div>`,
+            { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
+          );
       });
 
-      L.marker([city.lat, city.lng], { icon, zIndexOffset: isSelected ? 1000 : city.count })
-        .addTo(group)
-        .on('click', () => {
-          onSelectCity(selectedCityRef.current === city.city ? null : city);
-        })
-        .bindTooltip(
-          `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
-            <strong style="color:${color}">${city.city}</strong><br/>
-            <span style="color:#a1a1aa">${city.count} personas · ${city.avgScore.toFixed(1)}</span>
-          </div>`,
-          { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
-        );
-    });
-  }, [selectedState, selectedCity, cityBreakdown, onSelectCity]);
+      // ── Individual persona pins (at higher zoom) ──
+      if (zoom >= 7) {
+        // Spread radius decreases with zoom (closer = tighter cluster)
+        const spreadDeg = zoom >= 12 ? 0.003 : zoom >= 10 ? 0.008 : zoom >= 8 ? 0.02 : 0.04;
+        // Limit total pins for performance
+        let totalPins = 0;
+        const maxPins = zoom >= 10 ? 500 : zoom >= 8 ? 300 : 150;
+
+        visible.forEach(city => {
+          if (totalPins >= maxPins) return;
+          const pinsForCity = Math.min(city.count, maxPins - totalPins, 50); // max 50 per city
+          if (pinsForCity <= 1) return; // skip — city marker already covers single persona
+
+          const color = scoreToHex(city.avgScore);
+          const positions = jitterPositions(city.lat, city.lng, pinsForCity, spreadDeg);
+
+          positions.forEach(([lat, lng]) => {
+            const icon = L.divIcon({
+              html: personaPinHtml(color),
+              className: '',
+              iconSize: [10, 10],
+              iconAnchor: [5, 5],
+            });
+
+            L.marker([lat, lng], { icon, zIndexOffset: 0 })
+              .addTo(pinGroup)
+              .on('click', () => {
+                if (!selectedState) {
+                  onSelectState(city.state);
+                  setTimeout(() => onSelectCity(city as CityData), 50);
+                } else {
+                  onSelectCity(city as CityData);
+                }
+              })
+              .bindTooltip(
+                `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+                  <strong style="color:${color}">${city.city}</strong><br/>
+                  <span style="color:#a1a1aa">Persona analisada · Score ${city.avgScore.toFixed(1)}</span>
+                </div>`,
+                { direction: 'top', offset: [0, -5], className: 'city-tooltip' }
+              );
+          });
+
+          totalPins += pinsForCity;
+        });
+
+        console.log(`[Map] Created ${totalPins} persona pins`);
+      }
+    };
+
+    // Run immediately
+    rebuild();
+
+    // Re-run on zoom changes
+    map.on('zoomend', rebuild);
+
+    return () => {
+      map.off('zoomend', rebuild);
+    };
+  }, [cityBreakdown, geoCities, selectedState, selectedCity, onSelectState, onSelectCity]);
 
   return (
     <div ref={wrapRef} style={{ position: 'absolute', inset: 0 }}>
@@ -405,7 +502,7 @@ export default function LeafletMap({
         pointerEvents: 'none', zIndex: 450,
       }} />
 
-      {/* Vignettes (Maestro-style edge gradients) */}
+      {/* Vignettes */}
       {[
         { top: 0, left: 0, right: 0, height: '150px', background: 'linear-gradient(to bottom,rgba(0,0,0,.80) 0%,transparent 100%)' },
         { bottom: 0, left: 0, right: 0, height: '110px', background: 'linear-gradient(to top,rgba(0,0,0,.88) 0%,transparent 100%)' },
@@ -415,7 +512,6 @@ export default function LeafletMap({
         <div key={i} style={{ position: 'absolute', pointerEvents: 'none', zIndex: 460, ...s as any }} />
       ))}
 
-      {/* Pulse ring keyframes + tooltip styling */}
       <style>{`
         @keyframes pulse-ring {
           0% { transform: scale(1); opacity: 0.5; }
@@ -431,9 +527,7 @@ export default function LeafletMap({
         .city-tooltip::before {
           border-top-color: rgba(0,0,0,0.9) !important;
         }
-        /* Smoother Leaflet animations */
         .leaflet-fade-anim .leaflet-popup { transition: opacity 0.3s ease-out; }
-        .leaflet-marker-icon { transition: transform 0.15s ease-out; }
       `}</style>
     </div>
   );

@@ -373,6 +373,7 @@ export function MapaScreen() {
       <LeafletMap
         stateBreakdown={stateBreakdown}
         cityBreakdown={cityBreakdown}
+        geoCities={geoCities}
         globalAvgScore={globalAvgScore}
         selectedState={selectedState}
         selectedCity={selectedCity}
