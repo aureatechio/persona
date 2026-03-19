@@ -21,7 +21,7 @@ PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35  # 35% volume
 VOICE_DELAY_MS = 300  # 300ms delay at start to avoid glitch
-TAIL_SILENCE_S = 0.1  # 100ms silence after speech ends
+TAIL_SILENCE_S = 0.02  # 20ms silence after speech ends
 VOICE_VOLUME = 2.0  # 2x volume boost on voice
 
 # Cache for downloaded background music
