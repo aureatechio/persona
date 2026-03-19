@@ -374,6 +374,7 @@ export function MapaScreen() {
         stateBreakdown={stateBreakdown}
         cityBreakdown={cityBreakdown}
         geoCities={geoCities}
+        liveComments={data?.liveComments || []}
         globalAvgScore={globalAvgScore}
         selectedState={selectedState}
         selectedCity={selectedCity}

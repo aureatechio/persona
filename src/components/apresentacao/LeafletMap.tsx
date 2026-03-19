@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { CityData, GeoCity } from '@/lib/arena/types';
+import type { CityData, GeoCity, CommentResult } from '@/lib/arena/types';
 import { scoreToHex } from '@/lib/arena/types';
 import { getCityCoords } from '@/lib/brazil-city-coords';
 
@@ -21,6 +21,7 @@ interface Props {
   stateBreakdown: Record<string, StateBreakdownItem>;
   cityBreakdown: Record<string, CityData[]>;
   geoCities: GeoCity[];
+  liveComments: CommentResult[];
   globalAvgScore: number;
   selectedState: string | null;
   selectedCity: string | null;
@@ -44,6 +45,14 @@ function scoreToMapColor(avgScore: number, globalAvgScore: number): string {
   }
 }
 
+/* ── Sentiment → color ──────────────────────────────────────────────────── */
+
+function sentimentColor(s: string): string {
+  if (s === 'positive') return '#34d399';
+  if (s === 'negative') return '#fb7185';
+  return '#fbbf24';
+}
+
 /* ── State centers for fly-to ─────────────────────────────────────────────── */
 
 const STATE_CENTERS: Record<string, [number, number]> = {
@@ -56,134 +65,79 @@ const STATE_CENTERS: Record<string, [number, number]> = {
   SE: [-10.57, -37.45], SP: [-22.19, -48.79], TO: [-10.25, -48.25],
 };
 
-/* ── Jitter helpers: spread persona pins around city center ──────────────── */
+/* ── Jitter: spread pins around a center ──────────────────────────────────── */
 
-/** Deterministic pseudo-random based on index (so markers are stable across renders) */
 function seededRandom(seed: number): number {
   const x = Math.sin(seed * 9301 + 49297) * 49297;
   return x - Math.floor(x);
 }
 
-/** Generate jittered positions for N personas around a center lat/lng */
-function jitterPositions(lat: number, lng: number, count: number, spreadDeg: number): [number, number][] {
-  if (count <= 1) return [[lat, lng]];
-  const positions: [number, number][] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2 + seededRandom(i * 7 + 3) * 0.5;
-    const radius = spreadDeg * (0.3 + seededRandom(i * 13 + 1) * 0.7);
-    positions.push([
-      lat + Math.cos(angle) * radius,
-      lng + Math.sin(angle) * radius,
-    ]);
-  }
-  return positions;
+function jitterPosition(lat: number, lng: number, index: number, spreadDeg: number): [number, number] {
+  const angle = (index * 2.399) + seededRandom(index * 7) * 0.4; // golden angle spread
+  const radius = spreadDeg * (0.3 + seededRandom(index * 13) * 0.7);
+  return [lat + Math.cos(angle) * radius, lng + Math.sin(angle) * radius];
 }
 
-/* ── Merge cityBreakdown + geoCities to get best available data ──────────── */
+/* ── Resolve lat/lng for a comment/persona ────────────────────────────────── */
 
-interface MergedCity {
-  city: string;
-  state: string;
-  lat: number;
-  lng: number;
-  count: number;
-  positive: number;
-  negative: number;
-  neutral: number;
-  avgScore: number;
-}
+function resolvePersonaCoords(
+  c: CommentResult,
+  cityBreakdown: Record<string, CityData[]>,
+  geoCities: GeoCity[],
+): [number, number] | null {
+  // 1. Direct from persona
+  if (c.lat && c.lng && isFinite(c.lat) && isFinite(c.lng)) return [c.lat, c.lng];
 
-function mergeCityData(
-  cityBreakdown: Record<string, CityData[]> | null | undefined,
-  geoCities: GeoCity[] | null | undefined,
-): MergedCity[] {
-  const result: MergedCity[] = [];
-  const seen = new Set<string>();
+  const city = c.city || '';
+  const state = c.state || '';
+  if (!city && !state) return null;
 
-  try {
-    // First: use cityBreakdown (has sentiment data)
-    if (cityBreakdown && typeof cityBreakdown === 'object') {
-      for (const [state, cities] of Object.entries(cityBreakdown)) {
-        if (!Array.isArray(cities)) continue;
-        for (const c of cities) {
-          if (!c || !c.city) continue;
-          const key = `${c.city}-${state}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-
-          if (c.lat && c.lng && isFinite(c.lat) && isFinite(c.lng)) {
-            result.push({ ...c, state });
-            continue;
-          }
-
-          // Fallback 1: find coords from geoCities
-          const geo = Array.isArray(geoCities) ? geoCities.find(g => g.city === c.city && g.state === state) : null;
-          if (geo?.lat && geo?.lng) {
-            result.push({ ...c, state, lat: geo.lat, lng: geo.lng });
-            continue;
-          }
-
-          // Fallback 2: lookup from city coordinates table
-          const coords = getCityCoords(c.city, state);
-          if (coords) {
-            result.push({ ...c, state, lat: coords[0], lng: coords[1] });
-          }
-        }
-      }
-    }
-
-    // Also add geoCities that weren't in cityBreakdown
-    if (Array.isArray(geoCities)) {
-      for (const g of geoCities) {
-        if (!g || !g.city || !g.state) continue;
-        const key = `${g.city}-${g.state}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (g.lat && g.lng) {
-          result.push({
-            city: g.city,
-            state: g.state,
-            lat: g.lat,
-            lng: g.lng,
-            count: g.personaCount || 1,
-            positive: 0,
-            negative: 0,
-            neutral: 0,
-            avgScore: 5,
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[Map] mergeCityData error:', err);
+  // 2. From cityBreakdown
+  if (city && state && cityBreakdown[state]) {
+    const found = cityBreakdown[state].find(cd => cd.city === city);
+    if (found?.lat && found?.lng && isFinite(found.lat) && isFinite(found.lng)) return [found.lat, found.lng];
   }
 
-  result.sort((a, b) => b.count - a.count);
-  return result;
+  // 3. From geoCities
+  if (city && state && Array.isArray(geoCities)) {
+    const geo = geoCities.find(g => g.city === city && g.state === state);
+    if (geo?.lat && geo?.lng) return [geo.lat, geo.lng];
+  }
+
+  // 4. Static lookup
+  if (city && state) {
+    const coords = getCityCoords(city, state);
+    if (coords) return coords;
+  }
+
+  // 5. Fallback: state center
+  if (state && STATE_CENTERS[state]) return STATE_CENTERS[state];
+
+  return null;
 }
 
-/* ── Pulse-ring marker HTML ──────────────────────────────────────────────── */
+/* ── Persona pin HTML (colored by sentiment) ─────────────────────────────── */
 
-function cityMarkerHtml(color: string, sz: number, isSelected: boolean): string {
-  return `<div style="position:relative;width:${sz * 3}px;height:${sz * 3}px;
-    display:flex;align-items:center;justify-content:center;cursor:pointer;">
-    ${[0, 0.75, 1.5].map(delay => `
-      <div style="position:absolute;width:${sz}px;height:${sz}px;border-radius:50%;
-        border:1.5px solid ${color};opacity:${isSelected ? 0.6 : 0.3};
-        animation:pulse-ring 2.2s ease-out ${delay}s infinite;"></div>
-    `).join('')}
-    <div style="width:${Math.round(sz * 0.65)}px;height:${Math.round(sz * 0.65)}px;
-      border-radius:50%;background:${color};
-      box-shadow:0 0 10px ${color}bb,0 0 4px ${color};
-      position:relative;z-index:2;"></div>
+function personaPinHtml(color: string, size: number): string {
+  return `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+    <div style="width:${size - 2}px;height:${size - 2}px;border-radius:50%;background:${color};
+      border:1.5px solid rgba(255,255,255,0.3);
+      box-shadow:0 0 8px ${color}aa,0 0 4px ${color};
+      transition:transform 0.15s;"></div>
   </div>`;
 }
 
-/** Small individual persona pin */
-function personaPinHtml(color: string): string {
-  return `<div style="width:10px;height:10px;display:flex;align-items:center;justify-content:center;cursor:pointer;">
-    <div style="width:6px;height:6px;border-radius:50%;background:${color};
-      box-shadow:0 0 6px ${color}aa,0 0 3px ${color};"></div>
+/* ── City label marker (different visual from persona pins) ───────────────── */
+
+function cityLabelHtml(cityName: string, count: number): string {
+  return `<div style="display:flex;align-items:center;gap:4px;padding:2px 8px;
+    background:rgba(255,255,255,0.08);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,0.15);border-radius:12px;
+    cursor:pointer;white-space:nowrap;">
+    <div style="width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,0.5);"></div>
+    <span style="font-family:monospace;font-size:9px;color:rgba(255,255,255,0.7);
+      letter-spacing:0.08em;text-transform:uppercase;">${cityName}</span>
+    <span style="font-family:monospace;font-size:8px;color:rgba(255,255,255,0.4);">${count}</span>
   </div>`;
 }
 
@@ -193,6 +147,7 @@ export default function LeafletMap({
   stateBreakdown,
   cityBreakdown,
   geoCities,
+  liveComments,
   globalAvgScore,
   selectedState,
   selectedCity,
@@ -204,18 +159,21 @@ export default function LeafletMap({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const geoLayerRef = useRef<L.GeoJSON | null>(null);
-  const markersRef = useRef<L.LayerGroup | null>(null);
   const personaPinsRef = useRef<L.LayerGroup | null>(null);
+  const cityLabelsRef = useRef<L.LayerGroup | null>(null);
   const rafRef = useRef<number>(0);
-  const mapReadyRef = useRef(false);
 
-  // Keep refs in sync
+  // Keep refs in sync for event handlers
+  const stateBreakdownRef = useRef(stateBreakdown);
+  const globalAvgScoreRef = useRef(globalAvgScore);
   const selectedStateRef = useRef(selectedState);
   const selectedCityRef = useRef(selectedCity);
+  stateBreakdownRef.current = stateBreakdown;
+  globalAvgScoreRef.current = globalAvgScore;
   selectedStateRef.current = selectedState;
   selectedCityRef.current = selectedCity;
 
-  /* ── Canvas draw (static grid, called once per map event) ────────────── */
+  /* ── Canvas draw (static grid) ───────────────────────────────────────── */
   const drawOnce = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -238,6 +196,20 @@ export default function LeafletMap({
     rafRef.current = requestAnimationFrame(drawOnce);
   }, [drawOnce]);
 
+  /* ── Recolor GeoJSON state based on current data ─────────────────────── */
+  const recolorState = useCallback((layer: any, sigla: string, isSelected: boolean) => {
+    const sd = stateBreakdownRef.current[sigla];
+    const color = sd?.avgScore != null
+      ? scoreToMapColor(sd.avgScore, globalAvgScoreRef.current)
+      : '#27272a';
+    layer.setStyle({
+      fillColor: color,
+      fillOpacity: isSelected ? 0.85 : 0.6,
+      color: isSelected ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.12)',
+      weight: isSelected ? 2 : 1,
+    });
+  }, []);
+
   /* ── Map initialization ─────────────────────────────────────────────────── */
   useEffect(() => {
     if (typeof window === 'undefined' || !mapDivRef.current || mapRef.current) return;
@@ -258,7 +230,6 @@ export default function LeafletMap({
     });
     mapRef.current = map;
 
-    // Base tiles
     const basePane = map.createPane('basePane');
     basePane.style.zIndex = '200';
     basePane.style.filter = 'brightness(0.72) saturate(0.5) contrast(1.06)';
@@ -272,14 +243,12 @@ export default function LeafletMap({
       subdomains: 'abcd', maxZoom: 19, keepBuffer: 4, pane: 'labelPane',
     }).addTo(map);
 
-    // Layer groups
-    markersRef.current = L.layerGroup().addTo(map);
     personaPinsRef.current = L.layerGroup().addTo(map);
+    cityLabelsRef.current = L.layerGroup().addTo(map);
 
-    // Animated fly-in
     setTimeout(() => map.flyTo([-14, -51], 5, { duration: 2.0, easeLinearity: 0.28 }), 350);
 
-    // Load GeoJSON
+    // GeoJSON — state polygons
     fetch('/brazil-states.geojson')
       .then(r => r.json())
       .then(geoData => {
@@ -292,13 +261,22 @@ export default function LeafletMap({
           }),
           onEachFeature: (feature, layer) => {
             layer.on('mouseover', () => {
-              (layer as any).setStyle({ color: 'rgba(255,255,255,0.4)', weight: 1.5, fillOpacity: 0.75 });
+              const sigla = feature.properties.sigla;
+              const sd = stateBreakdownRef.current[sigla];
+              const color = sd?.avgScore != null
+                ? scoreToMapColor(sd.avgScore, globalAvgScoreRef.current)
+                : '#27272a';
+              (layer as any).setStyle({
+                fillColor: color,
+                fillOpacity: 0.8,
+                color: 'rgba(255,255,255,0.4)',
+                weight: 1.5,
+              });
             });
             layer.on('mouseout', () => {
               const sigla = feature.properties.sigla;
-              if (selectedStateRef.current !== sigla) {
-                updateStateStyle(layer, feature);
-              }
+              const isSelected = selectedStateRef.current === sigla;
+              recolorState(layer, sigla, isSelected);
             });
             layer.on('click', () => {
               const sigla = feature.properties.sigla;
@@ -309,36 +287,17 @@ export default function LeafletMap({
       })
       .catch(console.error);
 
-    // Canvas overlay
     map.on('move zoom moveend zoomend resize', scheduleRedraw);
     scheduleRedraw();
-
-    mapReadyRef.current = true;
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       mapRef.current?.remove();
       mapRef.current = null;
-      mapReadyRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Helper: Update a GeoJSON layer style ───────────────────────────────── */
-  const updateStateStyle = useCallback((layer: any, feature: any) => {
-    const sigla = feature.properties.sigla;
-    const sd = stateBreakdown[sigla];
-    const color = sd?.avgScore != null
-      ? scoreToMapColor(sd.avgScore, globalAvgScore)
-      : '#27272a';
-    layer.setStyle({
-      fillColor: color,
-      fillOpacity: 0.6,
-      color: 'rgba(255,255,255,0.12)',
-      weight: 1,
-    });
-  }, [stateBreakdown, globalAvgScore]);
-
-  /* ── Update GeoJSON colors ──────────────────────────────────────────────── */
+  /* ── Recolor ALL states when data/selection changes ──────────────────── */
   useEffect(() => {
     if (!geoLayerRef.current) return;
     geoLayerRef.current.eachLayer((layer: any) => {
@@ -346,18 +305,9 @@ export default function LeafletMap({
       if (!feature) return;
       const sigla = feature.properties.sigla;
       const isSelected = selectedState === sigla;
-      const sd = stateBreakdown[sigla];
-      const color = sd?.avgScore != null
-        ? scoreToMapColor(sd.avgScore, globalAvgScore)
-        : '#27272a';
-      layer.setStyle({
-        fillColor: color,
-        fillOpacity: isSelected ? 0.85 : 0.6,
-        color: isSelected ? '#fff' : 'rgba(255,255,255,0.12)',
-        weight: isSelected ? 2 : 1,
-      });
+      recolorState(layer, sigla, isSelected);
     });
-  }, [stateBreakdown, globalAvgScore, selectedState]);
+  }, [stateBreakdown, globalAvgScore, selectedState, recolorState]);
 
   /* ── Fly to state / city / reset ────────────────────────────────────────── */
   useEffect(() => {
@@ -365,7 +315,8 @@ export default function LeafletMap({
     if (!map) return;
 
     if (selectedCity) {
-      const cities = (selectedState && Array.isArray(cityBreakdown?.[selectedState])) ? cityBreakdown[selectedState] : [];
+      const cities = (selectedState && Array.isArray(cityBreakdown?.[selectedState]))
+        ? cityBreakdown[selectedState] : [];
       const city = cities?.find((c: CityData) => c.city === selectedCity);
       if (city?.lat && city?.lng) {
         map.flyTo([city.lat, city.lng], 12, { duration: 1.2, easeLinearity: 0.2 });
@@ -381,147 +332,146 @@ export default function LeafletMap({
   }, [selectedState, selectedCity, cityBreakdown]);
 
   /* ══════════════════════════════════════════════════════════════════════════
-     CITY MARKERS + INDIVIDUAL PERSONA PINS
-     - City markers: pulse-ring markers at city centers (always visible)
-     - Persona pins: individual small dots jittered around city (zoom >= 7)
+     PERSONA PINS (from liveComments — individual people)
+     + CITY LABELS (different visual — white/grey pill badge)
      ══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
-    const markerGroup = markersRef.current;
     const pinGroup = personaPinsRef.current;
+    const labelGroup = cityLabelsRef.current;
     const map = mapRef.current;
-    if (!markerGroup || !pinGroup || !map) return;
+    if (!pinGroup || !labelGroup || !map) return;
 
     const rebuild = () => {
       try {
-      markerGroup.clearLayers();
-      pinGroup.clearLayers();
+        pinGroup.clearLayers();
+        labelGroup.clearLayers();
 
-      const allCities = mergeCityData(cityBreakdown, geoCities);
-      if (allCities.length === 0) return;
+        if (!liveComments || liveComments.length === 0) return;
 
-      const zoom = map.getZoom();
-      const maxCount = Math.max(...allCities.map(c => c.count), 1);
+        const zoom = map.getZoom();
+        const pinSize = zoom >= 10 ? 14 : zoom >= 8 ? 12 : zoom >= 6 ? 10 : 8;
 
-      // Debug: log what we have
-      console.log(`[Map] Rebuilding markers: ${allCities.length} cities, zoom=${zoom}, selectedState=${selectedState}`);
+        // Track cities to place city labels
+        const cityPositions = new Map<string, { lat: number; lng: number; count: number; city: string; state: string }>();
 
-      // Filter cities based on selected state (if any)
-      const citiesToShow = selectedState
-        ? allCities.filter(c => c.state === selectedState)
-        : allCities;
+        // Spread radius for jitter
+        const spreadDeg = zoom >= 12 ? 0.002 : zoom >= 10 ? 0.005 : zoom >= 8 ? 0.015 : zoom >= 6 ? 0.03 : 0.05;
 
-      // Progressive limit for unselected view
-      const limit = selectedState
-        ? 100 // show all cities in selected state
-        : (zoom >= 10 ? 300 : zoom >= 8 ? 150 : zoom >= 7 ? 80 : zoom >= 6 ? 50 : zoom >= 5 ? 30 : 15);
+        let pinCount = 0;
+        const maxPins = zoom >= 10 ? 500 : zoom >= 8 ? 200 : zoom >= 6 ? 100 : 50;
 
-      const visible = citiesToShow.slice(0, limit);
+        liveComments.forEach((comment, i) => {
+          if (pinCount >= maxPins) return;
 
-      // ── City-center markers (always visible) ──
-      visible.forEach(city => {
-        if (!city.lat || !city.lng || !isFinite(city.lat) || !isFinite(city.lng)) return;
-        const color = scoreToHex(city.avgScore ?? 5);
-        const baseSz = zoom >= 8 ? 14 : zoom >= 6 ? 11 : 9;
-        const sz = Math.max(7, Math.min(baseSz, (city.count / maxCount) * baseSz));
-        const isSelected = selectedCity === city.city;
+          const baseCoords = resolvePersonaCoords(comment, cityBreakdown, geoCities);
+          if (!baseCoords) return;
 
-        const icon = L.divIcon({
-          html: cityMarkerHtml(color, isSelected ? sz * 1.3 : sz, isSelected),
-          className: '',
-          iconSize: [sz * 3, sz * 3],
-          iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
-        });
+          const [baseLat, baseLng] = baseCoords;
+          const cityKey = `${comment.city || 'unknown'}-${comment.state}`;
 
-        L.marker([city.lat, city.lng], { icon, zIndexOffset: isSelected ? 1000 : city.count })
-          .addTo(markerGroup)
-          .on('click', () => {
-            if (!selectedState) {
-              onSelectState(city.state);
-              setTimeout(() => onSelectCity(city as CityData), 50);
-            } else {
-              onSelectCity(selectedCityRef.current === city.city ? null : city as CityData);
-            }
-          })
-          .bindTooltip(
-            `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
-              <strong style="color:${color}">${city.city}</strong><br/>
-              <span style="color:#a1a1aa">${city.count} persona${city.count > 1 ? 's' : ''} · ${city.avgScore.toFixed(1)}</span>
-            </div>`,
-            { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
-          );
-      });
-
-      // ── Individual persona pins (at higher zoom) ──
-      if (zoom >= 7) {
-        // Spread radius decreases with zoom (closer = tighter cluster)
-        const spreadDeg = zoom >= 12 ? 0.003 : zoom >= 10 ? 0.008 : zoom >= 8 ? 0.02 : 0.04;
-        // Limit total pins for performance
-        let totalPins = 0;
-        const maxPins = zoom >= 10 ? 500 : zoom >= 8 ? 300 : 150;
-
-        visible.forEach(city => {
-          if (totalPins >= maxPins) return;
-          if (!city.lat || !city.lng || !isFinite(city.lat) || !isFinite(city.lng)) return;
-          const pinsForCity = Math.min(city.count, maxPins - totalPins, 50);
-          if (pinsForCity <= 1) return;
-
-          const color = scoreToHex(city.avgScore);
-          const positions = jitterPositions(city.lat, city.lng, pinsForCity, spreadDeg);
-
-          positions.forEach(([lat, lng]) => {
-            if (!isFinite(lat) || !isFinite(lng)) return;
-            const icon = L.divIcon({
-              html: personaPinHtml(color),
-              className: '',
-              iconSize: [10, 10],
-              iconAnchor: [5, 5],
+          // Track city position (use first resolved coords)
+          if (!cityPositions.has(cityKey) && comment.city) {
+            cityPositions.set(cityKey, {
+              lat: baseLat, lng: baseLng,
+              count: 0, city: comment.city, state: comment.state,
             });
+          }
+          const cp = cityPositions.get(cityKey);
+          if (cp) cp.count++;
 
-            L.marker([lat, lng], { icon, zIndexOffset: 0 })
-              .addTo(pinGroup)
-              .on('click', () => {
-                if (!selectedState) {
-                  onSelectState(city.state);
-                  setTimeout(() => onSelectCity(city as CityData), 50);
-                } else {
-                  onSelectCity(city as CityData);
-                }
-              })
-              .bindTooltip(
-                `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
-                  <strong style="color:${color}">${city.city}</strong><br/>
-                  <span style="color:#a1a1aa">Persona analisada · Score ${city.avgScore.toFixed(1)}</span>
-                </div>`,
-                { direction: 'top', offset: [0, -5], className: 'city-tooltip' }
-              );
+          // Jitter the position
+          const cityCount = cp?.count || i;
+          const [lat, lng] = jitterPosition(baseLat, baseLng, cityCount, spreadDeg);
+          if (!isFinite(lat) || !isFinite(lng)) return;
+
+          const color = sentimentColor(comment.sentiment);
+          const score = comment.score ?? 5;
+
+          const icon = L.divIcon({
+            html: personaPinHtml(color, pinSize),
+            className: '',
+            iconSize: [pinSize, pinSize],
+            iconAnchor: [pinSize / 2, pinSize / 2],
           });
 
-          totalPins += pinsForCity;
+          // Tooltip: persona info on hover
+          const tooltipHtml = `
+            <div style="font-family:'Manrope',sans-serif;font-size:11px;max-width:220px;line-height:1.4;">
+              <div style="font-weight:700;color:#fff;margin-bottom:3px;">${comment.personaName}</div>
+              <div style="font-size:9px;color:#a1a1aa;margin-bottom:4px;">
+                ${comment.age ? comment.age + ' anos' : ''}${comment.city ? ' · ' + comment.city : ''}${comment.state ? ', ' + comment.state : ''}
+              </div>
+              ${comment.gender ? `<div style="font-size:9px;color:#71717a;">${comment.gender}${comment.politicalLeaning ? ' · ' + comment.politicalLeaning : ''}</div>` : ''}
+              <div style="margin-top:4px;font-size:10px;color:${color};font-weight:600;">
+                ${comment.sentiment === 'positive' ? 'Positivo' : comment.sentiment === 'negative' ? 'Negativo' : 'Neutro'}
+                ${score ? ' · Score ' + (typeof score === 'number' ? score.toFixed(1) : score) : ''}
+              </div>
+              <div style="margin-top:4px;font-size:10px;color:#d4d4d8;font-style:italic;
+                overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
+                "${comment.comment?.slice(0, 120)}${(comment.comment?.length || 0) > 120 ? '...' : ''}"
+              </div>
+            </div>`;
+
+          L.marker([lat, lng], { icon, zIndexOffset: 100 })
+            .addTo(pinGroup)
+            .on('click', () => {
+              // Find matching city data and select it
+              if (comment.state) {
+                if (selectedStateRef.current !== comment.state) {
+                  onSelectState(comment.state);
+                }
+                if (comment.city && cityBreakdown[comment.state]) {
+                  const cityData = cityBreakdown[comment.state].find(
+                    (cd: CityData) => cd.city === comment.city
+                  );
+                  if (cityData) {
+                    setTimeout(() => onSelectCity(cityData), 80);
+                  }
+                }
+              }
+            })
+            .bindTooltip(tooltipHtml, {
+              direction: 'top',
+              offset: [0, -pinSize / 2],
+              className: 'persona-tooltip',
+              sticky: false,
+            });
+
+          pinCount++;
         });
 
-        console.log(`[Map] Created ${totalPins} persona pins`);
-      }
+        // ── City labels (white/grey pill — different from persona pins) ──
+        if (zoom >= 6) {
+          cityPositions.forEach((cp) => {
+            if (!isFinite(cp.lat) || !isFinite(cp.lng)) return;
+
+            const icon = L.divIcon({
+              html: cityLabelHtml(cp.city, cp.count),
+              className: '',
+              iconSize: [100, 20],
+              iconAnchor: [50, -8], // Above the persona cluster
+            });
+
+            L.marker([cp.lat, cp.lng], { icon, zIndexOffset: 50 })
+              .addTo(labelGroup);
+          });
+        }
+
+        console.log(`[Map] ${pinCount} persona pins, ${cityPositions.size} city labels`);
       } catch (err) {
         console.error('[Map] rebuild error:', err);
       }
     };
 
-    // Run immediately
     rebuild();
-
-    // Re-run on zoom changes
     map.on('zoomend', rebuild);
-
-    return () => {
-      map.off('zoomend', rebuild);
-    };
-  }, [cityBreakdown, geoCities, selectedState, selectedCity, onSelectState, onSelectCity]);
+    return () => { map.off('zoomend', rebuild); };
+  }, [liveComments, cityBreakdown, geoCities, selectedState, onSelectState, onSelectCity]);
 
   return (
     <div ref={wrapRef} style={{ position: 'absolute', inset: 0 }}>
       <div ref={mapDivRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Canvas overlay for grid effect */}
       <canvas ref={canvasRef} style={{
         position: 'absolute', inset: 0, width: '100%', height: '100%',
         pointerEvents: 'none', zIndex: 450,
@@ -542,6 +492,17 @@ export default function LeafletMap({
           0% { transform: scale(1); opacity: 0.5; }
           100% { transform: scale(2.5); opacity: 0; }
         }
+        .persona-tooltip {
+          background: rgba(9,9,11,0.95) !important;
+          border: 1px solid rgba(255,255,255,0.1) !important;
+          border-radius: 12px !important;
+          padding: 10px 14px !important;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.7) !important;
+          max-width: 240px !important;
+        }
+        .persona-tooltip::before {
+          border-top-color: rgba(9,9,11,0.95) !important;
+        }
         .city-tooltip {
           background: rgba(0,0,0,0.9) !important;
           border: 1px solid rgba(255,255,255,0.1) !important;
@@ -552,7 +513,6 @@ export default function LeafletMap({
         .city-tooltip::before {
           border-top-color: rgba(0,0,0,0.9) !important;
         }
-        .leaflet-fade-anim .leaflet-popup { transition: opacity 0.3s ease-out; }
       `}</style>
     </div>
   );

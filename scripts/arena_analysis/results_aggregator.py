@@ -410,10 +410,16 @@ def aggregate_results(
                 "comment": comment,
                 "personaName": persona.get("name", "Anônimo"),
                 "age": persona.get("age", 0),
+                "city": persona.get("city", ""),
                 "location": persona.get("state", ""),
                 "state": persona.get("state", ""),
                 "region": region,
                 "generation": gen,
+                "lat": persona.get("lat"),
+                "lng": persona.get("lng"),
+                "gender": persona.get("gender", ""),
+                "politicalLeaning": persona.get("political_leaning", ""),
+                "score": persona_score,
             }
             heap = _comment_heaps[sentiment]
             _comment_counter += 1

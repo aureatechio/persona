@@ -67,10 +67,16 @@ export interface CommentResult {
   comment: string;
   personaName: string;
   age: number;
+  city?: string;
   location: string;
   state: string;
   region: string;
   generation: string;
+  lat?: number;
+  lng?: number;
+  gender?: string;
+  politicalLeaning?: string;
+  score?: number;
 }
 
 export interface ClusterResult {
