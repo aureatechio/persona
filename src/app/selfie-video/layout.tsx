@@ -20,5 +20,10 @@ export const metadata: Metadata = {
 };
 
 export default function SelfieVideoLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return (
+    <div className="min-h-[100dvh]" style={{ backgroundColor: '#003560' }}>
+      <style>{`html, body { background-color: #003560 !important; overscroll-behavior: none; }`}</style>
+      {children}
+    </div>
+  );
 }
