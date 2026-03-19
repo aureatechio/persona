@@ -21,7 +21,7 @@ PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35  # 35% volume
 VOICE_DELAY_MS = 300  # 300ms delay at start to avoid glitch
-TAIL_SILENCE_S = 0.2  # 200ms silence after speech ends
+TAIL_SILENCE_S = 0.0  # no tail silence
 VOICE_VOLUME = 2.0  # 2x volume boost on voice
 
 # Cache for downloaded background music
@@ -242,8 +242,8 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     raw_audio = response.content
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
-    # Adicionar 400ms de silêncio no final pra evitar corte abrupto no lip-sync
-    padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S)
+    # Tail silence (skip if 0)
+    padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S) if TAIL_SILENCE_S > 0 else raw_audio
 
     # Mixar trilha de fundo + 300ms delay no início
     final_audio = _mix_background_music(padded_audio)
