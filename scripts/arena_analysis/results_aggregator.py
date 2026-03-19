@@ -342,6 +342,13 @@ def aggregate_results(
             city_data[city_key]["state"] = st
             city_data[city_key]["lat"] = persona.get("lat")
             city_data[city_key]["lng"] = persona.get("lng")
+        # If first persona had no coords, try subsequent ones
+        if not city_data[city_key].get("lat") or not city_data[city_key].get("lng"):
+            p_lat = persona.get("lat")
+            p_lng = persona.get("lng")
+            if p_lat and p_lng:
+                city_data[city_key]["lat"] = p_lat
+                city_data[city_key]["lng"] = p_lng
 
         # Intensity bands
         magnitude = (abs(eco) + abs(cost)) / 2

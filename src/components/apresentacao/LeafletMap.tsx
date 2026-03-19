@@ -5,6 +5,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { CityData, GeoCity } from '@/lib/arena/types';
 import { scoreToHex } from '@/lib/arena/types';
+import { getCityCoords } from '@/lib/brazil-city-coords';
 
 /* ── Types ─────────────────────────────────────────────────────────────────── */
 
@@ -110,15 +111,22 @@ function mergeCityData(
           if (seen.has(key)) continue;
           seen.add(key);
 
-          if (c.lat && c.lng) {
+          if (c.lat && c.lng && isFinite(c.lat) && isFinite(c.lng)) {
             result.push({ ...c, state });
             continue;
           }
 
-          // Fallback: find coords from geoCities
+          // Fallback 1: find coords from geoCities
           const geo = Array.isArray(geoCities) ? geoCities.find(g => g.city === c.city && g.state === state) : null;
           if (geo?.lat && geo?.lng) {
             result.push({ ...c, state, lat: geo.lat, lng: geo.lng });
+            continue;
+          }
+
+          // Fallback 2: lookup from city coordinates table
+          const coords = getCityCoords(c.city, state);
+          if (coords) {
+            result.push({ ...c, state, lat: coords[0], lng: coords[1] });
           }
         }
       }
