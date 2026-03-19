@@ -282,74 +282,79 @@ export default function LeafletMap({
     }
   }, [selectedState, selectedCity, cityBreakdown]);
 
-  /* ── Global city markers (visible at zoom >= 6 when no state is selected) ─ */
-  useEffect(() => {
+  /* ── Global city markers (always visible when data exists) ─────────────── */
+  const cityBreakdownRef = useRef(cityBreakdown);
+  cityBreakdownRef.current = cityBreakdown;
+  const selectedStateForMarkersRef = useRef(selectedState);
+  selectedStateForMarkersRef.current = selectedState;
+
+  // Stable rebuild function that reads from refs
+  const rebuildGlobalMarkers = useCallback(() => {
     const group = globalMarkersRef.current;
     const map = mapRef.current;
     if (!group || !map) return;
 
-    // Rebuild markers on data change
-    const rebuildGlobalMarkers = () => {
-      group.clearLayers();
-      const zoom = map.getZoom();
+    group.clearLayers();
+    const currentCityBreakdown = cityBreakdownRef.current;
+    const currentSelectedState = selectedStateForMarkersRef.current;
 
-      // Only show global markers when no state is specifically selected
-      if (selectedState) return;
-      // Show at zoom >= 5 — progressive: more at higher zoom
-      if (zoom < 5) return;
+    // Hide global pins when a state is selected (state-specific pins take over)
+    if (currentSelectedState) return;
 
-      const allCities = flattenCities(cityBreakdown);
-      // Show more cities at higher zoom levels
-      const limit = zoom >= 9 ? 200 : zoom >= 7 ? 80 : zoom >= 6 ? 40 : 20;
-      const citiesToShow = allCities.slice(0, limit);
-      if (citiesToShow.length === 0) return;
+    const zoom = map.getZoom();
+    const allCities = flattenCities(currentCityBreakdown);
+    if (allCities.length === 0) return;
 
-      const maxCount = Math.max(...citiesToShow.map(c => c.count), 1);
+    // Progressive: show more at higher zoom. At low zoom show top cities.
+    const limit = zoom >= 10 ? 300 : zoom >= 8 ? 150 : zoom >= 7 ? 80 : zoom >= 6 ? 50 : zoom >= 5 ? 30 : 15;
+    const citiesToShow = allCities.slice(0, limit);
+    const maxCount = Math.max(...citiesToShow.map(c => c.count), 1);
 
-      citiesToShow.forEach(city => {
-        const color = scoreToHex(city.avgScore);
-        // Scale marker size based on zoom level
-        const baseSz = zoom >= 8 ? 12 : zoom >= 6 ? 10 : 8;
-        const sz = Math.max(6, Math.min(baseSz, (city.count / maxCount) * baseSz));
+    citiesToShow.forEach(city => {
+      const color = scoreToHex(city.avgScore);
+      const baseSz = zoom >= 8 ? 14 : zoom >= 6 ? 11 : 9;
+      const sz = Math.max(7, Math.min(baseSz, (city.count / maxCount) * baseSz));
 
-        const icon = L.divIcon({
-          html: markerHtml(color, sz, false),
-          className: '',
-          iconSize: [sz * 3, sz * 3],
-          iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
-        });
-
-        L.marker([city.lat, city.lng], { icon, zIndexOffset: city.count })
-          .addTo(group)
-          .on('click', () => {
-            // Find which state this city belongs to
-            for (const [state, cities] of Object.entries(cityBreakdown)) {
-              if (cities.some(c => c.city === city.city && c.lat === city.lat)) {
-                onSelectState(state);
-                // Small delay for state selection to register before city selection
-                setTimeout(() => onSelectCity(city), 50);
-                break;
-              }
-            }
-          })
-          .bindTooltip(
-            `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
-              <strong style="color:${color}">${city.city}</strong><br/>
-              <span style="color:#a1a1aa">${city.count} personas · ${city.avgScore.toFixed(1)}</span>
-            </div>`,
-            { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
-          );
+      const icon = L.divIcon({
+        html: markerHtml(color, sz, false),
+        className: '',
+        iconSize: [sz * 3, sz * 3],
+        iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
       });
-    };
 
-    // Run on mount and on zoom/move
+      L.marker([city.lat, city.lng], { icon, zIndexOffset: city.count })
+        .addTo(group)
+        .on('click', () => {
+          for (const [state, cities] of Object.entries(cityBreakdownRef.current)) {
+            if (cities.some(c => c.city === city.city && c.lat === city.lat)) {
+              onSelectState(state);
+              setTimeout(() => onSelectCity(city), 50);
+              break;
+            }
+          }
+        })
+        .bindTooltip(
+          `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+            <strong style="color:${color}">${city.city}</strong><br/>
+            <span style="color:#a1a1aa">${city.count} personas · ${city.avgScore.toFixed(1)}</span>
+          </div>`,
+          { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
+        );
+    });
+  }, [onSelectState, onSelectCity]);
+
+  // Rebuild when data changes
+  useEffect(() => {
     rebuildGlobalMarkers();
-    map.on('zoomend', rebuildGlobalMarkers);
+  }, [cityBreakdown, selectedState, rebuildGlobalMarkers]);
 
-    return () => {
-      map.off('zoomend', rebuildGlobalMarkers);
-    };
-  }, [selectedState, cityBreakdown, onSelectState, onSelectCity]);
+  // Also rebuild on zoom changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.on('zoomend', rebuildGlobalMarkers);
+    return () => { map.off('zoomend', rebuildGlobalMarkers); };
+  }, [rebuildGlobalMarkers]);
 
   /* ── City markers (when a state IS selected) ──────────────────────────── */
   useEffect(() => {
