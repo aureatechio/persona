@@ -26,7 +26,7 @@ interface Props {
   onSelectCity: (city: CityData | null) => void;
 }
 
-/* ── Score → Map Color (same logic as old SVG map) ─────────────────────────── */
+/* ── Score → Map Color ──────────────────────────────────────────────────── */
 
 function scoreToMapColor(avgScore: number, globalAvgScore: number): string {
   const deviation = avgScore - globalAvgScore;
@@ -54,6 +54,40 @@ const STATE_CENTERS: Record<string, [number, number]> = {
   SE: [-10.57, -37.45], SP: [-22.19, -48.79], TO: [-10.25, -48.25],
 };
 
+/* ── Build all cities flat list (memoizable helper) ──────────────────────── */
+
+function flattenCities(cityBreakdown: Record<string, CityData[]>): CityData[] {
+  const all: CityData[] = [];
+  for (const state of Object.keys(cityBreakdown)) {
+    const cities = cityBreakdown[state];
+    if (cities) {
+      for (const c of cities) {
+        if (c.lat && c.lng) all.push(c);
+      }
+    }
+  }
+  // Sort by count descending so biggest cities render on top
+  all.sort((a, b) => b.count - a.count);
+  return all;
+}
+
+/* ── Create pulse-ring marker HTML ───────────────────────────────────────── */
+
+function markerHtml(color: string, sz: number, isSelected: boolean): string {
+  return `<div style="position:relative;width:${sz * 3}px;height:${sz * 3}px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;">
+    ${[0, 0.75, 1.5].map(delay => `
+      <div style="position:absolute;width:${sz}px;height:${sz}px;border-radius:50%;
+        border:1.5px solid ${color};opacity:${isSelected ? 0.6 : 0.3};
+        animation:pulse-ring 2.2s ease-out ${delay}s infinite;"></div>
+    `).join('')}
+    <div style="width:${Math.round(sz * 0.65)}px;height:${Math.round(sz * 0.65)}px;
+      border-radius:50%;background:${color};
+      box-shadow:0 0 10px ${color}bb,0 0 4px ${color};
+      position:relative;z-index:2;"></div>
+  </div>`;
+}
+
 /* ── Component ─────────────────────────────────────────────────────────────── */
 
 export default function LeafletMap({
@@ -71,26 +105,26 @@ export default function LeafletMap({
   const mapRef = useRef<L.Map | null>(null);
   const geoLayerRef = useRef<L.GeoJSON | null>(null);
   const cityMarkersRef = useRef<L.LayerGroup | null>(null);
+  const globalMarkersRef = useRef<L.LayerGroup | null>(null);
   const rafRef = useRef<number>(0);
-  const phaseRef = useRef(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep refs in sync for canvas draw
+  // Keep refs in sync
   const selectedStateRef = useRef(selectedState);
   const selectedCityRef = useRef(selectedCity);
   selectedStateRef.current = selectedState;
   selectedCityRef.current = selectedCity;
 
-  /* ── Canvas animation loop (Maestro-inspired grid + pulse) ──────────────── */
-  const draw = useCallback(() => {
+  /* ── Canvas draw (called once per map event, then stops) ──────────────── */
+  const drawOnce = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
     canvas.width = canvas.offsetWidth;
     canvas.height = canvas.offsetHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    phaseRef.current += 0.009;
 
-    // Subtle full-canvas grid
+    // Subtle grid (static, no animation needed)
     ctx.strokeStyle = 'rgba(16, 185, 129, 0.015)';
     ctx.lineWidth = 0.5;
     for (let x = 0; x < canvas.width; x += 90) {
@@ -99,15 +133,18 @@ export default function LeafletMap({
     for (let y = 0; y < canvas.height; y += 90) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
     }
-
-    rafRef.current = requestAnimationFrame(draw);
   }, []);
+
+  /* Schedule a single draw, debounced to avoid thrashing during drag/zoom */
+  const scheduleRedraw = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(drawOnce);
+  }, [drawOnce]);
 
   /* ── Map initialization ─────────────────────────────────────────────────── */
   useEffect(() => {
     if (typeof window === 'undefined' || !mapDivRef.current || mapRef.current) return;
 
-    // Fix Leaflet default icons
     delete (L.Icon.Default.prototype as any)._getIconUrl;
     L.Icon.Default.mergeOptions({ iconRetinaUrl: '', iconUrl: '', shadowUrl: '' });
 
@@ -120,10 +157,12 @@ export default function LeafletMap({
       zoomAnimation: true,
       fadeAnimation: true,
       markerZoomAnimation: true,
+      // Performance: prefer canvas rendering for vector layers
+      preferCanvas: true,
     });
     mapRef.current = map;
 
-    // Base tiles — dark, brightness adjusted
+    // Base tiles
     const basePane = map.createPane('basePane');
     basePane.style.zIndex = '200';
     basePane.style.filter = 'brightness(0.72) saturate(0.5) contrast(1.06)';
@@ -131,15 +170,16 @@ export default function LeafletMap({
       subdomains: 'abcd', maxZoom: 19, keepBuffer: 4, pane: 'basePane',
     }).addTo(map);
 
-    // Label tiles — crisp white
+    // Label tiles
     const labelPane = map.createPane('labelPane');
     labelPane.style.zIndex = '260';
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
       subdomains: 'abcd', maxZoom: 19, keepBuffer: 4, pane: 'labelPane',
     }).addTo(map);
 
-    // City markers layer
+    // Layer groups for city markers
     cityMarkersRef.current = L.layerGroup().addTo(map);
+    globalMarkersRef.current = L.layerGroup().addTo(map);
 
     // Animated fly-in
     setTimeout(() => map.flyTo([-14, -51], 5, { duration: 2.0, easeLinearity: 0.28 }), 350);
@@ -174,10 +214,9 @@ export default function LeafletMap({
       })
       .catch(console.error);
 
-    // Canvas overlay
-    const loop = () => { cancelAnimationFrame(rafRef.current); rafRef.current = requestAnimationFrame(draw); };
-    map.on('move zoom moveend zoomend', loop);
-    loop();
+    // Canvas overlay — redraw on map events only (no continuous loop)
+    map.on('move zoom moveend zoomend resize', scheduleRedraw);
+    scheduleRedraw();
 
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -228,7 +267,6 @@ export default function LeafletMap({
     if (!map) return;
 
     if (selectedCity) {
-      // Find city data
       const cities = selectedState ? cityBreakdown[selectedState] : [];
       const city = cities?.find(c => c.city === selectedCity);
       if (city?.lat && city?.lng) {
@@ -244,7 +282,76 @@ export default function LeafletMap({
     }
   }, [selectedState, selectedCity, cityBreakdown]);
 
-  /* ── City markers ───────────────────────────────────────────────────────── */
+  /* ── Global city markers (visible at zoom >= 6 when no state is selected) ─ */
+  useEffect(() => {
+    const group = globalMarkersRef.current;
+    const map = mapRef.current;
+    if (!group || !map) return;
+
+    // Rebuild markers on data change
+    const rebuildGlobalMarkers = () => {
+      group.clearLayers();
+      const zoom = map.getZoom();
+
+      // Only show global markers when no state is specifically selected
+      if (selectedState) return;
+      // Show at zoom >= 5 — progressive: more at higher zoom
+      if (zoom < 5) return;
+
+      const allCities = flattenCities(cityBreakdown);
+      // Show more cities at higher zoom levels
+      const limit = zoom >= 9 ? 200 : zoom >= 7 ? 80 : zoom >= 6 ? 40 : 20;
+      const citiesToShow = allCities.slice(0, limit);
+      if (citiesToShow.length === 0) return;
+
+      const maxCount = Math.max(...citiesToShow.map(c => c.count), 1);
+
+      citiesToShow.forEach(city => {
+        const color = scoreToHex(city.avgScore);
+        // Scale marker size based on zoom level
+        const baseSz = zoom >= 8 ? 12 : zoom >= 6 ? 10 : 8;
+        const sz = Math.max(6, Math.min(baseSz, (city.count / maxCount) * baseSz));
+
+        const icon = L.divIcon({
+          html: markerHtml(color, sz, false),
+          className: '',
+          iconSize: [sz * 3, sz * 3],
+          iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
+        });
+
+        L.marker([city.lat, city.lng], { icon, zIndexOffset: city.count })
+          .addTo(group)
+          .on('click', () => {
+            // Find which state this city belongs to
+            for (const [state, cities] of Object.entries(cityBreakdown)) {
+              if (cities.some(c => c.city === city.city && c.lat === city.lat)) {
+                onSelectState(state);
+                // Small delay for state selection to register before city selection
+                setTimeout(() => onSelectCity(city), 50);
+                break;
+              }
+            }
+          })
+          .bindTooltip(
+            `<div style="font-family:monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;">
+              <strong style="color:${color}">${city.city}</strong><br/>
+              <span style="color:#a1a1aa">${city.count} personas · ${city.avgScore.toFixed(1)}</span>
+            </div>`,
+            { direction: 'top', offset: [0, -sz], className: 'city-tooltip' }
+          );
+      });
+    };
+
+    // Run on mount and on zoom/move
+    rebuildGlobalMarkers();
+    map.on('zoomend', rebuildGlobalMarkers);
+
+    return () => {
+      map.off('zoomend', rebuildGlobalMarkers);
+    };
+  }, [selectedState, cityBreakdown, onSelectState, onSelectCity]);
+
+  /* ── City markers (when a state IS selected) ──────────────────────────── */
   useEffect(() => {
     const group = cityMarkersRef.current;
     if (!group) return;
@@ -252,7 +359,7 @@ export default function LeafletMap({
 
     if (!selectedState || !cityBreakdown[selectedState]) return;
 
-    const cities = cityBreakdown[selectedState].slice(0, 50); // top 50 by count
+    const cities = cityBreakdown[selectedState].slice(0, 50);
     const maxCount = Math.max(...cities.map(c => c.count), 1);
 
     cities.forEach(city => {
@@ -261,22 +368,8 @@ export default function LeafletMap({
       const sz = Math.max(8, Math.min(16, (city.count / maxCount) * 16));
       const isSelected = selectedCity === city.city;
 
-      const html = `
-        <div style="position:relative;width:${sz * 3}px;height:${sz * 3}px;
-          display:flex;align-items:center;justify-content:center;cursor:pointer;">
-          ${[0, 0.75, 1.5].map(delay => `
-            <div style="position:absolute;width:${sz}px;height:${sz}px;border-radius:50%;
-              border:1.5px solid ${color};opacity:${isSelected ? 0.6 : 0.3};
-              animation:pulse-ring 2.2s ease-out ${delay}s infinite;"></div>
-          `).join('')}
-          <div style="width:${Math.round(sz * 0.65)}px;height:${Math.round(sz * 0.65)}px;
-            border-radius:50%;background:${color};
-            box-shadow:0 0 10px ${color}bb,0 0 4px ${color};
-            position:relative;z-index:2;"></div>
-        </div>`;
-
       const icon = L.divIcon({
-        html,
+        html: markerHtml(color, sz, isSelected),
         className: '',
         iconSize: [sz * 3, sz * 3],
         iconAnchor: [(sz * 3) / 2, (sz * 3) / 2],
@@ -317,7 +410,7 @@ export default function LeafletMap({
         <div key={i} style={{ position: 'absolute', pointerEvents: 'none', zIndex: 460, ...s as any }} />
       ))}
 
-      {/* Pulse ring keyframes */}
+      {/* Pulse ring keyframes + tooltip styling */}
       <style>{`
         @keyframes pulse-ring {
           0% { transform: scale(1); opacity: 0.5; }
@@ -333,6 +426,9 @@ export default function LeafletMap({
         .city-tooltip::before {
           border-top-color: rgba(0,0,0,0.9) !important;
         }
+        /* Smoother Leaflet animations */
+        .leaflet-fade-anim .leaflet-popup { transition: opacity 0.3s ease-out; }
+        .leaflet-marker-icon { transition: transform 0.15s ease-out; }
       `}</style>
     </div>
   );

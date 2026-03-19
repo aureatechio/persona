@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { MapPin, X, Users, ChevronLeft, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -229,23 +229,88 @@ function CityDetailPanel({ city, stateSigla, onClose, onBack }: {
   );
 }
 
-/* ── Loading state (Maestro-style) ─────────────────────────────────────────── */
+/* ── Loading state — Spinning Globe (cobe) ─────────────────────────────────── */
 
 function MapWaiting() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let globe: import('cobe').Globe | null = null;
+    let phi = 0;
+    let raf: number;
+
+    import('cobe').then(({ default: createGlobe }) => {
+      if (!canvasRef.current) return;
+      globe = createGlobe(canvasRef.current, {
+        devicePixelRatio: 2,
+        width: 600 * 2,
+        height: 600 * 2,
+        phi: 0,
+        theta: -0.3,
+        dark: 1,
+        diffuse: 1.2,
+        mapSamples: 16000,
+        mapBrightness: 6,
+        baseColor: [0.06, 0.08, 0.06],
+        markerColor: [0.16, 0.73, 0.50],
+        glowColor: [0.06, 0.25, 0.15],
+        markers: [
+          { location: [-23.55, -46.63], size: 0.06 },
+          { location: [-22.91, -43.17], size: 0.05 },
+          { location: [-15.79, -47.88], size: 0.04 },
+          { location: [-12.97, -38.51], size: 0.04 },
+          { location: [-3.72, -38.52], size: 0.04 },
+          { location: [-8.05, -34.87], size: 0.04 },
+          { location: [-30.03, -51.23], size: 0.04 },
+          { location: [-19.92, -43.94], size: 0.04 },
+          { location: [-25.43, -49.27], size: 0.04 },
+          { location: [-2.50, -44.28], size: 0.03 },
+        ],
+      });
+
+      // Rotate the globe continuously
+      const spin = () => {
+        phi += 0.005;
+        globe?.update({ phi });
+        raf = requestAnimationFrame(spin);
+      };
+      raf = requestAnimationFrame(spin);
+    });
+
+    return () => {
+      cancelAnimationFrame(raf);
+      globe?.destroy();
+    };
+  }, []);
+
   return (
     <div className="h-screen w-screen bg-black flex items-center justify-center overflow-hidden relative">
-      {/* Ambient pulse rings */}
-      {[0, 1, 2].map(i => (
-        <div key={i} className="absolute rounded-full border border-emerald-500/30 pointer-events-none"
-          style={{
-            width: 200, height: 200,
-            animation: `waitPulse 2.1s ease-out ${i * 0.55}s infinite`,
-          }} />
-      ))}
+      {/* Radial glow behind globe */}
+      <div className="absolute w-[600px] h-[600px] rounded-full bg-emerald-500/[0.04] blur-3xl pointer-events-none" />
 
-      <div className="relative z-10 flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-        <div className="flex flex-col items-center gap-2">
+      {/* Globe */}
+      <div className="relative flex flex-col items-center gap-6">
+        <canvas
+          ref={canvasRef}
+          style={{
+            width: 320, height: 320,
+            maxWidth: '70vmin', maxHeight: '70vmin',
+            aspectRatio: '1',
+            opacity: 0.9,
+          }}
+        />
+
+        {/* Scanning overlay */}
+        <div className="absolute inset-0 pointer-events-none flex items-center justify-center"
+          style={{ width: 320, height: 320, maxWidth: '70vmin', maxHeight: '70vmin' }}>
+          <div className="absolute inset-0 rounded-full"
+            style={{ background: 'radial-gradient(circle at center, transparent 35%, rgba(16,185,129,0.03) 70%)' }} />
+          <div className="absolute left-[10%] right-[10%] h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent"
+            style={{ animation: 'globeScanLine 2.5s linear infinite' }} />
+        </div>
+
+        {/* Text below */}
+        <div className="flex flex-col items-center gap-3">
           <span className="text-[10px] font-mono text-emerald-400/70 tracking-[0.35em] uppercase">
             Mapa de Personas
           </span>
@@ -262,7 +327,12 @@ function MapWaiting() {
       </div>
 
       <style>{`
-        @keyframes waitPulse { 0% { transform: scale(1); opacity: 0.4; } 100% { transform: scale(2.5); opacity: 0; } }
+        @keyframes globeScanLine {
+          0% { transform: translateY(-140px); opacity: 0; }
+          20% { opacity: 1; }
+          80% { opacity: 1; }
+          100% { transform: translateY(140px); opacity: 0; }
+        }
         @keyframes waitDot { 0% { opacity: 0.2; transform: scale(0.8); } 100% { opacity: 1; transform: scale(1.2); } }
       `}</style>
     </div>
