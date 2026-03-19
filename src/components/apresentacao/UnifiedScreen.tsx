@@ -44,7 +44,7 @@ function VoterGaugeCompact({ item, partyLabel, isLive = false, progress = 0 }: {
         <span className="text-[10px] font-black uppercase tracking-[0.08em] truncate text-violet-400/80">Eleitores de {item.label} ({partyLabel})</span>
       </div>
       <div className="flex-1 flex flex-col justify-center items-center px-3 py-1.5 gap-1">
-        <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
+        <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 3500} />
         {concordance && (
           <span className={`text-[9px] font-semibold ${concordance.color}`}>{concordance.text}</span>
         )}
@@ -60,7 +60,7 @@ function VoterGaugeCompact({ item, partyLabel, isLive = false, progress = 0 }: {
                 left: `calc(${(score / 10) * 100}% - 3px)`,
                 backgroundColor: hex,
                 boxShadow: `0 0 6px ${hex}80`,
-                transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+                transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 3s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
             />
           )}

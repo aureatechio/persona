@@ -387,26 +387,16 @@ export function MapaScreen() {
         {/* Progress bar */}
         {data.question && data.phase !== 'complete' && (() => {
           const mapProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
-          const isCollecting = data.phase === 'collecting';
           return (
             <div className="flex items-center gap-2.5 px-4 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl shrink-0 pointer-events-auto backdrop-blur-xl">
               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              {isCollecting ? (
-                <>
-                  <div className="w-28 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
-                    <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
-                  </div>
-                  <span className="text-xs font-medium text-emerald-400/70">Preparando...</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-28 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${mapProgress}%` }} />
-                  </div>
-                  <span className="text-xs font-bold text-zinc-300 tabular-nums">{data.processedCount}/{data.totalCount}</span>
-                  <span className="text-xs font-black text-emerald-400 tabular-nums">{mapProgress}%</span>
-                </>
-              )}
+              <div className="w-28 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${mapProgress}%`, transition: mapProgress <= 2 ? 'none' : 'width 2s ease-out' }} />
+              </div>
+              <span className="text-xs font-bold text-zinc-300 tabular-nums">
+                {data.processedCount > 0 ? `${data.processedCount}/${data.totalCount}` : 'Preparando...'}
+              </span>
+              {mapProgress > 0 && <span className="text-xs font-black text-emerald-400 tabular-nums">{mapProgress}%</span>}
             </div>
           );
         })()}

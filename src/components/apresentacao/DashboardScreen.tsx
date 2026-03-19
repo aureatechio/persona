@@ -51,7 +51,7 @@ function GenderItemRow({ item, idx, isLive, progress, clusterAvg }: {
       </div>
       <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center gap-1.5">
         <div className="flex items-center gap-2">
-          <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 10000} />
+          <AnimatedScore value={score} className="text-2xl" duration={isLive ? 2000 : 3500} />
           {showPct && (
             <span className={cn(
               'text-xs font-bold tabular-nums transition-colors duration-300',
@@ -63,7 +63,7 @@ function GenderItemRow({ item, idx, isLive, progress, clusterAvg }: {
         </div>
         <div className="w-full h-[6px] rounded-full overflow-hidden relative bg-white/[0.03]">
           <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
-          {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
+          {hasData && <div className="absolute top-0 h-full w-[6px] rounded-full" style={{ left: `calc(${barPos}% - 3px)`, backgroundColor: hex, boxShadow: `0 0 6px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 3s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
         </div>
       </div>
     </div>
@@ -94,10 +94,10 @@ function RankingItemRow({ item, index, accentText, isLive, progress, clusterAvg 
       </span>
       <div className="flex-1 h-[10px] rounded-full overflow-hidden relative bg-white/[0.03]">
         <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
-        {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
+        {hasData && <div className="absolute top-0 h-full w-[8px] rounded-full" style={{ left: `calc(${barPos}% - 4px)`, backgroundColor: hex, boxShadow: `0 0 8px ${hex}80`, transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 3s cubic-bezier(0.16, 1, 0.3, 1)' }} />}
       </div>
       <div className="shrink-0 w-[72px] flex flex-col items-end">
-        <AnimatedScore value={score} className="text-sm" duration={isLive ? 2000 : 10000} />
+        <AnimatedScore value={score} className="text-sm" duration={isLive ? 2000 : 3500} />
         {showPct && (
           <span className={cn(
             'text-[9px] font-bold tabular-nums leading-none transition-colors duration-300',

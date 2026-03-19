@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
    updating emoji and color in real time as the number climbs.
    ════════════════════════════════════════════════════════════════════ */
 
-function useAnimatedScore(target: number, duration = 12000): number {
+function useAnimatedScore(target: number, duration = 3500): number {
   const [display, setDisplay] = useState(0);
   const currentRef = useRef(0);
   const startValRef = useRef(0);
@@ -28,8 +28,14 @@ function useAnimatedScore(target: number, duration = 12000): number {
     startValRef.current = currentRef.current;
     startTimeRef.current = Date.now();
 
-    // When resetting to 0, use a fast animation so scores disappear quickly
-    const effectiveDuration = (target === 0 && currentRef.current > 0) ? 500 : duration;
+    // Cap duration for small changes (jitter cleanup on live→complete transition)
+    const delta = Math.abs(target - startValRef.current);
+    let effectiveDuration = duration;
+    if (target === 0 && currentRef.current > 0) {
+      effectiveDuration = 500; // fast reset
+    } else if (delta < 1.5) {
+      effectiveDuration = Math.min(1500, duration); // snap small deltas quickly
+    }
 
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -66,7 +72,7 @@ function useAnimatedScore(target: number, duration = 12000): number {
 
 /** Renders an animated score with emoji + color that updates as the number climbs.
  *  Once data has been received, NEVER shows "—" again (prevents flicker). */
-export function AnimatedScore({ value, duration = 12000, className, showEmoji = true, showLabel = false }: {
+export function AnimatedScore({ value, duration = 3500, className, showEmoji = true, showLabel = false }: {
   value: number;
   duration?: number;
   className?: string;
@@ -182,7 +188,7 @@ function SpectrumBucketScore({ score, hasData, isLive, progress, className }: {
 }) {
   const jittered = useLiveJitter(score, isLive && hasData, progress);
   const display = isLive && hasData ? jittered : score;
-  return <AnimatedScore value={hasData ? display : 0} className={className} duration={isLive ? 2000 : 10000} />;
+  return <AnimatedScore value={hasData ? display : 0} className={className} duration={isLive ? 2000 : 3500} />;
 }
 
 export function SpectrumGauge({
@@ -245,7 +251,7 @@ export function SpectrumGauge({
         </div>
         <div className="flex-1 flex flex-col justify-center px-5 py-3 gap-3">
           <div className="text-center">
-            <AnimatedScore value={0} className="text-3xl justify-center" duration={12000} />
+            <AnimatedScore value={0} className="text-3xl justify-center" duration={3500} />
             <p className="text-sm font-bold text-zinc-600 mt-1">Sem dados</p>
           </div>
           <div className="h-[16px] rounded-full overflow-hidden" style={{ background: `linear-gradient(to right, #ef4444, #f97316, #a855f7, #38bdf8, #3b82f6)`, opacity: 0.15 }} />
@@ -300,7 +306,7 @@ export function SpectrumGauge({
                     transform: 'translateX(-50%)',
                     width: `${size}px`,
                     height: `${size}px`,
-                    transition: 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+                    transition: 'all 3s cubic-bezier(0.16, 1, 0.3, 1)',
                   }}
                 >
                   <div
@@ -404,12 +410,12 @@ function QuadrantCell({ item, totalCount, hasQData, isLive, progress }: {
   return (
     <div className={cn('relative overflow-hidden rounded-xl flex flex-col items-center justify-center gap-1 p-2', qc.bg, qc.border, 'border')}>
       <div className={cn('absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none', qc.glow)} />
-      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={displayPct} suffix="%" duration={isLive ? 1500 : 16000} /></p>
+      <p className={cn('text-2xl font-black tabular-nums leading-none', qc.text)}><AnimatedNumber value={displayPct} suffix="%" duration={isLive ? 1500 : 4000} /></p>
       <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider text-center leading-tight truncate max-w-full">
         {item.label}
       </p>
       <div className="flex items-center gap-1.5">
-        <AnimatedScore value={hasQData ? score : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
+        <AnimatedScore value={hasQData ? score : 0} className="text-sm" duration={isLive ? 2000 : 3500} />
       </div>
     </div>
   );
@@ -496,7 +502,7 @@ export const ScoreHero = memo(function ScoreHero({
         />
         <p className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 relative">Nota</p>
         <div className="relative">
-          <AnimatedScore value={processedCount > 0 ? displayScore : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={isLive ? 2000 : 14000} />
+          <AnimatedScore value={processedCount > 0 ? displayScore : 0} className="text-5xl" showEmoji={true} showLabel={true} duration={isLive ? 2000 : 3500} />
         </div>
         <p className="text-xs text-zinc-600 tabular-nums relative">
           {processedCount > 0 ? processedCount.toLocaleString('pt-BR') : '0'} personas
@@ -554,13 +560,13 @@ function SegmentItemRow({ item, isLive, progress, clusterAvg }: {
               left: `calc(${barPosition}% - 4px)`,
               backgroundColor: hex,
               boxShadow: `0 0 8px ${hex}80`,
-              transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 8s cubic-bezier(0.16, 1, 0.3, 1)',
+              transition: isLive ? 'all 1.2s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 3s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
         )}
       </div>
       <div className="shrink-0 w-[72px] flex flex-col items-end">
-        <AnimatedScore value={hasData ? displayScore : 0} className="text-sm" duration={isLive ? 2000 : 10000} />
+        <AnimatedScore value={hasData ? displayScore : 0} className="text-sm" duration={isLive ? 2000 : 3500} />
         {showPct && (
           <span className={cn(
             'text-[9px] font-bold tabular-nums leading-none transition-colors duration-300',
@@ -688,7 +694,7 @@ export const ScoreBar = memo(function ScoreBar({ avgScore, totalCount, isLive = 
               left: `calc(${barPosition}% - 2px)`,
               backgroundColor: hex,
               boxShadow: `0 0 12px ${hex}aa`,
-              transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 10s cubic-bezier(0.16, 1, 0.3, 1)',
+              transition: isLive ? 'all 1.5s cubic-bezier(0.16, 1, 0.3, 1)' : 'all 3s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
         )}

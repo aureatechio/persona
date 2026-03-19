@@ -10,7 +10,7 @@ import { useState, useEffect, useRef } from 'react';
  * Stutter-free: tracks actual current value in a ref (not stale React state)
  * so mid-animation target changes blend seamlessly.
  */
-export function useAnimatedValue(target: number, duration = 16000): number {
+export function useAnimatedValue(target: number, duration = 4000): number {
   const [display, setDisplay] = useState(target);
   const currentRef = useRef(target);       // actual displayed value (always up to date)
   const startValRef = useRef(target);
@@ -28,6 +28,12 @@ export function useAnimatedValue(target: number, duration = 16000): number {
     startValRef.current = currentRef.current;
     startTimeRef.current = Date.now();
 
+    // Cap duration for small changes (e.g. jitter cleanup on live→complete)
+    const delta = Math.abs(target - startValRef.current);
+    const range = Math.max(Math.abs(target), Math.abs(startValRef.current), 1);
+    const relativeDelta = delta / range;
+    const effectiveDuration = relativeDelta < 0.15 ? Math.min(1500, duration) : duration;
+
     const cleanup = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       if (timerRef.current !== null) clearTimeout(timerRef.current);
@@ -37,7 +43,7 @@ export function useAnimatedValue(target: number, duration = 16000): number {
 
     const animate = () => {
       const elapsed = Date.now() - startTimeRef.current;
-      const progress = Math.min(elapsed / duration, 1);
+      const progress = Math.min(elapsed / effectiveDuration, 1);
       // ease-out quintic — much slower deceleration than cubic
       const eased = 1 - Math.pow(1 - progress, 5);
       const current = Math.round(
@@ -71,7 +77,7 @@ export function useAnimatedValue(target: number, duration = 16000): number {
  */
 export function AnimatedNumber({
   value,
-  duration = 16000,
+  duration = 4000,
   suffix = '',
   format,
 }: {

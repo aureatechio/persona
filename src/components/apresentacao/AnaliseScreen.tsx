@@ -287,19 +287,14 @@ export function AnaliseScreen() {
             </div>
           )}
           {data.question && data.phase !== 'complete' && (() => {
-            const isCollecting = data.phase === 'collecting';
             const anlProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
             return (
               <div className="flex items-center gap-2 shrink-0 ml-1">
                 <div className="w-24 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
-                  {isCollecting ? (
-                    <div className="h-full w-1/3 bg-gradient-to-r from-emerald-500/60 to-sky-400/60 rounded-full animate-pulse" />
-                  ) : (
-                    <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full transition-all duration-[2s] ease-out" style={{ width: `${anlProgress}%` }} />
-                  )}
+                  <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${anlProgress}%`, transition: anlProgress <= 2 ? 'none' : 'width 2s ease-out' }} />
                 </div>
                 <span className="text-xs font-bold text-zinc-400 tabular-nums">
-                  {isCollecting ? 'Preparando...' : `${data.processedCount}/${data.totalCount}`}
+                  {data.processedCount > 0 ? `${data.processedCount}/${data.totalCount}` : 'Preparando...'}
                 </span>
               </div>
             );
@@ -322,8 +317,8 @@ export function AnaliseScreen() {
             <div className="text-center space-y-2">
               <p className="text-lg text-zinc-400">Aguardando conclusão da pesquisa...</p>
               <div className="w-48 h-1.5 bg-zinc-900 rounded-full overflow-hidden mx-auto">
-                <div className="h-full bg-gradient-to-r from-emerald-600 to-rose-400 rounded-full transition-all duration-1000"
-                  style={{ width: `${data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0}%` }} />
+                <div className="h-full bg-gradient-to-r from-emerald-600 to-rose-400 rounded-full"
+                  style={{ width: `${data.totalCount > 0 ? (data.processedCount / data.totalCount) * 100 : 0}%`, transition: data.processedCount <= 1 ? 'none' : 'width 1s ease-out' }} />
               </div>
             </div>
           </div>
