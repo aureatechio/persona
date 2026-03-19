@@ -1,4 +1,4 @@
-"""Step 3: Generate TTS audio using ElevenLabs cloned voice + outdoor audio FX."""
+"""Step 3: Generate TTS audio using ElevenLabs cloned voice + background music."""
 
 import re
 import subprocess
@@ -7,7 +7,7 @@ import os
 import logging
 import requests
 
-from config import ELEVENLABS_API_KEY
+from config import ELEVENLABS_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
 
 logger = logging.getLogger("worker.tts")
 
@@ -17,35 +17,70 @@ FFMPEG_TIMEOUT = 30  # seconds
 # Dicionário de pronúncia no ElevenLabs — cidades com fonética irregular (indígenas)
 PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 
+# Background music config
+BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
+BG_MUSIC_VOLUME = 0.35  # 35% volume
+VOICE_DELAY_MS = 300  # 300ms delay at start to avoid glitch
+TAIL_SILENCE_S = 0.4  # 400ms silence after speech ends
 
-def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
-    """
-    Apply outdoor environment audio effect using FFmpeg:
-    - Subtle reverb (echo)
-    - Pink noise (road hum) + brown noise (engine rumble)
-    - Bandpass filter at 800Hz + tremolo (simulates distant traffic)
-    Returns processed audio bytes. Falls back to raw on failure.
-    """
-    tmpdir = tempfile.mkdtemp(prefix="tts_fx_")
-    raw_path = os.path.join(tmpdir, "raw.mp3")
-    out_path = os.path.join(tmpdir, "outdoor.mp3")
+# Cache for downloaded background music
+_bg_music_cache: bytes | None = None
+
+
+def _get_background_music() -> bytes | None:
+    """Download background music from Supabase Storage (cached)."""
+    global _bg_music_cache
+    if _bg_music_cache is not None:
+        return _bg_music_cache
 
     try:
-        with open(raw_path, "wb") as f:
-            f.write(raw_audio)
+        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{BG_MUSIC_STORAGE_PATH}"
+        resp = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        _bg_music_cache = resp.content
+        logger.info("Background music downloaded: %d bytes", len(_bg_music_cache))
+        return _bg_music_cache
+    except Exception as e:
+        logger.warning("Failed to download background music: %s", e)
+        return None
 
-        # Reverb (aecho) + pink noise low-passed to simulate traffic hum
-        # Uses only basic filters guaranteed in Debian/Ubuntu FFmpeg
+
+def _mix_background_music(voice_audio: bytes) -> bytes:
+    """
+    Mix voice audio with background music track.
+    - 300ms delay at start (avoid TTS glitch)
+    - Background music at 35% volume
+    - Fade in/out on music
+    Returns mixed audio bytes. Falls back to voice_audio on failure.
+    """
+    bg_music = _get_background_music()
+    if bg_music is None:
+        return voice_audio
+
+    tmpdir = tempfile.mkdtemp(prefix="tts_mix_")
+    voice_path = os.path.join(tmpdir, "voice.mp3")
+    music_path = os.path.join(tmpdir, "music.mp3")
+    out_path = os.path.join(tmpdir, "mixed.mp3")
+
+    try:
+        with open(voice_path, "wb") as f:
+            f.write(voice_audio)
+        with open(music_path, "wb") as f:
+            f.write(bg_music)
+
         filter_complex = (
-            "[0:a]aecho=0.8:0.7:60|80:0.15|0.1[reverbed];"
-            "anoisesrc=c=pink:a=0.006[noise];"
-            "[noise]lowpass=f=900[traffic];"
-            "[reverbed][traffic]amix=inputs=2:duration=first:weights=1 0.08[out]"
+            f"[0:a]adelay={VOICE_DELAY_MS}|{VOICE_DELAY_MS}[voice];"
+            f"[1:a]volume={BG_MUSIC_VOLUME},afade=t=in:d=0.3,afade=t=out:st=18:d=2[bg];"
+            "[voice][bg]amix=inputs=2:duration=first:weights=1 1[out]"
         )
 
         result = subprocess.run(
             [
-                "ffmpeg", "-i", raw_path,
+                "ffmpeg", "-i", voice_path, "-i", music_path,
                 "-filter_complex", filter_complex,
                 "-map", "[out]",
                 "-c:a", "libmp3lame", "-b:a", "192k",
@@ -57,21 +92,21 @@ def _apply_outdoor_fx(raw_audio: bytes) -> bytes:
 
         if result.returncode != 0:
             logger.warning(
-                "Audio FX ffmpeg failed (rc=%d): %s",
+                "Music mix failed (rc=%d): %s",
                 result.returncode,
                 result.stderr.decode(errors="replace")[:500],
             )
-            return raw_audio
+            return voice_audio
 
         with open(out_path, "rb") as f:
-            processed = f.read()
+            mixed = f.read()
 
-        logger.info("Outdoor audio FX applied: %d → %d bytes", len(raw_audio), len(processed))
-        return processed
+        logger.info("Background music mixed: %d → %d bytes", len(voice_audio), len(mixed))
+        return mixed
 
     except Exception as e:
-        logger.warning("Audio FX failed, using raw TTS: %s", e)
-        return raw_audio
+        logger.warning("Music mix failed: %s", e)
+        return voice_audio
 
     finally:
         for fname in os.listdir(tmpdir):
@@ -192,11 +227,11 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
             "language_code": "pt",
             "apply_text_normalization": "on",
             "voice_settings": {
-                "stability": 0.6,
-                "similarity_boost": 0.75,
-                "style": 0.35,
-                "use_speaker_boost": False,
-                "speed": 0.88,
+                "stability": 0.25,
+                "similarity_boost": 0.85,
+                "style": 0.6,
+                "use_speaker_boost": True,
+                "speed": 1.0,
             },
         },
         timeout=TTS_TIMEOUT,
@@ -206,9 +241,13 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     raw_audio = response.content
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
-    # Adicionar 100ms de silêncio no final pra evitar corte abrupto no lip-sync
-    padded_audio = _add_tail_silence(raw_audio, seconds=0.1)
-    return padded_audio, processed_text
+    # Adicionar 400ms de silêncio no final pra evitar corte abrupto no lip-sync
+    padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S)
+
+    # Mixar trilha de fundo + 300ms delay no início
+    final_audio = _mix_background_music(padded_audio)
+
+    return final_audio, processed_text
 
 
 def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:
