@@ -248,12 +248,12 @@ function MapWaiting() {
         phi: 0,
         theta: -0.3,
         dark: 1,
-        diffuse: 2,
+        diffuse: 3,
         mapSamples: 16000,
-        mapBrightness: 8,
-        baseColor: [0.15, 0.18, 0.2],
+        mapBrightness: 12,
+        baseColor: [0.3, 0.35, 0.4],
         markerColor: [0.16, 0.73, 0.50],
-        glowColor: [0.08, 0.12, 0.14],
+        glowColor: [0.15, 0.2, 0.25],
         markers: [
           { location: [-23.55, -46.63], size: 0.06 },
           { location: [-22.91, -43.17], size: 0.05 },
@@ -286,8 +286,8 @@ function MapWaiting() {
   return (
     <div className="h-screen w-screen bg-black flex items-center justify-center overflow-hidden relative">
       {/* Subtle glow behind globe (not on top) */}
-      <div className="absolute w-[700px] h-[700px] rounded-full pointer-events-none"
-        style={{ background: 'radial-gradient(circle, rgba(100,140,160,0.08) 0%, rgba(40,60,80,0.04) 40%, transparent 70%)' }} />
+      <div className="absolute w-[800px] h-[800px] rounded-full pointer-events-none"
+        style={{ background: 'radial-gradient(circle, rgba(120,160,200,0.15) 0%, rgba(60,100,140,0.08) 35%, transparent 65%)' }} />
 
       {/* Globe */}
       <div className="relative flex flex-col items-center gap-6">
