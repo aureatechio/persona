@@ -233,3 +233,18 @@ export interface GeoCity {
   lng: number;
   personaCount: number;
 }
+
+/** City-level sentiment data for map drill-down */
+export interface CityData {
+  city: string;
+  lat: number;
+  lng: number;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+  avgScore: number;
+}
+
+/** Cities grouped by state sigla (e.g. "SP" → CityData[]) */
+export type CityBreakdown = Record<string, CityData[]>;

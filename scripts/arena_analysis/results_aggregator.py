@@ -141,6 +141,7 @@ def aggregate_results(
     score_eco_data: dict[str, dict] = defaultdict(_new_seg)
     score_cost_data: dict[str, dict] = defaultdict(_new_seg)
     state_data: dict[str, dict] = defaultdict(_new_seg)
+    city_data: dict[str, dict] = defaultdict(_new_seg)
     intensity_data = [
         {"label": b["label"], "range": b["range"], "count": 0, "total_score": 0}
         for b in INTENSITY_BANDS
@@ -329,6 +330,18 @@ def aggregate_results(
         state_data[st]["count"] += 1
         state_data[st][sentiment] += 1
         state_data[st]["total_score"] += persona_score
+
+        # City breakdown (within each state)
+        city_name = persona.get("city") or "Desconhecida"
+        city_key = f"{st}|{city_name}"
+        city_data[city_key]["count"] += 1
+        city_data[city_key][sentiment] += 1
+        city_data[city_key]["total_score"] += persona_score
+        if "city" not in city_data[city_key]:
+            city_data[city_key]["city"] = city_name
+            city_data[city_key]["state"] = st
+            city_data[city_key]["lat"] = persona.get("lat")
+            city_data[city_key]["lng"] = persona.get("lng")
 
         # Intensity bands
         magnitude = (abs(eco) + abs(cost)) / 2
@@ -564,6 +577,20 @@ def aggregate_results(
         if d["count"] > 0
     }
 
+    # City breakdown — per-city counts + avgScore, grouped by state
+    city_breakdown: dict[str, list] = {}
+    for _key, d in city_data.items():
+        if d["count"] == 0 or "state" not in d:
+            continue
+        st = d["state"]
+        city_breakdown.setdefault(st, []).append({
+            "city": d["city"], "lat": d.get("lat"), "lng": d.get("lng"),
+            "count": d["count"], "positive": d["positive"], "negative": d["negative"],
+            "neutral": d["neutral"], "avgScore": _compute_avg_score(d),
+        })
+    for st in city_breakdown:
+        city_breakdown[st].sort(key=lambda x: x["count"], reverse=True)
+
     global_avg_score = round(total_score_sum / total, 1) if total > 0 else 5.0
 
     return {
@@ -585,4 +612,5 @@ def aggregate_results(
         "intensityBands": intensity_bands,
         "segments": segments,
         "stateBreakdown": state_breakdown,
+        "cityBreakdown": city_breakdown,
     }

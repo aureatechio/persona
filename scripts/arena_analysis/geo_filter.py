@@ -6,7 +6,21 @@ usando distância Haversine até atingir o mínimo.
 from __future__ import annotations
 
 import math
+import random
+import unicodedata
 from typing import Any, Optional
+
+
+def _normalize(s: str) -> str:
+    """Normaliza string para comparação: NFC + lowercase + strip."""
+    return unicodedata.normalize("NFC", s).strip().lower()
+
+
+def _city_eq(a: str | None, b: str | None) -> bool:
+    """Comparação de nomes de cidade resiliente a encoding/case."""
+    if not a or not b:
+        return False
+    return _normalize(a) == _normalize(b)
 
 
 def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -23,6 +37,13 @@ def haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return R * 2 * math.asin(math.sqrt(a))
 
 
+def _cap_personas(personas: list[dict], limit: int) -> list[dict]:
+    """Retorna no máximo `limit` personas (amostra aleatória se exceder)."""
+    if len(personas) <= limit:
+        return personas
+    return random.sample(personas, limit)
+
+
 def apply_geo_filter(
     personas: list[dict[str, Any]],
     geo_filter: Any,
@@ -35,21 +56,22 @@ def apply_geo_filter(
     """
     min_p = geo_filter.min_personas or 50
 
-    # CASO 1: Só estado (sem cidade) → filtra todas do UF
+    # CASO 1: Só estado (sem cidade) → filtra do UF, limitado a min_p
     if geo_filter.state and not geo_filter.city:
         filtered = [p for p in personas if p.get("state") == geo_filter.state]
         if not filtered:
-            # Estado sem personas — fallback para todas
-            return personas, _group_by_city(personas)
-        return filtered, _group_by_city(filtered)
+            capped = _cap_personas(personas, min_p)
+            return capped, _group_by_city(capped)
+        capped = _cap_personas(filtered, min_p)
+        return capped, _group_by_city(capped)
 
     # CASO 2: Cidade específica → filtra e expande por proximidade se necessário
     if geo_filter.city and geo_filter.state:
-        # Personas da cidade exata
+        # Personas da cidade exata (comparação normalizada)
         city_personas = [
             p
             for p in personas
-            if p.get("city") == geo_filter.city
+            if _city_eq(p.get("city"), geo_filter.city)
             and p.get("state") == geo_filter.state
         ]
 
@@ -62,9 +84,10 @@ def apply_geo_filter(
         )
 
         if target_lat is None:
-            # Cidade sem coordenadas — fallback para estado inteiro
+            # Cidade sem coordenadas — fallback para estado, limitado a min_p
             filtered = [p for p in personas if p.get("state") == geo_filter.state]
-            return filtered, _group_by_city(filtered)
+            capped = _cap_personas(filtered, min_p)
+            return capped, _group_by_city(capped)
 
         # Agrupar TODAS as personas do estado por cidade com distância ao alvo
         state_personas = [p for p in personas if p.get("state") == geo_filter.state]
@@ -129,7 +152,7 @@ def _get_city_center(
             return lat, lng
     # Fallback: qualquer persona do banco com essa cidade/estado
     for p in all_personas:
-        if p.get("city") == city_name and p.get("state") == state:
+        if _city_eq(p.get("city"), city_name) and p.get("state") == state:
             lat = _safe_float(p.get("lat"))
             lng = _safe_float(p.get("lng"))
             if lat is not None and lng is not None:

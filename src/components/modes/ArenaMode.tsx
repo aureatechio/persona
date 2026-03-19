@@ -374,6 +374,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
     // Segments, stateBreakdown, ideology, and live comments come directly from Python backend
     let pythonSegments: AllSegments | undefined;
     let pythonStateBreakdown: Record<string, { count: number; positive: number; negative: number; neutral: number }> | undefined;
+    let pythonCityBreakdown: Record<string, any[]> | undefined;
     let liveComments: any[] = [];
     let pythonIdeology: ArenaLiveData['liveIdeology'] | undefined;
 
@@ -459,6 +460,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                       neutral: simulation?.neutral || 0,
                       segments: pythonSegments,
                       stateBreakdown: pythonStateBreakdown,
+                      cityBreakdown: pythonCityBreakdown,
                       liveIdeology: pythonIdeology,
                     });
                   } else if (pythonPhase === 'processing_personas') {
@@ -521,6 +523,9 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   if (payload.data.stateBreakdown) {
                     pythonStateBreakdown = payload.data.stateBreakdown;
                   }
+                  if (payload.data.cityBreakdown) {
+                    pythonCityBreakdown = payload.data.cityBreakdown;
+                  }
                   // Accumulate live comments from progress events
                   if (payload.data.comments && Array.isArray(payload.data.comments)) {
                     liveComments = payload.data.comments;
@@ -551,6 +556,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     scoreSum: progressScoreSum,
                     segments: pythonSegments,
                     stateBreakdown: pythonStateBreakdown,
+                    cityBreakdown: pythonCityBreakdown,
                     liveIdeology: pythonIdeology,
                     liveComments,
                   });
@@ -583,6 +589,10 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                   if (resultsData.stateBreakdown) {
                     pythonStateBreakdown = resultsData.stateBreakdown;
                     delete resultsData.stateBreakdown;
+                  }
+                  if (resultsData.cityBreakdown) {
+                    pythonCityBreakdown = resultsData.cityBreakdown;
+                    delete resultsData.cityBreakdown;
                   }
                   // ideologicalPoints now arrives via points_chunk events — init empty array
                   if (!resultsData.ideologicalPoints) {
@@ -626,6 +636,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
                     totalPersonas: doneTotal,
                     segments: pythonSegments,
                     stateBreakdown: pythonStateBreakdown,
+                    cityBreakdown: pythonCityBreakdown,
                     liveIdeology: pythonIdeology,
                   });
                   onProcessing(false);
@@ -662,6 +673,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
@@ -686,6 +698,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
@@ -712,6 +725,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
@@ -736,6 +750,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
@@ -759,6 +774,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);
@@ -782,6 +798,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           totalPersonas: total,
           segments: pythonSegments,
           stateBreakdown: pythonStateBreakdown,
+          cityBreakdown: pythonCityBreakdown,
           liveIdeology: pythonIdeology,
         });
         onProcessing(false);

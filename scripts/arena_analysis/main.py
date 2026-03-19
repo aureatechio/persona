@@ -428,6 +428,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     last_inc_agg = inc_agg
                     progress_data["segments"] = inc_agg.get("segments")
                     progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
+                    progress_data["cityBreakdown"] = inc_agg.get("cityBreakdown")
                     progress_data["politicalFigures"] = inc_agg.get("politicalFigures", [])
                     progress_data["quadrants"] = inc_agg.get("quadrants", [])
                     progress_data["clusterResults"] = inc_agg.get("clusterResults", [])

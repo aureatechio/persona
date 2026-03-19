@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, CheckCircle, AlertTriangle, Target, Zap } from 'lucide-react';
+import { Sparkles, CheckCircle, AlertTriangle, Target, Zap, Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, MonitorPlay } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 
@@ -105,6 +105,18 @@ function WaitingScreen() {
     </div>
   );
 }
+
+/* ─── Platform badge config ────────────────────────────────────────── */
+
+const platformConfig: Record<string, { label: string; icon: typeof Instagram; color: string; bg: string; border: string }> = {
+  instagram: { label: 'Instagram', icon: Instagram, color: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/20' },
+  tiktok: { label: 'TikTok', icon: MonitorPlay, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
+  youtube: { label: 'YouTube', icon: Youtube, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+  tv: { label: 'TV', icon: Tv, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
+  radio: { label: 'Rádio', icon: Radio, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' },
+  outdoor: { label: 'Outdoor', icon: Megaphone, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+  impresso: { label: 'Impresso', icon: Newspaper, color: 'text-zinc-300', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20' },
+};
 
 /* ─── Main Analise Screen ───────────────────────────────────────────── */
 
@@ -237,6 +249,9 @@ export function AnaliseScreen() {
   const isProcessing = !displayedText && !isTyping && data.phase !== 'complete';
   const isWaitingForComplete = !displayedText && !isTyping && data.phase !== 'complete';
 
+  const platform = platformConfig[data.contentMeta?.mediaType || ''];
+  const PlatformIcon = platform?.icon;
+
   return (
     <div className="h-screen w-screen bg-black overflow-hidden relative flex flex-col">
       {/* Background effects */}
@@ -254,6 +269,14 @@ export function AnaliseScreen() {
           )}>
             <Sparkles size={20} className={cn(isTyping ? 'text-emerald-400 animate-pulse' : 'text-zinc-500')} />
           </div>
+
+          {platform && PlatformIcon && (
+            <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-xl border shrink-0', platform.bg, platform.border)}>
+              <PlatformIcon size={16} className={platform.color} />
+              <span className={cn('text-xs font-bold uppercase tracking-wider', platform.color)}>{platform.label}</span>
+            </div>
+          )}
+
           <div className="flex-1" />
 
           {total > 0 && (
@@ -316,7 +339,7 @@ export function AnaliseScreen() {
                       <Zap size={18} className="text-white" />
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
-                      Recomendacao Estrategica
+                      Recomendacao Estrategica{platform ? ` — ${platform.label}` : ''}
                     </span>
                   </div>
                   <p className="text-xl md:text-2xl font-bold text-white tracking-tight leading-snug">
