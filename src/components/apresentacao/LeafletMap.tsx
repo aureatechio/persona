@@ -93,51 +93,61 @@ interface MergedCity {
 }
 
 function mergeCityData(
-  cityBreakdown: Record<string, CityData[]>,
-  geoCities: GeoCity[],
+  cityBreakdown: Record<string, CityData[]> | null | undefined,
+  geoCities: GeoCity[] | null | undefined,
 ): MergedCity[] {
   const result: MergedCity[] = [];
   const seen = new Set<string>();
 
-  // First: use cityBreakdown (has sentiment data)
-  for (const [state, cities] of Object.entries(cityBreakdown)) {
-    for (const c of cities) {
-      const key = `${c.city}-${state}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+  try {
+    // First: use cityBreakdown (has sentiment data)
+    if (cityBreakdown && typeof cityBreakdown === 'object') {
+      for (const [state, cities] of Object.entries(cityBreakdown)) {
+        if (!Array.isArray(cities)) continue;
+        for (const c of cities) {
+          if (!c || !c.city) continue;
+          const key = `${c.city}-${state}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
 
-      // If cityBreakdown has lat/lng, use it
-      if (c.lat && c.lng) {
-        result.push({ ...c, state });
-        continue;
-      }
+          if (c.lat && c.lng) {
+            result.push({ ...c, state });
+            continue;
+          }
 
-      // Fallback: find coords from geoCities
-      const geo = geoCities.find(g => g.city === c.city && g.state === state);
-      if (geo) {
-        result.push({ ...c, state, lat: geo.lat, lng: geo.lng });
+          // Fallback: find coords from geoCities
+          const geo = Array.isArray(geoCities) ? geoCities.find(g => g.city === c.city && g.state === state) : null;
+          if (geo?.lat && geo?.lng) {
+            result.push({ ...c, state, lat: geo.lat, lng: geo.lng });
+          }
+        }
       }
     }
-  }
 
-  // Also add geoCities that weren't in cityBreakdown (e.g. early in analysis)
-  for (const g of geoCities) {
-    const key = `${g.city}-${g.state}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (g.lat && g.lng) {
-      result.push({
-        city: g.city,
-        state: g.state,
-        lat: g.lat,
-        lng: g.lng,
-        count: g.personaCount,
-        positive: 0,
-        negative: 0,
-        neutral: 0,
-        avgScore: 5,
-      });
+    // Also add geoCities that weren't in cityBreakdown
+    if (Array.isArray(geoCities)) {
+      for (const g of geoCities) {
+        if (!g || !g.city || !g.state) continue;
+        const key = `${g.city}-${g.state}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (g.lat && g.lng) {
+          result.push({
+            city: g.city,
+            state: g.state,
+            lat: g.lat,
+            lng: g.lng,
+            count: g.personaCount || 1,
+            positive: 0,
+            negative: 0,
+            neutral: 0,
+            avgScore: 5,
+          });
+        }
+      }
     }
+  } catch (err) {
+    console.error('[Map] mergeCityData error:', err);
   }
 
   result.sort((a, b) => b.count - a.count);
@@ -347,7 +357,7 @@ export default function LeafletMap({
     if (!map) return;
 
     if (selectedCity) {
-      const cities = selectedState ? cityBreakdown[selectedState] : [];
+      const cities = (selectedState && Array.isArray(cityBreakdown?.[selectedState])) ? cityBreakdown[selectedState] : [];
       const city = cities?.find((c: CityData) => c.city === selectedCity);
       if (city?.lat && city?.lng) {
         map.flyTo([city.lat, city.lng], 12, { duration: 1.2, easeLinearity: 0.2 });
@@ -374,6 +384,7 @@ export default function LeafletMap({
     if (!markerGroup || !pinGroup || !map) return;
 
     const rebuild = () => {
+      try {
       markerGroup.clearLayers();
       pinGroup.clearLayers();
 
@@ -400,7 +411,8 @@ export default function LeafletMap({
 
       // ── City-center markers (always visible) ──
       visible.forEach(city => {
-        const color = scoreToHex(city.avgScore);
+        if (!city.lat || !city.lng || !isFinite(city.lat) || !isFinite(city.lng)) return;
+        const color = scoreToHex(city.avgScore ?? 5);
         const baseSz = zoom >= 8 ? 14 : zoom >= 6 ? 11 : 9;
         const sz = Math.max(7, Math.min(baseSz, (city.count / maxCount) * baseSz));
         const isSelected = selectedCity === city.city;
@@ -441,13 +453,15 @@ export default function LeafletMap({
 
         visible.forEach(city => {
           if (totalPins >= maxPins) return;
-          const pinsForCity = Math.min(city.count, maxPins - totalPins, 50); // max 50 per city
-          if (pinsForCity <= 1) return; // skip — city marker already covers single persona
+          if (!city.lat || !city.lng || !isFinite(city.lat) || !isFinite(city.lng)) return;
+          const pinsForCity = Math.min(city.count, maxPins - totalPins, 50);
+          if (pinsForCity <= 1) return;
 
           const color = scoreToHex(city.avgScore);
           const positions = jitterPositions(city.lat, city.lng, pinsForCity, spreadDeg);
 
           positions.forEach(([lat, lng]) => {
+            if (!isFinite(lat) || !isFinite(lng)) return;
             const icon = L.divIcon({
               html: personaPinHtml(color),
               className: '',
@@ -478,6 +492,9 @@ export default function LeafletMap({
         });
 
         console.log(`[Map] Created ${totalPins} persona pins`);
+      }
+      } catch (err) {
+        console.error('[Map] rebuild error:', err);
       }
     };
 
