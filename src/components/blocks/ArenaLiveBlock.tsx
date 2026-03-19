@@ -49,7 +49,7 @@ export interface ArenaLiveData {
   };
   liveComments?: CommentResult[];
   /** State-level sentiment breakdown for Brazil heat map */
-  stateBreakdown?: Record<string, { count: number; positive: number; negative: number; neutral: number }>;
+  stateBreakdown?: Record<string, { count: number; positive: number; negative: number; neutral: number; avgScore?: number }>;
   /** City-level breakdown grouped by state sigla for map drill-down */
   cityBreakdown?: import('@/lib/arena/types').CityBreakdown;
   /** Status message during collecting phase */
