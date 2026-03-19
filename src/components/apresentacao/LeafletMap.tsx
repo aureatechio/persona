@@ -332,8 +332,9 @@ export default function LeafletMap({
   }, [selectedState, selectedCity, cityBreakdown]);
 
   /* ══════════════════════════════════════════════════════════════════════════
-     PERSONA PINS (from liveComments — individual people)
-     + CITY LABELS (different visual — white/grey pill badge)
+     PERSONA PINS (from cityBreakdown — ALL personas, jittered per city)
+     + Enriched with liveComments data when available
+     + CITY LABELS (white/grey pill badge — different from persona pins)
      ══════════════════════════════════════════════════════════════════════════ */
   useEffect(() => {
     const pinGroup = personaPinsRef.current;
@@ -341,123 +342,165 @@ export default function LeafletMap({
     const map = mapRef.current;
     if (!pinGroup || !labelGroup || !map) return;
 
+    // Index liveComments by city+state for quick lookup
+    const commentsByCity = new Map<string, CommentResult[]>();
+    if (liveComments && liveComments.length > 0) {
+      for (const c of liveComments) {
+        const key = `${c.city || ''}-${c.state || ''}`;
+        if (!commentsByCity.has(key)) commentsByCity.set(key, []);
+        commentsByCity.get(key)!.push(c);
+      }
+    }
+
     const rebuild = () => {
       try {
         pinGroup.clearLayers();
         labelGroup.clearLayers();
 
-        if (!liveComments || liveComments.length === 0) return;
-
         const zoom = map.getZoom();
         const pinSize = zoom >= 10 ? 14 : zoom >= 8 ? 12 : zoom >= 6 ? 10 : 8;
-
-        // Track cities to place city labels
-        const cityPositions = new Map<string, { lat: number; lng: number; count: number; city: string; state: string }>();
-
-        // Spread radius for jitter
         const spreadDeg = zoom >= 12 ? 0.002 : zoom >= 10 ? 0.005 : zoom >= 8 ? 0.015 : zoom >= 6 ? 0.03 : 0.05;
 
-        let pinCount = 0;
-        const maxPins = zoom >= 10 ? 500 : zoom >= 8 ? 200 : zoom >= 6 ? 100 : 50;
+        let totalPins = 0;
+        const maxPins = zoom >= 10 ? 600 : zoom >= 8 ? 300 : zoom >= 6 ? 150 : 60;
 
-        liveComments.forEach((comment, i) => {
-          if (pinCount >= maxPins) return;
+        // Collect all cities from cityBreakdown + geoCities
+        const allCities: { city: string; state: string; lat: number; lng: number; count: number; avgScore: number; positive: number; negative: number; neutral: number }[] = [];
+        const seen = new Set<string>();
 
-          const baseCoords = resolvePersonaCoords(comment, cityBreakdown, geoCities);
-          if (!baseCoords) return;
+        if (cityBreakdown && typeof cityBreakdown === 'object') {
+          for (const [state, cities] of Object.entries(cityBreakdown)) {
+            if (!Array.isArray(cities)) continue;
+            for (const c of cities) {
+              if (!c?.city) continue;
+              const key = `${c.city}-${state}`;
+              if (seen.has(key)) continue;
+              seen.add(key);
 
-          const [baseLat, baseLng] = baseCoords;
-          const cityKey = `${comment.city || 'unknown'}-${comment.state}`;
-
-          // Track city position (use first resolved coords)
-          if (!cityPositions.has(cityKey) && comment.city) {
-            cityPositions.set(cityKey, {
-              lat: baseLat, lng: baseLng,
-              count: 0, city: comment.city, state: comment.state,
-            });
-          }
-          const cp = cityPositions.get(cityKey);
-          if (cp) cp.count++;
-
-          // Jitter the position
-          const cityCount = cp?.count || i;
-          const [lat, lng] = jitterPosition(baseLat, baseLng, cityCount, spreadDeg);
-          if (!isFinite(lat) || !isFinite(lng)) return;
-
-          const color = sentimentColor(comment.sentiment);
-          const score = comment.score ?? 5;
-
-          const icon = L.divIcon({
-            html: personaPinHtml(color, pinSize),
-            className: '',
-            iconSize: [pinSize, pinSize],
-            iconAnchor: [pinSize / 2, pinSize / 2],
-          });
-
-          // Tooltip: persona info on hover
-          const tooltipHtml = `
-            <div style="font-family:'Manrope',sans-serif;font-size:11px;max-width:220px;line-height:1.4;">
-              <div style="font-weight:700;color:#fff;margin-bottom:3px;">${comment.personaName}</div>
-              <div style="font-size:9px;color:#a1a1aa;margin-bottom:4px;">
-                ${comment.age ? comment.age + ' anos' : ''}${comment.city ? ' · ' + comment.city : ''}${comment.state ? ', ' + comment.state : ''}
-              </div>
-              ${comment.gender ? `<div style="font-size:9px;color:#71717a;">${comment.gender}${comment.politicalLeaning ? ' · ' + comment.politicalLeaning : ''}</div>` : ''}
-              <div style="margin-top:4px;font-size:10px;color:${color};font-weight:600;">
-                ${comment.sentiment === 'positive' ? 'Positivo' : comment.sentiment === 'negative' ? 'Negativo' : 'Neutro'}
-                ${score ? ' · Score ' + (typeof score === 'number' ? score.toFixed(1) : score) : ''}
-              </div>
-              <div style="margin-top:4px;font-size:10px;color:#d4d4d8;font-style:italic;
-                overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
-                "${comment.comment?.slice(0, 120)}${(comment.comment?.length || 0) > 120 ? '...' : ''}"
-              </div>
-            </div>`;
-
-          L.marker([lat, lng], { icon, zIndexOffset: 100 })
-            .addTo(pinGroup)
-            .on('click', () => {
-              // Find matching city data and select it
-              if (comment.state) {
-                if (selectedStateRef.current !== comment.state) {
-                  onSelectState(comment.state);
-                }
-                if (comment.city && cityBreakdown[comment.state]) {
-                  const cityData = cityBreakdown[comment.state].find(
-                    (cd: CityData) => cd.city === comment.city
-                  );
-                  if (cityData) {
-                    setTimeout(() => onSelectCity(cityData), 80);
-                  }
+              let lat = c.lat, lng = c.lng;
+              if (!lat || !lng || !isFinite(lat) || !isFinite(lng)) {
+                const geo = Array.isArray(geoCities) ? geoCities.find(g => g.city === c.city && g.state === state) : null;
+                if (geo?.lat && geo?.lng) { lat = geo.lat; lng = geo.lng; }
+                else {
+                  const coords = getCityCoords(c.city, state);
+                  if (coords) { lat = coords[0]; lng = coords[1]; }
+                  else continue;
                 }
               }
-            })
-            .bindTooltip(tooltipHtml, {
-              direction: 'top',
-              offset: [0, -pinSize / 2],
-              className: 'persona-tooltip',
-              sticky: false,
-            });
-
-          pinCount++;
-        });
-
-        // ── City labels (white/grey pill — different from persona pins) ──
-        if (zoom >= 6) {
-          cityPositions.forEach((cp) => {
-            if (!isFinite(cp.lat) || !isFinite(cp.lng)) return;
-
-            const icon = L.divIcon({
-              html: cityLabelHtml(cp.city, cp.count),
-              className: '',
-              iconSize: [100, 20],
-              iconAnchor: [50, -8], // Above the persona cluster
-            });
-
-            L.marker([cp.lat, cp.lng], { icon, zIndexOffset: 50 })
-              .addTo(labelGroup);
-          });
+              allCities.push({ ...c, state, lat, lng });
+            }
+          }
         }
 
-        console.log(`[Map] ${pinCount} persona pins, ${cityPositions.size} city labels`);
+        // Also from geoCities
+        if (Array.isArray(geoCities)) {
+          for (const g of geoCities) {
+            if (!g?.city || !g.state) continue;
+            const key = `${g.city}-${g.state}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            if (g.lat && g.lng) {
+              allCities.push({
+                city: g.city, state: g.state, lat: g.lat, lng: g.lng,
+                count: g.personaCount || 1, avgScore: 5, positive: 0, negative: 0, neutral: 0,
+              });
+            }
+          }
+        }
+
+        allCities.sort((a, b) => b.count - a.count);
+
+        // ── Create pins per city (each persona = one pin) ──
+        allCities.forEach(cityData => {
+          if (totalPins >= maxPins) return;
+          if (!isFinite(cityData.lat) || !isFinite(cityData.lng)) return;
+
+          const pinsForCity = Math.min(cityData.count, maxPins - totalPins);
+          if (pinsForCity === 0) return;
+
+          const cityKey = `${cityData.city}-${cityData.state}`;
+          const comments = commentsByCity.get(cityKey) || [];
+          const color = scoreToHex(cityData.avgScore);
+
+          // Create individual persona pins
+          for (let i = 0; i < pinsForCity; i++) {
+            const [lat, lng] = jitterPosition(cityData.lat, cityData.lng, i, spreadDeg);
+            if (!isFinite(lat) || !isFinite(lng)) continue;
+
+            // Try to match a liveComment for this pin
+            const comment = comments[i % Math.max(comments.length, 1)] as CommentResult | undefined;
+            const hasComment = comment && i < comments.length;
+
+            // Pin color: if we have a comment, color by sentiment; otherwise by city avgScore
+            const pinColor = hasComment ? sentimentColor(comment!.sentiment) : color;
+
+            const icon = L.divIcon({
+              html: personaPinHtml(pinColor, pinSize),
+              className: '',
+              iconSize: [pinSize, pinSize],
+              iconAnchor: [pinSize / 2, pinSize / 2],
+            });
+
+            // Tooltip content
+            let tooltipHtml: string;
+            if (hasComment) {
+              const c = comment!;
+              const sColor = sentimentColor(c.sentiment);
+              tooltipHtml = `
+                <div style="font-family:'Manrope',sans-serif;font-size:11px;max-width:220px;line-height:1.4;">
+                  <div style="font-weight:700;color:#fff;margin-bottom:3px;">${c.personaName}</div>
+                  <div style="font-size:9px;color:#a1a1aa;margin-bottom:4px;">
+                    ${c.age ? c.age + ' anos' : ''}${cityData.city ? ' · ' + cityData.city : ''}${cityData.state ? ', ' + cityData.state : ''}
+                  </div>
+                  ${c.gender ? `<div style="font-size:9px;color:#71717a;">${c.gender}${c.politicalLeaning ? ' · ' + c.politicalLeaning : ''}</div>` : ''}
+                  <div style="margin-top:4px;font-size:10px;color:${sColor};font-weight:600;">
+                    ${c.sentiment === 'positive' ? 'Positivo' : c.sentiment === 'negative' ? 'Negativo' : 'Neutro'}
+                    ${c.score ? ' · Score ' + (typeof c.score === 'number' ? c.score.toFixed(1) : c.score) : ''}
+                  </div>
+                  <div style="margin-top:4px;font-size:10px;color:#d4d4d8;font-style:italic;
+                    overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;">
+                    "${(c.comment || '').slice(0, 120)}${(c.comment?.length || 0) > 120 ? '...' : ''}"
+                  </div>
+                </div>`;
+            } else {
+              tooltipHtml = `
+                <div style="font-family:monospace;font-size:10px;letter-spacing:0.05em;">
+                  <strong style="color:${color}">${cityData.city}</strong>, ${cityData.state}<br/>
+                  <span style="color:#a1a1aa">Persona · Score ${cityData.avgScore.toFixed(1)}</span>
+                </div>`;
+            }
+
+            L.marker([lat, lng], { icon, zIndexOffset: 100 })
+              .addTo(pinGroup)
+              .on('click', () => {
+                if (selectedStateRef.current !== cityData.state) {
+                  onSelectState(cityData.state);
+                }
+                setTimeout(() => onSelectCity(cityData as CityData), 80);
+              })
+              .bindTooltip(tooltipHtml, {
+                direction: 'top',
+                offset: [0, -pinSize / 2],
+                className: 'persona-tooltip',
+              });
+          }
+
+          totalPins += pinsForCity;
+
+          // ── City label (white pill, only at higher zoom) ──
+          if (zoom >= 6) {
+            const labelIcon = L.divIcon({
+              html: cityLabelHtml(cityData.city, cityData.count),
+              className: '',
+              iconSize: [120, 20],
+              iconAnchor: [60, -8],
+            });
+            L.marker([cityData.lat, cityData.lng], { icon: labelIcon, zIndexOffset: 50 })
+              .addTo(labelGroup);
+          }
+        });
+
+        console.log(`[Map] ${totalPins} persona pins, ${allCities.length} cities`);
       } catch (err) {
         console.error('[Map] rebuild error:', err);
       }
