@@ -1,4 +1,11 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
 
 export const metadata: Metadata = {
   title: 'Grave seu depoimento | Progressistas',
@@ -21,8 +28,8 @@ export const metadata: Metadata = {
 
 export default function SelfieVideoLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-[100dvh]" style={{ backgroundColor: '#003560' }}>
-      <style>{`html, body { background-color: #003560 !important; overscroll-behavior: none; }`}</style>
+    <div className="min-h-[100dvh] overflow-x-hidden" style={{ backgroundColor: '#003560' }}>
+      <style>{`html, body { background-color: #003560 !important; overscroll-behavior: none; overflow-x: hidden; }`}</style>
       {children}
     </div>
   );

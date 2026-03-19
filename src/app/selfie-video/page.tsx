@@ -242,7 +242,7 @@ export default function SelfieVideoPage() {
 
   // ===== RENDER =====
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-[#003560] via-[#00437a] to-[#003560] flex flex-col">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-[#003560] via-[#00437a] to-[#003560] flex flex-col overflow-x-hidden">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/10 backdrop-blur-xl border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-center gap-3">
