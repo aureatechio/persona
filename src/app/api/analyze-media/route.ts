@@ -119,6 +119,7 @@ export async function POST(request: Request) {
     // For videos, transcribe audio first via Whisper
     for (const att of attachments) {
       if (att.type === 'image' && att.data.startsWith('data:')) {
+        // Base64 data URL (web flow)
         const match = att.data.match(/^data:(image\/[\w+]+);base64,(.+)$/);
         if (match) {
           content.push({
@@ -130,6 +131,15 @@ export async function POST(request: Request) {
             },
           });
         }
+      } else if (att.type === 'image' && (att.data.startsWith('http://') || att.data.startsWith('https://'))) {
+        // URL flow (mobile uploads to Supabase first)
+        content.push({
+          type: 'image',
+          source: {
+            type: 'url',
+            url: att.data,
+          },
+        } as any);
       } else if (att.type === 'url') {
         content.push({ type: 'text', text: `\n\nURL para contexto: ${att.data}` });
       } else if (att.type === 'video') {
