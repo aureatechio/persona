@@ -5,7 +5,7 @@ import {
   Sparkles, Zap, ChevronDown, Clock, Download, Share2, RefreshCw, Copy,
   Video, MessageCircle, MapPin, Globe, Target, TrendingUp, Mic, Image, Layout,
   Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, MonitorPlay,
-  Brain, BarChart3, Activity,
+  Brain, Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
@@ -26,9 +26,10 @@ interface AnaliseData {
   score: number;
   tags: string[];
   stats: { value: string; label: string }[];
-  recommendations: { icon: string; text: string; priority: string; detail: string }[];
+  recommendations: { icon: string; text: string; gain: string; priority: string; detail: string }[];
   insight: { title: string; description: string; action: string };
   nextSteps: { title: string; benefit: string; deadline: string }[];
+  projectedScore: number;
   radar: RadarData;
 }
 
@@ -121,7 +122,7 @@ function WaitingScreen() {
 /* ─── Animated Progress Loading ─────────────────────────────────────── */
 
 const LOADING_STAGES = [
-  { label: 'Processando dados demográficos...', icon: BarChart3, pct: 15 },
+  { label: 'Processando dados demográficos...', icon: Activity, pct: 15 },
   { label: 'Analisando performance do conteúdo...', icon: Activity, pct: 35 },
   { label: 'Calculando oportunidades por segmento...', icon: Target, pct: 55 },
   { label: 'Gerando recomendações estratégicas...', icon: Brain, pct: 75 },
@@ -341,69 +342,67 @@ function RadarChart({ radar }: { radar: RadarData }) {
   );
 }
 
-/* ─── Demographic Bars ──────────────────────────────────────────────── */
+/* ─── Projected Score Card ──────────────────────────────────────────── */
 
-interface SegmentItem {
-  label: string;
-  positive: number;
-  negative: number;
-  neutral: number;
-}
-
-function DemoBars({ segments }: { segments: Record<string, SegmentItem[]> }) {
-  // Pick the most interesting segments for compact display
-  const picks: { key: string; label: string }[] = [
-    { key: 'region', label: 'Região' },
-    { key: 'generation', label: 'Geração' },
-    { key: 'religion', label: 'Religião' },
-    { key: 'gender', label: 'Gênero' },
-  ];
+function ProjectedScoreCard({ current, projected }: { current: number; projected: number }) {
+  const gain = projected - current;
+  const currentPct = (current / 10) * 100;
+  const projectedPct = (projected / 10) * 100;
 
   return (
-    <div className="space-y-4">
-      {picks.map(({ key, label }) => {
-        const items = (segments as any)[key] as SegmentItem[] | undefined;
-        if (!items || items.length === 0) return null;
+    <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5 flex flex-col justify-between">
+      <div className="flex items-center gap-2.5 mb-4">
+        <TrendingUp size={14} className="text-zinc-500" />
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+          Ganho Potencial
+        </h2>
+      </div>
 
-        // Sort by total count, take top 4
-        const sorted = [...items]
-          .map(s => {
-            const total = s.positive + s.negative + s.neutral;
-            const approval = total > 0 ? Math.round((s.positive / total) * 100) : 0;
-            return { ...s, total, approval };
-          })
-          .filter(s => s.total > 0)
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 4);
+      {/* Score comparison */}
+      <div className="flex items-end gap-6 mb-5">
+        <div className="text-center">
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider block mb-1">Atual</span>
+          <span className={cn(
+            'text-3xl font-bold',
+            current >= 7 ? 'text-emerald-400' : current >= 4 ? 'text-amber-400' : 'text-red-400',
+          )}>{current.toFixed(1)}</span>
+        </div>
+        <div className="flex items-center gap-2 pb-1.5">
+          <div className="w-8 h-px bg-zinc-700" />
+          <span className="text-xs text-emerald-400 font-bold">+{gain.toFixed(1)}</span>
+          <div className="w-8 h-px bg-zinc-700" />
+        </div>
+        <div className="text-center">
+          <span className="text-[10px] text-zinc-600 uppercase tracking-wider block mb-1">Projetado</span>
+          <span className="text-3xl font-bold text-emerald-400">{projected.toFixed(1)}</span>
+        </div>
+      </div>
 
-        if (sorted.length === 0) return null;
-
-        return (
-          <div key={key}>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-600 mb-1.5 block">{label}</span>
-            <div className="space-y-1.5">
-              {sorted.map(item => {
-                const barColor = item.approval >= 60 ? 'bg-emerald-500/70' : item.approval >= 40 ? 'bg-amber-500/70' : 'bg-rose-500/70';
-                return (
-                  <div key={item.label} className="flex items-center gap-2">
-                    <span className="text-[11px] text-zinc-500 w-24 truncate shrink-0">{item.label}</span>
-                    <div className="flex-1 h-[6px] bg-zinc-900 rounded-full overflow-hidden">
-                      <div className={cn('h-full rounded-full transition-all duration-1000', barColor)}
-                        style={{ width: `${item.approval}%` }} />
-                    </div>
-                    <span className={cn(
-                      'text-[11px] font-bold tabular-nums w-9 text-right',
-                      item.approval >= 60 ? 'text-emerald-400' : item.approval >= 40 ? 'text-amber-400' : 'text-rose-400',
-                    )}>
-                      {item.approval}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Visual bars */}
+      <div className="space-y-2">
+        <div>
+          <div className="flex justify-between mb-1">
+            <span className="text-[10px] text-zinc-600">Hoje</span>
+            <span className="text-[10px] text-zinc-500 tabular-nums">{current.toFixed(1)}/10</span>
           </div>
-        );
-      })}
+          <div className="h-2 bg-zinc-900 rounded-full overflow-hidden">
+            <div className="h-full bg-amber-500/70 rounded-full transition-all duration-1000" style={{ width: `${currentPct}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between mb-1">
+            <span className="text-[10px] text-zinc-600">Com melhorias</span>
+            <span className="text-[10px] text-emerald-400 tabular-nums font-medium">{projected.toFixed(1)}/10</span>
+          </div>
+          <div className="h-2 bg-zinc-900 rounded-full overflow-hidden">
+            <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-1000" style={{ width: `${projectedPct}%` }} />
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-zinc-600 mt-3 text-center">
+        Siga as recomendações abaixo para atingir o score projetado
+      </p>
     </div>
   );
 }
@@ -424,12 +423,19 @@ function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations']
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-4 p-4 text-left cursor-pointer"
+        className="w-full flex items-center gap-3 p-4 text-left cursor-pointer"
       >
         <div className="p-2 rounded-xl bg-white/[0.04] shrink-0">
           <Icon size={18} className="text-zinc-400" />
         </div>
-        <span className="flex-1 text-sm font-medium text-zinc-200">{rec.text}</span>
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium text-zinc-200 block">{rec.text}</span>
+          {rec.gain && (
+            <span className="text-xs font-bold text-emerald-400 mt-0.5 block">
+              → {rec.gain}
+            </span>
+          )}
+        </div>
         <span className={cn(
           'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0',
           priority.bg, priority.color, priority.border,
@@ -654,17 +660,9 @@ export function AnaliseScreen() {
                 </div>
               )}
 
-              {/* Demographics */}
-              {data.segments && (
-                <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5">
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <BarChart3 size={14} className="text-zinc-500" />
-                    <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
-                      Aprovação por Segmento
-                    </h2>
-                  </div>
-                  <DemoBars segments={data.segments as any} />
-                </div>
+              {/* Projected Score */}
+              {analise.projectedScore && (
+                <ProjectedScoreCard current={analise.score} projected={analise.projectedScore} />
               )}
             </div>
 

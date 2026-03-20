@@ -163,11 +163,13 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
   "recommendations": [
     {
       "icon": "video|message|map|sparkles|globe|target|trending|mic|image|layout",
-      "text": "Recomendacao curta e direta, imperativa",
+      "text": "Recomendacao curta e direta, imperativa (o que fazer)",
+      "gain": "+XX% alcance|engajamento|conversao (o que voce GANHA fazendo isso)",
       "priority": "prioridade|importante|oportunidade",
-      "detail": "Explicacao expandida com dados demograficos e porcentagens especificas. 1-2 frases."
+      "detail": "Explicacao expandida com dados e porcentagens. 1-2 frases."
     }
   ],
+  "projectedScore": 8.5,
   "insight": {
     "title": "Dado surpreendente ou oportunidade oculta nos dados",
     "description": "Contexto com numeros: X% aprova, Y% compartilha Z vezes mais que a media.",
@@ -194,7 +196,8 @@ REGRAS DO JSON:
 - "score": nota de 0.0 a 10.0 avaliando a performance geral do conteudo (considere aprovacao, engajamento potencial e adequacao a plataforma)
 - "tags": EXATAMENTE 2 tags — primeira: plataforma + regiao, segunda: tipo de conteudo + tema principal
 - "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas credIveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
-- "recommendations": EXATAMENTE 5 itens. Mix de prioridades: 2-3 "prioridade", 1-2 "importante", 1 "oportunidade". Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout
+- "recommendations": EXATAMENTE 5 itens. Mix de prioridades: 2-3 "prioridade", 1-2 "importante", 1 "oportunidade". Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout. O campo "gain" e CRITICO — deve mostrar o GANHO CONCRETO que o candidato tera se seguir a recomendacao (ex: "+40% alcance organico", "+2x compartilhamentos", "Ativa 35% do Nordeste"). SEMPRE com numero/porcentagem. O ganho deve ser a informacao MAIS visivel
+- "projectedScore": nota projetada de 0.0 a 10.0 se TODAS as recomendacoes forem seguidas. Deve ser visivelmente maior que o score atual (diferença minima de 1.5 pontos)
 - "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
 - "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
 - "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
