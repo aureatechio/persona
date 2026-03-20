@@ -669,7 +669,7 @@ const ADVERSARIAL_WORDS = [
 const SUPPORTIVE_WORDS = [
   'bom', 'melhor', 'excelente', 'competente', 'inocente', 'apoiar', 'defende', 'heroi', 'benefici',
   'mito', 'salvador', 'patriota', 'honesto', 'trabalhador',
-  'lider', 'presidente', 'genio', 'corajoso', 'correto', 'integro',
+  'lider', 'genio', 'corajoso', 'correto', 'integro',
   'revolucionario', 'transformou', 'salvou', 'melhorou', 'avancou',
   'orgulho', 'exemplo', 'dedicado', 'comprometido',
 ];
@@ -729,9 +729,9 @@ function analyzeVotingData(
   let adv = 0, sup = 0;
   for (const k of ADVERSARIAL_WORDS) { if (normQuestion.includes(k)) adv++; }
   for (const k of SUPPORTIVE_WORDS) { if (normQuestion.includes(k)) sup++; }
-  let isAdversarial = adv > sup && adv > 0;
+  let isAdversarial = adv >= sup && adv > 0;
 
-  if (!isAdversarial && adv === 0) {
+  if (!isAdversarial) {
     const figName = hasLula ? 'lula' : 'bolsonaro';
     const framing = detectFraming(normQuestion, figName);
     if (framing === 'adversarial') isAdversarial = true;
@@ -870,10 +870,10 @@ function analyzeVotingScore(
   let adv = 0, sup = 0;
   for (const k of ADVERSARIAL_WORDS) { if (normQuestion.includes(k)) adv++; }
   for (const k of SUPPORTIVE_WORDS) { if (normQuestion.includes(k)) sup++; }
-  let isAdversarial = adv > sup && adv > 0;
+  let isAdversarial = adv >= sup && adv > 0;
 
   // Framing override: detect "X é ladrão" / "corrupcao do X" patterns
-  if (!isAdversarial && adv === 0) {
+  if (!isAdversarial) {
     const figName = hasLula ? 'lula' : 'bolsonaro';
     const framing = detectFraming(normQuestion, figName);
     if (framing === 'adversarial') isAdversarial = true;
