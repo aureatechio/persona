@@ -5,11 +5,21 @@ import {
   Sparkles, Zap, ChevronDown, Clock, Download, Share2, RefreshCw, Copy,
   Video, MessageCircle, MapPin, Globe, Target, TrendingUp, Mic, Image, Layout,
   Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, MonitorPlay,
+  Brain, BarChart3, Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 
 /* ─── Types ────────────────────────────────────────────────────────── */
+
+interface RadarData {
+  alcance: number;
+  engajamento: number;
+  retencao: number;
+  conversao: number;
+  adequacao: number;
+  emocional: number;
+}
 
 interface AnaliseData {
   headline: string;
@@ -19,6 +29,7 @@ interface AnaliseData {
   recommendations: { icon: string; text: string; priority: string; detail: string }[];
   insight: { title: string; description: string; action: string };
   nextSteps: { title: string; benefit: string; deadline: string }[];
+  radar: RadarData;
 }
 
 /* ─── Icon mapping ─────────────────────────────────────────────────── */
@@ -107,33 +118,96 @@ function WaitingScreen() {
   );
 }
 
-/* ─── Loading Skeleton ──────────────────────────────────────────────── */
+/* ─── Animated Progress Loading ─────────────────────────────────────── */
 
-function AnalysisLoadingSkeleton() {
+const LOADING_STAGES = [
+  { label: 'Processando dados demográficos...', icon: BarChart3, pct: 15 },
+  { label: 'Analisando performance do conteúdo...', icon: Activity, pct: 35 },
+  { label: 'Calculando oportunidades por segmento...', icon: Target, pct: 55 },
+  { label: 'Gerando recomendações estratégicas...', icon: Brain, pct: 75 },
+  { label: 'Montando plano de ação...', icon: Zap, pct: 90 },
+  { label: 'Finalizando análise...', icon: Sparkles, pct: 97 },
+];
+
+function AnalysisProgressLoader() {
+  const [stageIdx, setStageIdx] = useState(0);
+  const [smoothPct, setSmoothPct] = useState(0);
+
+  useEffect(() => {
+    // Advance stages on a timer — fast at start, slower later
+    const durations = [2000, 2500, 3000, 3500, 4000, 8000];
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const advance = () => {
+      setStageIdx(prev => {
+        const next = Math.min(prev + 1, LOADING_STAGES.length - 1);
+        if (next < LOADING_STAGES.length - 1) {
+          timeout = setTimeout(advance, durations[next] || 3000);
+        }
+        return next;
+      });
+    };
+
+    timeout = setTimeout(advance, durations[0]);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  // Smooth percentage animation
+  useEffect(() => {
+    const target = LOADING_STAGES[stageIdx].pct;
+    const interval = setInterval(() => {
+      setSmoothPct(prev => {
+        if (prev >= target) { clearInterval(interval); return target; }
+        return prev + 0.5;
+      });
+    }, 30);
+    return () => clearInterval(interval);
+  }, [stageIdx]);
+
+  const stage = LOADING_STAGES[stageIdx];
+  const StageIcon = stage.icon;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-4 mt-2 animate-pulse">
-      {/* Hero skeleton */}
-      <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
-        <div className="h-4 w-24 bg-zinc-800/60 rounded-lg mb-4" />
-        <div className="h-7 w-3/4 bg-zinc-800/60 rounded-lg mb-6" />
-        <div className="grid grid-cols-3 gap-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-16 bg-zinc-800/40 rounded-xl" />
-          ))}
+    <div className="flex flex-col items-center justify-center h-full gap-8">
+      {/* Animated icon */}
+      <div className="relative">
+        <div className="w-20 h-20 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+          <StageIcon size={32} className="text-emerald-400" style={{ animation: 'pulse 2s ease-in-out infinite' }} />
+        </div>
+        {/* Orbiting dot */}
+        <div className="absolute inset-[-12px]" style={{ animation: 'spin 3s linear infinite' }}>
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-2 h-2 bg-emerald-400 rounded-full shadow-lg shadow-emerald-500/50" />
         </div>
       </div>
-      {/* Recommendations skeleton */}
-      <div className="space-y-2">
-        <div className="h-5 w-48 bg-zinc-800/60 rounded-lg mb-3" />
-        {[1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="h-14 bg-zinc-800/30 rounded-xl" />
-        ))}
+
+      {/* Stage label */}
+      <div className="text-center space-y-1">
+        <p className="text-sm font-medium text-zinc-300">{stage.label}</p>
+        <p className="text-xs text-zinc-600">Powered by Claude AI</p>
       </div>
-      {/* Next steps skeleton */}
-      <div className="space-y-2">
-        <div className="h-5 w-36 bg-zinc-800/60 rounded-lg mb-3" />
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 bg-zinc-800/30 rounded-xl" />
+
+      {/* Progress bar */}
+      <div className="w-72 space-y-2">
+        <div className="h-2 bg-zinc-900 rounded-full overflow-hidden border border-white/[0.04]">
+          <div
+            className="h-full bg-gradient-to-r from-emerald-500 via-emerald-400 to-sky-400 rounded-full transition-none"
+            style={{ width: `${smoothPct}%` }}
+          />
+        </div>
+        <div className="flex justify-between">
+          <span className="text-[10px] text-zinc-600 tabular-nums">{Math.round(smoothPct)}%</span>
+          <span className="text-[10px] text-zinc-600">Etapa {stageIdx + 1}/{LOADING_STAGES.length}</span>
+        </div>
+      </div>
+
+      {/* Stage dots */}
+      <div className="flex gap-1.5">
+        {LOADING_STAGES.map((_, i) => (
+          <div key={i} className={cn(
+            'w-1.5 h-1.5 rounded-full transition-all duration-500',
+            i <= stageIdx ? 'bg-emerald-400' : 'bg-zinc-800',
+            i === stageIdx && 'w-4 bg-emerald-400',
+          )} />
         ))}
       </div>
     </div>
@@ -170,6 +244,170 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+/* ─── Radar Chart (SVG) ─────────────────────────────────────────────── */
+
+const RADAR_LABELS = [
+  { key: 'alcance', label: 'Alcance' },
+  { key: 'engajamento', label: 'Engajamento' },
+  { key: 'retencao', label: 'Retenção' },
+  { key: 'conversao', label: 'Conversão' },
+  { key: 'adequacao', label: 'Adequação' },
+  { key: 'emocional', label: 'Emocional' },
+];
+
+function RadarChart({ radar }: { radar: RadarData }) {
+  const cx = 120, cy = 120, maxR = 90;
+  const n = RADAR_LABELS.length;
+
+  const getPoint = (idx: number, value: number) => {
+    const angle = (Math.PI * 2 * idx) / n - Math.PI / 2;
+    const r = (value / 10) * maxR;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  };
+
+  // Grid rings
+  const rings = [2.5, 5, 7.5, 10];
+
+  // Data polygon
+  const points = RADAR_LABELS.map((item, i) => {
+    const val = (radar as any)[item.key] || 0;
+    return getPoint(i, val);
+  });
+  const polygonStr = points.map(p => `${p.x},${p.y}`).join(' ');
+
+  return (
+    <div className="relative">
+      <svg viewBox="0 0 240 240" className="w-full h-full max-w-[280px] mx-auto">
+        {/* Grid rings */}
+        {rings.map(r => {
+          const ringPoints = Array.from({ length: n }, (_, i) => getPoint(i, r));
+          return (
+            <polygon key={r}
+              points={ringPoints.map(p => `${p.x},${p.y}`).join(' ')}
+              fill="none"
+              stroke="rgba(255,255,255,0.04)"
+              strokeWidth="1"
+            />
+          );
+        })}
+
+        {/* Axis lines */}
+        {RADAR_LABELS.map((_, i) => {
+          const end = getPoint(i, 10);
+          return <line key={i} x1={cx} y1={cy} x2={end.x} y2={end.y} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />;
+        })}
+
+        {/* Data polygon */}
+        <polygon
+          points={polygonStr}
+          fill="rgba(52, 211, 153, 0.1)"
+          stroke="rgba(52, 211, 153, 0.6)"
+          strokeWidth="2"
+          strokeLinejoin="round"
+        />
+
+        {/* Data points */}
+        {points.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="3.5"
+            fill="rgb(52, 211, 153)"
+            stroke="rgb(0, 0, 0)"
+            strokeWidth="1.5"
+          />
+        ))}
+
+        {/* Labels */}
+        {RADAR_LABELS.map((item, i) => {
+          const labelPos = getPoint(i, 12.5);
+          const val = (radar as any)[item.key] || 0;
+          return (
+            <g key={i}>
+              <text x={labelPos.x} y={labelPos.y - 6}
+                textAnchor="middle" dominantBaseline="middle"
+                className="fill-zinc-400 text-[10px] font-medium"
+              >
+                {item.label}
+              </text>
+              <text x={labelPos.x} y={labelPos.y + 6}
+                textAnchor="middle" dominantBaseline="middle"
+                className="fill-emerald-400 text-[9px] font-bold"
+              >
+                {val.toFixed(1)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+/* ─── Demographic Bars ──────────────────────────────────────────────── */
+
+interface SegmentItem {
+  label: string;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+function DemoBars({ segments }: { segments: Record<string, SegmentItem[]> }) {
+  // Pick the most interesting segments for compact display
+  const picks: { key: string; label: string }[] = [
+    { key: 'region', label: 'Região' },
+    { key: 'generation', label: 'Geração' },
+    { key: 'religion', label: 'Religião' },
+    { key: 'gender', label: 'Gênero' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {picks.map(({ key, label }) => {
+        const items = (segments as any)[key] as SegmentItem[] | undefined;
+        if (!items || items.length === 0) return null;
+
+        // Sort by total count, take top 4
+        const sorted = [...items]
+          .map(s => {
+            const total = s.positive + s.negative + s.neutral;
+            const approval = total > 0 ? Math.round((s.positive / total) * 100) : 0;
+            return { ...s, total, approval };
+          })
+          .filter(s => s.total > 0)
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 4);
+
+        if (sorted.length === 0) return null;
+
+        return (
+          <div key={key}>
+            <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-600 mb-1.5 block">{label}</span>
+            <div className="space-y-1.5">
+              {sorted.map(item => {
+                const barColor = item.approval >= 60 ? 'bg-emerald-500/70' : item.approval >= 40 ? 'bg-amber-500/70' : 'bg-rose-500/70';
+                return (
+                  <div key={item.label} className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-500 w-24 truncate shrink-0">{item.label}</span>
+                    <div className="flex-1 h-[6px] bg-zinc-900 rounded-full overflow-hidden">
+                      <div className={cn('h-full rounded-full transition-all duration-1000', barColor)}
+                        style={{ width: `${item.approval}%` }} />
+                    </div>
+                    <span className={cn(
+                      'text-[11px] font-bold tabular-nums w-9 text-right',
+                      item.approval >= 60 ? 'text-emerald-400' : item.approval >= 40 ? 'text-amber-400' : 'text-rose-400',
+                    )}>
+                      {item.approval}%
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ─── Recommendation Row ────────────────────────────────────────────── */
 
 function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations'][0]; index: number }) {
@@ -183,7 +421,6 @@ function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations']
         'bg-zinc-900/40 border border-white/[0.06] rounded-xl overflow-hidden',
         'hover:bg-zinc-900/60 hover:border-white/[0.1] transition-all duration-300',
       )}
-      style={{ animationDelay: `${index * 80}ms` }}
     >
       <button
         onClick={() => setExpanded(!expanded)}
@@ -282,7 +519,6 @@ export function AnaliseScreen() {
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
   const isWaitingForComplete = !analise && !isLoading && data.phase !== 'complete';
-  const platform = platformConfig[data.contentMeta?.mediaType || ''];
 
   // Format date
   const dateStr = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -316,7 +552,7 @@ export function AnaliseScreen() {
             </div>
           </div>
         ) : isLoading ? (
-          <AnalysisLoadingSkeleton />
+          <AnalysisProgressLoader />
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full gap-4">
             <div className="p-4 rounded-2xl bg-red-500/10">
@@ -328,7 +564,7 @@ export function AnaliseScreen() {
             </button>
           </div>
         ) : analise ? (
-          <div className="max-w-4xl mx-auto space-y-5">
+          <div className="max-w-5xl mx-auto space-y-5">
 
             {/* ═══ TOP BAR — Tags + Date ═══ */}
             <div className="flex items-center justify-between">
@@ -391,14 +627,43 @@ export function AnaliseScreen() {
               {total > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
-                    {total > 0 ? Math.round((data.positive / total) * 100) : 0}% ✓
+                    {Math.round((data.positive / total) * 100)}%
                   </span>
                   <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">
-                    {total > 0 ? Math.round((data.negative / total) * 100) : 0}% ✗
+                    {Math.round((data.negative / total) * 100)}%
                   </span>
                   <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">
-                    {total > 0 ? Math.round((data.neutral / total) * 100) : 0}% ~
+                    {Math.round((data.neutral / total) * 100)}%
                   </span>
+                </div>
+              )}
+            </div>
+
+            {/* ═══ RADAR + DEMOGRAPHICS — Two columns ═══ */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Radar Chart */}
+              {analise.radar && (
+                <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <Activity size={14} className="text-zinc-500" />
+                    <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                      Performance por Dimensão
+                    </h2>
+                  </div>
+                  <RadarChart radar={analise.radar} />
+                </div>
+              )}
+
+              {/* Demographics */}
+              {data.segments && (
+                <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5">
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <BarChart3 size={14} className="text-zinc-500" />
+                    <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
+                      Aprovação por Segmento
+                    </h2>
+                  </div>
+                  <DemoBars segments={data.segments as any} />
                 </div>
               )}
             </div>
@@ -453,7 +718,6 @@ export function AnaliseScreen() {
                   <div
                     key={i}
                     className="bg-zinc-900/40 border border-white/[0.06] rounded-xl p-4 flex items-center gap-4 hover:bg-zinc-900/60 hover:border-white/[0.1] transition-all duration-300"
-                    style={{ animationDelay: `${i * 80}ms` }}
                   >
                     <div className="w-9 h-9 rounded-full bg-zinc-800 border border-white/[0.08] flex items-center justify-center shrink-0">
                       <span className="text-sm font-bold text-white">{i + 1}</span>

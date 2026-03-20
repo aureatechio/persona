@@ -179,7 +179,15 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
       "benefit": "Resultado esperado com metrica",
       "deadline": "hoje|amanha|3 dias|essa semana|proximo ciclo"
     }
-  ]
+  ],
+  "radar": {
+    "alcance": 7.5,
+    "engajamento": 6.0,
+    "retencao": 5.5,
+    "conversao": 4.0,
+    "adequacao": 8.0,
+    "emocional": 6.5
+  }
 }
 
 REGRAS DO JSON:
@@ -189,6 +197,7 @@ REGRAS DO JSON:
 - "recommendations": EXATAMENTE 5 itens. Mix de prioridades: 2-3 "prioridade", 1-2 "importante", 1 "oportunidade". Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout
 - "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
 - "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
+- "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
 
 REGRAS GERAIS:
 - Portugues brasileiro, tom de CMO senior — direto, assertivo, sem rodeios
