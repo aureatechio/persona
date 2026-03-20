@@ -630,14 +630,17 @@ export function AnaliseScreen() {
               <div className="flex-1" />
               {total > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
                     {Math.round((data.positive / total) * 100)}%
+                    <span className="text-[9px] font-medium text-emerald-400/60">favor</span>
                   </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">
                     {Math.round((data.negative / total) * 100)}%
+                    <span className="text-[9px] font-medium text-rose-400/60">contra</span>
                   </span>
-                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">
                     {Math.round((data.neutral / total) * 100)}%
+                    <span className="text-[9px] font-medium text-amber-400/60">neutro</span>
                   </span>
                 </div>
               )}
