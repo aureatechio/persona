@@ -1,59 +1,60 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, CheckCircle, AlertTriangle, Target, Zap, Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, MonitorPlay } from 'lucide-react';
+import {
+  Sparkles, Zap, ChevronDown, Clock, Download, Share2, RefreshCw, Copy,
+  Video, MessageCircle, MapPin, Globe, Target, TrendingUp, Mic, Image, Layout,
+  Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, MonitorPlay,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePresentationData } from '@/hooks/usePresentationData';
 
-/* ─── Parse sections from AI response ──────────────────────────────── */
+/* ─── Types ────────────────────────────────────────────────────────── */
 
-function parseSections(text: string) {
-  const sections = { headline: '', acertos: '', erros: '', sugestoes: '' };
-  const parts = text.split(/## /);
-  for (const part of parts) {
-    const lower = part.toLowerCase();
-    if (lower.startsWith('headline')) sections.headline = part.replace(/^headline\s*\n?/i, '').trim();
-    else if (lower.startsWith('acertos')) sections.acertos = part.replace(/^acertos\s*\n?/i, '').trim();
-    else if (lower.startsWith('erros')) sections.erros = part.replace(/^erros\s*\n?/i, '').trim();
-    else if (lower.startsWith('sugest')) sections.sugestoes = part.replace(/^sugesto?e?s[^\n]*\n?/i, '').trim();
-  }
-  return sections;
+interface AnaliseData {
+  headline: string;
+  score: number;
+  tags: string[];
+  stats: { value: string; label: string }[];
+  recommendations: { icon: string; text: string; priority: string; detail: string }[];
+  insight: { title: string; description: string; action: string };
+  nextSteps: { title: string; benefit: string; deadline: string }[];
 }
 
-/* ─── Render bullet points with bold highlighting ──────────────────── */
+/* ─── Icon mapping ─────────────────────────────────────────────────── */
 
-function RenderBullets({ text, accentColor }: { text: string; accentColor: 'emerald' | 'rose' | 'amber' }) {
-  if (!text) return null;
-  const lines = text.split('\n').filter(l => l.trim());
+const iconMap: Record<string, typeof Video> = {
+  video: Video,
+  message: MessageCircle,
+  map: MapPin,
+  sparkles: Sparkles,
+  globe: Globe,
+  target: Target,
+  trending: TrendingUp,
+  mic: Mic,
+  image: Image,
+  layout: Layout,
+};
 
-  const dotColor = {
-    emerald: 'bg-emerald-400/40',
-    rose: 'bg-rose-400/40',
-    amber: 'bg-amber-400/40',
-  }[accentColor];
+/* ─── Priority badge config ────────────────────────────────────────── */
 
-  return (
-    <div className="space-y-3">
-      {lines.map((line, i) => {
-        const clean = line.replace(/^[-*]\s*/, '');
-        const parts = clean.split(/(\*\*[^*]+\*\*)/g);
-        return (
-          <div key={i} className="flex gap-3 items-start">
-            <div className={cn('w-1.5 h-1.5 rounded-full shrink-0 mt-2', dotColor)} />
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              {parts.map((part, j) => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                  return <span key={j} className="font-semibold text-white">{part.slice(2, -2)}</span>;
-                }
-                return part;
-              })}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+const priorityConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  prioridade: { label: 'PRIORIDADE', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+  importante: { label: 'IMPORTANTE', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+  oportunidade: { label: 'OPORTUNIDADE', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+};
+
+/* ─── Platform badge config ────────────────────────────────────────── */
+
+const platformConfig: Record<string, { label: string; icon: typeof Instagram; color: string; bg: string; border: string }> = {
+  instagram: { label: 'Instagram', icon: Instagram, color: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/20' },
+  tiktok: { label: 'TikTok', icon: MonitorPlay, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
+  youtube: { label: 'YouTube', icon: Youtube, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
+  tv: { label: 'TV', icon: Tv, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
+  radio: { label: 'Rádio', icon: Radio, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' },
+  outdoor: { label: 'Outdoor', icon: Megaphone, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+  impresso: { label: 'Impresso', icon: Newspaper, color: 'text-zinc-300', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20' },
+};
 
 /* ─── Animated Waiting Screen ───────────────────────────────────────── */
 
@@ -106,57 +107,138 @@ function WaitingScreen() {
   );
 }
 
-/* ─── Platform badge config ────────────────────────────────────────── */
+/* ─── Loading Skeleton ──────────────────────────────────────────────── */
 
-const platformConfig: Record<string, { label: string; icon: typeof Instagram; color: string; bg: string; border: string }> = {
-  instagram: { label: 'Instagram', icon: Instagram, color: 'text-pink-400', bg: 'bg-pink-500/10', border: 'border-pink-500/20' },
-  tiktok: { label: 'TikTok', icon: MonitorPlay, color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
-  youtube: { label: 'YouTube', icon: Youtube, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20' },
-  tv: { label: 'TV', icon: Tv, color: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
-  radio: { label: 'Rádio', icon: Radio, color: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/20' },
-  outdoor: { label: 'Outdoor', icon: Megaphone, color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
-  impresso: { label: 'Impresso', icon: Newspaper, color: 'text-zinc-300', bg: 'bg-zinc-500/10', border: 'border-zinc-500/20' },
-};
+function AnalysisLoadingSkeleton() {
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 mt-2 animate-pulse">
+      {/* Hero skeleton */}
+      <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
+        <div className="h-4 w-24 bg-zinc-800/60 rounded-lg mb-4" />
+        <div className="h-7 w-3/4 bg-zinc-800/60 rounded-lg mb-6" />
+        <div className="grid grid-cols-3 gap-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-16 bg-zinc-800/40 rounded-xl" />
+          ))}
+        </div>
+      </div>
+      {/* Recommendations skeleton */}
+      <div className="space-y-2">
+        <div className="h-5 w-48 bg-zinc-800/60 rounded-lg mb-3" />
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="h-14 bg-zinc-800/30 rounded-xl" />
+        ))}
+      </div>
+      {/* Next steps skeleton */}
+      <div className="space-y-2">
+        <div className="h-5 w-36 bg-zinc-800/60 rounded-lg mb-3" />
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-16 bg-zinc-800/30 rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Score Ring ─────────────────────────────────────────────────────── */
+
+function ScoreRing({ score }: { score: number }) {
+  const pct = (score / 10) * 100;
+  const circumference = 2 * Math.PI * 42;
+  const offset = circumference - (pct / 100) * circumference;
+
+  const color = score >= 7 ? 'text-emerald-400' : score >= 4 ? 'text-amber-400' : 'text-red-400';
+  const strokeColor = score >= 7 ? 'stroke-emerald-400' : score >= 4 ? 'stroke-amber-400' : 'stroke-red-400';
+  const glowColor = score >= 7 ? 'shadow-emerald-500/20' : score >= 4 ? 'shadow-amber-500/20' : 'shadow-red-500/20';
+
+  return (
+    <div className={cn('relative w-24 h-24 shrink-0 rounded-full shadow-lg', glowColor)}>
+      <svg className="w-24 h-24 -rotate-90" viewBox="0 0 96 96">
+        <circle cx="48" cy="48" r="42" fill="none" stroke="currentColor" strokeWidth="3"
+          className="text-zinc-800/50" />
+        <circle cx="48" cy="48" r="42" fill="none" strokeWidth="3"
+          className={cn(strokeColor, 'transition-all duration-1000 ease-out')}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={cn('text-2xl font-bold', color)}>{score.toFixed(1)}</span>
+        <span className="text-[10px] text-zinc-500 font-medium">/10</span>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Recommendation Row ────────────────────────────────────────────── */
+
+function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations'][0]; index: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = iconMap[rec.icon] || Sparkles;
+  const priority = priorityConfig[rec.priority] || priorityConfig.importante;
+
+  return (
+    <div
+      className={cn(
+        'bg-zinc-900/40 border border-white/[0.06] rounded-xl overflow-hidden',
+        'hover:bg-zinc-900/60 hover:border-white/[0.1] transition-all duration-300',
+      )}
+      style={{ animationDelay: `${index * 80}ms` }}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-4 p-4 text-left cursor-pointer"
+      >
+        <div className="p-2 rounded-xl bg-white/[0.04] shrink-0">
+          <Icon size={18} className="text-zinc-400" />
+        </div>
+        <span className="flex-1 text-sm font-medium text-zinc-200">{rec.text}</span>
+        <span className={cn(
+          'px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0',
+          priority.bg, priority.color, priority.border,
+        )}>
+          {priority.label}
+        </span>
+        <ChevronDown size={16} className={cn(
+          'text-zinc-500 shrink-0 transition-transform duration-200',
+          expanded && 'rotate-180',
+        )} />
+      </button>
+      {expanded && rec.detail && (
+        <div className="px-4 pb-4 pl-14">
+          <p className="text-xs text-zinc-400 leading-relaxed">{rec.detail}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ─── Main Analise Screen ───────────────────────────────────────────── */
 
 export function AnaliseScreen() {
   const { data, hasEverReceived } = usePresentationData();
-  const [text, setText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [displayedText, setDisplayedText] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
+  const [analise, setAnalise] = useState<AnaliseData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const hasCalledRef = useRef(false);
   const lastQuestion = useRef('');
-  const charIndex = useRef(0);
-  const typingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reset when new question arrives (or question clears on "novo chat")
+  // Reset when new question arrives
   useEffect(() => {
     if (data.question !== lastQuestion.current) {
       lastQuestion.current = data.question;
       hasCalledRef.current = false;
-      setText('');
-      setDisplayedText('');
-      charIndex.current = 0;
-      if (typingTimer.current) clearInterval(typingTimer.current);
-      if (abortRef.current) abortRef.current.abort();
+      setAnalise(null);
+      setError('');
     }
   }, [data.question]);
 
   const callAnalise = useCallback(async () => {
     if (!hasEverReceived) return;
-    if (abortRef.current) abortRef.current.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
 
-    setIsTyping(true);
-    setText('');
-    setDisplayedText('');
-    charIndex.current = 0;
-    if (typingTimer.current) clearInterval(typingTimer.current);
-
-    let accumulated = '';
+    setIsLoading(true);
+    setAnalise(null);
+    setError('');
 
     try {
       const res = await fetch('/api/arena/analise', {
@@ -172,45 +254,21 @@ export function AnaliseScreen() {
           phase: 'complete',
           contentMeta: data.contentMeta,
         }),
-        signal: controller.signal,
       });
 
-      if (!res.ok || !res.body) throw new Error('Failed');
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data: ')) continue;
-          const payload = trimmed.slice(6);
-          if (payload === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(payload);
-            if (parsed.text) {
-              accumulated += parsed.text;
-              setText(accumulated);
-            }
-          } catch {}
-        }
-      }
+      if (!res.ok) throw new Error('Failed');
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setAnalise(json);
     } catch (err: any) {
-      if (err?.name !== 'AbortError') console.error('[Analise] Error:', err);
+      console.error('[Analise] Error:', err);
+      setError('Falha ao gerar análise');
     } finally {
-      setIsTyping(false);
+      setIsLoading(false);
     }
-  }, [data]);
+  }, [data, hasEverReceived]);
 
-  // Trigger ONLY when complete
+  // Trigger when complete
   useEffect(() => {
     if (!data || hasCalledRef.current) return;
     if (data.phase === 'complete' && data.segments) {
@@ -219,91 +277,26 @@ export function AnaliseScreen() {
     }
   }, [data, callAnalise]);
 
-  // Typing animation
-  useEffect(() => {
-    if (!text) return;
-    if (typingTimer.current) clearInterval(typingTimer.current);
-
-    typingTimer.current = setInterval(() => {
-      if (charIndex.current < text.length) {
-        const charsToAdd = Math.min(3, text.length - charIndex.current);
-        charIndex.current += charsToAdd;
-        setDisplayedText(text.slice(0, charIndex.current));
-      } else {
-        if (typingTimer.current) clearInterval(typingTimer.current);
-      }
-    }, 15);
-
-    return () => { if (typingTimer.current) clearInterval(typingTimer.current); };
-  }, [text]);
-
   // No data yet
   if (!hasEverReceived) return <WaitingScreen />;
 
   const total = (data.positive || 0) + (data.negative || 0) + (data.neutral || 0);
-  const pctPos = total > 0 ? Math.round((data.positive / total) * 100) : 0;
-  const pctNeg = total > 0 ? Math.round((data.negative / total) * 100) : 0;
-  const pctNeu = total > 0 ? Math.round((data.neutral / total) * 100) : 0;
-
-  const sections = parseSections(displayedText);
-  const isProcessing = !displayedText && !isTyping && data.phase !== 'complete';
-  const isWaitingForComplete = !displayedText && !isTyping && data.phase !== 'complete';
-
+  const isWaitingForComplete = !analise && !isLoading && data.phase !== 'complete';
   const platform = platformConfig[data.contentMeta?.mediaType || ''];
-  const PlatformIcon = platform?.icon;
+
+  // Format date
+  const dateStr = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
 
   return (
     <div className="h-screen w-screen bg-black overflow-hidden relative flex flex-col">
       {/* Background effects */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-emerald-500/[0.03] rounded-full blur-3xl pointer-events-none"
         style={{ animation: 'float1 8s ease-in-out infinite' }} />
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-rose-500/[0.03] rounded-full blur-3xl pointer-events-none"
+      <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-violet-500/[0.03] rounded-full blur-3xl pointer-events-none"
         style={{ animation: 'float2 10s ease-in-out infinite' }} />
 
-      {/* ═══ TOP BAR ═══ */}
-      <div className="shrink-0 px-8 pt-5 pb-3 flex items-center gap-4">
-        <div className="flex-1 bg-white/[0.03] backdrop-blur-2xl border border-white/[0.06] rounded-2xl px-6 py-4 flex items-center gap-4">
-          <div className={cn(
-            'p-2.5 rounded-xl shrink-0',
-            isTyping ? 'bg-emerald-500/10' : 'bg-white/[0.04]'
-          )}>
-            <Sparkles size={20} className={cn(isTyping ? 'text-emerald-400 animate-pulse' : 'text-zinc-500')} />
-          </div>
-
-          {platform && PlatformIcon && (
-            <div className={cn('flex items-center gap-2 px-3 py-1.5 rounded-xl border shrink-0', platform.bg, platform.border)}>
-              <PlatformIcon size={16} className={platform.color} />
-              <span className={cn('text-xs font-bold uppercase tracking-wider', platform.color)}>{platform.label}</span>
-            </div>
-          )}
-
-          <div className="flex-1" />
-
-          {total > 0 && (
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">{pctPos}%</span>
-              <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">{pctNeg}%</span>
-              <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">{pctNeu}%</span>
-            </div>
-          )}
-          {data.question && data.phase !== 'complete' && (() => {
-            const anlProgress = data.totalCount > 0 ? Math.round((data.processedCount / data.totalCount) * 100) : 0;
-            return (
-              <div className="flex items-center gap-2 shrink-0 ml-1">
-                <div className="w-24 h-[6px] rounded-full bg-white/[0.06] overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 rounded-full" style={{ width: `${anlProgress}%`, transition: anlProgress <= 2 ? 'none' : 'width 2s ease-out' }} />
-                </div>
-                <span className="text-xs font-bold text-zinc-400 tabular-nums">
-                  {data.processedCount > 0 ? `${data.processedCount}/${data.totalCount}` : 'Preparando...'}
-                </span>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-
       {/* ═══ MAIN CONTENT ═══ */}
-      <div className="flex-1 overflow-y-auto px-8 pb-4">
+      <div className="flex-1 overflow-y-auto px-6 md:px-8 py-5">
         {isWaitingForComplete ? (
           /* Waiting for simulation to complete */
           <div className="flex flex-col items-center justify-center h-full gap-6">
@@ -322,112 +315,175 @@ export function AnaliseScreen() {
               </div>
             </div>
           </div>
-        ) : (
-          /* Analysis content — headline + 2 columns + bottom */
-          <div className="max-w-7xl mx-auto space-y-4 mt-2">
-            {/* McKinsey Headline */}
-            {sections.headline ? (
-              <div className="relative rounded-2xl p-px bg-gradient-to-r from-emerald-500/50 via-sky-500/30 to-violet-500/50">
-                <div className="bg-zinc-950 rounded-2xl p-6 md:p-8">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="p-2 rounded-xl bg-white/[0.06]">
-                      <Zap size={18} className="text-white" />
-                    </div>
-                    <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
-                      Recomendacao Estrategica{platform ? ` — ${platform.label}` : ''}
+        ) : isLoading ? (
+          <AnalysisLoadingSkeleton />
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center h-full gap-4">
+            <div className="p-4 rounded-2xl bg-red-500/10">
+              <Sparkles size={32} className="text-red-400" />
+            </div>
+            <p className="text-zinc-400 text-sm">{error}</p>
+            <button onClick={callAnalise} className="px-4 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] rounded-xl text-sm text-zinc-300 transition-all duration-200">
+              Tentar novamente
+            </button>
+          </div>
+        ) : analise ? (
+          <div className="max-w-4xl mx-auto space-y-5">
+
+            {/* ═══ TOP BAR — Tags + Date ═══ */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {analise.tags?.map((tag, i) => (
+                  <span key={i} className="inline-flex items-center px-4 py-1.5 bg-zinc-800/60 border border-white/[0.08] rounded-full text-xs font-medium text-zinc-300">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+              <span className="text-xs text-zinc-500">{dateStr}</span>
+            </div>
+
+            {/* ═══ HERO CARD — Headline + Score + Stats ═══ */}
+            <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/[0.06] rounded-2xl p-6">
+              <div className="flex items-start gap-6">
+                <div className="flex-1">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500 mb-3 block">
+                    SUA ANÁLISE
+                  </span>
+                  <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight leading-snug">
+                    {analise.headline}
+                  </h1>
+                </div>
+                <ScoreRing score={analise.score} />
+              </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-3 mt-5">
+                {analise.stats?.map((stat, i) => (
+                  <div key={i} className="bg-emerald-500/[0.06] border border-emerald-500/15 rounded-xl p-3 text-center">
+                    <span className={cn(
+                      'text-lg font-bold block',
+                      stat.value.startsWith('+') ? 'text-emerald-400' : 'text-white'
+                    )}>
+                      {stat.value}
+                    </span>
+                    <span className="text-[11px] text-zinc-400 leading-tight block mt-0.5">
+                      {stat.label}
                     </span>
                   </div>
-                  <p className="text-xl md:text-2xl font-bold text-white tracking-tight leading-snug">
-                    {sections.headline.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-                      part.startsWith('**') && part.endsWith('**')
-                        ? <span key={i} className="text-emerald-400">{part.slice(2, -2)}</span>
-                        : part
-                    )}
-                  </p>
-                </div>
-              </div>
-            ) : (isTyping || charIndex.current < text.length) ? (
-              <div className="relative rounded-2xl p-px bg-gradient-to-r from-zinc-800/50 via-zinc-700/30 to-zinc-800/50 animate-pulse">
-                <div className="bg-zinc-950 rounded-2xl p-6">
-                  <div className="h-6 w-3/4 bg-zinc-800/50 rounded-lg" />
-                </div>
-              </div>
-            ) : null}
-
-            {/* Two columns: Acertos + Erros */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Acertos */}
-              <div className="bg-emerald-500/[0.03] backdrop-blur-xl border border-emerald-500/20 rounded-2xl p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 rounded-xl bg-emerald-500/10">
-                    <CheckCircle size={20} className="text-emerald-400" />
-                  </div>
-                  <h2 className="text-xl font-bold text-emerald-400 tracking-tight">O que funcionou</h2>
-                </div>
-                <RenderBullets text={sections.acertos} accentColor="emerald" />
-                {!sections.acertos && (isTyping || charIndex.current < text.length) && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-emerald-400/40 rounded-full animate-pulse" />
-                    <span className="text-sm text-zinc-600">Analisando acertos...</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Erros */}
-              <div className="bg-rose-500/[0.03] backdrop-blur-xl border border-rose-500/20 rounded-2xl p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 rounded-xl bg-rose-500/10">
-                    <AlertTriangle size={20} className="text-rose-400" />
-                  </div>
-                  <h2 className="text-xl font-bold text-rose-400 tracking-tight">O que ajustar</h2>
-                </div>
-                <RenderBullets text={sections.erros} accentColor="rose" />
-                {!sections.erros && (isTyping || charIndex.current < text.length) && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-rose-400/40 rounded-full animate-pulse" />
-                    <span className="text-sm text-zinc-600">Analisando erros...</span>
-                  </div>
-                )}
+                ))}
               </div>
             </div>
 
-            {/* Sugestoes — full width */}
-            {(sections.sugestoes || (isTyping && sections.erros)) && (
-              <div className="bg-amber-500/[0.03] backdrop-blur-xl border border-amber-500/20 rounded-2xl p-6">
-                <div className="flex items-center gap-3 mb-5">
-                  <div className="p-2 rounded-xl bg-amber-500/10">
-                    <Target size={20} className="text-amber-400" />
-                  </div>
-                  <h2 className="text-xl font-bold text-amber-400 tracking-tight">Proximos Passos</h2>
+            {/* ═══ ACTION BUTTONS BAR ═══ */}
+            <div className="flex items-center gap-2">
+              {[
+                { icon: Download, label: 'Exportar PDF' },
+                { icon: Share2, label: 'Compartilhar' },
+                { icon: Copy, label: 'Copiar Insights' },
+                { icon: RefreshCw, label: 'Nova Análise' },
+              ].map(({ icon: BtnIcon, label }) => (
+                <button key={label} className="inline-flex items-center gap-2 px-3.5 py-2 bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.06] hover:border-white/[0.12] rounded-xl text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-all duration-200 active:scale-[0.97]">
+                  <BtnIcon size={14} />
+                  {label}
+                </button>
+              ))}
+              <div className="flex-1" />
+              {total > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-bold text-emerald-400">
+                    {total > 0 ? Math.round((data.positive / total) * 100) : 0}% ✓
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-400">
+                    {total > 0 ? Math.round((data.negative / total) * 100) : 0}% ✗
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-400">
+                    {total > 0 ? Math.round((data.neutral / total) * 100) : 0}% ~
+                  </span>
                 </div>
-                <RenderBullets text={sections.sugestoes} accentColor="amber" />
-                {!sections.sugestoes && (isTyping || charIndex.current < text.length) && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-amber-400/40 rounded-full animate-pulse" />
-                    <span className="text-sm text-zinc-600">Gerando sugestões...</span>
+              )}
+            </div>
+
+            {/* ═══ EVOLUA SEU CONTEÚDO ═══ */}
+            <div>
+              <div className="flex items-center gap-2.5 mb-3">
+                <Sparkles size={16} className="text-zinc-500" />
+                <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-500">
+                  Evolua seu conteúdo
+                </h2>
+              </div>
+              <div className="space-y-2">
+                {analise.recommendations?.map((rec, i) => (
+                  <RecommendationRow key={i} rec={rec} index={i} />
+                ))}
+              </div>
+            </div>
+
+            {/* ═══ INSIGHT DESTAQUE ═══ */}
+            {analise.insight && (
+              <div className="bg-emerald-500/[0.04] border border-emerald-500/20 rounded-2xl p-5">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 shrink-0 mt-0.5">
+                    <Sparkles size={18} className="text-emerald-400" />
                   </div>
-                )}
+                  <div>
+                    <h3 className="text-sm font-bold text-emerald-400 mb-1">
+                      {analise.insight.title}
+                    </h3>
+                    <p className="text-xs text-zinc-400 leading-relaxed mb-2">
+                      {analise.insight.description}
+                    </p>
+                    <p className="text-xs text-zinc-300 font-medium">
+                      → {analise.insight.action}
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* Typing indicator */}
-            {(isTyping || charIndex.current < text.length) && (
-              <div className="flex items-center justify-center gap-2 py-2">
-                <span className="inline-block w-0.5 h-5 bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-zinc-600">Gerando análise...</span>
+            {/* ═══ PRÓXIMOS PASSOS ═══ */}
+            <div>
+              <div className="flex items-center gap-2.5 mb-3">
+                <Zap size={16} className="text-zinc-500" />
+                <h2 className="text-xs font-bold uppercase tracking-[0.15em] text-zinc-500">
+                  Próximos Passos
+                </h2>
               </div>
-            )}
+              <div className="space-y-2">
+                {analise.nextSteps?.map((step, i) => (
+                  <div
+                    key={i}
+                    className="bg-zinc-900/40 border border-white/[0.06] rounded-xl p-4 flex items-center gap-4 hover:bg-zinc-900/60 hover:border-white/[0.1] transition-all duration-300"
+                    style={{ animationDelay: `${i * 80}ms` }}
+                  >
+                    <div className="w-9 h-9 rounded-full bg-zinc-800 border border-white/[0.08] flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold text-white">{i + 1}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-white">{step.title}</p>
+                      <p className="text-xs text-emerald-400 mt-0.5">{step.benefit}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 text-zinc-500">
+                      <Clock size={12} />
+                      <span className="text-xs font-medium">{step.deadline}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom spacer */}
+            <div className="h-4" />
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ═══ BOTTOM SENTIMENT BAR ═══ */}
       {total > 0 && (
         <div className="shrink-0 h-[3px]">
           <div className="h-full flex">
-            <div className="h-full bg-emerald-500 transition-all duration-[2000ms]" style={{ width: `${pctPos}%` }} />
-            <div className="h-full bg-amber-500 transition-all duration-[2000ms]" style={{ width: `${pctNeu}%` }} />
-            <div className="h-full bg-rose-500 transition-all duration-[2000ms]" style={{ width: `${pctNeg}%` }} />
+            <div className="h-full bg-emerald-500 transition-all duration-[2000ms]" style={{ width: `${Math.round((data.positive / total) * 100)}%` }} />
+            <div className="h-full bg-amber-500 transition-all duration-[2000ms]" style={{ width: `${Math.round((data.neutral / total) * 100)}%` }} />
+            <div className="h-full bg-rose-500 transition-all duration-[2000ms]" style={{ width: `${Math.round((data.negative / total) * 100)}%` }} />
           </div>
         </div>
       )}

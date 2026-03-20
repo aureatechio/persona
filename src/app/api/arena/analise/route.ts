@@ -136,6 +136,8 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
 
   const platformBlock = platformKnowledge[mediaLabel] || '';
 
+  const contentTypeLabel = contentMeta?.contentType || 'conteudo';
+
   const systemPrompt = `Voce e um CMO (Chief Marketing Officer) de altissimo nivel, especialista em performance de conteudo politico. Voce NAO analisa opiniao politica — voce analisa PERFORMANCE DE CONTEUDO. Seu trabalho e dizer ao candidato exatamente o que fazer para que o material performe melhor.
 
 Voce e PRESCRITIVO, nao descritivo. Voce COMANDA o caminho, nao descreve o que aconteceu. Use verbos no imperativo: "Faca X", "Ajuste Y", "Elimine Z".
@@ -147,29 +149,55 @@ CONTEXTO DO MATERIAL:
 
 ${platformBlock}
 
-FORMATO OBRIGATORIO — use exatamente estes headers markdown:
+FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown, sem texto antes ou depois. O JSON deve seguir EXATAMENTE esta estrutura:
 
-## Headline
-(UMA UNICA frase curta, direta, orientada a acao, ESPECIFICA para ${mediaLabel.toUpperCase()}. Estilo McKinsey: o que fazer para performar melhor NESTA PLATAFORMA. Maximo 15 palavras.)
+{
+  "headline": "Frase curta e direta de impacto, orientada a acao. Maximo 20 palavras. Estilo McKinsey.",
+  "score": 6.5,
+  "tags": ["${mediaLabel} · ${contentMeta?.region?.toUpperCase() || 'BR'}", "${contentTypeLabel} · Tema do conteudo"],
+  "stats": [
+    { "value": "+XX%", "label": "descricao curta da oportunidade" },
+    { "value": "+XX%", "label": "descricao curta da oportunidade" },
+    { "value": "XX%", "label": "descricao curta da oportunidade" }
+  ],
+  "recommendations": [
+    {
+      "icon": "video|message|map|sparkles|globe|target|trending|mic|image|layout",
+      "text": "Recomendacao curta e direta, imperativa",
+      "priority": "prioridade|importante|oportunidade",
+      "detail": "Explicacao expandida com dados demograficos e porcentagens especificas. 1-2 frases."
+    }
+  ],
+  "insight": {
+    "title": "Dado surpreendente ou oportunidade oculta nos dados",
+    "description": "Contexto com numeros: X% aprova, Y% compartilha Z vezes mais que a media.",
+    "action": "Acao concreta e imediata que explora esse insight"
+  },
+  "nextSteps": [
+    {
+      "title": "Acao concreta no imperativo",
+      "benefit": "Resultado esperado com metrica",
+      "deadline": "hoje|amanha|3 dias|essa semana|proximo ciclo"
+    }
+  ]
+}
 
-## Acertos
-(3-5 bullets: o que no material esta performando bem ESPECIFICAMENTE para ${mediaLabel.toUpperCase()}. Cite formato, linguagem, metricas e demograficos relevantes para esta plataforma. Imperativo: "Mantenha...", "Continue com...", "Explore mais...")
+REGRAS DO JSON:
+- "score": nota de 0.0 a 10.0 avaliando a performance geral do conteudo (considere aprovacao, engajamento potencial e adequacao a plataforma)
+- "tags": EXATAMENTE 2 tags — primeira: plataforma + regiao, segunda: tipo de conteudo + tema principal
+- "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas credIveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
+- "recommendations": EXATAMENTE 5 itens. Mix de prioridades: 2-3 "prioridade", 1-2 "importante", 1 "oportunidade". Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout
+- "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
+- "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
 
-## Erros
-(3-5 bullets: o que esta PREJUDICANDO a performance nesta plataforma e deve ser corrigido. Cite quais boas praticas de ${mediaLabel.toUpperCase()} estao sendo violadas e quais grupos rejeitam. Imperativo: "Elimine...", "Substitua...", "Pare de...")
-
-## Sugestoes
-(3-4 acoes CONCRETAS usando formatos e mecanicas ESPECIFICOS de ${mediaLabel.toUpperCase()}. Cada sugestao deve mencionar um formato ou recurso da plataforma. Acionaveis AGORA. Imperativo.)
-
-REGRAS:
+REGRAS GERAIS:
 - Portugues brasileiro, tom de CMO senior — direto, assertivo, sem rodeios
 - NUNCA analise se a opiniao e certa ou errada — analise apenas PERFORMANCE
-- Cada bullet deve citar dados especificos (grupos demograficos, porcentagens)
-- Bullets devem comecar com "- " (markdown list)
-- Use ** para destacar termos chave
-- TODA sugestao deve ser contextualizada para ${mediaLabel.toUpperCase()} — mencione formatos, mecanicas e boas praticas DESTA plataforma
+- Cada recomendacao deve citar dados especificos (grupos demograficos, porcentagens)
+- TODA sugestao deve ser contextualizada para ${mediaLabel.toUpperCase()}
 - Considere o posicionamento ideologico: sugestoes devem ser coerentes com o posicionamento ${ideologyLabel} do candidato
-- Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado`;
+- Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
+- RESPONDA APENAS O JSON, nada mais. Sem \`\`\`json, sem explicacoes, APENAS o objeto JSON.`;
 
   const userMessage = `MATERIAL ANALISADO: "${question}"
 
@@ -182,40 +210,29 @@ RESULTADO GERAL:
 BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
 
-Produza a analise de performance com Headline, Acertos, Erros e Sugestoes.`;
+Produza a analise de performance no formato JSON especificado.`;
 
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        const response = await anthropic.messages.create({
-          model: 'claude-opus-4-20250514',
-          max_tokens: 1500,
-          stream: true,
-          system: systemPrompt,
-          messages: [{ role: 'user', content: userMessage }],
-        });
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-opus-4-20250514',
+      max_tokens: 2500,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
 
-        for await (const event of response) {
-          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`));
-          }
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        controller.close();
-      } catch (err) {
-        console.error('[Analise] Error:', err);
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Falha na analise' })}\n\n`));
-        controller.close();
-      }
-    },
-  });
+    const raw = response.content[0].type === 'text' ? response.content[0].text : '';
 
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    },
-  });
+    // Extract JSON from response (handle possible markdown wrapping)
+    let jsonStr = raw.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+    }
+
+    const parsed = JSON.parse(jsonStr);
+
+    return Response.json(parsed);
+  } catch (err) {
+    console.error('[Analise] Error:', err);
+    return Response.json({ error: 'Falha na analise' }, { status: 500 });
+  }
 }
