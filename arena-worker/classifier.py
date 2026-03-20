@@ -4,6 +4,9 @@ AI-powered persona sentiment classifier.
 For each batch of personas, sends a structured prompt to GPT-4o-mini
 asking it to classify each persona's likely stance on the question,
 based on their full demographic/opinion profile.
+
+v3: Uses pre-classifier output for semantic disambiguation instead of
+hardcoded word lists and regex patterns.
 """
 
 import json
@@ -53,14 +56,81 @@ def _build_persona_summary(persona: dict, index: int) -> str:
     return " | ".join(parts)
 
 
+def _build_disambiguation(pre_class: dict | None) -> str:
+    """
+    Build the semantic disambiguation block from the pre-classifier output.
+    This replaces ALL hardcoded political framing rules, word lists, and regex patterns.
+    """
+    if not pre_class or not pre_class.get("classification_guide"):
+        return ""
+
+    guide = pre_class["classification_guide"]
+    core = pre_class.get("core_position", "")
+
+    lines = [
+        "",
+        "═══ ANALISE SEMANTICA (gerada por IA — SIGA EXATAMENTE) ═══",
+        f'POSICAO EXPRESSA NO TEXTO: {core}',
+        "",
+        "REGRA DE CLASSIFICACAO:",
+        f'- "positive" = {guide.get("positive_means", "Concorda com a posicao expressa")}',
+        f'- "negative" = {guide.get("negative_means", "Discorda da posicao expressa")}',
+        f'- "neutral" = {guide.get("neutral_means", "Neutro ou sem opiniao formada")}',
+    ]
+
+    # Add figure-specific rules — these are the key disambiguation instructions
+    for fig in pre_class.get("figures", []):
+        name = fig.get("name", "")
+        stance = fig.get("stance", "")
+        if not name or not stance:
+            continue
+
+        if stance == "attack":
+            lines.extend([
+                "",
+                f"FIGURA: {name} — O texto ATACA/CRITICA {name}.",
+                f"- Quem APOIA {name} (aprova, votou nele, alinhamento ideologico) → DISCORDA do texto (negative)",
+                f"- Quem se OPOE a {name} (desaprova, votou contra, alinhamento oposto) → CONCORDA com o texto (positive)",
+            ])
+        elif stance == "defense":
+            lines.extend([
+                "",
+                f"FIGURA: {name} — O texto DEFENDE {name}.",
+                f"- Quem APOIA {name} → CONCORDA com o texto (positive)",
+                f"- Quem se OPOE a {name} → DISCORDA do texto (negative)",
+            ])
+        elif stance == "neutral_mention":
+            lines.extend([
+                "",
+                f"FIGURA: {name} — Mencionado sem posicao clara de ataque ou defesa.",
+            ])
+
+    # Add relevant fields hint if available
+    relevant = pre_class.get("relevant_fields", [])
+    if relevant:
+        lines.extend([
+            "",
+            f"CAMPOS MAIS RELEVANTES da persona para esta classificacao: {', '.join(relevant[:8])}",
+        ])
+
+    lines.append("═══ FIM DA ANALISE SEMANTICA ═══")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 def classify_batch(
     question: str,
     personas: list[dict],
     context_text: str | None = None,
+    pre_class: dict | None = None,
 ) -> list[str]:
     """
     Classify a batch of personas using GPT-4o-mini.
     Returns a list of sentiments: 'positive', 'negative', or 'neutral'.
+
+    pre_class: Output from pre_classifier.pre_classify() — provides semantic
+    disambiguation so the prompt doesn't need hardcoded rules.
     """
     if not personas:
         return []
@@ -82,19 +152,21 @@ def classify_batch(
         if context_text:
             prompt_header += f'\nContexto adicional: {context_text}\n'
 
+    # Build semantic disambiguation from pre-classifier (replaces hardcoded rules)
+    disambiguation = _build_disambiguation(pre_class)
+
     prompt = f"""Voce e um simulador de opiniao publica brasileira.
 
-{prompt_header}
-Abaixo estao {count} personas sinteticas com seus perfis demograficos e opinioes.
-Para CADA persona, analise o perfil completo (ideologia, religiao, classe, educacao, respostas anteriores) e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) sobre a pergunta.
+{prompt_header}{disambiguation}Abaixo estao {count} personas sinteticas com seus perfis demograficos e opinioes.
+Para CADA persona, analise o perfil completo (ideologia, religiao, classe, educacao, respostas anteriores) e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) com a POSICAO EXPRESSA no texto acima.
 
 IMPORTANTE:
 - Use o perfil COMPLETO da persona, nao apenas um campo
 - Considere correlacoes reais da sociedade brasileira
-- Uma persona evangelica conservadora tende a discordar de pautas progressistas
-- Uma pessoa com alta escolaridade e classe alta pode ter visoes diferentes sobre privatizacoes
 - O voto em 2022/2026 e um forte preditor de posicoes politicas
 - Respostas anteriores a temas similares sao o melhor indicador
+- aprovacao_lula alto = APOIA Lula, baixo = DESAPROVA Lula
+- avaliacao_bolsonaro alto = APOIA Bolsonaro, baixo = DESAPROVA Bolsonaro
 
 Personas:
 {personas_block}

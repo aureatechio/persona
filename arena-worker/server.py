@@ -28,6 +28,7 @@ from config import PORT, AI_BATCH_SIZE, OPENAI_API_KEY
 from db import load_all_personas
 from classifier import classify_batch
 from segments import SegmentAccumulator
+from pre_classifier import pre_classify
 
 
 # ── Persona cache (in-memory) ────────────────────────────────────────────────
@@ -94,11 +95,31 @@ async def analyze(request: Request):
         question = context_text[:500]
 
     async def event_stream():
+        # Run pre-classification in parallel with cache check
+        # Pre-classifier understands the question semantically (type, figures, stance, framing)
+        # so the batch classifier doesn't need hardcoded word lists or regex
+        pre_class_task = asyncio.create_task(
+            asyncio.to_thread(pre_classify, question, context_text)
+        )
+
         personas = _ensure_cache()
         total = len(personas)
 
         # 1. Notify personas loaded
         yield json.dumps({"type": "personas_loaded", "data": {"count": total}})
+
+        # Wait for pre-classification (should already be done — ~800ms vs cache is instant when warm)
+        pre_class = await pre_class_task
+
+        # Emit pre-classification result so frontend can show "Analyzing..." phase
+        yield json.dumps({
+            "type": "pre_classified",
+            "data": {
+                "question_type": pre_class.get("type", "other"),
+                "core_position": pre_class.get("core_position", "")[:200],
+                "figures": pre_class.get("figures", []),
+            },
+        })
 
         # 2. Process in AI batches, streaming progress
         positive = 0
@@ -113,9 +134,9 @@ async def analyze(request: Request):
         for offset in range(0, total, batch_size):
             batch = personas[offset : offset + batch_size]
 
-            # Classify this batch via GPT
+            # Classify this batch via GPT — pre_class provides semantic disambiguation
             sentiments = await asyncio.to_thread(
-                classify_batch, question, batch, context_text
+                classify_batch, question, batch, context_text, pre_class
             )
 
             # Accumulate results
