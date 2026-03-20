@@ -66,7 +66,20 @@ AFIRMACOES COMPOSTAS:
 - "X e corrupto e nao deveria ser presidente" = UMA posicao (contra X)
 - "X fez coisas boas mas destruiu a economia" = UMA posicao (predominantemente contra X)
 
-Responda APENAS com JSON valido no formato especificado."""
+FORMATO DE RESPOSTA (use EXATAMENTE estes nomes de campo em ingles):
+{
+  "type": "political_figure | policy_topic | moral_extreme | factual | mixed | other",
+  "figures": [{"name": "Nome", "stance": "attack | defense | neutral_mention", "confidence": 0.95}],
+  "core_position": "Frase clara descrevendo a posicao expressa pelo autor",
+  "classification_guide": {
+    "positive_means": "O que significa concordar com o texto",
+    "negative_means": "O que significa discordar do texto",
+    "neutral_means": "O que significa ser neutro"
+  },
+  "relevant_fields": ["aprovacao_lula", "voto_2022"]
+}
+
+Responda APENAS com JSON valido usando os nomes de campo EXATOS acima (type, figures, core_position, classification_guide, relevant_fields)."""
 
 
 def pre_classify(question: str, context_text: str | None = None) -> dict:
