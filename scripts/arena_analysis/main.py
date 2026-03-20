@@ -433,7 +433,18 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         FIRST_SEGMENT_AT = 50   # emit segments early (after ~50 personas ≈ 3-5s)
         SEGMENT_INTERVAL = 200  # then every ~200 personas
 
-        async for progress in persona_loop.run(request.question, context, personas, verbose=request.verbose, cancelled=cancelled):
+        # Skip hardcoded political enforcement when AI pre-classifier detected political figures
+        # (the disambiguation block in the prompt already handles framing correctly)
+        has_political_figures = any(
+            f.get("stance") in ("attack", "defense")
+            for f in pre_class.get("figures", [])
+        )
+
+        async for progress in persona_loop.run(
+            request.question, context, personas,
+            verbose=request.verbose, cancelled=cancelled,
+            skip_political_enforcement=has_political_figures,
+        ):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)
             inc_results.extend(progress.results)

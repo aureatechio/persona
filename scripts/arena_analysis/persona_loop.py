@@ -192,7 +192,8 @@ def _enforce_thematic_coherence(score: float, persona: dict[str, Any], question:
 
 
 def _enforce_political_coherence(score: float, persona: dict[str, Any], question: str,
-                                  political_bias: float = 0.0) -> float:
+                                  political_bias: float = 0.0,
+                                  skip_enforcement: bool = False) -> float:
     """
     Post-processing: enforce political score coherence.
     If a persona has declared electoral data and the question is about a political figure
@@ -204,8 +205,17 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     political_bias: -1.0 = extreme left, +1.0 = extreme right, 0 = neutral.
     When bias is active, it shifts scores for political questions only.
 
+    skip_enforcement: When True, the AI pre-classifier already handled political
+    framing disambiguation in the prompt — skip regex-based tone detection to avoid
+    the negation-flipping bug ("não deveria" triggering false negation detection).
+
     Returns corrected score.
     """
+    # When the AI pre-classifier already disambiguated the question,
+    # skip this hardcoded post-processing — it uses regex negation detection
+    # that can INVERT scores (e.g., "corrupto e não deveria" → flips to praise)
+    if skip_enforcement:
+        return score
     # ── Step 1: Classify the question ──
     q_class = classify_question(question)
     if not q_class["is_political"]:
@@ -343,7 +353,7 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
 
 
 def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", question: str = "",
-                           political_bias: float = 0.0) -> PersonaResult:
+                           political_bias: float = 0.0, skip_political_enforcement: bool = False) -> PersonaResult:
     """
     Parse JSON de resposta para 1 persona.
     Espera: {"sentiment": "...", "comment": "..."}
@@ -384,8 +394,11 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", que
     score = max(0.0, min(10.0, score))
 
     # Enforce political coherence — correct incoherent scores for political questions
+    # When skip_political_enforcement=True, the AI pre-classifier already handled
+    # disambiguation in the prompt, so we skip the regex-based tone detection
     if question:
-        score = _enforce_political_coherence(score, persona, question, political_bias)
+        score = _enforce_political_coherence(score, persona, question, political_bias,
+                                             skip_enforcement=skip_political_enforcement)
         # Enforce thematic coherence — correct scores based on declared opinions
         score = _enforce_thematic_coherence(score, persona, question, political_bias)
 
@@ -452,7 +465,7 @@ def _recover_truncated_json(text: str) -> str:
 
 
 def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", question: str = "",
-                    political_bias: float = 0.0) -> list[PersonaResult]:
+                    political_bias: float = 0.0, skip_political_enforcement: bool = False) -> list[PersonaResult]:
     """
     Parse JSON da resposta em batch (mantido para electoral engine / backward compat).
     """
@@ -494,7 +507,8 @@ def _parse_response(raw: str, personas: list[dict[str, Any]], tag: str = "", que
 
         # Enforce political coherence for political questions (with bias)
         if question:
-            score = _enforce_political_coherence(score, persona, question, political_bias)
+            score = _enforce_political_coherence(score, persona, question, political_bias,
+                                                 skip_enforcement=skip_political_enforcement)
             # Enforce thematic coherence — correct scores based on declared opinions
             score = _enforce_thematic_coherence(score, persona, question, political_bias)
 
@@ -598,6 +612,7 @@ class PersonaLoop:
         key_id: int = 0,
         system_prompt: str = "",
         bias: BiasConfig | None = None,
+        skip_political_enforcement: bool = False,
     ) -> list[PersonaResult]:
         tag = f"Claude-{key_id+1}"
         max_retries = settings.max_retries
@@ -621,7 +636,7 @@ class PersonaLoop:
                     if not text_block:
                         raise ValueError("No text block in response")
                     pb = bias.political_bias if bias else 0.0
-                    return _parse_response(text_block.text, personas, tag, question, pb)
+                    return _parse_response(text_block.text, personas, tag, question, pb, skip_political_enforcement)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -656,6 +671,7 @@ class PersonaLoop:
         key_id: int = 0,
         system_prompt: str = "",
         bias: BiasConfig | None = None,
+        skip_political_enforcement: bool = False,
     ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
         max_retries = settings.max_retries
@@ -678,7 +694,7 @@ class PersonaLoop:
                     )
                     raw = response.choices[0].message.content or ""
                     pb = bias.political_bias if bias else 0.0
-                    return _parse_response(raw, personas, tag, question, pb)
+                    return _parse_response(raw, personas, tag, question, pb, skip_political_enforcement)
 
                 except json.JSONDecodeError:
                     if attempt < max_retries:
@@ -709,6 +725,7 @@ class PersonaLoop:
         personas: list[dict[str, Any]],
         verbose: bool = False,
         cancelled: asyncio.Event | None = None,
+        skip_political_enforcement: bool = False,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
         Processa personas em BATCHES (batch_size por chamada).
@@ -770,6 +787,7 @@ class PersonaLoop:
                     self._claude_limiters[key_id],
                     self._claude_clients[key_id],
                     claude_sem, key_id, system_prompt, bias,
+                    skip_political_enforcement,
                 ))
             )
             batch_info.append(("Claude Sonnet 4", batch))
@@ -782,6 +800,7 @@ class PersonaLoop:
                     self._openai_limiters[key_id],
                     self._openai_clients[key_id],
                     gpt_sem, key_id, system_prompt, bias,
+                    skip_political_enforcement,
                 ))
             )
             batch_info.append(("GPT-4o", batch))
