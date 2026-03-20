@@ -37,6 +37,7 @@ from arena_analysis.results_aggregator import aggregate_results
 from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
 from arena_analysis.geo_filter import apply_geo_filter
+from arena_analysis.pre_classifier import pre_classify, build_disambiguation_block
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -163,6 +164,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         # ── 0. Route event ────────────────────────────────────────
         yield sse_event("route", {"route": "python"})
+
+        # ── 0b. Pre-classify question semantically (runs in parallel with everything below)
+        pre_class_task = asyncio.create_task(
+            pre_classify(request.question, request.context_text)
+        )
 
         # ── 1. Web Research + Persona Loading em paralelo ────────
         # Skip query_analyzer — classify-route already decided this needs Python.
@@ -382,6 +388,31 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 "persona_count": len(sample_batch),
                 "note": f"Prompt real do 1o batch ({len(sample_batch)} personas). Este e o contexto + perfis exatos enviados a IA.",
             })
+
+        # ── 4d. Await pre-classification (should already be done — ~800ms) ──
+        pre_class = await pre_class_task
+        disambiguation = build_disambiguation_block(pre_class)
+
+        yield sse_event("pre_classified", {
+            "question_type": pre_class.get("type", "other"),
+            "core_position": pre_class.get("core_position", "")[:200],
+            "figures": pre_class.get("figures", []),
+        })
+        yield sse_event("log", {
+            "step": "pre_classifier",
+            "level": "info",
+            "message": f"Analise semantica: {pre_class.get('type', 'other')} | {pre_class.get('core_position', '')[:100]}",
+            "detail": pre_class,
+        })
+
+        # Inject disambiguation into context so it reaches the batch prompt
+        if disambiguation and context:
+            context.contexto = disambiguation + "\n" + (context.contexto or "")
+        elif disambiguation:
+            context = ContextResult(
+                tema="Pre-classificacao semantica",
+                contexto=disambiguation,
+            )
 
         # ── 5. Persona Loop ──────────────────────────────────────────
         if cancelled.is_set():
