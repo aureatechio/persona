@@ -33,7 +33,12 @@ Voto 2022: ${formatSeg(segments.voto2022)}
 Intencao 2026: ${formatSeg(segments.voto2026)}`;
   }
 
-  const mediaLabel = contentMeta?.mediaType || 'nao especificado';
+  // Support both single string and array of platforms
+  const rawMediaType = contentMeta?.mediaType;
+  const mediaTypes: string[] = Array.isArray(rawMediaType)
+    ? rawMediaType
+    : rawMediaType ? [rawMediaType] : ['nao especificado'];
+  const mediaLabel = mediaTypes.join(', ');
   const ideologyLabel = contentMeta?.candidateIdeology || 'nao especificado';
   const regionLabel = contentMeta?.region === 'brasil' ? 'Brasil (Nacional)' :
     (contentMeta?.city ? `${contentMeta.city} - ${contentMeta.region}` : contentMeta?.region || 'Brasil');
@@ -134,7 +139,11 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
 - Cores do partido/campanha devem ser consistentes com o restante da comunicacao`
   };
 
-  const platformBlock = platformKnowledge[mediaLabel] || '';
+  // Include platform knowledge for ALL selected platforms
+  const platformBlock = mediaTypes
+    .map((p) => platformKnowledge[p.trim()])
+    .filter(Boolean)
+    .join('\n\n');
 
   const contentTypeLabel = contentMeta?.contentType || 'conteudo';
 
