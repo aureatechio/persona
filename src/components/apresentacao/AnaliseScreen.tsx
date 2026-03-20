@@ -257,7 +257,7 @@ const RADAR_LABELS = [
 ];
 
 function RadarChart({ radar }: { radar: RadarData }) {
-  const cx = 120, cy = 120, maxR = 90;
+  const cx = 150, cy = 150, maxR = 80;
   const n = RADAR_LABELS.length;
 
   const getPoint = (idx: number, value: number) => {
@@ -266,10 +266,8 @@ function RadarChart({ radar }: { radar: RadarData }) {
     return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
   };
 
-  // Grid rings
   const rings = [2.5, 5, 7.5, 10];
 
-  // Data polygon
   const points = RADAR_LABELS.map((item, i) => {
     const val = (radar as any)[item.key] || 0;
     return getPoint(i, val);
@@ -278,7 +276,7 @@ function RadarChart({ radar }: { radar: RadarData }) {
 
   return (
     <div className="relative">
-      <svg viewBox="0 0 240 240" className="w-full h-full max-w-[280px] mx-auto">
+      <svg viewBox="0 0 300 300" className="w-full h-full max-w-[300px] mx-auto">
         {/* Grid rings */}
         {rings.map(r => {
           const ringPoints = Array.from({ length: n }, (_, i) => getPoint(i, r));
@@ -316,21 +314,21 @@ function RadarChart({ radar }: { radar: RadarData }) {
           />
         ))}
 
-        {/* Labels */}
+        {/* Labels — positioned further out with enough room */}
         {RADAR_LABELS.map((item, i) => {
-          const labelPos = getPoint(i, 12.5);
+          const labelPos = getPoint(i, 13.5);
           const val = (radar as any)[item.key] || 0;
           return (
             <g key={i}>
-              <text x={labelPos.x} y={labelPos.y - 6}
+              <text x={labelPos.x} y={labelPos.y - 7}
                 textAnchor="middle" dominantBaseline="middle"
-                className="fill-zinc-400 text-[10px] font-medium"
+                className="fill-zinc-300 text-[11px] font-semibold"
               >
                 {item.label}
               </text>
-              <text x={labelPos.x} y={labelPos.y + 6}
+              <text x={labelPos.x} y={labelPos.y + 7}
                 textAnchor="middle" dominantBaseline="middle"
-                className="fill-emerald-400 text-[9px] font-bold"
+                className="fill-emerald-400 text-[10px] font-bold"
               >
                 {val.toFixed(1)}
               </text>
@@ -645,17 +643,20 @@ export function AnaliseScreen() {
               )}
             </div>
 
-            {/* ═══ RADAR + DEMOGRAPHICS — Two columns ═══ */}
+            {/* ═══ RADAR + PROJECTED SCORE — Two columns ═══ */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Radar Chart */}
               {analise.radar && (
                 <div className="bg-white/[0.02] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-5">
-                  <div className="flex items-center gap-2.5 mb-2">
+                  <div className="flex items-center gap-2.5 mb-1">
                     <Activity size={14} className="text-zinc-500" />
                     <h2 className="text-[10px] font-bold uppercase tracking-[0.15em] text-zinc-500">
-                      Performance por Dimensão
+                      Diagnóstico do Conteúdo
                     </h2>
                   </div>
+                  <p className="text-[11px] text-zinc-600 mb-2">
+                    Como seu conteúdo performa hoje em cada dimensão — quanto maior a área, melhor.
+                  </p>
                   <RadarChart radar={analise.radar} />
                 </div>
               )}
