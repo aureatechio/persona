@@ -56,14 +56,15 @@ def apply_geo_filter(
     """
     min_p = geo_filter.min_personas or 50
 
-    # CASO 1: Só estado (sem cidade) → filtra do UF, limitado a min_p
+    # CASO 1: Só estado (sem cidade) → retorna TODAS as personas do estado
+    # (min_p só se aplica a cidades, não estados)
     if geo_filter.state and not geo_filter.city:
         filtered = [p for p in personas if p.get("state") == geo_filter.state]
         if not filtered:
+            # Estado sem personas → fallback para todas, limitado a min_p
             capped = _cap_personas(personas, min_p)
             return capped, _group_by_city(capped)
-        capped = _cap_personas(filtered, min_p)
-        return capped, _group_by_city(capped)
+        return filtered, _group_by_city(filtered)
 
     # CASO 2: Cidade específica → filtra e expande por proximidade se necessário
     if geo_filter.city and geo_filter.state:
