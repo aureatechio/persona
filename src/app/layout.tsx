@@ -22,14 +22,6 @@ export const metadata: Metadata = {
     template: '%s | PL - Partido Liberal',
   },
   description: 'Grave seu depoimento e receba uma resposta personalizada do PL - Partido Liberal.',
-  icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-    ],
-    apple: '/apple-touch-icon.png',
-  },
   openGraph: {
     title: 'PL - Partido Liberal',
     description: 'Grave seu depoimento e receba uma resposta personalizada do PL - Partido Liberal.',
