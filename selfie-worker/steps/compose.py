@@ -161,14 +161,14 @@ def _prepare_closing_video(tmpdir: str) -> str | None:
             f.write(music_bytes)
 
         try:
-            # Replace closing video audio with music (fade in/out)
+            # Replace closing video audio entirely with music track
             _run_ffmpeg([
                 "-i", closing_raw, "-i", music_path,
                 "-filter_complex",
-                f"[1:a]volume={CLOSING_MUSIC_VOLUME},afade=t=in:d=0.3,afade=t=out:st=8:d=2[music];"
-                "[0:a][music]amix=inputs=2:duration=first:weights=1 1[out]",
-                "-map", "0:v", "-map", "[out]",
+                f"[1:a]volume={CLOSING_MUSIC_VOLUME},afade=t=in:d=0.5,afade=t=out:st=8:d=2[music]",
+                "-map", "0:v", "-map", "[music]",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
+                "-shortest",
                 "-y", closing_with_music,
             ])
             closing_raw = closing_with_music
