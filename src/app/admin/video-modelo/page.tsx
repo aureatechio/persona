@@ -35,6 +35,11 @@ interface BaseModel {
   voice_models: VoiceModel | null;
 }
 
+interface UploadInitResponse {
+  uploadUrl: string;
+  videoPath: string;
+}
+
 const DEFAULT_PROMPT = `Você é um assistente responsável por escrever respostas em vídeo para um político do estado do Piauí responder eleitores que gravaram vídeos falando por que apoiam ele ou qual é o principal problema da cidade ou do estado.
 
 A resposta será lida pelo político em vídeo. O objetivo é fazer o eleitor sentir que foi ouvido, respeitado, teve sua realidade compreendida e que o político está próximo e atento ao Piauí.
@@ -76,6 +81,27 @@ TOM: humano, próximo, respeitoso, simples, verdadeiro. Evitar discurso longo, f
 Sem emojis. Apenas gere o texto da resposta, sem explicações ou comentários.`;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
+
+async function readJsonSafe<T>(res: Response): Promise<T | null> {
+  try {
+    return await res.json() as T;
+  } catch {
+    return null;
+  }
+}
+
+async function readApiError(res: Response, fallback: string): Promise<string> {
+  const contentType = res.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    const data = await readJsonSafe<{ error?: string }>(res);
+    if (data?.error?.trim()) return data.error;
+    return fallback;
+  }
+
+  const text = (await res.text().catch(() => '')).trim();
+  return text || fallback;
+}
 
 export default function VideoModeloPage() {
   const [model, setModel] = useState<BaseModel | null>(null);
@@ -121,9 +147,12 @@ export default function VideoModeloPage() {
   async function loadModel() {
     try {
       const res = await fetch('/api/admin/video-modelo');
-      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(await readApiError(res, 'Falha ao carregar modelo'));
+      }
+      const data = await readJsonSafe<{ model?: BaseModel }>(res);
 
-      if (data.model) {
+      if (data?.model) {
         setModel(data.model);
         setName(data.model.name);
         setPromptTemplate(data.model.prompt_template);
@@ -148,18 +177,35 @@ export default function VideoModeloPage() {
   }
 
   async function uploadVideoToStorage(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', name);
+    const ext = file.type.includes('webm') || file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
+    const contentType = ext === 'webm' ? 'video/webm' : 'video/mp4';
 
-    const res = await fetch('/api/admin/video-modelo/upload', {
+    const initRes = await fetch('/api/admin/video-modelo/upload', {
       method: 'POST',
-      body: formData,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, ext }),
     });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha no upload');
-    return data.videoPath;
+    if (!initRes.ok) {
+      throw new Error(await readApiError(initRes, 'Falha ao iniciar upload'));
+    }
+
+    const initData = await readJsonSafe<UploadInitResponse>(initRes);
+    if (!initData?.uploadUrl || !initData?.videoPath) {
+      throw new Error('Resposta inválida ao iniciar upload');
+    }
+
+    const uploadRes = await fetch(initData.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: file,
+    });
+
+    if (!uploadRes.ok) {
+      throw new Error(await readApiError(uploadRes, 'Falha no upload do vídeo'));
+    }
+
+    return initData.videoPath;
   }
 
   async function handleCreate() {
@@ -186,8 +232,9 @@ export default function VideoModeloPage() {
         body: JSON.stringify({ videoPath, name, prompt_template: promptTemplate, lipsync_config: lipsyncConfig }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao criar modelo'));
+      const data = await readJsonSafe<{ model?: BaseModel }>(res);
+      if (!data?.model) throw new Error('Resposta inválida ao criar modelo');
 
       setModel(data.model);
       setVideoFile(null);
@@ -222,8 +269,9 @@ export default function VideoModeloPage() {
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao atualizar modelo'));
+      const data = await readJsonSafe<{ model?: BaseModel }>(res);
+      if (!data?.model) throw new Error('Resposta inválida ao atualizar modelo');
 
       setModel(data.model);
       // Sync local state from DB response to confirm save worked
@@ -247,7 +295,10 @@ export default function VideoModeloPage() {
       setMessage(null);
 
       // Desativar modelo atual
-      await fetch(`/api/admin/video-modelo?id=${model.id}`, { method: 'DELETE' });
+      const deactivateRes = await fetch(`/api/admin/video-modelo?id=${model.id}`, { method: 'DELETE' });
+      if (!deactivateRes.ok) {
+        throw new Error(await readApiError(deactivateRes, 'Erro ao desativar modelo atual'));
+      }
 
       // Step 1: Upload novo vídeo ao Storage
       const videoPath = await uploadVideoToStorage(videoFile);
@@ -259,8 +310,9 @@ export default function VideoModeloPage() {
         body: JSON.stringify({ videoPath, name, prompt_template: promptTemplate, lipsync_config: lipsyncConfig }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao trocar modelo'));
+      const data = await readJsonSafe<{ model?: BaseModel }>(res);
+      if (!data?.model) throw new Error('Resposta inválida ao trocar modelo');
 
       setModel(data.model);
       setVideoFile(null);
@@ -283,7 +335,7 @@ export default function VideoModeloPage() {
     try {
       setSaving(true);
       const res = await fetch(`/api/admin/video-modelo?id=${model.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Falha ao desativar');
+      if (!res.ok) throw new Error(await readApiError(res, 'Falha ao desativar'));
 
       setModel(null);
       setName('Modelo Principal');

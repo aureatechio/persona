@@ -55,6 +55,17 @@ Acesse [http://localhost:3000](http://localhost:3000)
 3. Configure as variáveis de ambiente no painel da Vercel
 4. Deploy automático!
 
+## Fluxo Admin: Vídeo Modelo
+
+A troca/criação do vídeo modelo em `admin/video-modelo` usa upload assinado para evitar erro de arquivo grande no backend.
+
+1. Frontend chama `POST /api/admin/video-modelo/upload` com `{ name, ext }`.
+2. API retorna `uploadUrl` assinada + `videoPath`.
+3. Browser faz `PUT` direto para o Supabase Storage (`voice-models/base-models/...`).
+4. Frontend chama `POST /api/admin/video-modelo` com `videoPath` para clonar voz e ativar o novo modelo.
+
+Observação: hoje somente `mp4` e `webm` são aceitos no upload-init.
+
 ## Estrutura do Banco de Dados
 
 ### Tabela `personas`
