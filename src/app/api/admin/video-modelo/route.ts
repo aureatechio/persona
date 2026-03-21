@@ -8,6 +8,7 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
+const ELEVENLABS_MAX_SAMPLE_BYTES = 11 * 1024 * 1024; // 11MB
 
 export const maxDuration = 120;
 
@@ -20,7 +21,7 @@ async function extractAudio(videoBuffer: Buffer, inputExt: string): Promise<Buff
     await writeFile(inputPath, videoBuffer);
     await execFileAsync('ffmpeg', [
       '-i', inputPath,
-      '-vn', '-acodec', 'libmp3lame', '-b:a', '128k',
+      '-vn', '-ac', '1', '-ar', '22050', '-acodec', 'libmp3lame', '-b:a', '64k',
       '-y', outputPath,
     ], { timeout: 60000 });
 
@@ -76,19 +77,33 @@ export async function POST(request: NextRequest) {
 
     // 2. Extrair áudio do vídeo (ElevenLabs tem limite de 11MB)
     let audioBuffer: Buffer;
+    let payloadMime = 'audio/mpeg';
+    let payloadFilename = 'audio.mp3';
     try {
       audioBuffer = await extractAudio(videoBuffer, ext);
       console.log('[video-modelo] Audio extracted, size:', audioBuffer.length);
     } catch (err) {
       console.error('FFmpeg audio extract error:', err);
-      // Fallback: enviar vídeo original se FFmpeg não disponível
+      // Fallback: try using original video as sample (works only if provider accepts it)
       audioBuffer = videoBuffer;
+      payloadMime = ext === 'webm' ? 'video/webm' : 'video/mp4';
+      payloadFilename = ext === 'webm' ? 'video.webm' : 'video.mp4';
+    }
+
+    if (audioBuffer.length > ELEVENLABS_MAX_SAMPLE_BYTES) {
+      const mb = (audioBuffer.length / 1024 / 1024).toFixed(1);
+      return NextResponse.json(
+        {
+          error: `Amostra excede limite do ElevenLabs (${mb}MB > 11MB). Envie um video menor/mais curto.`,
+        },
+        { status: 413 },
+      );
     }
 
     // 3. Clonar voz a partir do áudio (ElevenLabs Instant Voice Clone)
     const elForm = new FormData();
     elForm.append('name', `VideoBase_${name || 'Modelo'}_${Date.now()}`);
-    elForm.append('files', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/mpeg' }), 'audio.mp3');
+    elForm.append('files', new Blob([new Uint8Array(audioBuffer)], { type: payloadMime }), payloadFilename);
     elForm.append('remove_background_noise', 'true');
     elForm.append('labels', JSON.stringify({ language: 'pt-BR' }));
 
@@ -101,7 +116,9 @@ export async function POST(request: NextRequest) {
     if (!elRes.ok) {
       const errText = await elRes.text();
       console.error('ElevenLabs clone error:', elRes.status, errText);
-      return NextResponse.json({ error: `Falha ao clonar voz: ${elRes.status}` }, { status: 500 });
+      const details = errText.slice(0, 220).replace(/\s+/g, ' ').trim();
+      const status = elRes.status === 413 ? 413 : 500;
+      return NextResponse.json({ error: `Falha ao clonar voz (${elRes.status}): ${details}` }, { status });
     }
 
     const elData = await elRes.json();
