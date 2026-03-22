@@ -232,7 +232,7 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
                 "similarity_boost": 0.85,
                 "style": 0.5,
                 "use_speaker_boost": True,
-                "speed": 0.95,
+                "speed": 0.9,
             },
         },
         timeout=TTS_TIMEOUT,
