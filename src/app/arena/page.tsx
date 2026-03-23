@@ -442,7 +442,7 @@ export default function ArenaPage() {
       )}
 
       {/* ═══ CHAT INPUT (always visible, above tab bar) ═══ */}
-      <div className="shrink-0" style={{ marginBottom: 85 }}>
+      <div className="shrink-0" style={{ marginBottom: 105 }}>
         <ChatInput
           onAttachPress={() => setShowAttachMenu(true)}
           onSendMessage={handleSendMessage}

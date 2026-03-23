@@ -35,7 +35,7 @@ export function ArenaNav() {
         <Link
           href="/arena/dashboard"
           className="flex flex-col items-center gap-0.5"
-          style={{ opacity: hasEverReceived ? 1 : 0.3, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+          style={{ opacity: hasEverReceived ? 1 : 0.5, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
         >
           <div className="relative w-11 h-8 flex items-center justify-center">
             {isDashboard && (
@@ -46,13 +46,13 @@ export function ArenaNav() {
             )}
             <BarChart3
               size={22}
-              color={isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a')}
+              color={isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#3f3f46')}
               strokeWidth={isDashboard ? 2.5 : 1.5}
             />
           </div>
           <span
             className="text-[10px] font-semibold tracking-wide mt-0.5"
-            style={{ color: isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a') }}
+            style={{ color: isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#3f3f46') }}
           >
             Painel
           </span>
@@ -86,7 +86,7 @@ export function ArenaNav() {
         <Link
           href="/arena/mapa"
           className="flex flex-col items-center gap-0.5"
-          style={{ opacity: hasEverReceived ? 1 : 0.3, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+          style={{ opacity: hasEverReceived ? 1 : 0.5, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
         >
           <div className="relative w-11 h-8 flex items-center justify-center">
             {isMapa && (
@@ -97,13 +97,13 @@ export function ArenaNav() {
             )}
             <MapPin
               size={22}
-              color={isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a')}
+              color={isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#3f3f46')}
               strokeWidth={isMapa ? 2.5 : 1.5}
             />
           </div>
           <span
             className="text-[10px] font-semibold tracking-wide mt-0.5"
-            style={{ color: isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a') }}
+            style={{ color: isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#3f3f46') }}
           >
             Mapa
           </span>
