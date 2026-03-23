@@ -275,7 +275,7 @@ export default function ArenaPage() {
   const hasConversation = !!(userMediaContext || isStreaming || isComplete);
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+    <div className="flex flex-col bg-black" style={{ height: '100vh', paddingTop: 'env(safe-area-inset-top, 0px)' }}>
 
       {/* ═══ HEADER BAR (exact match of mobile — title + avatar) ═══ */}
       <div className="flex items-center px-4 h-11 shrink-0" style={{ backgroundColor: '#000', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
@@ -285,7 +285,7 @@ export default function ArenaPage() {
 
       {/* ═══ IDLE — AnimatedLogo (exact match of mobile AnimatedLogo.tsx) ═══ */}
       {!hasConversation && screenState === 'idle' && (
-        <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden">
+        <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden" style={{ paddingBottom: 160 }}>
           {/* Floating orbs */}
           <motion.div
             className="absolute rounded-full"
@@ -369,8 +369,8 @@ export default function ArenaPage() {
             </button>
           </div>
 
-          {/* Messages scroll */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain" style={{ padding: 16, paddingBottom: 20 }}>
+          {/* Messages scroll (extra bottom padding for fixed input + nav) */}
+          <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain" style={{ padding: 16, paddingBottom: 160 }}>
             <div className="space-y-3">
 
               {/* User media message */}
@@ -441,8 +441,8 @@ export default function ArenaPage() {
         </>
       )}
 
-      {/* ═══ CHAT INPUT (always visible, above tab bar) ═══ */}
-      <div className="shrink-0" style={{ marginBottom: 105 }}>
+      {/* ═══ CHAT INPUT (fixed above tab bar — doesn't move with keyboard) ═══ */}
+      <div className="fixed left-0 right-0 z-40" style={{ bottom: 85 }}>
         <ChatInput
           onAttachPress={() => setShowAttachMenu(true)}
           onSendMessage={handleSendMessage}

@@ -251,6 +251,8 @@ export default function MapaPage() {
         <div className="h-[500px]">
           <LeafletMap
             stateBreakdown={stateBreakdown}
+            cityBreakdown={cityBreakdown}
+            liveComments={liveComments}
             onStatePress={handleStatePress}
           />
         </div>

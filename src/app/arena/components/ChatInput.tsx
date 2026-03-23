@@ -1,9 +1,9 @@
 // Arena PWA — ChatInput (fixed bottom input bar)
-// Handles iOS keyboard properly: input stays visible, content scrolls up naturally
+// Uses visualViewport API for proper iOS keyboard handling
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Paperclip, Mic, Square, Send } from 'lucide-react';
 
 interface ChatInputProps {
@@ -35,16 +35,14 @@ export function ChatInput({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     if (disabled) return;
     const trimmed = text.trim();
     if (!trimmed && !forceSendVisible) return;
     onSendMessage?.(trimmed);
     setText('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
-    // Blur to close keyboard after send
-    inputRef.current?.blur();
-  };
+  }, [disabled, text, forceSendVisible, onSendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -61,29 +59,39 @@ export function ChatInput({
     }
   }, [text]);
 
-  // iOS keyboard fix: scroll input into view when focused
+  // iOS keyboard: adjust position using visualViewport
   useEffect(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
+    const wrapper = wrapperRef.current;
+    if (!wrapper || !window.visualViewport) return;
 
-    const handleFocus = () => {
-      // Small delay to let iOS keyboard animation start
-      setTimeout(() => {
-        textarea.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 300);
+    const parent = wrapper.parentElement;
+    if (!parent) return;
+
+    const onResize = () => {
+      const vv = window.visualViewport!;
+      // When keyboard is open, visualViewport.height < window.innerHeight
+      const keyboardHeight = window.innerHeight - vv.height;
+      if (keyboardHeight > 100) {
+        // Keyboard is open — move the fixed container up
+        parent.style.bottom = `${keyboardHeight}px`;
+      } else {
+        // Keyboard closed — reset to above nav bar
+        parent.style.bottom = '85px';
+      }
     };
 
-    textarea.addEventListener('focus', handleFocus);
-    return () => textarea.removeEventListener('focus', handleFocus);
+    window.visualViewport.addEventListener('resize', onResize);
+    window.visualViewport.addEventListener('scroll', onResize);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', onResize);
+      window.visualViewport?.removeEventListener('scroll', onResize);
+    };
   }, []);
 
   const hasText = text.trim().length > 0 || forceSendVisible;
 
   return (
-    <div
-      ref={wrapperRef}
-      className="px-3 pt-2 pb-3 bg-black border-t border-white/[0.04]"
-    >
+    <div ref={wrapperRef} className="px-3 pt-2 pb-2 bg-black border-t border-white/[0.04]">
       <div className={`flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-[20px] px-1.5 py-1.5 min-h-[52px] max-h-[140px] ${
         disabled ? 'opacity-50' : ''
       }`}>
@@ -116,7 +124,7 @@ export function ChatInput({
           className={`flex-1 bg-transparent text-white placeholder:text-zinc-600 outline-none resize-none py-2 px-1 leading-5 min-h-[36px] ${
             isRecording ? 'placeholder:text-rose-400' : ''
           }`}
-          style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
+          style={{ fontSize: '16px' }}
         />
 
         {/* Right button: Send or Mic */}
