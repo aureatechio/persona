@@ -1,94 +1,142 @@
-// Arena PWA — Leaflet Map Component (client-only, no SSR)
+// Arena PWA — Leaflet Map with GeoJSON filled states (matches mobile LeafletWebView)
 
 'use client';
 
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { scoreToHex } from '../constants';
 
-// State center coordinates for markers
-const STATE_CENTERS: Record<string, [number, number]> = {
-  AC: [-8.77, -70.55], AL: [-9.57, -36.78], AM: [-3.47, -65.10], AP: [1.41, -51.77],
-  BA: [-12.97, -41.68], CE: [-5.20, -39.53], DF: [-15.83, -47.86], ES: [-19.19, -40.34],
-  GO: [-15.98, -49.86], MA: [-5.42, -45.44], MG: [-18.10, -44.38], MS: [-20.51, -54.54],
-  MT: [-12.64, -55.42], PA: [-3.79, -52.48], PB: [-7.28, -36.72], PE: [-8.38, -37.86],
-  PI: [-7.72, -42.73], PR: [-24.89, -51.55], RJ: [-22.25, -42.66], RN: [-5.81, -36.59],
-  RO: [-10.83, -63.34], RR: [1.99, -61.33], RS: [-29.75, -53.25], SC: [-27.45, -50.95],
-  SE: [-10.57, -37.45], SP: [-22.19, -48.79], TO: [-10.25, -48.25],
-};
+function scoreToHex(score: number): string {
+  if (score <= 2) return '#fb7185';
+  if (score <= 4) return '#fb923c';
+  if (score <= 6) return '#fbbf24';
+  if (score <= 8) return '#34d399';
+  return '#6ee7b7';
+}
 
 interface LeafletMapProps {
   stateBreakdown: Record<string, { count: number; positive: number; negative: number; neutral: number; avgScore?: number }>;
   onStatePress: (sigla: string) => void;
 }
 
+// GeoJSON URL for Brazil states
+const GEOJSON_URL = 'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson';
+
 export default function LeafletMap({ stateBreakdown, onStatePress }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const geoLayerRef = useRef<L.GeoJSON | null>(null);
+  const breakdownRef = useRef(stateBreakdown);
+  breakdownRef.current = stateBreakdown;
+
+  // State name to sigla mapping
+  const nameToSigla: Record<string, string> = {
+    'Acre': 'AC', 'Alagoas': 'AL', 'Amazonas': 'AM', 'Amapá': 'AP', 'Bahia': 'BA',
+    'Ceará': 'CE', 'Distrito Federal': 'DF', 'Espírito Santo': 'ES', 'Goiás': 'GO',
+    'Maranhão': 'MA', 'Minas Gerais': 'MG', 'Mato Grosso do Sul': 'MS', 'Mato Grosso': 'MT',
+    'Pará': 'PA', 'Paraíba': 'PB', 'Pernambuco': 'PE', 'Piauí': 'PI', 'Paraná': 'PR',
+    'Rio de Janeiro': 'RJ', 'Rio Grande do Norte': 'RN', 'Rondônia': 'RO', 'Roraima': 'RR',
+    'Rio Grande do Sul': 'RS', 'Santa Catarina': 'SC', 'Sergipe': 'SE', 'São Paulo': 'SP',
+    'Tocantins': 'TO',
+  };
+
+  function getStateStyle(sigla: string) {
+    const sd = breakdownRef.current[sigla];
+    let color = '#27272a';
+    let fillOpacity = 0.15;
+
+    if (sd && sd.count > 0) {
+      const score = sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
+      color = scoreToHex(score);
+      fillOpacity = 0.6;
+    }
+
+    return {
+      fillColor: color,
+      fillOpacity,
+      color: 'rgba(255,255,255,0.12)',
+      weight: 1,
+    };
+  }
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapRef.current, {
-      center: [-14.24, -51.93],
+      center: [-14, -51],
       zoom: 4,
       zoomControl: false,
       attributionControl: false,
+      preferCanvas: true,
     });
 
-    // Dark CartoDB basemap
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 18,
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      maxZoom: 19,
+    }).addTo(map);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd',
+      maxZoom: 19,
+      pane: 'overlayPane',
     }).addTo(map);
 
     mapInstanceRef.current = map;
 
+    // Load GeoJSON
+    fetch(GEOJSON_URL)
+      .then((r) => r.json())
+      .then((geojson) => {
+        const geoLayer = L.geoJSON(geojson, {
+          style: (feature) => {
+            const name = feature?.properties?.name || '';
+            const sigla = feature?.properties?.sigla || nameToSigla[name] || '';
+            return getStateStyle(sigla);
+          },
+          onEachFeature: (feature, layer) => {
+            const name = feature?.properties?.name || '';
+            const sigla = feature?.properties?.sigla || nameToSigla[name] || '';
+
+            layer.on('click', () => {
+              if (sigla) onStatePress(sigla);
+            });
+
+            const sd = breakdownRef.current[sigla];
+            if (sd && sd.count > 0) {
+              const score = sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
+              layer.bindTooltip(`${sigla}: ${score.toFixed(1)} (${sd.count})`, {
+                className: 'arena-tooltip',
+                direction: 'top',
+                sticky: true,
+              });
+            }
+          },
+        }).addTo(map);
+
+        geoLayerRef.current = geoLayer;
+      })
+      .catch((err) => console.warn('[Map] GeoJSON load error:', err));
+
     return () => {
       map.remove();
       mapInstanceRef.current = null;
+      geoLayerRef.current = null;
     };
   }, []);
 
-  // Update markers when stateBreakdown changes
+  // Recolor states when stateBreakdown changes
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
+    const geoLayer = geoLayerRef.current;
+    if (!geoLayer) return;
 
-    // Clear existing markers
-    map.eachLayer((layer) => {
-      if (layer instanceof L.CircleMarker) map.removeLayer(layer);
+    geoLayer.eachLayer((layer: any) => {
+      if (layer.feature?.properties) {
+        const name = layer.feature.properties.name || '';
+        const sigla = layer.feature.properties.sigla || nameToSigla[name] || '';
+        layer.setStyle(getStateStyle(sigla));
+      }
     });
-
-    // Add state markers
-    Object.entries(stateBreakdown).forEach(([sigla, data]) => {
-      const center = STATE_CENTERS[sigla];
-      if (!center) return;
-
-      const total = data.count;
-      const score = data.avgScore ?? (total > 0
-        ? Math.round(((data.positive * 9 + data.neutral * 5 + data.negative * 1) / total) * 10) / 10
-        : 5.0);
-      const hex = scoreToHex(score);
-      const radius = Math.max(8, Math.min(25, Math.sqrt(total) * 0.8));
-
-      const marker = L.circleMarker(center, {
-        radius,
-        fillColor: hex,
-        fillOpacity: 0.6,
-        color: hex,
-        weight: 2,
-        opacity: 0.8,
-      }).addTo(map);
-
-      marker.bindTooltip(`${sigla}: ${score.toFixed(1)} (${total})`, {
-        className: 'arena-tooltip',
-        direction: 'top',
-      });
-
-      marker.on('click', () => onStatePress(sigla));
-    });
-  }, [stateBreakdown, onStatePress]);
+  }, [stateBreakdown]);
 
   return (
     <>

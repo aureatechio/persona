@@ -275,7 +275,7 @@ export default function ArenaPage() {
   const hasConversation = !!(userMediaContext || isStreaming || isComplete);
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-black">
+    <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
 
       {/* ═══ HEADER BAR (exact match of mobile — title + avatar) ═══ */}
       <div className="flex items-center px-4 h-11 shrink-0" style={{ backgroundColor: '#000', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
@@ -361,8 +361,8 @@ export default function ArenaPage() {
       {/* ═══ CHAT FLOW (match mobile exactly) ═══ */}
       {hasConversation && (
         <>
-          {/* Fixed top bar */}
-          <div className="flex justify-end px-4 py-2 shrink-0" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+          {/* Fixed top bar (sticky, never scrolls) */}
+          <div className="flex justify-end px-4 py-2 shrink-0 sticky top-0 z-10 bg-black" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
             <button onClick={handleNewAnalysis} className="flex items-center gap-1.5 px-3 py-2 rounded-xl active:scale-95 transition-all duration-200" style={{ backgroundColor: 'rgba(52,211,153,0.08)', border: '0.5px solid rgba(52,211,153,0.2)' }}>
               <RotateCcw size={14} className="text-emerald-400" />
               <span className="text-xs font-bold text-emerald-400">Nova Análise</span>

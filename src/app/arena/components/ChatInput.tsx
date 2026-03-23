@@ -1,4 +1,5 @@
 // Arena PWA — ChatInput (fixed bottom input bar)
+// Handles iOS keyboard properly: input stays visible, content scrolls up naturally
 
 'use client';
 
@@ -32,6 +33,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const [text, setText] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
   const handleSend = () => {
     if (disabled) return;
@@ -40,6 +42,8 @@ export function ChatInput({
     onSendMessage?.(trimmed);
     setText('');
     if (inputRef.current) inputRef.current.style.height = 'auto';
+    // Blur to close keyboard after send
+    inputRef.current?.blur();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -57,11 +61,28 @@ export function ChatInput({
     }
   }, [text]);
 
+  // iOS keyboard fix: scroll input into view when focused
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+
+    const handleFocus = () => {
+      // Small delay to let iOS keyboard animation start
+      setTimeout(() => {
+        textarea.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 300);
+    };
+
+    textarea.addEventListener('focus', handleFocus);
+    return () => textarea.removeEventListener('focus', handleFocus);
+  }, []);
+
   const hasText = text.trim().length > 0 || forceSendVisible;
 
   return (
-    <div className="px-3 pt-2 pb-3 bg-black border-t border-white/[0.04]"
-      style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom))' }}
+    <div
+      ref={wrapperRef}
+      className="px-3 pt-2 pb-3 bg-black border-t border-white/[0.04]"
     >
       <div className={`flex items-center gap-2 bg-white/[0.04] border border-white/[0.08] rounded-[20px] px-1.5 py-1.5 min-h-[52px] max-h-[140px] ${
         disabled ? 'opacity-50' : ''
@@ -91,10 +112,11 @@ export function ChatInput({
           disabled={disabled || isTranscribing}
           rows={1}
           maxLength={2000}
-          className={`flex-1 bg-transparent text-[15px] text-white placeholder:text-zinc-600 outline-none resize-none py-2 px-1 leading-5 min-h-[36px] ${
+          enterKeyHint="send"
+          className={`flex-1 bg-transparent text-white placeholder:text-zinc-600 outline-none resize-none py-2 px-1 leading-5 min-h-[36px] ${
             isRecording ? 'placeholder:text-rose-400' : ''
           }`}
-          style={{ fontSize: '16px' }} // Prevent iOS zoom
+          style={{ fontSize: '16px' }} // Prevent iOS zoom on focus
         />
 
         {/* Right button: Send or Mic */}

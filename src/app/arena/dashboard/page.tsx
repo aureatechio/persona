@@ -187,7 +187,7 @@ export default function DashboardPage() {
 
   if (!hasEverReceived) {
     return (
-      <div className="flex flex-col h-[100dvh] bg-black">
+      <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <Waiting />
         <ArenaNav />
       </div>
@@ -195,7 +195,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-black">
+    <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* ═══ STATUS BAR (exact match of mobile) ═══ */}
       <div className="flex items-center px-4 h-11 gap-2 shrink-0" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
         {isLive ? (

@@ -144,7 +144,7 @@ export default function MapaPage() {
 
   if (!hasEverReceived) {
     return (
-      <div className="flex flex-col h-[100dvh] bg-black">
+      <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <MapWaiting />
         <ArenaNav />
       </div>
@@ -154,7 +154,7 @@ export default function MapaPage() {
   // City detail
   if (selectedCity && selectedState) {
     return (
-      <div className="flex flex-col h-[100dvh] bg-black">
+      <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="flex items-start justify-between px-4 py-3.5 border-b border-white/[0.06] shrink-0">
           <div>
             <button onClick={() => setSelectedCity(null)} className="flex items-center gap-0.5 mb-1">
@@ -193,7 +193,7 @@ export default function MapaPage() {
     const cities = (cityBreakdown[selectedState] || []) as CityData[];
 
     return (
-      <div className="flex flex-col h-[100dvh] bg-black">
+      <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <div className="flex items-start justify-between px-4 py-3.5 border-b border-white/[0.06] shrink-0">
           <div>
             <div className="flex items-center gap-1 mb-1">
@@ -238,7 +238,7 @@ export default function MapaPage() {
 
   // Primary view: Map + state list
   return (
-    <div className="flex flex-col h-[100dvh] bg-black">
+    <div className="flex flex-col h-[100dvh] bg-black" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.04] shrink-0">
         <MapPin size={14} className="text-emerald-400" />

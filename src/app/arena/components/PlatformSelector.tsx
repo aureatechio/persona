@@ -1,10 +1,30 @@
-// Arena PWA — Platform selector (bottom sheet)
+// Arena PWA — Platform selector with platform icons
 
 'use client';
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper } from 'lucide-react';
 import { PLATFORMS } from '../constants';
+
+// Platform icons mapping
+const PLATFORM_ICONS: Record<string, React.ComponentType<any>> = {
+  instagram: Instagram,
+  youtube: Youtube,
+  tv: Tv,
+  radio: Radio,
+  outdoor: Megaphone,
+  impresso: Newspaper,
+};
+
+// TikTok custom SVG icon (not in lucide)
+function TikTokIcon({ size = 20, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-2.88 2.5 2.89 2.89 0 0 1-2.89-2.89 2.89 2.89 0 0 1 2.89-2.89c.28 0 .54.04.79.1v-3.5a6.37 6.37 0 0 0-.79-.05A6.34 6.34 0 0 0 3.15 15a6.34 6.34 0 0 0 6.34 6.34 6.34 6.34 0 0 0 6.34-6.34V8.49a8.21 8.21 0 0 0 4.76 1.5V6.56a4.83 4.83 0 0 1-1-.13v.26z" fill={color}/>
+    </svg>
+  );
+}
 
 interface PlatformSelectorProps {
   visible: boolean;
@@ -56,10 +76,12 @@ export function PlatformSelector({ visible, onClose, onConfirm }: PlatformSelect
               <h3 className="text-lg font-bold text-white tracking-tight mb-1">Onde será publicado?</h3>
               <p className="text-xs text-zinc-500 mb-5">Selecione as plataformas para análise específica</p>
 
-              {/* Platform grid */}
+              {/* Platform grid with icons */}
               <div className="grid grid-cols-3 gap-2.5 mb-5">
                 {PLATFORMS.map((p) => {
                   const isSelected = selected.includes(p.id);
+                  const Icon = PLATFORM_ICONS[p.id];
+
                   return (
                     <button
                       key={p.id}
@@ -72,13 +94,18 @@ export function PlatformSelector({ visible, onClose, onConfirm }: PlatformSelect
                       style={isSelected ? { boxShadow: `0 0 20px -5px ${p.color}40` } : undefined}
                     >
                       <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
+                        className="w-10 h-10 rounded-xl flex items-center justify-center"
                         style={{
                           backgroundColor: isSelected ? `${p.color}20` : 'rgba(255,255,255,0.04)',
-                          color: isSelected ? p.color : '#71717a',
                         }}
                       >
-                        {p.label[0]}
+                        {p.id === 'tiktok' ? (
+                          <TikTokIcon size={22} color={isSelected ? p.color : '#71717a'} />
+                        ) : Icon ? (
+                          <Icon size={22} style={{ color: isSelected ? p.color : '#71717a' }} />
+                        ) : (
+                          <span className="text-sm font-bold" style={{ color: isSelected ? p.color : '#71717a' }}>{p.label[0]}</span>
+                        )}
                       </div>
                       <span className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-zinc-500'}`}>
                         {p.label}
