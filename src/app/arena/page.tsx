@@ -99,7 +99,6 @@ export default function ArenaPage() {
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
-  const [fileLoading, setFileLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Audio recording
@@ -165,68 +164,46 @@ export default function ArenaPage() {
     tryFetch(1);
   }, [isComplete, simulation, analiseData, analiseLoading]);
 
-  // File picker — handles iOS camera recording + gallery selection
-  const pickFile = (accept: string, type: 'image' | 'video', capture?: boolean) => {
-    const input = document.createElement('input');
-    input.type = 'file';
+  // File picker — uses a persistent hidden input in the DOM for iOS compatibility
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingFileType = useRef<'image' | 'video'>('image');
+
+  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+
+    let uri: string | undefined;
+    try { uri = URL.createObjectURL(file); } catch {}
+
+    const att: Attachment = {
+      id: Date.now().toString(),
+      type: pendingFileType.current,
+      name: file.name,
+      mimeType: file.type || (pendingFileType.current === 'video' ? 'video/mp4' : 'image/jpeg'),
+      file,
+      uri,
+    };
+    setAttachments((prev) => [...prev, att]);
+
+    // Reset input so same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
+  const pickFile = useCallback((accept: string, type: 'image' | 'video', capture?: boolean) => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    pendingFileType.current = type;
     input.accept = accept;
-    // For camera recording on mobile
     if (capture) {
       input.setAttribute('capture', 'environment');
+    } else {
+      input.removeAttribute('capture');
     }
-
-    setFileLoading(true);
-
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) {
-        setFileLoading(false);
-        return;
-      }
-
-      console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
-
-      // Create blob URL for preview
-      try {
-        const uri = URL.createObjectURL(file);
-        const att: Attachment = {
-          id: Date.now().toString(),
-          type,
-          name: file.name,
-          mimeType: file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
-          file,
-          uri,
-        };
-        setAttachments((prev) => [...prev, att]);
-      } catch (err) {
-        console.error('[File] Error creating blob URL:', err);
-        // Fallback without preview
-        const att: Attachment = {
-          id: Date.now().toString(),
-          type,
-          name: file.name,
-          mimeType: file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
-          file,
-        };
-        setAttachments((prev) => [...prev, att]);
-      }
-      setFileLoading(false);
-    };
-
-    // iOS cancel detection — if user cancels picker, clear loading
-    // The 'change' event won't fire, so we use focus as fallback
-    const handleFocus = () => {
-      setTimeout(() => {
-        if (fileLoading) setFileLoading(false);
-      }, 1000);
-      window.removeEventListener('focus', handleFocus);
-    };
-    window.addEventListener('focus', handleFocus);
-
     input.click();
-  };
+  }, []);
 
-  // Specific handlers for each attachment type
   const handleRecordVideo = () => pickFile('video/*', 'video', true);
   const handlePickImage = () => pickFile('image/*', 'image');
   const handlePickVideo = () => pickFile('video/*', 'video');
@@ -389,17 +366,16 @@ export default function ArenaPage() {
         </div>
       )}
 
-      {/* ═══ FILE LOADING ═══ */}
-      {fileLoading && !hasConversation && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ paddingBottom: 160 }}>
-          <motion.div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
-          <p className="text-sm font-semibold text-zinc-300">Carregando arquivo...</p>
-          <p className="text-xs text-zinc-600">Aguarde enquanto o arquivo é processado</p>
-        </div>
-      )}
+      {/* Hidden file input (persistent in DOM for iOS PWA compatibility) */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
 
       {/* ═══ HAS ATTACHMENT — previews ═══ */}
-      {!hasConversation && screenState === 'hasAttachment' && !fileLoading && (
+      {!hasConversation && screenState === 'hasAttachment' && (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 p-5" style={{ paddingBottom: 160 }}>
           <h3 className="text-base font-bold text-white">Material selecionado</h3>
           <div className="flex gap-2.5 flex-wrap justify-center">
