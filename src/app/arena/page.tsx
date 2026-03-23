@@ -97,9 +97,9 @@ export default function ArenaPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
-  const [wasStopped, setWasStopped] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [fileLoading, setFileLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Audio recording
@@ -110,8 +110,9 @@ export default function ArenaPage() {
 
   useEffect(() => { initAuth(); }, [initAuth]);
 
-  const isStreaming = isSubmitting || (hasEverReceived && phase !== 'complete' && !wasStopped);
-  const isComplete = hasEverReceived && (phase === 'complete' || wasStopped);
+  const isStopped = useArenaStore((s) => s.isStopped);
+  const isStreaming = isSubmitting || (hasEverReceived && phase !== 'complete' && !isStopped);
+  const isComplete = hasEverReceived && (phase === 'complete' || isStopped);
 
   let screenState: ScreenState = 'idle';
   if (isStreaming) screenState = 'processing';
@@ -164,7 +165,7 @@ export default function ArenaPage() {
     tryFetch(1);
   }, [isComplete, simulation, analiseData, analiseLoading]);
 
-  // File picker
+  // File picker with loading indicator
   const pickFile = (accept: string, type: 'image' | 'video') => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -172,9 +173,12 @@ export default function ArenaPage() {
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      const att: Attachment = { id: Date.now().toString(), type, name: file.name, mimeType: file.type, file };
-      if (type === 'image') att.uri = URL.createObjectURL(file);
+      setFileLoading(true);
+      // Create blob URL for preview (both image and video)
+      const uri = URL.createObjectURL(file);
+      const att: Attachment = { id: Date.now().toString(), type, name: file.name, mimeType: file.type, file, uri };
       setAttachments((prev) => [...prev, att]);
+      setFileLoading(false);
     };
     input.click();
   };
@@ -189,7 +193,6 @@ export default function ArenaPage() {
   const handlePlatformConfirm = (platforms: string[]) => {
     setShowPlatformSelector(false);
     if (!profile) return;
-    setWasStopped(false);
     setAnaliseData(null);
     setShowFullAnalysis(false);
 
@@ -211,10 +214,10 @@ export default function ArenaPage() {
     setAttachments([]);
   };
 
-  const handleStop = useCallback(() => { arenaCancel(); setWasStopped(true); }, []);
+  const handleStop = useCallback(() => { arenaCancel(); }, []);
 
   const handleNewAnalysis = useCallback(() => {
-    arenaCancel(); reset(); setWasStopped(false); setAttachments([]);
+    arenaCancel(); reset(); setAttachments([]);
     setShowFullAnalysis(false);
   }, [reset]);
 
@@ -337,8 +340,16 @@ export default function ArenaPage() {
         </div>
       )}
 
+      {/* ═══ FILE LOADING ═══ */}
+      {fileLoading && (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ paddingBottom: 160 }}>
+          <motion.div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
+          <p className="text-sm text-zinc-400">Carregando arquivo...</p>
+        </div>
+      )}
+
       {/* ═══ HAS ATTACHMENT — previews (match mobile) ═══ */}
-      {!hasConversation && screenState === 'hasAttachment' && (
+      {!hasConversation && screenState === 'hasAttachment' && !fileLoading && (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 p-5">
           <h3 className="text-base font-bold text-white">Material selecionado</h3>
           <div className="flex gap-2.5 flex-wrap justify-center">
@@ -381,7 +392,13 @@ export default function ArenaPage() {
                     <div className="flex gap-1.5 mb-2">
                       {userMediaContext.attachmentPreviews.map((att) => (
                         <div key={att.id} className="w-12 h-12 rounded-[10px] overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
-                          {att.uri && att.type === 'image' ? <img src={att.uri} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-zinc-500">🎬</span>}
+                          {att.type === 'image' && att.uri ? (
+                            <img src={att.uri} alt="" className="w-full h-full object-cover" />
+                          ) : att.type === 'video' && att.uri ? (
+                            <video src={att.uri} className="w-full h-full object-cover" muted />
+                          ) : (
+                            <span className="text-lg">{att.type === 'video' ? '🎬' : '🖼'}</span>
+                          )}
                         </div>
                       ))}
                     </div>
