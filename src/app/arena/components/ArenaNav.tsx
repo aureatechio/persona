@@ -1,57 +1,113 @@
-// Arena PWA — Bottom tab bar (mobile-style)
+// Arena PWA — Bottom tab bar (exact match of mobile _layout.tsx)
 
 'use client';
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { MessageCircle, BarChart3, MapPin } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Vote, BarChart3, MapPin } from 'lucide-react';
+import { useArenaStore } from '../store';
 
-const TABS = [
-  { href: '/arena', label: 'Voto', icon: MessageCircle },
-  { href: '/arena/dashboard', label: 'Dashboard', icon: BarChart3 },
-  { href: '/arena/mapa', label: 'Mapa', icon: MapPin },
-] as const;
+const ACTIVE = '#34d399';
+const INACTIVE = '#52525b';
 
 export function ArenaNav() {
   const pathname = usePathname();
+  const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
+
+  const isDashboard = pathname === '/arena/dashboard';
+  const isVoto = pathname === '/arena';
+  const isMapa = pathname.startsWith('/arena/mapa');
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/90 backdrop-blur-2xl border-t border-white/[0.06]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50"
+      style={{
+        backgroundColor: '#000000',
+        borderTop: '0.5px solid rgba(255,255,255,0.06)',
+        height: 85,
+        paddingTop: 8,
+        paddingBottom: 28,
+        boxShadow: '0 -4px 12px rgba(0,0,0,0.3)',
+      }}
     >
-      <div className="flex items-center justify-around h-14 max-w-lg mx-auto">
-        {TABS.map((tab) => {
-          const isActive = tab.href === '/arena'
-            ? pathname === '/arena'
-            : pathname.startsWith(tab.href);
-          const Icon = tab.icon;
+      <div className="flex items-end justify-around h-full max-w-lg mx-auto px-4">
+        {/* Painel (left) */}
+        <Link
+          href="/arena/dashboard"
+          className="flex flex-col items-center gap-0.5"
+          style={{ opacity: hasEverReceived ? 1 : 0.3, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+        >
+          <div className="relative w-11 h-8 flex items-center justify-center">
+            {isDashboard && (
+              <>
+                <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: ACTIVE }} />
+                <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
+              </>
+            )}
+            <BarChart3
+              size={22}
+              color={isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a')}
+              strokeWidth={isDashboard ? 2.5 : 1.5}
+            />
+          </div>
+          <span
+            className="text-[10px] font-semibold tracking-wide mt-0.5"
+            style={{ color: isDashboard ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a') }}
+          >
+            Painel
+          </span>
+        </Link>
 
-          return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className="relative flex flex-col items-center justify-center gap-0.5 flex-1 h-full active:scale-95 transition-transform duration-150"
-            >
-              <Icon
-                size={20}
-                className={isActive ? 'text-emerald-400' : 'text-zinc-600'}
-              />
-              <span className={`text-[10px] font-bold tracking-wide ${
-                isActive ? 'text-emerald-400' : 'text-zinc-600'
-              }`}>
-                {tab.label}
-              </span>
-              {isActive && (
-                <motion.div
-                  layoutId="arena-tab-indicator"
-                  className="absolute bottom-0 left-[20%] right-[20%] h-0.5 rounded-full bg-emerald-400"
-                  transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                />
-              )}
-            </Link>
-          );
-        })}
+        {/* VOTIA (center, raised) */}
+        <Link href="/arena" className="flex flex-col items-center" style={{ marginTop: -20 }}>
+          <div
+            className="w-[52px] h-[52px] rounded-full flex items-center justify-center"
+            style={isVoto ? {
+              backgroundColor: ACTIVE,
+              borderColor: ACTIVE,
+              border: `1px solid ${ACTIVE}`,
+              boxShadow: `0 0 12px rgba(52,211,153,0.4)`,
+            } : {
+              backgroundColor: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <Vote size={28} color={isVoto ? '#000' : '#71717a'} strokeWidth={isVoto ? 2.5 : 1.5} />
+          </div>
+          <span
+            className="text-[10px] font-semibold tracking-wide mt-1"
+            style={{ color: isVoto ? ACTIVE : INACTIVE }}
+          >
+            VOTIA
+          </span>
+        </Link>
+
+        {/* Mapa (right) */}
+        <Link
+          href="/arena/mapa"
+          className="flex flex-col items-center gap-0.5"
+          style={{ opacity: hasEverReceived ? 1 : 0.3, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+        >
+          <div className="relative w-11 h-8 flex items-center justify-center">
+            {isMapa && (
+              <>
+                <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: ACTIVE }} />
+                <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
+              </>
+            )}
+            <MapPin
+              size={22}
+              color={isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a')}
+              strokeWidth={isMapa ? 2.5 : 1.5}
+            />
+          </div>
+          <span
+            className="text-[10px] font-semibold tracking-wide mt-0.5"
+            style={{ color: isMapa ? ACTIVE : (hasEverReceived ? INACTIVE : '#27272a') }}
+          >
+            Mapa
+          </span>
+        </Link>
       </div>
     </nav>
   );

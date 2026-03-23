@@ -1,4 +1,4 @@
-// Arena PWA — Dashboard Screen
+// Arena PWA — Dashboard (exact match of mobile dashboard.tsx)
 
 'use client';
 
@@ -12,11 +12,13 @@ import type { SegmentItem, CommentResult } from '../types';
 import { scoreToHex, scoreToEmoji } from '../constants';
 
 import { ArenaNav } from '../components/ArenaNav';
+import { ScoreHero } from '../components/ScoreHero';
+import { ScoreBar } from '../components/ScoreBar';
 import { SegmentCard } from '../components/SegmentCard';
 import { CommentCard } from '../components/CommentCard';
 import { SentimentBars } from '../components/SentimentBars';
 
-// ── Tab definitions ──
+// ── Tab definitions (exact match of mobile) ──
 
 type TabKey = 'demo' | 'eleitoral' | 'ideologico' | 'reacoes';
 
@@ -51,32 +53,7 @@ const SEGMENTS_IDEOLOGICO = [
   { key: 'clusterMacro', title: 'Cluster Macro', accent: 'indigo' },
 ] as const;
 
-// ── Score Hero (animated large score) ──
-
-function ScoreHero({ avgScore, isLive }: { avgScore: number; isLive: boolean }) {
-  const [jitter, setJitter] = useState(0);
-  const display = avgScore + jitter;
-  const hex = scoreToHex(display);
-  const emoji = scoreToEmoji(display);
-
-  useEffect(() => {
-    if (!isLive) { setJitter(0); return; }
-    const i = setInterval(() => setJitter((Math.random() - 0.5) * 0.6), 600);
-    return () => clearInterval(i);
-  }, [isLive]);
-
-  return (
-    <div className="flex flex-col items-center gap-1 py-4">
-      <span className="text-4xl">{emoji}</span>
-      <span className="text-5xl font-black tabular-nums tracking-tight" style={{ color: hex }}>
-        {display.toFixed(1)}
-      </span>
-      <span className="text-xs text-zinc-500 font-semibold">/10 Nota geral</span>
-    </div>
-  );
-}
-
-// ── Voter Gauge ──
+// ── VoterGauge (exact match of mobile VoterGauge) ──
 
 function VoterGauge({ item, partyLabel, isLive }: { item: SegmentItem; partyLabel: string; isLive?: boolean }) {
   const total = item.count || 0;
@@ -86,83 +63,87 @@ function VoterGauge({ item, partyLabel, isLive }: { item: SegmentItem; partyLabe
 
   useEffect(() => {
     if (!isLive || isEmpty) { setJitter(0); return; }
-    const i = setInterval(() => setJitter((Math.random() - 0.5) * 0.6), 800);
+    const freq = 1000 + Math.random() * 1000;
+    const i = setInterval(() => setJitter((Math.random() - 0.5) * 0.5), freq);
     return () => clearInterval(i);
   }, [isLive, isEmpty]);
 
-  const display = Math.max(0, Math.min(10, baseScore + jitter));
+  const display = Math.max(0, Math.min(10, baseScore + (isLive && !isEmpty ? jitter : 0)));
   const hex = scoreToHex(display);
   const emoji = scoreToEmoji(display);
   const barPos = (display / 10) * 100;
 
   const concordance = isEmpty ? null
     : display > 6 ? { text: 'Maioria concorda', color: '#34d399' }
-    : display < 4 ? { text: 'Maioria discorda', color: '#fb7185' }
-    : { text: 'Opinião dividida', color: '#fbbf24' };
+      : display < 4 ? { text: 'Maioria discorda', color: '#fb7185' }
+        : { text: 'Opinião dividida', color: '#fbbf24' };
+
+  let positivePct = 0, negativePct = 0;
+  if (total > 0) {
+    const pos = item.positive || 0;
+    const neg = item.negative || 0;
+    if (pos + neg > 0) {
+      positivePct = Math.round((pos / total) * 100);
+      negativePct = Math.round((neg / total) * 100);
+    } else {
+      positivePct = Math.round((display / 10) * 100);
+      negativePct = 100 - positivePct;
+    }
+  }
 
   return (
-    <div className="flex-1 bg-white/[0.03] rounded-xl border border-white/[0.06] overflow-hidden">
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-white/[0.04]">
+    <div className="flex-1 overflow-hidden rounded-[14px]" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
         <div className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-        <span className="text-[9px] font-black text-violet-500/80 uppercase tracking-wider truncate">
+        <span className="text-[9px] font-black text-violet-500/80 uppercase tracking-wider truncate flex-1">
           Eleitores de {item.label} ({partyLabel})
         </span>
       </div>
+      {/* Body */}
       <div className="flex flex-col items-center px-2.5 py-2.5 gap-1">
         <span className="text-xl">{isEmpty ? '' : emoji}</span>
-        <span className="text-[28px] font-black tabular-nums" style={{ color: isEmpty ? '#52525b' : hex }}>
-          {display.toFixed(1)}
-        </span>
+        <span className="text-[28px] font-black tabular-nums" style={{ color: isEmpty ? '#52525b' : hex }}>{display.toFixed(1)}</span>
         {concordance && <span className="text-[10px] font-semibold" style={{ color: concordance.color }}>{concordance.text}</span>}
-        <div className="w-full h-1.5 rounded-full bg-white/[0.03] relative overflow-hidden mt-1">
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-rose-400/20 via-amber-400/20 to-emerald-400/20" />
+        {/* Mini bar with gradient */}
+        <div className="w-full h-1.5 rounded-full overflow-hidden relative" style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}>
+          <div className="absolute inset-0 rounded-full opacity-20" style={{ background: 'linear-gradient(to right, #fb7185, #fb923c, #fbbf24, #34d399, #6ee7b7)' }} />
           {!isEmpty && (
-            <div
-              className="absolute top-0 w-1.5 h-full rounded-full -ml-[3px] transition-all duration-500"
-              style={{ left: `${barPos}%`, backgroundColor: hex, boxShadow: `0 0 4px ${hex}80` }}
-            />
+            <div className="absolute top-0 w-1.5 h-full rounded-full -ml-[3px] transition-all duration-500" style={{ left: `${barPos}%`, backgroundColor: hex, boxShadow: `0 0 3px ${hex}99` }} />
           )}
         </div>
+        {!isEmpty && (
+          <span className="text-[9px] text-zinc-600 mt-0.5">{positivePct}% concordam · {negativePct}% discordam</span>
+        )}
       </div>
     </div>
   );
 }
 
-// ── Waiting state ──
+// ── Waiting state (exact match of mobile Waiting) ──
 
 function Waiting() {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center gap-4 pb-20">
-      <motion.div
-        className="relative w-44 h-44 flex items-center justify-center"
-      >
-        <motion.div
-          className="absolute inset-0 rounded-full border-[1.5px] border-emerald-400/20"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-        />
-        <motion.div
-          className="absolute inset-5 rounded-full border border-emerald-400/10 border-dashed"
-          animate={{ rotate: -360 }}
-          transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
-        />
-        <motion.div
-          className="absolute inset-10 rounded-full border-[0.5px] border-emerald-400/15"
-          animate={{ rotate: 360 }}
-          transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
-        />
-        <BarChart3 size={40} className="text-emerald-400" />
-      </motion.div>
-      <h2 className="text-[22px] font-extrabold text-white tracking-tight">Dashboard</h2>
+    <div className="flex-1 flex flex-col items-center justify-center gap-4 pb-24 relative">
+      {/* Orbs */}
+      <motion.div className="absolute rounded-full" style={{ width: 200, height: 200, backgroundColor: 'rgba(52,211,153,0.06)', top: '20%', left: '10%' }} animate={{ x: [0, 30, 0, -30, 0], y: [0, 20, 0, -20, 0] }} transition={{ duration: 8, repeat: Infinity }} />
+      <motion.div className="absolute rounded-full" style={{ width: 180, height: 180, backgroundColor: 'rgba(139,92,246,0.05)', bottom: '25%', right: '10%' }} animate={{ x: [0, -25, 0, 25, 0], y: [0, -15, 0, 15, 0] }} transition={{ duration: 9, repeat: Infinity }} />
+
+      {/* Rings */}
+      <div className="relative w-44 h-44 flex items-center justify-center">
+        <motion.div className="absolute w-44 h-44 rounded-full" style={{ border: '1.5px solid rgba(52,211,153,0.2)' }} animate={{ rotate: 360 }} transition={{ duration: 8, repeat: Infinity, ease: 'linear' }} />
+        <motion.div className="absolute w-[140px] h-[140px] rounded-full" style={{ border: '1px dashed rgba(52,211,153,0.12)' }} animate={{ rotate: -360 }} transition={{ duration: 12, repeat: Infinity, ease: 'linear' }} />
+        <motion.div className="absolute w-[100px] h-[100px] rounded-full" style={{ border: '0.5px solid rgba(52,211,153,0.15)' }} animate={{ rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: 'linear' }} />
+        <motion.div animate={{ scale: [1, 1.1, 0.95, 1], opacity: [0.7, 1, 0.5, 0.7] }} transition={{ duration: 3, repeat: Infinity }}>
+          <BarChart3 size={40} className="text-emerald-400" />
+        </motion.div>
+      </div>
+
+      <h2 className="text-[22px] font-extrabold text-white tracking-tight mt-2">Dashboard</h2>
       <p className="text-[13px] text-zinc-600">Aguardando dados...</p>
-      <div className="flex gap-2">
+      <div className="flex gap-2 mt-3">
         {[0, 1, 2].map((i) => (
-          <motion.div
-            key={i}
-            className="w-1.5 h-1.5 rounded-full bg-emerald-400/60"
-            animate={{ y: [-8, 0] }}
-            transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse', delay: i * 0.15 }}
-          />
+          <motion.div key={i} className="w-1.5 h-1.5 rounded-full bg-emerald-400/60" animate={{ y: [-8, 0] }} transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse', delay: i * 0.2 }} />
         ))}
       </div>
     </div>
@@ -215,12 +196,12 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col h-[100dvh] bg-black">
-      {/* Status bar */}
-      <div className="flex items-center px-4 h-11 border-b border-white/[0.04] shrink-0 gap-2">
+      {/* ═══ STATUS BAR (exact match of mobile) ═══ */}
+      <div className="flex items-center px-4 h-11 gap-2 shrink-0" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
         {isLive ? (
           <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/30 flex items-center justify-center">
-              <div className="w-[6px] h-[6px] rounded-full bg-emerald-400" />
+            <div className="w-2.5 h-2.5 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(52,211,153,0.3)' }}>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
             </div>
             <span className="text-[11px] font-black text-emerald-400 tracking-[1.5px]">AO VIVO</span>
           </div>
@@ -231,11 +212,18 @@ export default function DashboardPage() {
         <Users size={14} className="text-zinc-500" />
         {isLive && processedCount > 0 ? (
           <div className="flex items-center gap-1.5">
-            <div className="w-20 h-1 rounded bg-white/[0.06] overflow-hidden">
+            <div className="w-20 h-1 rounded overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
               <div className="h-full rounded bg-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
             </div>
             <span className="text-xs font-bold text-zinc-400 tabular-nums">{processedCount}/{totalCount}</span>
             <span className="text-[13px] font-black text-emerald-400 tabular-nums">{progress}%</span>
+          </div>
+        ) : isLive && processedCount === 0 ? (
+          <div className="flex items-center gap-1.5">
+            <div className="w-20 h-1 rounded overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
+              <div className="w-1/3 h-full rounded opacity-60" style={{ backgroundColor: 'rgba(52,211,153,0.4)' }} />
+            </div>
+            <span className="text-xs font-medium text-zinc-400">Preparando...</span>
           </div>
         ) : total > 0 ? (
           <span className="text-[13px] font-bold text-zinc-400 tabular-nums">{total.toLocaleString('pt-BR')}</span>
@@ -244,60 +232,50 @@ export default function DashboardPage() {
 
       {/* Thin progress bar */}
       {isLive && processedCount > 0 && (
-        <div className="h-[3px] bg-zinc-900">
+        <div className="h-[3px]" style={{ backgroundColor: 'rgba(24,24,27,1)' }}>
           <div className="h-full bg-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
         </div>
       )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto pb-20 overscroll-contain">
-        <div className="px-4 py-2 space-y-4">
-          {/* Score hero */}
-          <ScoreHero avgScore={avgScore ?? 0} isLive={isLive} />
+      {/* ═══ CONTENT ═══ */}
+      <div className="flex-1 overflow-y-auto overscroll-contain" style={{ paddingBottom: 100 }}>
+        <div className="px-4 py-4 space-y-4">
 
-          {/* Sentiment */}
-          {total > 0 && <SentimentBars positive={positive} negative={negative} neutral={neutral} total={total} />}
+          {/* ScoreHero + ScoreBar (exact match) */}
+          <ScoreHero avgScore={avgScore ?? 0} processedCount={processedCount} isLive={isLive} />
+          <ScoreBar avgScore={avgScore ?? 0} totalCount={total} isLive={isLive} />
 
-          {/* Voter gauges */}
+          {/* SentimentBars */}
+          {total > 0 && <SentimentBars positive={positive} negative={negative} neutral={neutral} total={total} isLive={isLive} />}
+
+          {/* Voter Gauges (exact match) */}
           <div className="flex gap-2.5">
             {lulaVoters ? (
               <VoterGauge item={lulaVoters} partyLabel="PT" isLive={isLive} />
             ) : (
-              <div className="flex-1 bg-white/[0.02] rounded-xl border border-white/[0.06] flex items-center justify-center py-6">
+              <div className="flex-1 rounded-[14px] flex items-center justify-center py-6" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <span className="text-[10px] text-zinc-600">Eleitores de Lula</span>
               </div>
             )}
             {bolsonaroVoters ? (
               <VoterGauge item={bolsonaroVoters} partyLabel="PL" isLive={isLive} />
             ) : (
-              <div className="flex-1 bg-white/[0.02] rounded-xl border border-white/[0.06] flex items-center justify-center py-6">
+              <div className="flex-1 rounded-[14px] flex items-center justify-center py-6" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <span className="text-[10px] text-zinc-600">Eleitores de Bolsonaro</span>
               </div>
             )}
           </div>
 
-          {/* Tab bar */}
-          <div className="flex border-b border-white/[0.06]">
+          {/* Tab bar (exact match) */}
+          <div className="flex" style={{ borderBottom: '0.5px solid rgba(255,255,255,0.06)' }}>
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.key;
               return (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className="flex-1 flex items-center justify-center gap-1 py-3 relative"
-                >
+                <button key={tab.key} onClick={() => setActiveTab(tab.key)} className="flex-1 flex items-center justify-center gap-1 py-3 relative">
                   <Icon size={14} className={isActive ? 'text-emerald-400' : 'text-zinc-600'} />
-                  <span className={`text-[10px] font-bold uppercase tracking-wide ${isActive ? 'text-white' : 'text-zinc-600'}`}>
-                    {tab.label}
-                  </span>
-                  {isActive && (
-                    <motion.div
-                      layoutId="dashboard-tab"
-                      className="absolute bottom-0 left-[15%] right-[15%] h-0.5 rounded bg-emerald-400"
-                      transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-                    />
-                  )}
+                  <span className={`text-[10px] font-bold uppercase tracking-wide ${isActive ? 'text-white' : 'text-zinc-600'}`}>{tab.label}</span>
+                  {isActive && <div className="absolute bottom-0 left-[15%] right-[15%] h-0.5 rounded bg-emerald-400" />}
                 </button>
               );
             })}
@@ -306,33 +284,24 @@ export default function DashboardPage() {
           {/* Tab content */}
           {activeTab === 'demo' && (
             <div className="space-y-3">
-              {SEGMENTS_DEMO.map((seg) => (
-                <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />
-              ))}
+              {SEGMENTS_DEMO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
             </div>
           )}
-
           {activeTab === 'eleitoral' && (
             <div className="space-y-3">
-              {SEGMENTS_ELEITORAL.map((seg) => (
-                <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />
-              ))}
+              {SEGMENTS_ELEITORAL.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
             </div>
           )}
-
           {activeTab === 'ideologico' && (
             <div className="space-y-3">
-              {SEGMENTS_IDEOLOGICO.map((seg) => (
-                <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />
-              ))}
+              {SEGMENTS_IDEOLOGICO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
             </div>
           )}
-
           {activeTab === 'reacoes' && (
             <div className="space-y-3">
               <div className="flex items-center gap-1.5 py-1">
                 <MessageCircle size={14} className="text-zinc-500" />
-                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex-1">Reações</span>
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-wider flex-1">REAÇÕES</span>
                 <span className="text-[11px] text-zinc-600 tabular-nums">{comments.length}</span>
               </div>
               {commentsSlice.length > 0 ? (
@@ -341,7 +310,7 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="flex flex-col items-center py-16">
-                  <div className="w-16 h-16 rounded-2xl bg-zinc-900/50 flex items-center justify-center mb-3">
+                  <div className="w-16 h-16 rounded-[20px] flex items-center justify-center mb-3" style={{ backgroundColor: 'rgba(39,39,42,0.5)' }}>
                     <MessageCircle size={32} className="text-zinc-700" />
                   </div>
                   <p className="text-[13px] text-zinc-600">Aguardando reações...</p>
@@ -349,6 +318,7 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+
         </div>
       </div>
 
