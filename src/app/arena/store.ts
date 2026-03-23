@@ -49,6 +49,11 @@ function mergeSegments(incoming: ArenaLiveData): void {
 
 // ── Store ──
 
+interface UserMediaContext {
+  text: string;
+  attachmentPreviews: { id: string; type: 'image' | 'video'; uri?: string }[];
+}
+
 interface ArenaStore {
   data: ArenaLiveData;
   hasEverReceived: boolean;
@@ -56,7 +61,10 @@ interface ArenaStore {
   collectingStatus: string | null;
   isStopped: boolean;
   analiseData: AnaliseData | null;
+  analiseLoading: boolean;
+  analiseError: string;
   chatMessages: ChatMessage[];
+  userMediaContext: UserMediaContext | null;
 
   updateData: (incoming: ArenaLiveData, collectingStatus?: string | null) => void;
   reset: (question?: string) => void;
@@ -64,8 +72,11 @@ interface ArenaStore {
   setCollectingStatus: (s: string | null) => void;
   stopLive: () => void;
   setAnaliseData: (data: AnaliseData | null) => void;
+  setAnaliseLoading: (v: boolean) => void;
+  setAnaliseError: (v: string) => void;
   addChatMessage: (msg: ChatMessage) => void;
   clearChat: () => void;
+  setUserMediaContext: (ctx: UserMediaContext | null) => void;
 }
 
 export const useArenaStore = create<ArenaStore>((set, get) => ({
@@ -75,7 +86,10 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   collectingStatus: null,
   isStopped: false,
   analiseData: null,
+  analiseLoading: false,
+  analiseError: '',
   chatMessages: [],
+  userMediaContext: null,
 
   updateData: (incoming, collectingStatus) => {
     if (get().isStopped) return;
@@ -95,7 +109,10 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
       collectingStatus: null,
       isStopped: false,
       analiseData: null,
+      analiseLoading: false,
+      analiseError: '',
       chatMessages: [],
+      userMediaContext: null,
     });
   },
 
@@ -109,9 +126,12 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 
   setSubmitting: (v) => set({ isSubmitting: v }),
   setCollectingStatus: (s) => set({ collectingStatus: s }),
-  setAnaliseData: (data) => set({ analiseData: data }),
+  setAnaliseData: (data) => set({ analiseData: data, analiseLoading: false }),
+  setAnaliseLoading: (v) => set({ analiseLoading: v }),
+  setAnaliseError: (v) => set({ analiseError: v, analiseLoading: false }),
   addChatMessage: (msg) => set((state) => ({ chatMessages: [...state.chatMessages, msg] })),
   clearChat: () => set({ chatMessages: [] }),
+  setUserMediaContext: (ctx) => set({ userMediaContext: ctx }),
 }));
 
 // ══════════════════════════════════════════════════════════════════

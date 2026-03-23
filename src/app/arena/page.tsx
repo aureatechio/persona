@@ -80,8 +80,14 @@ export default function ArenaPage() {
   const reset = useArenaStore((s) => s.reset);
   const analiseData = useArenaStore((s) => s.analiseData);
   const setAnaliseData = useArenaStore((s) => s.setAnaliseData);
+  const analiseLoading = useArenaStore((s) => s.analiseLoading);
+  const setAnaliseLoading = useArenaStore((s) => s.setAnaliseLoading);
+  const analiseError = useArenaStore((s) => s.analiseError);
+  const setAnaliseError = useArenaStore((s) => s.setAnaliseError);
   const chatMessages = useArenaStore((s) => s.chatMessages);
   const addChatMessage = useArenaStore((s) => s.addChatMessage);
+  const userMediaContext = useArenaStore((s) => s.userMediaContext);
+  const setUserMediaContext = useArenaStore((s) => s.setUserMediaContext);
 
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const profile = useAuthStore((s) => s.profile);
@@ -92,12 +98,8 @@ export default function ArenaPage() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [wasStopped, setWasStopped] = useState(false);
-  const [analiseLoading, setAnaliseLoading] = useState(false);
-  const [analiseError, setAnaliseError] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
-  const [userMediaContext, setUserMediaContext] = useState<{ text: string; attachments: Attachment[] } | null>(null);
-  const hasCalledAnalise = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Audio recording
@@ -122,12 +124,10 @@ export default function ArenaPage() {
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 300);
   }, [phase, analiseLoading, analiseData, chatMessages.length]);
 
-  // Auto-call analise on complete
+  // Auto-call analise on complete (uses store state — persists across navigation)
   useEffect(() => {
-    if (!isComplete || !simulation || hasCalledAnalise.current || analiseData) return;
-    hasCalledAnalise.current = true;
+    if (!isComplete || !simulation || analiseLoading || analiseData) return;
     setAnaliseLoading(true);
-    setAnaliseError('');
 
     const payload = JSON.stringify({
       question: question || '',
@@ -154,15 +154,15 @@ export default function ArenaPage() {
         signal: controller.signal,
       })
         .then((r) => { clearTimeout(timeout); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then((json) => { if (json.error) throw new Error(json.error); setAnaliseData(json); setAnaliseLoading(false); })
+        .then((json) => { if (json.error) throw new Error(json.error); setAnaliseData(json); })
         .catch((err) => {
           clearTimeout(timeout);
           if (attempt < 2) setTimeout(() => tryFetch(attempt + 1), 2000);
-          else { setAnaliseError('Falha ao gerar análise. Toque para tentar novamente.'); setAnaliseLoading(false); }
+          else setAnaliseError('Falha ao gerar análise. Toque para tentar novamente.');
         });
     };
     tryFetch(1);
-  }, [isComplete, simulation]);
+  }, [isComplete, simulation, analiseData, analiseLoading]);
 
   // File picker
   const pickFile = (accept: string, type: 'image' | 'video') => {
@@ -190,11 +190,14 @@ export default function ArenaPage() {
     setShowPlatformSelector(false);
     if (!profile) return;
     setWasStopped(false);
-    hasCalledAnalise.current = false;
     setAnaliseData(null);
     setShowFullAnalysis(false);
 
-    setUserMediaContext({ text: platforms.join(', '), attachments: [...attachments] });
+    // Save to store (persists across tab navigation)
+    setUserMediaContext({
+      text: platforms.join(', '),
+      attachmentPreviews: attachments.map(a => ({ id: a.id, type: a.type, uri: a.uri })),
+    });
 
     arenaSubmit({
       attachments,
@@ -212,10 +215,8 @@ export default function ArenaPage() {
 
   const handleNewAnalysis = useCallback(() => {
     arenaCancel(); reset(); setWasStopped(false); setAttachments([]);
-    hasCalledAnalise.current = false; setAnaliseData(null);
-    setAnaliseLoading(false); setAnaliseError(''); setShowFullAnalysis(false);
-    setUserMediaContext(null);
-  }, [reset, setAnaliseData]);
+    setShowFullAnalysis(false);
+  }, [reset]);
 
   const handleChatQuestion = async (text: string) => {
     setShowFullAnalysis(false);
@@ -376,9 +377,9 @@ export default function ArenaPage() {
               {/* User media message */}
               {userMediaContext && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] ml-auto rounded-2xl rounded-br-sm p-3" style={{ backgroundColor: 'rgba(52,211,153,0.08)', border: '0.5px solid rgba(52,211,153,0.15)' }}>
-                  {userMediaContext.attachments.length > 0 && (
+                  {userMediaContext.attachmentPreviews.length > 0 && (
                     <div className="flex gap-1.5 mb-2">
-                      {userMediaContext.attachments.map((att) => (
+                      {userMediaContext.attachmentPreviews.map((att) => (
                         <div key={att.id} className="w-12 h-12 rounded-[10px] overflow-hidden flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
                           {att.uri && att.type === 'image' ? <img src={att.uri} alt="" className="w-full h-full object-cover" /> : <span className="text-[10px] text-zinc-500">🎬</span>}
                         </div>
@@ -397,7 +398,7 @@ export default function ArenaPage() {
               )}
 
               {/* Analysis loading (AnalysisProgressLoader — exact match of mobile) */}
-              {isComplete && analiseLoading && (
+              {isComplete && analiseLoading && !analiseData && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] rounded-2xl rounded-bl-sm h-[250px]" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                   <AnalysisProgressLoader />
                 </motion.div>
@@ -407,7 +408,7 @@ export default function ArenaPage() {
               {isComplete && analiseError && !analiseLoading && (
                 <div className="max-w-[88%] rounded-2xl rounded-bl-sm p-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                   <p className="text-[13px] text-rose-400">{analiseError}</p>
-                  <button onClick={() => { hasCalledAnalise.current = false; setAnaliseError(''); }} className="mt-2 px-4 py-2.5 rounded-xl text-[13px] text-zinc-300" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+                  <button onClick={() => { setAnaliseError(''); }} className="mt-2 px-4 py-2.5 rounded-xl text-[13px] text-zinc-300" style={{ backgroundColor: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
                     Tentar novamente
                   </button>
                 </div>
