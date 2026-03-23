@@ -1,10 +1,11 @@
 // Arena PWA — Analysis Summary + Expandable Details
+// With copy button on suggested phrases
 
 'use client';
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check } from 'lucide-react';
 import type { AnaliseData } from '../types';
 import { ScoreRing } from './ScoreRing';
 import { RadarChart } from './RadarChart';
@@ -13,14 +14,96 @@ interface AnalysisSummaryProps {
   analiseData: AnaliseData;
 }
 
-// ── Recommendation Row ──
+// ── Copy Button ──
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(50);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-1 px-2 py-1 rounded-lg active:scale-95 transition-all duration-200 shrink-0"
+      style={{
+        backgroundColor: copied ? 'rgba(52,211,153,0.15)' : 'rgba(255,255,255,0.06)',
+        border: `0.5px solid ${copied ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.08)'}`,
+      }}
+    >
+      {copied ? (
+        <Check size={12} className="text-emerald-400" />
+      ) : (
+        <Copy size={12} className="text-zinc-400" />
+      )}
+      <span className={`text-[10px] font-semibold ${copied ? 'text-emerald-400' : 'text-zinc-500'}`}>
+        {copied ? 'Copiado!' : 'Copiar'}
+      </span>
+    </button>
+  );
+}
+
+// ── Copyable Text Block (for suggested phrases) ──
+function CopyablePhrase({ text }: { text: string }) {
+  return (
+    <div
+      className="flex items-start gap-2 mt-2 p-2.5 rounded-xl"
+      style={{ backgroundColor: 'rgba(52,211,153,0.06)', border: '0.5px solid rgba(52,211,153,0.15)' }}
+    >
+      <p className="flex-1 text-xs text-emerald-300 leading-relaxed italic">
+        &ldquo;{text}&rdquo;
+      </p>
+      <CopyButton text={text} />
+    </div>
+  );
+}
+
+// ── Extract quoted phrases from text ──
+function extractPhrases(text: string): { before: string; phrases: string[]; after: string } {
+  // Match text between quotes: "...", "...", «...»
+  const regex = /[""«]([^""»]+)[""»]/g;
+  const phrases: string[] = [];
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    if (match[1].length > 15) { // Only phrases longer than 15 chars
+      phrases.push(match[1]);
+    }
+  }
+  // Remove the quoted text from the original for "before" display
+  const before = text.replace(regex, '').replace(/\s{2,}/g, ' ').trim();
+  return { before, phrases, after: '' };
+}
+
+// ── Recommendation Row with copy on phrases ──
 function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations'][0]; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const priorityColors: Record<string, string> = {
     alta: '#fb7185',
+    prioridade: '#fb7185',
     média: '#fbbf24',
+    importante: '#fbbf24',
     baixa: '#34d399',
+    oportunidade: '#34d399',
   };
+
+  const detailPhrases = rec.detail ? extractPhrases(rec.detail) : null;
 
   return (
     <button
@@ -50,17 +133,31 @@ function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations']
           </div>
           <AnimatePresence>
             {expanded && rec.detail && (
-              <motion.p
+              <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="text-xs text-zinc-400 mt-2 leading-relaxed overflow-hidden"
+                className="overflow-hidden"
               >
-                {rec.detail}
-              </motion.p>
+                {detailPhrases && detailPhrases.phrases.length > 0 ? (
+                  <>
+                    <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{detailPhrases.before}</p>
+                    {detailPhrases.phrases.map((phrase, i) => (
+                      <CopyablePhrase key={i} text={phrase} />
+                    ))}
+                  </>
+                ) : (
+                  <p className="text-xs text-zinc-400 mt-2 leading-relaxed">{rec.detail}</p>
+                )}
+              </motion.div>
             )}
           </AnimatePresence>
         </div>
+        <ChevronDown
+          size={14}
+          className="text-zinc-600 shrink-0 mt-1 transition-transform duration-200"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0)' }}
+        />
       </div>
     </button>
   );
@@ -93,6 +190,9 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
 // ── Main Component ──
 export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
   const [showFull, setShowFull] = useState(false);
+
+  // Extract phrases from insight action for copy
+  const insightPhrases = analiseData.insight?.action ? extractPhrases(analiseData.insight.action) : null;
 
   return (
     <>
@@ -182,28 +282,41 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
               </div>
             )}
 
-            {/* Insight */}
+            {/* Insight with copyable action */}
             {analiseData.insight && (
               <div className="bg-emerald-500/[0.04] border border-emerald-500/20 rounded-2xl p-4">
                 <h3 className="text-sm font-extrabold text-emerald-400 mb-1">{analiseData.insight.title}</h3>
-                <p className="text-xs text-zinc-400 leading-relaxed mb-1.5">{analiseData.insight.description}</p>
-                <p className="text-xs font-semibold text-zinc-300">→ {analiseData.insight.action}</p>
+                <p className="text-xs text-zinc-400 leading-relaxed mb-2">{analiseData.insight.description}</p>
+
+                {/* Action with copy */}
+                <div className="flex items-start gap-2 p-2.5 rounded-xl" style={{ backgroundColor: 'rgba(52,211,153,0.08)', border: '0.5px solid rgba(52,211,153,0.2)' }}>
+                  <p className="flex-1 text-xs font-semibold text-emerald-300 leading-relaxed">
+                    → {analiseData.insight.action}
+                  </p>
+                  <CopyButton text={analiseData.insight.action} />
+                </div>
               </div>
             )}
 
-            {/* Next Steps */}
+            {/* Next Steps with copy on each */}
             {analiseData.nextSteps?.length > 0 && (
               <div>
                 <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px] mb-3">PRÓXIMOS PASSOS</p>
                 <div className="space-y-2">
                   {analiseData.nextSteps.map((step, i) => (
-                    <div key={i} className="flex items-center gap-3 bg-zinc-900/40 border border-white/[0.06] rounded-xl p-3.5">
-                      <div className="w-9 h-9 rounded-full bg-zinc-800 border border-white/[0.08] flex items-center justify-center shrink-0">
-                        <span className="text-sm font-extrabold text-white">{i + 1}</span>
+                    <div key={i} className="bg-zinc-900/40 border border-white/[0.06] rounded-xl p-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-zinc-800 border border-white/[0.08] flex items-center justify-center shrink-0">
+                          <span className="text-sm font-extrabold text-white">{i + 1}</span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-[13px] font-bold text-white">{step.title}</p>
+                          <p className="text-xs text-emerald-400 mt-0.5">{step.benefit}</p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-[13px] font-bold text-white">{step.title}</p>
-                        <p className="text-xs text-emerald-400 mt-0.5">{step.benefit}</p>
+                      {/* Copy the full step as actionable text */}
+                      <div className="flex justify-end mt-2">
+                        <CopyButton text={`${step.title}: ${step.benefit}`} />
                       </div>
                     </div>
                   ))}
