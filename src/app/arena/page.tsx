@@ -165,23 +165,72 @@ export default function ArenaPage() {
     tryFetch(1);
   }, [isComplete, simulation, analiseData, analiseLoading]);
 
-  // File picker with loading indicator
-  const pickFile = (accept: string, type: 'image' | 'video') => {
+  // File picker — handles iOS camera recording + gallery selection
+  const pickFile = (accept: string, type: 'image' | 'video', capture?: boolean) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = accept;
+    // For camera recording on mobile
+    if (capture) {
+      input.setAttribute('capture', 'environment');
+    }
+
+    setFileLoading(true);
+
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      setFileLoading(true);
-      // Create blob URL for preview (both image and video)
-      const uri = URL.createObjectURL(file);
-      const att: Attachment = { id: Date.now().toString(), type, name: file.name, mimeType: file.type, file, uri };
-      setAttachments((prev) => [...prev, att]);
+      if (!file) {
+        setFileLoading(false);
+        return;
+      }
+
+      console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+
+      // Create blob URL for preview
+      try {
+        const uri = URL.createObjectURL(file);
+        const att: Attachment = {
+          id: Date.now().toString(),
+          type,
+          name: file.name,
+          mimeType: file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+          file,
+          uri,
+        };
+        setAttachments((prev) => [...prev, att]);
+      } catch (err) {
+        console.error('[File] Error creating blob URL:', err);
+        // Fallback without preview
+        const att: Attachment = {
+          id: Date.now().toString(),
+          type,
+          name: file.name,
+          mimeType: file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg'),
+          file,
+        };
+        setAttachments((prev) => [...prev, att]);
+      }
       setFileLoading(false);
     };
+
+    // iOS cancel detection — if user cancels picker, clear loading
+    // The 'change' event won't fire, so we use focus as fallback
+    const handleFocus = () => {
+      setTimeout(() => {
+        if (fileLoading) setFileLoading(false);
+      }, 1000);
+      window.removeEventListener('focus', handleFocus);
+    };
+    window.addEventListener('focus', handleFocus);
+
     input.click();
   };
+
+  // Specific handlers for each attachment type
+  const handleRecordVideo = () => pickFile('video/*', 'video', true);
+  const handlePickImage = () => pickFile('image/*', 'image');
+  const handlePickVideo = () => pickFile('video/*', 'video');
+  const handlePickAudio = () => pickFile('audio/*', 'video');
 
   const handleSendMessage = (text: string) => {
     if (!isAuthenticated) { setShowAuthModal(true); return; }
@@ -341,32 +390,42 @@ export default function ArenaPage() {
       )}
 
       {/* ═══ FILE LOADING ═══ */}
-      {fileLoading && (
+      {fileLoading && !hasConversation && (
         <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ paddingBottom: 160 }}>
-          <motion.div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
-          <p className="text-sm text-zinc-400">Carregando arquivo...</p>
+          <motion.div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
+          <p className="text-sm font-semibold text-zinc-300">Carregando arquivo...</p>
+          <p className="text-xs text-zinc-600">Aguarde enquanto o arquivo é processado</p>
         </div>
       )}
 
-      {/* ═══ HAS ATTACHMENT — previews (match mobile) ═══ */}
+      {/* ═══ HAS ATTACHMENT — previews ═══ */}
       {!hasConversation && screenState === 'hasAttachment' && !fileLoading && (
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-5">
+        <div className="flex-1 flex flex-col items-center justify-center gap-4 p-5" style={{ paddingBottom: 160 }}>
           <h3 className="text-base font-bold text-white">Material selecionado</h3>
           <div className="flex gap-2.5 flex-wrap justify-center">
             {attachments.map((att) => (
-              <div key={att.id} className="w-20 h-20 rounded-[14px] overflow-hidden relative" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+              <div key={att.id} className="w-24 h-24 rounded-[14px] overflow-hidden relative" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
                 {att.uri && att.type === 'image' ? (
                   <img src={att.uri} alt="" className="w-full h-full object-cover" />
+                ) : att.uri && att.type === 'video' ? (
+                  <video src={att.uri} className="w-full h-full object-cover" muted playsInline />
                 ) : (
-                  <div className="flex items-center justify-center h-full text-zinc-500 text-[11px]">{att.type === 'video' ? '🎬' : '🖼'}</div>
+                  <div className="flex flex-col items-center justify-center h-full gap-1">
+                    <span className="text-2xl">{att.type === 'video' ? '🎬' : '🖼'}</span>
+                    <span className="text-[9px] text-zinc-500 truncate max-w-[80px]">{att.name}</span>
+                  </div>
                 )}
                 <button onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))} className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center">
                   <X size={12} className="text-white" />
                 </button>
+                {/* Type badge */}
+                <div className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md text-[8px] font-bold uppercase" style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: att.type === 'video' ? '#38bdf8' : '#34d399' }}>
+                  {att.type === 'video' ? 'Vídeo' : 'Imagem'}
+                </div>
               </div>
             ))}
           </div>
-          <p className="text-xs text-zinc-600 text-center">Digite sua pergunta e envie para selecionar plataformas</p>
+          <p className="text-xs text-zinc-500 text-center">Toque enviar para selecionar plataformas</p>
         </div>
       )}
 
@@ -480,7 +539,7 @@ export default function ArenaPage() {
 
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />
-      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onRecordVideo={() => pickFile('video/*', 'video')} onPickImage={() => pickFile('image/*', 'image')} onPickVideo={() => pickFile('video/*', 'video')} onPickAudio={() => pickFile('audio/*', 'video')} />
+      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onRecordVideo={handleRecordVideo} onPickImage={handlePickImage} onPickVideo={handlePickVideo} onPickAudio={handlePickAudio} />
       <PlatformSelector visible={showPlatformSelector} onClose={() => setShowPlatformSelector(false)} onConfirm={handlePlatformConfirm} />
     </div>
   );
