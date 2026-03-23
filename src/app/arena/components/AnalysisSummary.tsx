@@ -76,19 +76,23 @@ function CopyablePhrase({ text }: { text: string }) {
 }
 
 // ── Extract quoted phrases from text ──
+// Matches: "...", "...", «...», '...' (single quotes around phrases > 10 chars)
 function extractPhrases(text: string): { before: string; phrases: string[]; after: string } {
-  // Match text between quotes: "...", "...", «...»
-  const regex = /[""«]([^""»]+)[""»]/g;
+  const patterns = [
+    /[""«]([^""»]+)[""»]/g,           // double/smart quotes
+    /(?<!\w)'([^']{10,}[?!.]?)'(?!\w)/g,  // single quotes (not contractions)
+  ];
   const phrases: string[] = [];
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    if (match[1].length > 15) { // Only phrases longer than 15 chars
-      phrases.push(match[1]);
+  for (const regex of patterns) {
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const phrase = match[1].trim();
+      if (phrase.length > 10 && !phrases.includes(phrase)) {
+        phrases.push(phrase);
+      }
     }
   }
-  // Remove the quoted text from the original for "before" display
-  const before = text.replace(regex, '').replace(/\s{2,}/g, ' ').trim();
-  return { before, phrases, after: '' };
+  return { before: text, phrases, after: '' };
 }
 
 // ── Recommendation Row with copy on phrases ──
@@ -191,23 +195,9 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
 export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
   const [showFull, setShowFull] = useState(false);
 
-  // Extract copyable phrases from summary text
+  // Extract copyable phrases from the summary text
   const summaryText = analiseData.summary || analiseData.headline || '';
-  const summaryPhrases = extractPhrases(summaryText);
-  // Also extract from all recommendation details + insight action
-  const allSuggestedPhrases: string[] = [];
-  analiseData.recommendations?.forEach((rec) => {
-    if (rec.detail) {
-      const { phrases } = extractPhrases(rec.detail);
-      allSuggestedPhrases.push(...phrases);
-    }
-  });
-  if (analiseData.insight?.action) {
-    const { phrases } = extractPhrases(analiseData.insight.action);
-    allSuggestedPhrases.push(...phrases);
-  }
-  // Combine: phrases from summary + from recommendations/insight (dedupe)
-  const copyablePhrases = [...new Set([...summaryPhrases.phrases, ...allSuggestedPhrases])];
+  const { phrases: summaryPhrases } = extractPhrases(summaryText);
 
   return (
     <>
@@ -226,11 +216,10 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
           {summaryText}
         </p>
 
-        {/* Copyable suggested phrases right below the summary */}
-        {copyablePhrases.length > 0 && (
+        {/* Copyable phrases extracted from summary */}
+        {summaryPhrases.length > 0 && (
           <div className="mt-3 space-y-2">
-            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Sugestões para copiar</p>
-            {copyablePhrases.map((phrase, i) => (
+            {summaryPhrases.map((phrase, i) => (
               <CopyablePhrase key={i} text={phrase} />
             ))}
           </div>
