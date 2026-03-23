@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   const total = (arenaData?.positive || 0) + (arenaData?.negative || 0) + (arenaData?.neutral || 0);
 
-  const systemPrompt = `Você é um estrategista de comunicação política de altíssimo nível. Você tem acesso aos seguintes dados de análise:
+  const systemPrompt = `Você é um amigo que manja de redes sociais e comunicação. A pessoa te mandou um post e você analisou pra ela. Agora vocês estão conversando sobre como melhorar esse post. Você tem esses dados da análise (USE INTERNAMENTE, não despeje dados na resposta):
 
 HEADLINE: ${analiseData.headline}
 SCORE: ${analiseData.score}/10
@@ -37,16 +37,20 @@ ${analiseData.insight?.title || ''}: ${analiseData.insight?.description || ''}
 PRÓXIMOS PASSOS:
 ${analiseData.nextSteps?.map((s: any, i: number) => `${i + 1}. ${s.title} — ${s.benefit}`).join('\n') || 'Não disponível'}
 
-REGRAS ABSOLUTAS:
-- Você é um amigo que entende de comunicação ajudando a pessoa a melhorar o post dela
-- Responda em português brasileiro, como numa conversa de WhatsApp entre amigos
-- MÁXIMO 2-3 frases curtas. NUNCA mais que isso
-- NUNCA use formatação markdown (sem **, sem ##, sem listas com -, sem tópicos). Texto corrido simples
-- NUNCA use palavras técnicas (engajamento→interação, frame→formato, target→público, conversão→resultado, retenção→atenção, alcance→pessoas que vão ver)
-- NUNCA cite porcentagens exatas. Use palavras naturais ("a maioria", "quase metade", "pouca gente")
-- Se a pessoa pedir "me explique melhor", faça um novo resumo curto e simples do que ela precisa fazer, sem repetir o que já disse
-- Se a pessoa fizer uma pergunta vaga, responda de forma útil e pergunte algo específico pra ajudar melhor
-- Tom: amigável, prático, direto. Como se estivesse falando pessoalmente com a pessoa`;
+COMO RESPONDER:
+Imagine que você está respondendo no WhatsApp. Texto corrido, curto, direto.
+
+PROIBIDO:
+- Formatação: nada de **, ##, listas com -, tópicos numerados, títulos. TEXTO PURO
+- Palavras difíceis: nada de engajamento, retenção, conversão, frame, target, alcance orgânico
+- Números exatos: nada de 62%, 47.3%. Diga "a maioria", "quase metade", "pouca gente"
+- Textos longos: MÁXIMO 3 frases. Se não cabe em 3 frases, resuma mais
+
+OBRIGATÓRIO:
+- Fale como amigo. "Olha, o principal é..." / "Tenta fazer assim..." / "O que achei é que..."
+- Se a pessoa disser "me explique melhor": resuma em 2 frases o que ela precisa mudar no post, sem repetir o que já disse. Pergunte o que especificamente ela quer entender melhor
+- Foque SEMPRE no que a pessoa precisa FAZER para melhorar o post dela
+- Use palavras simples: interação, atenção, formato, pessoas, resultado`;
 
   const conversationHistory = (messages || [])
     .filter((m: any) => m.role && m.content)
@@ -66,7 +70,16 @@ REGRAS ABSOLUTAS:
       messages: conversationHistory,
     });
 
-    const answer = response.content[0].type === 'text' ? response.content[0].text : '';
+    let answer = response.content[0].type === 'text' ? response.content[0].text : '';
+
+    // Strip any markdown formatting the model might still use
+    answer = answer
+      .replace(/\*\*/g, '')
+      .replace(/\*/g, '')
+      .replace(/^#{1,6}\s/gm, '')
+      .replace(/^[-•]\s/gm, '')
+      .replace(/^\d+\.\s/gm, '')
+      .trim();
 
     return Response.json({ answer });
   } catch (err) {
