@@ -442,7 +442,7 @@ export default function ArenaPage() {
       )}
 
       {/* ═══ CHAT INPUT (fixed above tab bar — doesn't move with keyboard) ═══ */}
-      <div className="fixed left-0 right-0 z-40" style={{ bottom: 85 }}>
+      <div className="fixed left-0 right-0 z-40" style={{ bottom: 100 }}>
         <ChatInput
           onAttachPress={() => setShowAttachMenu(true)}
           onSendMessage={handleSendMessage}

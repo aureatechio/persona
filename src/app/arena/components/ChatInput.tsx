@@ -76,7 +76,7 @@ export function ChatInput({
         parent.style.bottom = `${keyboardHeight}px`;
       } else {
         // Keyboard closed — reset to above nav bar
-        parent.style.bottom = '85px';
+        parent.style.bottom = '100px';
       }
     };
 
