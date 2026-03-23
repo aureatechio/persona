@@ -191,12 +191,27 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
 export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
   const [showFull, setShowFull] = useState(false);
 
-  // Extract phrases from insight action for copy
-  const insightPhrases = analiseData.insight?.action ? extractPhrases(analiseData.insight.action) : null;
+  // Extract copyable phrases from summary text
+  const summaryText = analiseData.summary || analiseData.headline || '';
+  const summaryPhrases = extractPhrases(summaryText);
+  // Also extract from all recommendation details + insight action
+  const allSuggestedPhrases: string[] = [];
+  analiseData.recommendations?.forEach((rec) => {
+    if (rec.detail) {
+      const { phrases } = extractPhrases(rec.detail);
+      allSuggestedPhrases.push(...phrases);
+    }
+  });
+  if (analiseData.insight?.action) {
+    const { phrases } = extractPhrases(analiseData.insight.action);
+    allSuggestedPhrases.push(...phrases);
+  }
+  // Combine: phrases from summary + from recommendations/insight (dedupe)
+  const copyablePhrases = [...new Set([...summaryPhrases.phrases, ...allSuggestedPhrases])];
 
   return (
     <>
-      {/* Summary bubble */}
+      {/* Summary bubble with copyable phrases */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -208,8 +223,18 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
           <span className="text-[11px] font-bold text-emerald-400 tracking-wide">Análise pronta</span>
         </div>
         <p className="text-sm text-zinc-200 leading-relaxed">
-          {analiseData.summary || analiseData.headline}
+          {summaryText}
         </p>
+
+        {/* Copyable suggested phrases right below the summary */}
+        {copyablePhrases.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Sugestões para copiar</p>
+            {copyablePhrases.map((phrase, i) => (
+              <CopyablePhrase key={i} text={phrase} />
+            ))}
+          </div>
+        )}
 
         <button
           onClick={() => setShowFull(!showFull)}
