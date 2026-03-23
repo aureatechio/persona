@@ -164,7 +164,7 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
 
 {
   "headline": "Frase curta e direta de impacto, orientada a acao. Maximo 20 palavras. Estilo McKinsey.",
-  "summary": "Guia pratico em no maximo 200 caracteres dizendo EXATAMENTE o que a pessoa precisa fazer para melhorar sua publicacao. Linguagem simples, sem porcentagens, sem palavras tecnicas. Foque nas acoes concretas. Exemplo: Comece o video com uma pergunta forte nos primeiros 3 segundos e adicione legendas — isso vai prender mais gente e trazer quem ainda nao te conhece.",
+  "summary": "Guia pratico dizendo o que a pessoa precisa fazer para melhorar ESTA publicacao (maximo 250 caracteres). OBRIGATORIO: inclua pelo menos UMA frase/chamada alternativa entre aspas simples que a pessoa possa copiar e usar. Exemplo: Troque a legenda por algo mais direto como 'Voce sabia que 3 em cada 10 familias perderam renda esse ano?' — isso puxa emocao e gera compartilhamento.",
   "score": 6.5,
   "tags": ["${mediaLabel} · ${contentMeta?.region?.toUpperCase() || 'BR'}", "${contentTypeLabel} · Tema do conteudo"],
   "stats": [
@@ -213,6 +213,15 @@ REGRAS DO JSON:
 - "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
 - "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
 - "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
+
+REGRA CRITICA — RESPEITE O FORMATO DA MIDIA ENVIADA:
+- Se o usuario enviou uma IMAGEM, TODAS as recomendacoes devem ser para melhorar AQUELA IMAGEM. NAO sugira trocar por video, NAO sugira criar outro formato. Foque em: melhorar a copy/legenda, ajustar a composicao visual, melhorar o CTA, otimizar para a plataforma. A midia e uma imagem — trabalhe COM ela.
+- Se o usuario enviou um VIDEO, TODAS as recomendacoes devem ser para melhorar AQUELE VIDEO. NAO sugira trocar por imagem ou carrossel. Foque em: melhorar o hook dos primeiros segundos, ajustar o roteiro, adicionar legendas, otimizar duracao, melhorar o CTA final.
+- Se o usuario enviou um AUDIO, foque em melhorar AQUELE AUDIO.
+- NUNCA mude o formato da midia. O usuario quer melhorar O QUE ELE JA TEM, nao comecar do zero com outro formato.
+
+REGRA CRITICA — SUMMARY COM FRASE SUGERIDA:
+- O campo "summary" DEVE incluir pelo menos UMA frase/chamada alternativa concreta entre aspas simples (ex: 'Voce sabe quantos policiais morreram esse ano?'). Essa frase e a sugestao principal que o usuario vai copiar e usar. A frase deve ser uma alternativa MELHOR para a copy/chamada do conteudo analisado, mantendo o MESMO formato de midia.
 
 REGRAS GERAIS:
 - Portugues brasileiro, tom de CMO senior — direto, assertivo, sem rodeios
