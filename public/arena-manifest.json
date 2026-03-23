@@ -3,12 +3,13 @@
   "short_name": "Arena",
   "description": "Simulação de impacto eleitoral com IA",
   "start_url": "/arena",
-  "scope": "/arena",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "portrait",
-  "id": "/arena",
+  "id": "arena-pwa",
+  "categories": ["productivity", "utilities"],
   "icons": [
     {
       "src": "/arena-icons/icon-192.png",

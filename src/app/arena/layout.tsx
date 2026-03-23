@@ -1,13 +1,6 @@
-// Arena PWA — Layout (standalone, doesn't inherit from root)
+// Arena PWA — Nested layout (no html/body — those come from root layout)
 
 import type { Metadata, Viewport } from 'next';
-import { Manrope } from 'next/font/google';
-import Script from 'next/script';
-
-const manrope = Manrope({
-  subsets: ['latin'],
-  variable: '--font-manrope',
-});
 
 export const metadata: Metadata = {
   title: 'Arena - Análise Eleitoral',
@@ -17,6 +10,9 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: 'black-translucent',
     title: 'Arena',
+  },
+  other: {
+    'mobile-web-app-capable': 'yes',
   },
 };
 
@@ -31,23 +27,19 @@ export const viewport: Viewport = {
 
 export default function ArenaLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={manrope.variable} suppressHydrationWarning>
-      <head>
-        <link rel="apple-touch-icon" href="/arena-icons/icon-192.png" />
-      </head>
-      <body className="bg-black text-white font-[family-name:var(--font-manrope)] antialiased overscroll-none">
-        <div className="min-h-[100dvh] flex flex-col">
-          {children}
-        </div>
-
-        {/* Register service worker */}
-        <Script id="arena-sw" strategy="afterInteractive">{`
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/arena-sw.js', { scope: '/arena' })
-              .catch(err => console.warn('[SW] Registration failed:', err));
-          }
-        `}</Script>
-      </body>
-    </html>
+    <>
+      <link rel="apple-touch-icon" href="/arena-icons/icon-192.png" />
+      {children}
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `
+            if ('serviceWorker' in navigator) {
+              navigator.serviceWorker.register('/arena-sw.js')
+                .catch(function(err) { console.warn('[SW] Registration failed:', err); });
+            }
+          `,
+        }}
+      />
+    </>
   );
 }
