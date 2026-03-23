@@ -1,0 +1,202 @@
+// Arena PWA — Processing steps (collecting phase + progress bar)
+
+'use client';
+
+import { motion } from 'framer-motion';
+import { Brain, Search, Globe, Users, Zap, Check, Square } from 'lucide-react';
+
+const STEPS = [
+  { id: 'analyzing', icon: Brain, label: 'Interpretando seu conteúdo', sublabel: 'Identificando narrativa, tom e intenção', color: '#8b5cf6' },
+  { id: 'researching', icon: Search, label: 'Cruzando com comportamento eleitoral', sublabel: 'Comparando com padrões reais de voto', color: '#38bdf8' },
+  { id: 'context', icon: Globe, label: 'Projetando reação do público', sublabel: 'Simulando aceitação por perfil ideológico', color: '#34d399' },
+  { id: 'loading', icon: Users, label: 'Ativando base de eleitores', sublabel: 'Rodando análise nas 20.000 personas', color: '#fbbf24' },
+] as const;
+
+type CollectingStatus = 'analyzing' | 'researching' | 'context' | 'loading';
+const STATUS_ORDER: CollectingStatus[] = ['analyzing', 'researching', 'context', 'loading'];
+
+interface ProcessingStepsProps {
+  phase: 'collecting' | 'streaming' | 'aggregating' | 'complete';
+  processedCount: number;
+  totalCount: number;
+  collectingStatus?: string;
+  onCancel?: () => void;
+}
+
+function PulsingDots({ color }: { color: string }) {
+  return (
+    <div className="flex gap-1">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: color }}
+          animate={{ scale: [0.8, 1.2, 0.8], opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel }: ProcessingStepsProps) {
+  const progress = totalCount > 0 ? processedCount / totalCount : 0;
+
+  // Collecting phase: show pipeline steps
+  if (phase === 'collecting') {
+    const currentIdx = STATUS_ORDER.indexOf((collectingStatus || 'analyzing') as CollectingStatus);
+
+    return (
+      <div className="w-full py-2">
+        {/* Cancel button */}
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/[0.08] border border-rose-500/20 mb-3 ml-auto active:scale-95 transition-all duration-200"
+          >
+            <Square size={12} className="text-rose-400" />
+            <span className="text-xs font-semibold text-rose-400">Parar</span>
+          </button>
+        )}
+
+        {/* Header with spinner */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex items-center gap-2.5 mb-3"
+        >
+          <div className="w-9 h-9 relative flex items-center justify-center">
+            <motion.div
+              className="absolute inset-0 rounded-full border-2 border-transparent border-t-emerald-400 border-r-emerald-400/25"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+            />
+            <motion.div
+              className="absolute inset-[5px] rounded-full border border-transparent border-t-violet-400 border-r-violet-400/25"
+              animate={{ rotate: -360 }}
+              transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}
+            />
+            <Zap size={14} className="text-emerald-400" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[13px] font-bold text-white tracking-tight">Simulando impacto eleitoral</p>
+            <p className="text-[11px] text-zinc-500">Prevendo como cada perfil vai reagir</p>
+          </div>
+        </motion.div>
+
+        {/* Steps */}
+        <div className="space-y-1.5">
+          {STEPS.map((step, i) => {
+            const Icon = step.icon;
+            const isActive = i === currentIdx;
+            const isDone = i < currentIdx;
+            const isPending = i > currentIdx;
+
+            return (
+              <motion.div
+                key={step.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: isPending ? 0.35 : 1, y: 0 }}
+                transition={{ delay: i * 0.12, duration: 0.4 }}
+                className={`flex items-center gap-2 px-2.5 py-2.5 rounded-xl border transition-all duration-300 ${
+                  isActive
+                    ? 'border-white/[0.08] bg-white/[0.03]'
+                    : isDone
+                      ? 'border-emerald-500/20 bg-emerald-500/[0.04]'
+                      : 'border-white/[0.06] bg-white/[0.02]'
+                }`}
+                style={isActive ? { borderColor: `${step.color}40`, backgroundColor: `${step.color}08` } : undefined}
+              >
+                {/* Badge */}
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
+                  isDone ? 'bg-emerald-500/15 text-emerald-400' :
+                  isActive ? 'text-white' : 'bg-white/[0.04] text-zinc-600'
+                }`}
+                  style={isActive ? { backgroundColor: `${step.color}20`, color: step.color } : undefined}
+                >
+                  {isDone ? <Check size={11} /> : i + 1}
+                </div>
+
+                {/* Icon */}
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                  isActive ? '' : 'bg-white/[0.03]'
+                }`}
+                  style={isActive ? { backgroundColor: `${step.color}15` } : undefined}
+                >
+                  <Icon size={14} style={{ color: isDone ? '#34d399' : isActive ? step.color : '#52525b' }} />
+                </div>
+
+                {/* Text */}
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-semibold truncate ${
+                    isDone ? 'text-emerald-400' :
+                    isActive ? 'text-white' : 'text-zinc-500'
+                  }`}>
+                    {step.label}
+                  </p>
+                  <p className={`text-[9px] ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                    {isDone ? 'Concluído' : step.sublabel}
+                  </p>
+                </div>
+
+                {/* Status */}
+                <div className="w-8 flex justify-end shrink-0">
+                  {isDone && <Check size={12} className="text-emerald-400" />}
+                  {isActive && <PulsingDots color={step.color} />}
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // Streaming / aggregating: show progress
+  return (
+    <div className="flex flex-col items-center py-2 gap-3 w-full">
+      {onCancel && (
+        <button
+          onClick={onCancel}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/[0.08] border border-rose-500/20 ml-auto active:scale-95 transition-all duration-200"
+        >
+          <Square size={12} className="text-rose-400" />
+          <span className="text-xs font-semibold text-rose-400">Parar</span>
+        </button>
+      )}
+
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex items-center gap-2"
+      >
+        <div className="w-3 h-3 rounded-full bg-emerald-400/30 flex items-center justify-center">
+          <div className="w-[7px] h-[7px] rounded-full bg-emerald-400" />
+        </div>
+        <span className="text-[11px] font-black text-emerald-400 tracking-[2px]">
+          {phase === 'aggregating' ? 'FINALIZANDO' : 'ANALISANDO'}
+        </span>
+      </motion.div>
+
+      <p className="text-[11px] text-zinc-500 text-center">
+        {phase === 'aggregating'
+          ? 'Finalizando resultados da análise...'
+          : 'Analisando todas as pessoas da sua região...'}
+      </p>
+
+      {/* Progress bar */}
+      <div className="w-full h-2 rounded bg-white/[0.06] overflow-hidden">
+        <motion.div
+          className="h-full rounded bg-emerald-400"
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.round(progress * 100)}%` }}
+          transition={{ duration: 2, ease: [0.33, 1, 0.68, 1] }}
+        />
+      </div>
+
+      <span className="text-lg font-black text-emerald-400 tabular-nums">
+        {Math.round(progress * 100)}%
+      </span>
+    </div>
+  );
+}

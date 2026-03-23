@@ -1,0 +1,25 @@
+{
+  "name": "Arena - Análise Eleitoral",
+  "short_name": "Arena",
+  "description": "Simulação de impacto eleitoral com IA",
+  "start_url": "/arena",
+  "scope": "/arena",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/arena-icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/arena-icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
