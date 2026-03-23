@@ -1,35 +1,29 @@
-// Arena PWA — Nested layout (no html/body — those come from root layout)
-
-import type { Metadata, Viewport } from 'next';
-
-export const metadata: Metadata = {
-  title: 'Arena - Análise Eleitoral',
-  description: 'Simulação de impacto eleitoral com 20.000 personas de IA',
-  manifest: '/arena-manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'black-translucent',
-    title: 'Arena',
-  },
-  other: {
-    'mobile-web-app-capable': 'yes',
-  },
-};
-
-export const viewport: Viewport = {
-  themeColor: '#000000',
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
-  viewportFit: 'cover',
-};
+// Arena PWA — Nested layout
+// Injects PWA meta tags directly into head (more reliable than metadata export)
 
 export default function ArenaLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <link rel="apple-touch-icon" href="/arena-icons/icon-192.png" />
+      <head>
+        {/* PWA manifest */}
+        <link rel="manifest" href="/arena-manifest.json" />
+
+        {/* iOS PWA */}
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="Arena" />
+        <link rel="apple-touch-icon" href="/arena-icons/icon-192.png" />
+
+        {/* Android PWA */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#000000" />
+
+        {/* Viewport for PWA */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+      </head>
+
       {children}
+
       <script
         dangerouslySetInnerHTML={{
           __html: `
