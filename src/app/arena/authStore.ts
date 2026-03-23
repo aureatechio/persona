@@ -27,6 +27,7 @@ interface AuthStore {
   signIn: (email: string, password: string) => Promise<{ error?: string }>;
   signOut: () => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
+  updateProfile: (fields: Partial<UserProfile>) => Promise<{ error?: string }>;
 }
 
 export const useAuthStore = create<AuthStore>((set, get) => ({
@@ -113,6 +114,22 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       if (!error && data) set({ profile: data as UserProfile });
     } catch (err) {
       console.error('[Auth] fetchProfile error:', err);
+    }
+  },
+
+  updateProfile: async (fields: Partial<UserProfile>) => {
+    const profile = get().profile;
+    if (!profile) return { error: 'Não logado' };
+    try {
+      const { error } = await supabase
+        .from('users')
+        .update(fields)
+        .eq('id', profile.id);
+      if (error) return { error: error.message };
+      set({ profile: { ...profile, ...fields } });
+      return {};
+    } catch (err: any) {
+      return { error: err.message || 'Erro desconhecido' };
     }
   },
 }));

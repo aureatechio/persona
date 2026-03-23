@@ -5,7 +5,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, RotateCcw, Sparkles, ChevronDown, ChevronUp, Vote } from 'lucide-react';
+import { X, RotateCcw, Sparkles, ChevronDown, ChevronUp, Vote, User } from 'lucide-react';
 
 import { useArenaStore, arenaSubmit, arenaCancel } from './store';
 import { useAuthStore } from './authStore';
@@ -17,7 +17,45 @@ import { AttachmentMenu } from './components/AttachmentMenu';
 import { PlatformSelector } from './components/PlatformSelector';
 import { ProcessingSteps } from './components/ProcessingSteps';
 import { AnalysisSummary } from './components/AnalysisSummary';
+import { AnalysisProgressLoader } from './components/AnalysisProgressLoader';
 import { AuthModal } from './components/AuthModal';
+import { ProfileSheet } from './components/ProfileSheet';
+
+// ── Header Avatar (exact match of mobile HeaderAvatar) ──
+function HeaderAvatar() {
+  const profile = useAuthStore((s) => s.profile);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showAuth, setShowAuth] = useState(false);
+
+  const handlePress = () => {
+    if (isAuthenticated) setShowProfile(true);
+    else setShowAuth(true);
+  };
+
+  const getInitials = (name: string) => name.split(' ').filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+  return (
+    <>
+      <button onClick={handlePress} className="relative">
+        {isAuthenticated && profile ? (
+          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+            <span className="text-xs font-extrabold text-zinc-400">{getInitials(profile.name)}</span>
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: 'rgba(255,255,255,0.06)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
+            <User size={14} className="text-zinc-500" />
+          </div>
+        )}
+        {isAuthenticated && (
+          <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400" style={{ border: '1.5px solid #000' }} />
+        )}
+      </button>
+      <ProfileSheet visible={showProfile} onClose={() => setShowProfile(false)} />
+      <AuthModal visible={showAuth} onClose={() => setShowAuth(false)} onSuccess={() => setShowAuth(false)} />
+    </>
+  );
+}
 
 type ScreenState = 'idle' | 'hasAttachment' | 'platformSelect' | 'processing' | 'complete';
 
@@ -239,6 +277,12 @@ export default function ArenaPage() {
   return (
     <div className="flex flex-col h-[100dvh] bg-black">
 
+      {/* ═══ HEADER BAR (exact match of mobile — title + avatar) ═══ */}
+      <div className="flex items-center px-4 h-11 shrink-0" style={{ backgroundColor: '#000', borderBottom: '0.5px solid rgba(255,255,255,0.04)' }}>
+        <span className="text-base font-extrabold text-white tracking-tight flex-1">VOTIA</span>
+        <HeaderAvatar />
+      </div>
+
       {/* ═══ IDLE — AnimatedLogo (exact match of mobile AnimatedLogo.tsx) ═══ */}
       {!hasConversation && screenState === 'idle' && (
         <div className="flex-1 flex flex-col items-center justify-center relative overflow-hidden">
@@ -352,13 +396,10 @@ export default function ArenaPage() {
                 </motion.div>
               )}
 
-              {/* Analysis loading skeleton */}
+              {/* Analysis loading (AnalysisProgressLoader — exact match of mobile) */}
               {isComplete && analiseLoading && (
-                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] rounded-2xl rounded-bl-sm p-3 h-[200px]" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <motion.div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
-                    <p className="text-xs text-zinc-500">Gerando análise...</p>
-                  </div>
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] rounded-2xl rounded-bl-sm h-[250px]" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
+                  <AnalysisProgressLoader />
                 </motion.div>
               )}
 
@@ -421,7 +462,7 @@ export default function ArenaPage() {
 
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />
-      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onPickImage={() => pickFile('image/*', 'image')} onPickVideo={() => pickFile('video/*', 'video')} onPickAudio={() => pickFile('audio/*', 'video')} />
+      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onRecordVideo={() => pickFile('video/*', 'video')} onPickImage={() => pickFile('image/*', 'image')} onPickVideo={() => pickFile('video/*', 'video')} onPickAudio={() => pickFile('audio/*', 'video')} />
       <PlatformSelector visible={showPlatformSelector} onClose={() => setShowPlatformSelector(false)} onConfirm={handlePlatformConfirm} />
     </div>
   );
