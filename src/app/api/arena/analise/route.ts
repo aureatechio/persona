@@ -162,6 +162,7 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
 
 {
   "headline": "Frase curta e direta de impacto, orientada a acao. Maximo 20 palavras. Estilo McKinsey.",
+  "summary": "Guia pratico em no maximo 200 caracteres dizendo EXATAMENTE o que a pessoa precisa fazer para melhorar sua publicacao. Linguagem simples, sem porcentagens, sem palavras tecnicas. Foque nas acoes concretas. Exemplo: Comece o video com uma pergunta forte nos primeiros 3 segundos e adicione legendas — isso vai prender mais gente e trazer quem ainda nao te conhece.",
   "score": 6.5,
   "tags": ["${mediaLabel} · ${contentMeta?.region?.toUpperCase() || 'BR'}", "${contentTypeLabel} · Tema do conteudo"],
   "stats": [

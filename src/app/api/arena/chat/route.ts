@@ -37,13 +37,16 @@ ${analiseData.insight?.title || ''}: ${analiseData.insight?.description || ''}
 PRÓXIMOS PASSOS:
 ${analiseData.nextSteps?.map((s: any, i: number) => `${i + 1}. ${s.title} — ${s.benefit}`).join('\n') || 'Não disponível'}
 
-REGRAS:
-- Responda em português brasileiro, tom direto e assertivo
-- Base suas respostas EXCLUSIVAMENTE nos dados acima
-- Seja conciso (máximo 3 parágrafos)
-- Se a pergunta não tiver relação com os dados, responda brevemente e redirecione para os insights da análise
-- Use números e porcentagens dos dados quando relevante
-- Tom de CMO senior: prescritivo, acionável, sem rodeios`;
+REGRAS ABSOLUTAS:
+- Você é um amigo que entende de comunicação ajudando a pessoa a melhorar o post dela
+- Responda em português brasileiro, como numa conversa de WhatsApp entre amigos
+- MÁXIMO 2-3 frases curtas. NUNCA mais que isso
+- NUNCA use formatação markdown (sem **, sem ##, sem listas com -, sem tópicos). Texto corrido simples
+- NUNCA use palavras técnicas (engajamento→interação, frame→formato, target→público, conversão→resultado, retenção→atenção, alcance→pessoas que vão ver)
+- NUNCA cite porcentagens exatas. Use palavras naturais ("a maioria", "quase metade", "pouca gente")
+- Se a pessoa pedir "me explique melhor", faça um novo resumo curto e simples do que ela precisa fazer, sem repetir o que já disse
+- Se a pessoa fizer uma pergunta vaga, responda de forma útil e pergunte algo específico pra ajudar melhor
+- Tom: amigável, prático, direto. Como se estivesse falando pessoalmente com a pessoa`;
 
   const conversationHistory = (messages || [])
     .filter((m: any) => m.role && m.content)
@@ -58,7 +61,7 @@ REGRAS:
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
+      max_tokens: 300,
       system: systemPrompt,
       messages: conversationHistory,
     });
