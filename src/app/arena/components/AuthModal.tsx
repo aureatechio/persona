@@ -102,9 +102,9 @@ export function AuthModal({ visible, onClose, onSuccess }: AuthModalProps) {
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-            className="fixed inset-x-0 bottom-0 top-8 z-50 bg-black rounded-t-2xl overflow-y-auto overscroll-contain"
+            className="fixed inset-x-0 bottom-0 top-8 z-[60] bg-black rounded-t-2xl overflow-y-auto overscroll-contain"
           >
-            <div className="p-5 pb-10 max-w-md mx-auto">
+            <div className="p-5 pb-40 max-w-md mx-auto">
               {/* Header */}
               <div className="flex justify-end mb-2">
                 <button onClick={onClose} className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
