@@ -4,9 +4,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, LogOut, Pencil, Check, ChevronDown, Search, Loader2 } from 'lucide-react';
+import { X, LogOut, Pencil, Check, ChevronDown, Search, Loader2, History, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../authStore';
-import { BRAZILIAN_STATES } from '../constants';
+import { useArenaStore } from '../store';
+import { BRAZILIAN_STATES, scoreToEmoji } from '../constants';
 
 interface ProfileSheetProps {
   visible: boolean;
@@ -28,6 +29,9 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
   const [citySearch, setCitySearch] = useState('');
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
   const [showStateDropdown, setShowStateDropdown] = useState(false);
+  const [historyItems, setHistoryItems] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const loadFromHistory = useArenaStore((s) => s.loadFromHistory);
 
   useEffect(() => {
     if (visible && profile) {
@@ -37,6 +41,14 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
       setCity(profile.city || '');
       setCitySearch(profile.city || '');
       setEditing(false);
+
+      // Fetch history
+      setLoadingHistory(true);
+      fetch('/api/arena/history')
+        .then((r) => r.json())
+        .then((data) => { if (Array.isArray(data)) setHistoryItems(data); })
+        .catch(() => {})
+        .finally(() => setLoadingHistory(false));
     }
   }, [visible, profile]);
 
@@ -181,6 +193,61 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                 </div>
               </>
             )}
+
+            {/* ═══ HISTÓRICO DE ANÁLISES ═══ */}
+            <div className="mt-4 mb-3">
+              <div className="flex items-center gap-2 mb-2">
+                <History size={14} className="text-zinc-500" />
+                <span className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px]">Histórico de Análises</span>
+              </div>
+
+              {loadingHistory ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 size={20} className="text-zinc-600 animate-spin" />
+                </div>
+              ) : historyItems.length === 0 ? (
+                <div className="py-6 text-center">
+                  <p className="text-xs text-zinc-600">Nenhuma análise ainda</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {historyItems.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/arena/history?id=${item.id}`);
+                          const record = await res.json();
+                          if (record.id) {
+                            loadFromHistory(record);
+                            onClose();
+                          }
+                        } catch {}
+                      }}
+                      className="w-full text-left rounded-[14px] p-3 active:scale-[0.98] transition-all duration-200"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="text-xl shrink-0">{scoreToEmoji(item.score)}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[13px] font-semibold text-white truncate">{item.headline}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {item.platform && <span className="text-[10px] text-zinc-500">{item.platform}</span>}
+                            <span className="text-[10px] text-zinc-600">
+                              {new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-sm font-black tabular-nums text-emerald-400">{item.score?.toFixed(1)}</span>
+                          <ChevronRight size={14} className="text-zinc-600" />
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* Sign out */}
             <button onClick={handleSignOut} className="w-full flex items-center justify-center gap-2 py-3.5 rounded-[14px] mt-1" style={{ backgroundColor: 'rgba(251,113,133,0.05)', border: '0.5px solid rgba(251,113,133,0.15)' }}>

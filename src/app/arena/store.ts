@@ -65,6 +65,7 @@ interface ArenaStore {
   analiseError: string;
   chatMessages: ChatMessage[];
   userMediaContext: UserMediaContext | null;
+  currentHistoryId: string | null;
 
   updateData: (incoming: ArenaLiveData, collectingStatus?: string | null) => void;
   reset: (question?: string) => void;
@@ -77,6 +78,8 @@ interface ArenaStore {
   addChatMessage: (msg: ChatMessage) => void;
   clearChat: () => void;
   setUserMediaContext: (ctx: UserMediaContext | null) => void;
+  setCurrentHistoryId: (id: string | null) => void;
+  loadFromHistory: (data: any) => void;
 }
 
 export const useArenaStore = create<ArenaStore>((set, get) => ({
@@ -90,6 +93,7 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   analiseError: '',
   chatMessages: [],
   userMediaContext: null,
+  currentHistoryId: null,
 
   updateData: (incoming, collectingStatus) => {
     if (get().isStopped) return;
@@ -113,6 +117,7 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
       analiseError: '',
       chatMessages: [],
       userMediaContext: null,
+      currentHistoryId: null,
     });
   },
 
@@ -132,6 +137,38 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   addChatMessage: (msg) => set((state) => ({ chatMessages: [...state.chatMessages, msg] })),
   clearChat: () => set({ chatMessages: [] }),
   setUserMediaContext: (ctx) => set({ userMediaContext: ctx }),
+  setCurrentHistoryId: (id) => set({ currentHistoryId: id }),
+  loadFromHistory: (record: any) => {
+    const ad = record.analise_data || {};
+    const ar = record.arena_data || {};
+    set({
+      analiseData: ad,
+      chatMessages: record.chat_messages || [],
+      hasEverReceived: true,
+      isStopped: true,
+      isSubmitting: false,
+      analiseLoading: false,
+      analiseError: '',
+      currentHistoryId: record.id,
+      userMediaContext: ar.contentMeta ? {
+        text: Array.isArray(ar.contentMeta?.mediaType) ? ar.contentMeta.mediaType.join(', ') : (ar.contentMeta?.mediaType || ''),
+        attachmentPreviews: [],
+      } : null,
+      data: {
+        ...makeZeroedData(ar.question || record.question || ''),
+        phase: 'complete' as const,
+        positive: ar.positive || 0,
+        negative: ar.negative || 0,
+        neutral: ar.neutral || 0,
+        avgScore: ar.avgScore || 0,
+        totalPersonas: ar.totalPersonas || 0,
+        segments: ar.segments || {},
+        contentMeta: ar.contentMeta || undefined,
+        stateBreakdown: ar.stateBreakdown || {},
+        simulation: ar.simulation || null,
+      },
+    });
+  },
 }));
 
 // ══════════════════════════════════════════════════════════════════

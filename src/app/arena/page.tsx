@@ -89,6 +89,8 @@ export default function ArenaPage() {
   const addChatMessage = useArenaStore((s) => s.addChatMessage);
   const userMediaContext = useArenaStore((s) => s.userMediaContext);
   const setUserMediaContext = useArenaStore((s) => s.setUserMediaContext);
+  const currentHistoryId = useArenaStore((s) => s.currentHistoryId);
+  const setCurrentHistoryId = useArenaStore((s) => s.setCurrentHistoryId);
 
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const profile = useAuthStore((s) => s.profile);
@@ -189,6 +191,40 @@ export default function ArenaPage() {
     };
     tryFetch(1);
   }, [isComplete, simulation, analiseData, analiseLoading]);
+
+  // Auto-save analysis to history when analiseData is set
+  useEffect(() => {
+    if (!analiseData || !isAuthenticated || !profile) return;
+    const hId = useArenaStore.getState().currentHistoryId;
+    fetch('/api/arena/history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: hId || undefined,
+        question: question || '',
+        content_meta: contentMeta || {},
+        analise_data: analiseData,
+        arena_data: { positive, negative, neutral, avgScore, totalPersonas, segments, question, contentMeta, stateBreakdown },
+        chat_messages: chatMessages,
+      }),
+    })
+      .then((r) => r.json())
+      .then((res) => { if (res.id && !hId) setCurrentHistoryId(res.id); })
+      .catch(() => {});
+  }, [analiseData, isAuthenticated]);
+
+  // Auto-save chat messages (debounced) when they change
+  useEffect(() => {
+    if (!currentHistoryId || chatMessages.length === 0) return;
+    const timer = setTimeout(() => {
+      fetch('/api/arena/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentHistoryId, chat_messages: chatMessages }),
+      }).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [chatMessages, currentHistoryId]);
 
   // File picker — uses a persistent hidden input in the DOM for iOS compatibility
   const fileInputRef = useRef<HTMLInputElement>(null);
