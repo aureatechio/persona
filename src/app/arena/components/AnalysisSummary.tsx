@@ -5,7 +5,24 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check } from 'lucide-react';
+import {
+  ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check,
+  MessageCircle, Target, Globe, Video, Mic, Image, Layout, MapPin, Lightbulb,
+} from 'lucide-react';
+
+// Map icon names from API to Lucide components
+const ICON_MAP: Record<string, React.ComponentType<any>> = {
+  video: Video,
+  message: MessageCircle,
+  map: MapPin,
+  sparkles: Sparkles,
+  globe: Globe,
+  target: Target,
+  trending: TrendingUp,
+  mic: Mic,
+  image: Image,
+  layout: Layout,
+};
 import type { AnaliseData } from '../types';
 import { ScoreRing } from './ScoreRing';
 import { RadarChart } from './RadarChart';
@@ -116,7 +133,7 @@ function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations']
     >
       <div className="flex items-start gap-3">
         <div className="w-7 h-7 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-          <span className="text-xs">{rec.icon || '💡'}</span>
+          {(() => { const Icon = ICON_MAP[rec.icon] || Lightbulb; return <Icon size={14} className="text-zinc-400" />; })()}
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-semibold text-white leading-5">{rec.text}</p>
