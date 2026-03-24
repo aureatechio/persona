@@ -129,13 +129,13 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
 
                 {/* Text */}
                 <div className="flex-1 min-w-0">
-                  <p className={`text-xs font-semibold truncate ${
+                  <p className={`text-[11px] font-semibold leading-tight ${
                     isDone ? 'text-emerald-400' :
                     isActive ? 'text-white' : 'text-zinc-500'
                   }`}>
                     {step.label}
                   </p>
-                  <p className={`text-[9px] ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`}>
+                  <p className={`text-[9px] leading-tight mt-0.5 ${isActive ? 'text-zinc-400' : 'text-zinc-600'}`}>
                     {isDone ? 'Concluído' : step.sublabel}
                   </p>
                 </div>
