@@ -32,16 +32,13 @@ export function ArenaNav() {
 
   return (
     <>
-      {/* Keyframe animation for pulsing dot */}
-      <style>{`
-        @keyframes arena-pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.5); opacity: 0.5; }
+      {/* Keyframe animation for pulsing dot — injected via dangerouslySetInnerHTML for SSR compat */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes arena-dot-blink {
+          0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px rgba(239,68,68,0.8); }
+          50% { transform: scale(1.6); opacity: 0.4; box-shadow: 0 0 16px rgba(239,68,68,1); }
         }
-        .arena-dot-pulse {
-          animation: arena-pulse 1s ease-in-out infinite;
-        }
-      `}</style>
+      `}} />
 
       <nav
         className="fixed bottom-0 left-0 right-0 z-50"
@@ -72,8 +69,8 @@ export function ArenaNav() {
               {/* Red pulsing dot — disappears after clicking */}
               {showDashboardDot && !isDashboard && (
                 <span
-                  className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 arena-dot-pulse"
-                  style={{ border: '2px solid #000', boxShadow: '0 0 8px rgba(239,68,68,0.8)' }}
+                  className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: '#ef4444', border: '2px solid #000', animation: 'arena-dot-blink 1s ease-in-out infinite' }}
                 />
               )}
               <BarChart3
@@ -131,8 +128,8 @@ export function ArenaNav() {
               {/* Red pulsing dot — disappears after clicking */}
               {showMapaDot && !isMapa && (
                 <span
-                  className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 arena-dot-pulse"
-                  style={{ border: '2px solid #000', boxShadow: '0 0 8px rgba(239,68,68,0.8)' }}
+                  className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full"
+                  style={{ backgroundColor: '#ef4444', border: '2px solid #000', animation: 'arena-dot-blink 1s ease-in-out infinite' }}
                 />
               )}
               <MapPin
