@@ -210,7 +210,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                   <p className="text-xs text-zinc-600">Nenhuma análise ainda</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="max-h-[240px] overflow-y-auto overscroll-contain space-y-2 pr-1">
                   {historyItems.map((item) => (
                     <button
                       key={item.id}
