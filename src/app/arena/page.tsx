@@ -504,10 +504,10 @@ export default function ArenaPage() {
                 </motion.div>
               )}
 
-              {/* Unified processing: personas + analysis generation in one flow */}
-              {(screenState === 'processing' || (isComplete && analiseLoading && !analiseData)) && (
+              {/* Unified processing: stays mounted until analiseData arrives */}
+              {(isStreaming || isComplete) && !analiseData && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] rounded-2xl rounded-bl-sm p-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  <ProcessingSteps phase={phase} processedCount={processedCount} totalCount={totalCount} collectingStatus={collectingStatus ?? undefined} onCancel={handleStop} region={profile?.state} analiseLoading={analiseLoading && !analiseData} />
+                  <ProcessingSteps phase={phase} processedCount={processedCount} totalCount={totalCount} collectingStatus={collectingStatus ?? undefined} onCancel={handleStop} region={profile?.state} analiseLoading={analiseLoading} />
                 </motion.div>
               )}
 
