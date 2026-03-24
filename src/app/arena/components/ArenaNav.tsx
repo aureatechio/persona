@@ -15,10 +15,16 @@ export function ArenaNav() {
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
   const phase = useArenaStore((s) => s.data.phase);
   const processedCount = useArenaStore((s) => s.data.processedCount);
+  const seenDashboard = useArenaStore((s) => s.seenDashboard);
+  const seenMapa = useArenaStore((s) => s.seenMapa);
+  const markSeenDashboard = useArenaStore((s) => s.markSeenDashboard);
+  const markSeenMapa = useArenaStore((s) => s.markSeenMapa);
 
-  // Data exists = personas started being processed (not just collecting phase)
+  // Data exists = personas started being processed
   const hasData = processedCount > 0;
   const isLive = hasEverReceived && phase !== 'complete';
+  const showDashboardDot = hasData && !seenDashboard;
+  const showMapaDot = hasData && !seenMapa;
 
   const isDashboard = pathname === '/arena/dashboard';
   const isVoto = pathname === '/arena';
@@ -52,6 +58,7 @@ export function ArenaNav() {
           {/* Painel (left) */}
           <Link
             href="/arena/dashboard"
+            onClick={() => markSeenDashboard()}
             className="flex flex-col items-center gap-0.5"
             style={{ opacity: hasData ? 1 : 0.5, pointerEvents: hasData ? 'auto' : 'none' }}
           >
@@ -62,8 +69,8 @@ export function ArenaNav() {
                   <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
                 </>
               )}
-              {/* Red pulsing dot when data exists */}
-              {hasData && !isDashboard && (
+              {/* Red pulsing dot — disappears after clicking */}
+              {showDashboardDot && !isDashboard && (
                 <span
                   className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 arena-dot-pulse"
                   style={{ border: '2px solid #000', boxShadow: '0 0 8px rgba(239,68,68,0.8)' }}
@@ -110,6 +117,7 @@ export function ArenaNav() {
           {/* Mapa (right) */}
           <Link
             href="/arena/mapa"
+            onClick={() => markSeenMapa()}
             className="flex flex-col items-center gap-0.5"
             style={{ opacity: hasData ? 1 : 0.5, pointerEvents: hasData ? 'auto' : 'none' }}
           >
@@ -120,8 +128,8 @@ export function ArenaNav() {
                   <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
                 </>
               )}
-              {/* Red pulsing dot when data exists */}
-              {hasData && !isMapa && (
+              {/* Red pulsing dot — disappears after clicking */}
+              {showMapaDot && !isMapa && (
                 <span
                   className="absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 arena-dot-pulse"
                   style={{ border: '2px solid #000', boxShadow: '0 0 8px rgba(239,68,68,0.8)' }}

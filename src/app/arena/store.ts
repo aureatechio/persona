@@ -66,6 +66,8 @@ interface ArenaStore {
   chatMessages: ChatMessage[];
   userMediaContext: UserMediaContext | null;
   currentHistoryId: string | null;
+  seenDashboard: boolean;
+  seenMapa: boolean;
 
   updateData: (incoming: ArenaLiveData, collectingStatus?: string | null) => void;
   reset: (question?: string) => void;
@@ -79,6 +81,8 @@ interface ArenaStore {
   clearChat: () => void;
   setUserMediaContext: (ctx: UserMediaContext | null) => void;
   setCurrentHistoryId: (id: string | null) => void;
+  markSeenDashboard: () => void;
+  markSeenMapa: () => void;
   loadFromHistory: (data: any) => void;
 }
 
@@ -94,6 +98,8 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   chatMessages: [],
   userMediaContext: null,
   currentHistoryId: null,
+  seenDashboard: false,
+  seenMapa: false,
 
   updateData: (incoming, collectingStatus) => {
     if (get().isStopped) return;
@@ -118,6 +124,8 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
       chatMessages: [],
       userMediaContext: null,
       currentHistoryId: null,
+      seenDashboard: false,
+      seenMapa: false,
     });
   },
 
@@ -138,6 +146,8 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   clearChat: () => set({ chatMessages: [] }),
   setUserMediaContext: (ctx) => set({ userMediaContext: ctx }),
   setCurrentHistoryId: (id) => set({ currentHistoryId: id }),
+  markSeenDashboard: () => set({ seenDashboard: true }),
+  markSeenMapa: () => set({ seenMapa: true }),
   loadFromHistory: (record: any) => {
     const ad = record.analise_data || {};
     const ar = record.arena_data || {};
