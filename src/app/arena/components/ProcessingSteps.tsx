@@ -21,6 +21,7 @@ interface ProcessingStepsProps {
   totalCount: number;
   collectingStatus?: string;
   onCancel?: () => void;
+  region?: string;
 }
 
 function PulsingDots({ color }: { color: string }) {
@@ -39,7 +40,7 @@ function PulsingDots({ color }: { color: string }) {
   );
 }
 
-export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel }: ProcessingStepsProps) {
+export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel, region }: ProcessingStepsProps) {
   const progress = totalCount > 0 ? processedCount / totalCount : 0;
 
   // Collecting phase: show pipeline steps
@@ -181,7 +182,7 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
       <p className="text-[11px] text-zinc-500 text-center">
         {phase === 'aggregating'
           ? 'Finalizando resultados da análise...'
-          : 'Analisando todas as pessoas da sua região...'}
+          : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
       </p>
 
       {/* Progress bar */}

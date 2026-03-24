@@ -106,7 +106,7 @@ export default function ArenaPage() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastVariant, setToastVariant] = useState<'info' | 'success'>('info');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevIsSubmitting = useRef(isSubmitting);
+  const prevProcessedCount = useRef(processedCount);
   const prevPhase = useRef(phase);
 
   // Audio recording
@@ -121,15 +121,15 @@ export default function ArenaPage() {
   const isStreaming = isSubmitting || (hasEverReceived && phase !== 'complete' && !isStopped);
   const isComplete = hasEverReceived && (phase === 'complete' || isStopped);
 
-  // Toast: show when analysis starts
+  // Toast: show when personas start being processed (progress > 0)
   useEffect(() => {
-    if (isSubmitting && !prevIsSubmitting.current) {
+    if (processedCount > 0 && prevProcessedCount.current === 0) {
       setToastMsg('Pode navegar que te avisamos quando ficar pronto');
       setToastVariant('info');
       setToastVisible(true);
     }
-    prevIsSubmitting.current = isSubmitting;
-  }, [isSubmitting]);
+    prevProcessedCount.current = processedCount;
+  }, [processedCount]);
 
   // Toast: show when analysis completes
   useEffect(() => {
@@ -507,7 +507,7 @@ export default function ArenaPage() {
               {/* Processing (collecting or streaming) */}
               {screenState === 'processing' && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-[88%] rounded-2xl rounded-bl-sm p-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  <ProcessingSteps phase={phase} processedCount={processedCount} totalCount={totalCount} collectingStatus={collectingStatus ?? undefined} onCancel={handleStop} />
+                  <ProcessingSteps phase={phase} processedCount={processedCount} totalCount={totalCount} collectingStatus={collectingStatus ?? undefined} onCancel={handleStop} region={profile?.state} />
                 </motion.div>
               )}
 
