@@ -74,7 +74,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
   const handleSignOut = async () => { await signOut(); onClose(); };
   const handleSave = async () => {
     setSaving(true);
-    const result = await updateProfile({ name: name.trim(), ideology: ideology || undefined, state: selectedState || undefined, city: city || undefined });
+    const result = await updateProfile({ name: name.trim(), ideology: ideology || undefined, state: selectedState || undefined, city: city || null });
     setSaving(false);
     if (!result.error) setEditing(false);
   };
