@@ -124,7 +124,7 @@ export default function ArenaPage() {
   // Toast: show when personas start being processed (progress > 0)
   useEffect(() => {
     if (processedCount > 0 && prevProcessedCount.current === 0) {
-      setToastMsg('Pode navegar que te avisamos quando ficar pronto');
+      setToastMsg('Pode sair do app que te avisaremos quando ficar pronto');
       setToastVariant('info');
       setToastVisible(true);
     }
