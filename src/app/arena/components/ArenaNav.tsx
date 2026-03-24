@@ -46,9 +46,9 @@ export function ArenaNav() {
                 <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
               </>
             )}
-            {/* Pulsing dot when live data is arriving */}
-            {isLive && !isDashboard && (
-              <span className="absolute -top-1 -right-0.5 w-[7px] h-[7px] rounded-full bg-emerald-400 animate-pulse" style={{ border: '1.5px solid #000' }} />
+            {/* Pulsing dot when data exists */}
+            {hasEverReceived && !isDashboard && (
+              <span className={`absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ${isLive ? 'animate-pulse' : ''}`} style={{ border: '2px solid #000', boxShadow: '0 0 6px rgba(239,68,68,0.6)' }} />
             )}
             <BarChart3
               size={22}
@@ -101,9 +101,9 @@ export function ArenaNav() {
                 <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
               </>
             )}
-            {/* Pulsing dot when live data is arriving */}
-            {isLive && !isMapa && (
-              <span className="absolute -top-1 -right-0.5 w-[7px] h-[7px] rounded-full bg-emerald-400 animate-pulse" style={{ border: '1.5px solid #000' }} />
+            {/* Pulsing dot when data exists */}
+            {hasEverReceived && !isMapa && (
+              <span className={`absolute -top-1 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 ${isLive ? 'animate-pulse' : ''}`} style={{ border: '2px solid #000', boxShadow: '0 0 6px rgba(239,68,68,0.6)' }} />
             )}
             <MapPin
               size={22}

@@ -106,8 +106,8 @@ export default function ArenaPage() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastVariant, setToastVariant] = useState<'info' | 'success'>('info');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevIsSubmitting = useRef(false);
-  const prevPhase = useRef('');
+  const prevIsSubmitting = useRef(isSubmitting);
+  const prevPhase = useRef(phase);
 
   // Audio recording
   const [isRecording, setIsRecording] = useState(false);
