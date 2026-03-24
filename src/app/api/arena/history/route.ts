@@ -52,15 +52,19 @@ export async function GET(req: NextRequest) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
   // Extract lightweight info
-  const list = (data || []).map((row: any) => ({
-    id: row.id,
-    created_at: row.created_at,
-    headline: row.analise_data?.headline || row.question || 'Análise',
-    score: row.analise_data?.score || 0,
-    platform: Array.isArray(row.content_meta?.mediaType)
+  const list = (data || []).map((row: any) => {
+    const platforms = Array.isArray(row.content_meta?.mediaType)
       ? row.content_meta.mediaType.join(', ')
-      : row.content_meta?.mediaType || '',
-  }));
+      : row.content_meta?.mediaType || '';
+    return {
+      id: row.id,
+      created_at: row.created_at,
+      headline: row.analise_data?.headline || 'Análise',
+      question: row.question || '',
+      score: row.analise_data?.score || 0,
+      platform: platforms,
+    };
+  });
 
   return Response.json(list);
 }

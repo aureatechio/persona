@@ -87,7 +87,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
           <motion.div
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-            className="fixed bottom-0 left-0 right-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-3xl px-5 pb-10"
+            className="fixed bottom-0 left-0 right-0 z-[60] max-h-[85vh] overflow-y-auto rounded-t-3xl px-5 pb-36"
             style={{ backgroundColor: '#09090b', borderTop: '0.5px solid rgba(255,255,255,0.06)' }}
           >
             {/* Handle */}
@@ -230,13 +230,13 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                       <div className="flex items-start gap-3">
                         <span className="text-xl shrink-0">{scoreToEmoji(item.score)}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-semibold text-white truncate">{item.headline}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {item.platform && <span className="text-[10px] text-zinc-500">{item.platform}</span>}
-                            <span className="text-[10px] text-zinc-600">
-                              {new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
+                          <p className="text-[13px] font-semibold text-white truncate">
+                            {item.platform ? `Análise ${item.platform}` : 'Análise'}
+                          </p>
+                          <p className="text-[11px] text-zinc-500 truncate mt-0.5">{item.headline}</p>
+                          <span className="text-[10px] text-zinc-600">
+                            {new Date(item.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <span className="text-sm font-black tabular-nums text-emerald-400">{item.score?.toFixed(1)}</span>
