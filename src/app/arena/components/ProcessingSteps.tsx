@@ -22,6 +22,7 @@ interface ProcessingStepsProps {
   collectingStatus?: string;
   onCancel?: () => void;
   region?: string;
+  analiseLoading?: boolean;
 }
 
 function PulsingDots({ color }: { color: string }) {
@@ -40,8 +41,11 @@ function PulsingDots({ color }: { color: string }) {
   );
 }
 
-export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel, region }: ProcessingStepsProps) {
-  const progress = totalCount > 0 ? processedCount / totalCount : 0;
+export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel, region, analiseLoading }: ProcessingStepsProps) {
+  const personaProgress = totalCount > 0 ? processedCount / totalCount : 0;
+  // Unified: personas = 0-80%, generating analysis = 80-95%
+  const personasDone = phase === 'complete' || phase === 'aggregating' || personaProgress >= 0.99;
+  const progress = personasDone && analiseLoading ? 0.88 : personasDone ? 1.0 : personaProgress * 0.8;
 
   // Collecting phase: show pipeline steps
   if (phase === 'collecting') {
@@ -175,14 +179,16 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
           <div className="w-[7px] h-[7px] rounded-full bg-emerald-400" />
         </div>
         <span className="text-[11px] font-black text-emerald-400 tracking-[2px]">
-          {phase === 'aggregating' ? 'FINALIZANDO' : 'ANALISANDO'}
+          {personasDone && analiseLoading ? 'GERANDO ANÁLISE' : phase === 'aggregating' ? 'FINALIZANDO' : 'ANALISANDO'}
         </span>
       </motion.div>
 
       <p className="text-[11px] text-zinc-500 text-center">
-        {phase === 'aggregating'
-          ? 'Finalizando resultados da análise...'
-          : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
+        {personasDone && analiseLoading
+          ? 'Gerando recomendações e insights...'
+          : phase === 'aggregating'
+            ? 'Finalizando resultados da análise...'
+            : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
       </p>
 
       {/* Progress bar */}

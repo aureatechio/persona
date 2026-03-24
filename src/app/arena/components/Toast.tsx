@@ -1,4 +1,4 @@
-// Arena PWA — Toast notification (auto-dismiss + close button)
+// Arena PWA — Toast notification (above input, auto-dismiss + close)
 
 'use client';
 
@@ -27,19 +27,19 @@ export function Toast({ message, visible, onClose, variant = 'info', duration = 
     <AnimatePresence>
       {visible && (
         <motion.div
-          initial={{ y: -80, opacity: 0 }}
+          initial={{ y: 40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -80, opacity: 0 }}
+          exit={{ y: 40, opacity: 0 }}
           transition={{ type: 'spring', damping: 25, stiffness: 400 }}
-          className="fixed left-4 right-4 z-[60]"
-          style={{ top: 'max(12px, env(safe-area-inset-top, 12px))' }}
+          className="fixed left-4 right-4 z-[55]"
+          style={{ bottom: 170 }}
         >
           <div
             className="flex items-center gap-3 px-4 py-3 rounded-2xl backdrop-blur-xl"
             style={{
-              backgroundColor: 'rgba(24,24,27,0.92)',
-              border: `0.5px solid ${isSuccess ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.08)'}`,
-              boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              backgroundColor: 'rgba(24,24,27,0.95)',
+              border: `0.5px solid ${isSuccess ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.1)'}`,
+              boxShadow: '0 -4px 24px rgba(0,0,0,0.5)',
             }}
           >
             <div
