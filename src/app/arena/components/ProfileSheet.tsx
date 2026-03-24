@@ -105,7 +105,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
               <>
                 {/* Info card */}
                 <div className="rounded-[14px] overflow-hidden mb-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  {[{ l: 'Posicionamento', v: ideologyLabel }, { l: 'Estado', v: stateLabel }, { l: 'Cidade', v: profile.city || 'Não informada' }].map((row, i) => (
+                  {[{ l: 'Posicionamento', v: ideologyLabel }, { l: 'Estado', v: stateLabel }, { l: 'Cidade', v: profile.state === 'brasil' ? 'Nacional' : (profile.city || 'Não informada') }].map((row, i) => (
                     <div key={row.l}>
                       <div className="flex justify-between items-center px-4 py-3.5">
                         <span className="text-[13px] text-zinc-500">{row.l}</span>
@@ -145,7 +145,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                   </button>
                   {showStateDropdown && (
                     <div className="mt-1.5 rounded-[14px] max-h-44 overflow-y-auto" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-                      {BRAZILIAN_STATES.filter((st) => st.value !== 'brasil').map((st) => (
+                      {BRAZILIAN_STATES.map((st) => (
                         <button key={st.value} onClick={() => { setSelectedState(st.value); setShowStateDropdown(false); setCity(''); setCitySearch(''); }} className="w-full text-left px-4 py-2.5 text-[13px] border-b border-white/[0.04]" style={{ color: selectedState === st.value ? '#34d399' : '#d4d4d8', backgroundColor: selectedState === st.value ? 'rgba(52,211,153,0.06)' : 'transparent' }}>
                           {st.label}
                         </button>
@@ -155,6 +155,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                 </div>
 
                 {/* City */}
+                {selectedState !== 'brasil' && (
                 <div className="mb-3.5">
                   <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px] mb-1.5 block">Cidade (opcional)</label>
                   <div className="flex items-center gap-2 rounded-[14px] px-3.5" style={{ backgroundColor: 'rgba(255,255,255,0.04)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
@@ -169,6 +170,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                     </div>
                   )}
                 </div>
+                )}
 
                 {/* Save/Cancel */}
                 <div className="flex gap-2.5 mb-3">

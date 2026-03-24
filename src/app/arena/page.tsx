@@ -13,6 +13,7 @@ import type { Attachment, ChatMessage } from './types';
 
 import { ArenaNav } from './components/ArenaNav';
 import { ChatInput } from './components/ChatInput';
+import { Toast } from './components/Toast';
 import { AttachmentMenu } from './components/AttachmentMenu';
 import { PlatformSelector } from './components/PlatformSelector';
 import { ProcessingSteps } from './components/ProcessingSteps';
@@ -99,7 +100,12 @@ export default function ArenaPage() {
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastVariant, setToastVariant] = useState<'info' | 'success'>('info');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevIsSubmitting = useRef(false);
+  const prevPhase = useRef('');
 
   // Audio recording
   const [isRecording, setIsRecording] = useState(false);
@@ -112,6 +118,26 @@ export default function ArenaPage() {
   const isStopped = useArenaStore((s) => s.isStopped);
   const isStreaming = isSubmitting || (hasEverReceived && phase !== 'complete' && !isStopped);
   const isComplete = hasEverReceived && (phase === 'complete' || isStopped);
+
+  // Toast: show when analysis starts
+  useEffect(() => {
+    if (isSubmitting && !prevIsSubmitting.current) {
+      setToastMsg('Pode navegar que te avisamos quando ficar pronto');
+      setToastVariant('info');
+      setToastVisible(true);
+    }
+    prevIsSubmitting.current = isSubmitting;
+  }, [isSubmitting]);
+
+  // Toast: show when analysis completes
+  useEffect(() => {
+    if (phase === 'complete' && prevPhase.current !== 'complete' && hasEverReceived) {
+      setToastMsg('Análise finalizada!');
+      setToastVariant('success');
+      setToastVisible(true);
+    }
+    prevPhase.current = phase;
+  }, [phase, hasEverReceived]);
 
   let screenState: ScreenState = 'idle';
   if (isStreaming) screenState = 'processing';
@@ -512,6 +538,9 @@ export default function ArenaPage() {
 
       {/* ═══ NAV ═══ */}
       <ArenaNav />
+
+      {/* ═══ TOAST ═══ */}
+      <Toast message={toastMsg} visible={toastVisible} onClose={() => setToastVisible(false)} variant={toastVariant} />
 
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />

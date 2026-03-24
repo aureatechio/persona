@@ -209,7 +209,7 @@ export function AuthModal({ visible, onClose, onSuccess }: AuthModalProps) {
                       </button>
                       {showStateDropdown && (
                         <div className="mt-1.5 bg-white/[0.04] border border-white/[0.08] rounded-xl max-h-48 overflow-y-auto">
-                          {BRAZILIAN_STATES.filter((st) => st.value !== 'brasil').map((st) => (
+                          {BRAZILIAN_STATES.map((st) => (
                             <button
                               key={st.value}
                               onClick={() => { setSelectedState(st.value); setShowStateDropdown(false); setCity(''); setCitySearch(''); }}
@@ -225,6 +225,7 @@ export function AuthModal({ visible, onClose, onSuccess }: AuthModalProps) {
                     </div>
 
                     {/* City */}
+                    {selectedState !== 'brasil' && (
                     <div>
                       <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px] mb-1.5 block">Cidade (opcional)</label>
                       <div className="flex items-center gap-2.5 bg-white/[0.04] border border-white/[0.08] rounded-xl px-4">
@@ -235,7 +236,7 @@ export function AuthModal({ visible, onClose, onSuccess }: AuthModalProps) {
                           value={citySearch}
                           onChange={(e) => { setCitySearch(e.target.value); setCity(''); }}
                           placeholder={loadingCities ? 'Carregando...' : !selectedState ? 'Selecione o estado primeiro' : 'Buscar cidade...'}
-                          disabled={!selectedState || selectedState === 'brasil' || loadingCities}
+                          disabled={!selectedState || loadingCities}
                         />
                       </div>
                       {filteredCities.length > 0 && (
@@ -252,6 +253,7 @@ export function AuthModal({ visible, onClose, onSuccess }: AuthModalProps) {
                         </div>
                       )}
                     </div>
+                    )}
 
                     {/* Info */}
                     <div className="flex items-start gap-2.5 bg-emerald-500/[0.04] border border-emerald-500/20 rounded-xl p-3">

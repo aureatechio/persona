@@ -13,6 +13,8 @@ const INACTIVE = '#52525b';
 export function ArenaNav() {
   const pathname = usePathname();
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
+  const phase = useArenaStore((s) => s.data.phase);
+  const isLive = hasEverReceived && phase !== 'complete';
 
   const isDashboard = pathname === '/arena/dashboard';
   const isVoto = pathname === '/arena';
@@ -35,7 +37,7 @@ export function ArenaNav() {
         <Link
           href="/arena/dashboard"
           className="flex flex-col items-center gap-0.5"
-          style={{ opacity: hasEverReceived ? 1 : 0.5, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+          style={{ opacity: (hasEverReceived || isLive) ? 1 : 0.5, pointerEvents: (hasEverReceived || isLive) ? 'auto' : 'none' }}
         >
           <div className="relative w-11 h-8 flex items-center justify-center">
             {isDashboard && (
@@ -43,6 +45,10 @@ export function ArenaNav() {
                 <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: ACTIVE }} />
                 <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
               </>
+            )}
+            {/* Pulsing dot when live data is arriving */}
+            {isLive && !isDashboard && (
+              <span className="absolute -top-1 -right-0.5 w-[7px] h-[7px] rounded-full bg-emerald-400 animate-pulse" style={{ border: '1.5px solid #000' }} />
             )}
             <BarChart3
               size={22}
@@ -86,7 +92,7 @@ export function ArenaNav() {
         <Link
           href="/arena/mapa"
           className="flex flex-col items-center gap-0.5"
-          style={{ opacity: hasEverReceived ? 1 : 0.5, pointerEvents: hasEverReceived ? 'auto' : 'none' }}
+          style={{ opacity: (hasEverReceived || isLive) ? 1 : 0.5, pointerEvents: (hasEverReceived || isLive) ? 'auto' : 'none' }}
         >
           <div className="relative w-11 h-8 flex items-center justify-center">
             {isMapa && (
@@ -94,6 +100,10 @@ export function ArenaNav() {
                 <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: ACTIVE }} />
                 <div className="absolute w-9 h-9 rounded-full" style={{ backgroundColor: 'rgba(52,211,153,0.1)' }} />
               </>
+            )}
+            {/* Pulsing dot when live data is arriving */}
+            {isLive && !isMapa && (
+              <span className="absolute -top-1 -right-0.5 w-[7px] h-[7px] rounded-full bg-emerald-400 animate-pulse" style={{ border: '1.5px solid #000' }} />
             )}
             <MapPin
               size={22}
