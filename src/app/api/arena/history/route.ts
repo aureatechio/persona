@@ -4,8 +4,17 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { createServerClient } from '@supabase/ssr';
 
-// Helper: get authenticated user from request cookies
+// Helper: get authenticated user from cookies (PWA) or Bearer token (mobile)
 async function getUser(req: NextRequest) {
+  // Try Bearer token first (mobile app)
+  const authHeader = req.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+    if (user) return user;
+  }
+
+  // Fallback to cookie auth (PWA)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co',
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
