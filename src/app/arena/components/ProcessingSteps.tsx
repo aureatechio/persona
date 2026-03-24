@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, Search, Globe, Users, Zap, Check, Square } from 'lucide-react';
 
@@ -43,9 +44,51 @@ function PulsingDots({ color }: { color: string }) {
 
 export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel, region, analiseLoading }: ProcessingStepsProps) {
   const personaProgress = totalCount > 0 ? processedCount / totalCount : 0;
-  // Unified: personas = 0-80%, generating analysis = 80-95%
   const personasDone = phase === 'complete' || phase === 'aggregating' || personaProgress >= 0.99;
-  const progress = personasDone && analiseLoading ? 0.88 : personasDone ? 1.0 : personaProgress * 0.8;
+
+  // Smooth progress that only goes forward, never backward
+  // Personas = 0-80%, analysis generation = 80-97% (animated), done = 100%
+  const [displayProgress, setDisplayProgress] = useState(0);
+  const analysisTicker = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Phase 1: personas processing (0-80%)
+    if (!personasDone) {
+      const target = personaProgress * 0.8;
+      setDisplayProgress((prev) => Math.max(prev, target));
+      return;
+    }
+
+    // Phase 2: personas done, analysis generating (80% → slowly to 97%)
+    if (personasDone && analiseLoading) {
+      setDisplayProgress((prev) => Math.max(prev, 0.8));
+      // Tick up slowly from current to 97%
+      if (analysisTicker.current) clearInterval(analysisTicker.current);
+      analysisTicker.current = setInterval(() => {
+        setDisplayProgress((prev) => {
+          if (prev >= 0.97) { clearInterval(analysisTicker.current!); return 0.97; }
+          return prev + 0.003; // ~0.3% per tick (every 200ms = ~30s to reach 97%)
+        });
+      }, 200);
+      return () => { if (analysisTicker.current) clearInterval(analysisTicker.current); };
+    }
+
+    // Phase 3: analysis done → jump to 100%
+    if (personasDone && !analiseLoading) {
+      if (analysisTicker.current) clearInterval(analysisTicker.current);
+      setDisplayProgress(1.0);
+    }
+  }, [personasDone, analiseLoading, personaProgress]);
+
+  // Reset on new analysis
+  useEffect(() => {
+    if (processedCount === 0 && totalCount === 0) {
+      setDisplayProgress(0);
+      if (analysisTicker.current) clearInterval(analysisTicker.current);
+    }
+  }, [processedCount, totalCount]);
+
+  const progress = displayProgress;
 
   // Collecting phase: show pipeline steps
   if (phase === 'collecting') {
