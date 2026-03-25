@@ -35,7 +35,7 @@ export function PwaHead() {
     // iOS PWA
     ensureMeta('apple-mobile-web-app-capable', 'yes');
     ensureMeta('apple-mobile-web-app-status-bar-style', 'black-translucent');
-    ensureMeta('apple-mobile-web-app-title', 'Arena');
+    ensureMeta('apple-mobile-web-app-title', 'VOTIA');
     ensureLink('apple-touch-icon', '/arena-icons/icon-192.png');
 
     // Android PWA

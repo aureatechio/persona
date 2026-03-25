@@ -5,13 +5,13 @@ import type { Metadata, Viewport } from 'next';
 import { PwaHead } from './components/PwaHead';
 
 export const metadata: Metadata = {
-  title: 'Arena - Análise Eleitoral',
+  title: 'VOTIA - Análise Eleitoral',
   description: 'Simulação de impacto eleitoral com 20.000 personas de IA',
   manifest: '/arena-manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Arena',
+    title: 'VOTIA',
   },
   other: {
     'mobile-web-app-capable': 'yes',

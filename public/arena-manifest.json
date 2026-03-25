@@ -1,6 +1,6 @@
 {
-  "name": "Arena - Análise Eleitoral",
-  "short_name": "Arena",
+  "name": "VOTIA - Análise Eleitoral",
+  "short_name": "VOTIA",
   "description": "Simulação de impacto eleitoral com IA",
   "start_url": "/arena",
   "scope": "/",
@@ -8,7 +8,7 @@
   "background_color": "#000000",
   "theme_color": "#000000",
   "orientation": "portrait",
-  "id": "arena-pwa",
+  "id": "votia-pwa",
   "categories": ["productivity", "utilities"],
   "icons": [
     {
