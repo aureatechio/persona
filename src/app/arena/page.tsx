@@ -102,6 +102,7 @@ export default function ArenaPage() {
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [pendingTextQuestion, setPendingTextQuestion] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
   const [toastVariant, setToastVariant] = useState<'info' | 'success'>('info');
@@ -342,7 +343,10 @@ export default function ArenaPage() {
     if (!isAuthenticated) { setShowAuthModal(true); return; }
     if (screenState === 'hasAttachment') { setShowPlatformSelector(true); return; }
     if (screenState === 'complete' && analiseData) { handleChatQuestion(text); return; }
-    if (screenState === 'idle' && text) alert('Para iniciar a análise, anexe uma imagem ou vídeo usando o botão de anexo.');
+    if (screenState === 'idle' && text) {
+      setPendingTextQuestion(text);
+      setShowPlatformSelector(true);
+    }
   };
 
   const handlePlatformConfirm = (platforms: string[]) => {
@@ -351,14 +355,17 @@ export default function ArenaPage() {
     setAnaliseData(null);
     setShowFullAnalysis(false);
 
+    const isTextOnly = attachments.length === 0 && pendingTextQuestion;
+
     // Save to store (persists across tab navigation)
     setUserMediaContext({
       text: platforms.join(', '),
-      attachmentPreviews: attachments.map(a => ({ id: a.id, type: a.type, uri: a.uri })),
+      attachmentPreviews: isTextOnly ? [] : attachments.map(a => ({ id: a.id, type: a.type, uri: a.uri })),
     });
 
     arenaSubmit({
-      attachments,
+      question: isTextOnly ? pendingTextQuestion : undefined,
+      attachments: isTextOnly ? [] : attachments,
       contentMeta: {
         mediaType: platforms,
         candidateIdeology: profile.ideology === 'esquerda' ? 'esquerda' : 'direita',
@@ -367,6 +374,7 @@ export default function ArenaPage() {
       },
     });
     setAttachments([]);
+    setPendingTextQuestion('');
   };
 
   const handleStop = useCallback(() => { arenaCancel(); }, []);

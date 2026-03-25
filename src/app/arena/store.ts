@@ -188,6 +188,7 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
 let activeXhr: XMLHttpRequest | null = null;
 
 interface SubmitParams {
+  question?: string;
   attachments: Attachment[];
   contentMeta: ContentMeta;
 }
@@ -353,7 +354,7 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = generatedQuestion || corePoint || '';
+    const finalQuestion = generatedQuestion || corePoint || params.question || '';
     const { region, city } = params.contentMeta;
     const body: Record<string, unknown> = {
       question: finalQuestion,
