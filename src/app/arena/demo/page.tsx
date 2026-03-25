@@ -1,28 +1,44 @@
 // Arena PWA — Demo auto-login page
-// URL: /arena/demo — logs in as test user and redirects to /arena
+// /arena/demo       → teste@votia.br (original)
+// /arena/demo?u=1   → demo1@votia.br (SP, direita)
+// /arena/demo?u=2   → demo2@votia.br (RJ, esquerda)
+// /arena/demo?u=3   → demo3@votia.br (MG, centro)
+// /arena/demo?u=4   → demo4@votia.br (BA, esquerda)
+// /arena/demo?u=5   → demo5@votia.br (Brasil, direita)
 
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '../authStore';
 
-const TEST_EMAIL = 'teste@votia.br';
-const TEST_PASSWORD = 'votia2026';
+const ACCOUNTS: Record<string, { email: string; password: string; name: string }> = {
+  '0': { email: 'teste@votia.br', password: 'votia2026', name: 'Usuário Teste' },
+  '1': { email: 'demo1@votia.br', password: 'votia2026', name: 'Demo São Paulo' },
+  '2': { email: 'demo2@votia.br', password: 'votia2026', name: 'Demo Rio de Janeiro' },
+  '3': { email: 'demo3@votia.br', password: 'votia2026', name: 'Demo Minas Gerais' },
+  '4': { email: 'demo4@votia.br', password: 'votia2026', name: 'Demo Bahia' },
+  '5': { email: 'demo5@votia.br', password: 'votia2026', name: 'Demo Brasil' },
+};
 
 export default function DemoPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const initialize = useAuthStore((s) => s.initialize);
   const [status, setStatus] = useState('Entrando...');
 
   useEffect(() => {
+    const u = searchParams.get('u') || '0';
+    const account = ACCOUNTS[u] || ACCOUNTS['0'];
+
     async function autoLogin() {
       try {
-        // Sign in with test credentials
+        setStatus(`Entrando como ${account.name}...`);
+
         const { error } = await supabase.auth.signInWithPassword({
-          email: TEST_EMAIL,
-          password: TEST_PASSWORD,
+          email: account.email,
+          password: account.password,
         });
 
         if (error) {
@@ -30,15 +46,9 @@ export default function DemoPage() {
           return;
         }
 
-        // Initialize auth store
         await initialize();
-
         setStatus('Pronto! Redirecionando...');
-
-        // Redirect to arena
-        setTimeout(() => {
-          router.replace('/arena');
-        }, 500);
+        setTimeout(() => router.replace('/arena'), 500);
       } catch (err: any) {
         setStatus(`Erro: ${err.message}`);
       }
