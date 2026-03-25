@@ -1,6 +1,6 @@
 'use client';
 
-import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard, Sparkles } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard, Sparkles, UserCheck } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +31,8 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
     { id: 'arena', label: 'Pulse Arena', icon: Activity, active: pathname === '/', href: '/' },
     { id: 'eleitoral', label: 'Arena Eleitoral', icon: Swords, active: pathname === '/arena-eleitoral', href: '/arena-eleitoral' },
     { id: 'analise-redes', label: 'Análise de Redes', icon: Brain, active: pathname === '/analise-redes', href: '/analise-redes' },
+    { id: 'candidatos', label: 'Candidatos', icon: Sparkles, active: pathname?.startsWith('/candidatos') ?? false, href: '/candidatos' },
+    { id: 'seguidores', label: 'Seguidores', icon: UserCheck, active: pathname === '/seguidores', href: '/seguidores' },
     { id: 'central', label: 'Central de Mensagens', icon: Send, active: pathname === '/central-mensagens', href: '/central-mensagens' },
     { id: 'selfie-video', label: 'Selfie Vídeo', icon: Video, active: pathname === '/selfie-video', href: '/selfie-video' },
     { id: 'grid', label: 'Lista de Personas', icon: List, active: view === 'grid' && isPersonas, href: '/personas?view=grid' },

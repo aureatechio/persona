@@ -1,0 +1,26 @@
+name: living-personas-worker
+region: nyc
+services:
+  - name: living-api
+    github:
+      repo: aureatechio/persona
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: living-worker/Dockerfile
+    source_dir: living-worker
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 3020
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+    envs:
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        value: "https://sobfplitrzgggzqsycew.supabase.co"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        type: SECRET
+      - key: TAVILY_API_KEY
+        type: SECRET
+      - key: ANTHROPIC_API_KEY
+        type: SECRET

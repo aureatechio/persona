@@ -39,6 +39,54 @@ PERSONA_FIELDS = ",".join([
 ])
 
 
+def _enrich_with_sentiments(sb, personas: list[dict[str, Any]]) -> None:
+    """Enriquece personas com sentimentos vivos da tabela persona_sentiments."""
+    try:
+        # Carregar todos os sentimentos de uma vez (mais eficiente que JOIN)
+        all_sentiments: list[dict] = []
+        offset = 0
+        batch_size = 1000
+        while True:
+            resp = (
+                sb.table("persona_sentiments")
+                .select("persona_id,candidate_id,sentiment")
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            if resp.data:
+                all_sentiments.extend(resp.data)
+                if len(resp.data) < batch_size:
+                    break
+                offset += batch_size
+            else:
+                break
+
+        if not all_sentiments:
+            print("[PersonaLoader] Nenhum sentimento vivo encontrado (tabela vazia)")
+            return
+
+        # Agrupar por persona_id
+        sentiment_map: dict[str, dict[str, float]] = {}
+        for s in all_sentiments:
+            pid = s["persona_id"]
+            if pid not in sentiment_map:
+                sentiment_map[pid] = {}
+            sentiment_map[pid][s["candidate_id"]] = float(s["sentiment"] or 0)
+
+        # Enriquecer personas
+        enriched = 0
+        for p in personas:
+            sents = sentiment_map.get(p["id"])
+            if sents:
+                p["sentiments"] = sents
+                enriched += 1
+
+        print(f"[PersonaLoader] {enriched}/{len(personas)} personas com sentimentos vivos")
+
+    except Exception as e:
+        print(f"[PersonaLoader] Sentimentos não disponíveis (tabela pode não existir): {e}")
+
+
 def load_personas(cluster_filter: str | None = None) -> list[dict[str, Any]]:
     """
     Carrega todas as personas do Supabase.
@@ -74,6 +122,9 @@ def load_personas(cluster_filter: str | None = None) -> list[dict[str, Any]]:
                 offset += batch_size
             else:
                 break
+
+        # Carregar sentimentos vivos (persona_sentiments)
+        _enrich_with_sentiments(sb, all_data)
 
         _persona_cache = all_data
         _cache_timestamp = now
