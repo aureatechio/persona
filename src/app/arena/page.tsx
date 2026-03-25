@@ -141,6 +141,73 @@ export default function ArenaPage() {
     prevPhase.current = phase;
   }, [phase, hasEverReceived]);
 
+  // Live session tracking for monitor dashboard
+  const liveSessionId = useRef<string | null>(null);
+
+  // Create session when analysis starts
+  useEffect(() => {
+    if (isSubmitting && !liveSessionId.current && profile) {
+      fetch('/api/arena/live-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: profile.id || 'anon',
+          user_name: profile.name || '',
+          user_email: profile.email || '',
+          platform: Array.isArray(contentMeta?.mediaType) ? contentMeta.mediaType.join(', ') : contentMeta?.mediaType || '',
+          region: profile.state || 'brasil',
+        }),
+      })
+        .then(r => r.json())
+        .then(res => { if (res.id) liveSessionId.current = res.id; })
+        .catch(() => {});
+    }
+  }, [isSubmitting, profile]);
+
+  // Update session progress
+  useEffect(() => {
+    if (!liveSessionId.current || processedCount === 0) return;
+    fetch('/api/arena/live-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: liveSessionId.current,
+        phase,
+        processed_count: processedCount,
+        total_count: totalCount,
+      }),
+    }).catch(() => {});
+  }, [processedCount, phase]);
+
+  // Mark session complete or error
+  useEffect(() => {
+    if (!liveSessionId.current) return;
+    if (analiseData) {
+      fetch('/api/arena/live-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: liveSessionId.current,
+          status: 'complete',
+          score: analiseData.score,
+        }),
+      }).catch(() => {});
+      liveSessionId.current = null;
+    }
+    if (analiseError) {
+      fetch('/api/arena/live-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: liveSessionId.current,
+          status: 'error',
+          error: analiseError,
+        }),
+      }).catch(() => {});
+      liveSessionId.current = null;
+    }
+  }, [analiseData, analiseError]);
+
   let screenState: ScreenState = 'idle';
   if (isStreaming) screenState = 'processing';
   else if (isComplete) screenState = 'complete';
