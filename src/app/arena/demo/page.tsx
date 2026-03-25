@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '../authStore';
@@ -22,18 +22,25 @@ const ACCOUNTS: Record<string, { email: string; password: string; name: string }
   '5': { email: 'demo5@votia.br', password: 'votia2026', name: 'Demo Brasil' },
 };
 
-export default function DemoPage() {
+function DemoLogin() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialize = useAuthStore((s) => s.initialize);
   const [status, setStatus] = useState('Entrando...');
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
-    const u = searchParams.get('u') || '0';
+    if (done) return;
+
+    // Read ?u= param directly from URL as fallback
+    const u = searchParams.get('u') || new URLSearchParams(window.location.search).get('u') || '0';
     const account = ACCOUNTS[u] || ACCOUNTS['0'];
 
     async function autoLogin() {
       try {
+        // Sign out first to clear any existing session
+        await supabase.auth.signOut();
+
         setStatus(`Entrando como ${account.name}...`);
 
         const { error } = await supabase.auth.signInWithPassword({
@@ -47,6 +54,7 @@ export default function DemoPage() {
         }
 
         await initialize();
+        setDone(true);
         setStatus('Pronto! Redirecionando...');
         setTimeout(() => router.replace('/arena'), 500);
       } catch (err: any) {
@@ -55,7 +63,7 @@ export default function DemoPage() {
     }
 
     autoLogin();
-  }, []);
+  }, [done]);
 
   return (
     <div className="flex flex-col items-center justify-center h-[100dvh] bg-black gap-4"
@@ -64,5 +72,18 @@ export default function DemoPage() {
       <div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
       <p className="text-sm text-zinc-400">{status}</p>
     </div>
+  );
+}
+
+export default function DemoPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center h-[100dvh] bg-black gap-4">
+        <div className="w-10 h-10 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm text-zinc-400">Carregando...</p>
+      </div>
+    }>
+      <DemoLogin />
+    </Suspense>
   );
 }
