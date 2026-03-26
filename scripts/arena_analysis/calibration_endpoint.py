@@ -327,25 +327,49 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         bias = await load_bias_config()
 
         if total > 0:
-            sample_batch = personas[:min(settings.batch_size, total)]
-            sample_user_prompt = build_batch_prompt(request.question, context, sample_batch, bias=bias)
+            if is_individual:
+                # Individual mode: show prompt for a SINGLE persona with all fields
+                sample_persona = personas[0]
+                sample_user_prompt = build_single_prompt(request.question, context, sample_persona, bias=bias)
 
-            yield sse_event("cal_step", {
-                "step": "prompt_preview", "status": "complete",
-                "label": "Preview do Prompt",
-                "description": f"Prompt real que sera enviado para cada batch de {settings.batch_size} personas",
-            })
-            yield sse_event("cal_step_detail", {
-                "step": "prompt_preview",
-                "status": "complete",
-                "input": {
-                    "system_prompt": system_prompt[:8000],
-                    "user_prompt": sample_user_prompt[:15000],
-                    "persona_count": len(sample_batch),
-                    "batch_size": settings.batch_size,
-                    "model_split": f"{int(settings.claude_share*100)}% Claude / {int((1-settings.claude_share)*100)}% GPT",
-                },
-            })
+                yield sse_event("cal_step", {
+                    "step": "prompt_preview", "status": "complete",
+                    "label": "Preview do Prompt",
+                    "description": "Prompt real enviado para CADA persona individualmente (1 por call)",
+                })
+                yield sse_event("cal_step_detail", {
+                    "step": "prompt_preview",
+                    "status": "complete",
+                    "input": {
+                        "system_prompt": system_prompt[:8000],
+                        "user_prompt": sample_user_prompt[:15000],
+                        "persona_count": 1,
+                        "batch_size": 1,
+                        "model_split": "100% GPT (individual mode, 3 chaves paralelo)",
+                        "sample_persona_name": sample_persona.get("name", "?"),
+                    },
+                })
+            else:
+                # Batch mode: show prompt for a batch of personas
+                sample_batch = personas[:min(settings.batch_size, total)]
+                sample_user_prompt = build_batch_prompt(request.question, context, sample_batch, bias=bias)
+
+                yield sse_event("cal_step", {
+                    "step": "prompt_preview", "status": "complete",
+                    "label": "Preview do Prompt",
+                    "description": f"Prompt real que sera enviado para cada batch de {settings.batch_size} personas",
+                })
+                yield sse_event("cal_step_detail", {
+                    "step": "prompt_preview",
+                    "status": "complete",
+                    "input": {
+                        "system_prompt": system_prompt[:8000],
+                        "user_prompt": sample_user_prompt[:15000],
+                        "persona_count": len(sample_batch),
+                        "batch_size": settings.batch_size,
+                        "model_split": f"{int(settings.claude_share*100)}% Claude / {int((1-settings.claude_share)*100)}% GPT",
+                    },
+                })
 
         if cancelled.is_set():
             return
