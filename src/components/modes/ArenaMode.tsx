@@ -193,7 +193,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           }
 
           // Use RAW TRANSCRIPT as primary context (not the Claude summary)
-          // The Claude summary is only used for core_point and generated_question
+          // The Claude summary is used for core_point and political figures
           if (rawTranscript) {
             enrichedContext = enrichedContext
               ? `${enrichedContext}\n\n--- Transcricao completa da midia ---\n${rawTranscript}`
