@@ -341,11 +341,11 @@ function PromptPreviewPanel({ step }: { step: StepState }) {
     <div className="space-y-4">
       <SectionHeader
         title="Preview do Prompt"
-        description="Este e o prompt EXATO que sera enviado para cada batch de personas"
+        description="Este e o prompt EXATO enviado para cada persona individualmente"
       />
 
       <div className="flex flex-wrap gap-2">
-        {step.input?.batch_size && <MetaChip icon={<Cpu size={10} />} label="Batch Size" value={step.input.batch_size} />}
+        {step.input?.batch_size && <MetaChip icon={<Cpu size={10} />} label="Personas/call" value={step.input.batch_size} />}
         {step.input?.persona_count && <MetaChip icon={<FileText size={10} />} label="Personas no Sample" value={step.input.persona_count} />}
         {step.input?.model_split && <MetaChip icon={<Brain size={10} />} label="Split" value={step.input.model_split} />}
       </div>
@@ -354,7 +354,7 @@ function PromptPreviewPanel({ step }: { step: StepState }) {
         <PromptViewer title="System Prompt (Arena)" content={step.input.system_prompt} accent="sky" />
       )}
       {step.input?.user_prompt && (
-        <PromptViewer title="User Prompt (1o Batch Completo)" content={step.input.user_prompt} defaultOpen accent="emerald" />
+        <PromptViewer title="User Prompt (amostra)" content={step.input.user_prompt} defaultOpen accent="emerald" />
       )}
     </div>
   );
