@@ -291,11 +291,14 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
     sentiments = persona.get("sentiments") or {}
 
     # Map camp to candidate sentiment
+    # Usa o sentimento do candidato principal do camp + aliados
     if camp == "left":
-        relevant_sentiment = sentiments.get("lula", None)
+        # Lula é o líder da esquerda — Haddad como backup
+        left_sents = [sentiments.get(c) for c in ("lula", "haddad") if sentiments.get(c) is not None]
+        relevant_sentiment = max(left_sents) if left_sents else None
     elif camp == "right":
-        # Check all right-leaning candidates
-        right_sents = [sentiments.get(c) for c in ("flavio", "caiado", "ratinho") if sentiments.get(c) is not None]
+        # Flávio lidera, mas Michelle/Tarcísio/Zema são aliados
+        right_sents = [sentiments.get(c) for c in ("flavio", "tarcisio", "michelle", "zema", "caiado", "ratinho") if sentiments.get(c) is not None]
         relevant_sentiment = max(right_sents) if right_sents else None
     else:
         relevant_sentiment = None

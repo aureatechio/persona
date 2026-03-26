@@ -57,9 +57,16 @@ JSON válido:
 {
   "tema": "Título curto",
   "contexto": "3-5 frases factuais. QUEM É + O QUE FEZ/ACONTECEU.",
-  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "posição política ou papel no caso"}],
+  "figuras": [{"nome": "Nome", "cargo": "Cargo", "campo_politico": "esquerda|centro|direita", "aliados_principais": ["Nome1", "Nome2"], "relevancia": "posição política ou papel no caso"}],
   "periodo": "período relevante"
-}"""
+}
+
+REGRA OBRIGATÓRIA para figuras políticas:
+- campo_politico: SEMPRE indique se é esquerda, centro ou direita
+- aliados_principais: liste os 2-3 aliados mais conhecidos
+  Exemplos: Nikolas Ferreira → aliados: Flávio Bolsonaro, Jair Bolsonaro (mesmo campo PL/direita)
+            Boulos → aliados: Lula, Haddad (mesmo campo PT-PSOL/esquerda)
+- Isso ajuda as personas a saberem SE devem apoiar ou criticar essa figura"""
 
 
 IDEOLOGICAL_FRAME_PROMPT = """Você é um ANALISTA DE VIÉS IDEOLÓGICO para pesquisa social brasileira.
