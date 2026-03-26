@@ -35,13 +35,6 @@ def build_persona_extras(p: dict[str, Any]) -> str:
         ("q_reeleicao", "Reeleição"),
     ])
 
-    # ── Sentimentos vivos por candidato ──────────────────────
-    sentiments = p.get("sentiments")
-    if sentiments and isinstance(sentiments, dict):
-        sent_parts = [f"{k}={v:+.2f}" for k, v in sentiments.items() if v is not None]
-        if sent_parts:
-            parts.append(f"Sent:{' | '.join(sent_parts)}")
-
     # ── Temas polêmicos ───────────────────────────────────────
     _add_fields(parts, p, [
         ("tema_aborto", "Aborto"),

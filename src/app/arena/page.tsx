@@ -372,7 +372,6 @@ export default function ArenaPage() {
         region: profile.state || 'brasil',
         city: profile.city || undefined,
       },
-      audienceFilter: profile.audience_filter || undefined,
     });
     setAttachments([]);
     setPendingTextQuestion('');

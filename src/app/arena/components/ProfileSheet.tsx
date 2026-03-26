@@ -29,7 +29,6 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
   const [citySearch, setCitySearch] = useState('');
   const [citySuggestions, setCitySuggestions] = useState<string[]>([]);
   const [showStateDropdown, setShowStateDropdown] = useState(false);
-  const [audienceFilter, setAudienceFilter] = useState<'esquerda' | 'centro' | 'direita' | null>(null);
   const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const loadFromHistory = useArenaStore((s) => s.loadFromHistory);
@@ -41,7 +40,6 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
       setSelectedState(profile.state || '');
       setCity(profile.city || '');
       setCitySearch(profile.city || '');
-      setAudienceFilter(profile.audience_filter || null);
       setEditing(false);
 
       // Fetch history
@@ -72,12 +70,11 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
 
   const stateLabel = BRAZILIAN_STATES.find((st) => st.value === profile.state)?.label || profile.state || '—';
   const ideologyLabel = profile.ideology === 'esquerda' ? '← Esquerda' : profile.ideology === 'centro' ? 'Centro' : profile.ideology === 'direita' ? 'Direita →' : '—';
-  const audienceLabel = profile.audience_filter === 'esquerda' ? 'Esquerda' : profile.audience_filter === 'centro' ? 'Centro' : profile.audience_filter === 'direita' ? 'Direita' : 'Todos';
 
   const handleSignOut = async () => { await signOut(); onClose(); };
   const handleSave = async () => {
     setSaving(true);
-    const result = await updateProfile({ name: name.trim(), ideology: ideology || undefined, state: selectedState || undefined, city: city || null, audience_filter: audienceFilter });
+    const result = await updateProfile({ name: name.trim(), ideology: ideology || undefined, state: selectedState || undefined, city: city || null });
     setSaving(false);
     if (!result.error) setEditing(false);
   };
@@ -120,13 +117,13 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
               <>
                 {/* Info card */}
                 <div className="rounded-[14px] overflow-hidden mb-3" style={{ backgroundColor: 'rgba(255,255,255,0.03)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
-                  {[{ l: 'Posicionamento', v: ideologyLabel }, { l: 'Estado', v: stateLabel }, { l: 'Cidade', v: profile.state === 'brasil' ? 'Nacional' : (profile.city || 'Não informada') }, { l: 'Filtro Audiência', v: audienceLabel }].map((row, i, arr) => (
+                  {[{ l: 'Posicionamento', v: ideologyLabel }, { l: 'Estado', v: stateLabel }, { l: 'Cidade', v: profile.state === 'brasil' ? 'Nacional' : (profile.city || 'Não informada') }].map((row, i) => (
                     <div key={row.l}>
                       <div className="flex justify-between items-center px-4 py-3.5">
                         <span className="text-[13px] text-zinc-500">{row.l}</span>
                         <span className="text-[13px] font-semibold text-white">{row.v}</span>
                       </div>
-                      {i < arr.length - 1 && <div className="h-[0.5px]" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }} />}
+                      {i < 2 && <div className="h-[0.5px]" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }} />}
                     </div>
                   ))}
                 </div>
@@ -186,20 +183,6 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
                   )}
                 </div>
                 )}
-
-                {/* Audience Filter */}
-                <div className="mb-3.5">
-                  <label className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px] mb-1.5 block">Filtro de Audiência</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {([{ val: null, label: 'Todos', color: '#a1a1aa' }, { val: 'esquerda', label: 'Esquerda', color: '#fb7185' }, { val: 'centro', label: 'Centro', color: '#a78bfa' }, { val: 'direita', label: 'Direita', color: '#38bdf8' }] as const).map((opt) => (
-                      <button key={opt.label} onClick={() => setAudienceFilter(opt.val)} className="py-2.5 rounded-[14px] text-xs font-bold border active:scale-95 transition-all"
-                        style={audienceFilter === opt.val ? { color: opt.color, borderColor: `${opt.color}33`, backgroundColor: `${opt.color}10` } : { color: '#a1a1aa', borderColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(255,255,255,0.04)' }}>
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-zinc-600 mt-1.5">Filtra a análise para mostrar apenas opiniões desse segmento</p>
-                </div>
 
                 {/* Save/Cancel */}
                 <div className="flex gap-2.5 mb-3">

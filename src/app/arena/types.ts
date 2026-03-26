@@ -11,7 +11,6 @@ export interface UserProfile {
   state?: string;
   city?: string;
   avatar_url?: string;
-  audience_filter?: 'esquerda' | 'centro' | 'direita' | null;
 }
 
 export interface ChatMessage {

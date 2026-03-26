@@ -84,13 +84,6 @@ def classify_question(question: str, context: ContextResult | None = None) -> di
     if context and context.figuras:
         for fig in context.figuras:
             nome = (fig.get("nome") or "").lower()
-            # Checar campo_politico do context_builder (Melhoria 1)
-            campo = (fig.get("campo_politico") or "").lower()
-            if campo in ("esquerda", "centro-esquerda"):
-                return {"is_political": True, "camp": "left"}
-            if campo in ("direita", "centro-direita"):
-                return {"is_political": True, "camp": "right"}
-            # Fallback: checar nas listas hardcoded
             for left_fig in LEFT_CAMP["figures"]:
                 if left_fig in nome:
                     return {"is_political": True, "camp": "left"}
@@ -98,59 +91,7 @@ def classify_question(question: str, context: ContextResult | None = None) -> di
                 if right_fig in nome:
                     return {"is_political": True, "camp": "right"}
 
-    # Fallback: checar tabela political_alliances do Supabase
-    result = _check_alliances_table(q)
-    if result:
-        return result
-
     return {"is_political": False, "camp": None}
-
-
-# Cache para alliances (evita queries repetidas)
-_alliances_cache: dict | None = None
-_alliances_cache_ts: float = 0.0
-
-
-def _check_alliances_table(question: str) -> dict | None:
-    """Consulta tabela political_alliances como fallback para figuras não hardcoded."""
-    global _alliances_cache, _alliances_cache_ts
-    import time
-
-    # Cache de 5 minutos
-    now = time.time()
-    if _alliances_cache is None or (now - _alliances_cache_ts) > 300:
-        try:
-            from arena_analysis.config import settings
-            from supabase import create_client
-            sb = create_client(settings.supabase_url, settings.supabase_key)
-            resp = sb.table("political_alliances").select("figure_name, camp, keywords").execute()
-            _alliances_cache = resp.data or []
-            _alliances_cache_ts = now
-        except Exception:
-            _alliances_cache = []
-            _alliances_cache_ts = now
-
-    q = question.lower()
-    for alliance in (_alliances_cache or []):
-        name = (alliance.get("figure_name") or "").lower()
-        if name and name in q:
-            camp = alliance.get("camp", "")
-            if camp in ("left", "center"):
-                return {"is_political": True, "camp": "left" if camp == "left" else None}
-            if camp == "right":
-                return {"is_political": True, "camp": "right"}
-
-        # Checar keywords
-        keywords = alliance.get("keywords") or []
-        for kw in keywords:
-            if kw and kw.lower() in q:
-                camp = alliance.get("camp", "")
-                if camp == "left":
-                    return {"is_political": True, "camp": "left"}
-                if camp == "right":
-                    return {"is_political": True, "camp": "right"}
-
-    return None
 
 
 # ── Bias config loaded from Supabase prompt metadata ─────────────────────────

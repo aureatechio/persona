@@ -284,69 +284,42 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
             else:
                 score = max(0.0, score - shift_amount)
 
-    # ── Step 4: Electoral coherence — V2 with live sentiments ──
-    # First check live sentiments (persona_sentiments table) — these reflect
-    # real-time opinion shifts from news. If available, they take priority
-    # over static fields like voto_2022.
-    sentiments = persona.get("sentiments") or {}
+    # ── Step 4: Electoral coherence — persona's declared data ──
+    voto22 = (persona.get("voto_2022") or "").lower()
+    aprov_lula = (persona.get("aprovacao_lula") or "").lower()
+    aval_bolso = (persona.get("q_avaliacao_bolsonaro") or "").lower()
+    leaning = (persona.get("political_leaning") or "").lower()
 
-    # Map camp to candidate sentiment
-    # Usa o sentimento do candidato principal do camp + aliados
+    # Helper: check aprovacao without substring false positives
+    is_aprova_lula = aprov_lula and not aprov_lula.startswith("des") and "aprova" in aprov_lula
+    is_desaprova_lula = "desaprova" in aprov_lula
+    is_aval_bolso_bom = any(w in aval_bolso for w in ["bom", "ótimo", "otimo"])
+    is_aval_bolso_ruim = any(w in aval_bolso for w in ["ruim", "péssimo", "pessimo"])
+
+    # Determine if persona supports or opposes the CAMP of the figure
+    supports_figure = False
+    opposes_figure = False
+
     if camp == "left":
-        # Lula é o líder da esquerda — Haddad como backup
-        left_sents = [sentiments.get(c) for c in ("lula", "haddad") if sentiments.get(c) is not None]
-        relevant_sentiment = max(left_sents) if left_sents else None
-    elif camp == "right":
-        # Flávio lidera, mas Michelle/Tarcísio/Zema são aliados
-        right_sents = [sentiments.get(c) for c in ("flavio", "tarcisio", "michelle", "zema", "caiado", "ratinho") if sentiments.get(c) is not None]
-        relevant_sentiment = max(right_sents) if right_sents else None
-    else:
-        relevant_sentiment = None
-
-    # If we have live sentiment data, use it for coherence
-    if relevant_sentiment is not None:
-        if relevant_sentiment > 0.3:
+        # Left camp figure/ally — supporters of Lula support, opponents oppose
+        if "lula" in voto22 or is_aprova_lula:
             supports_figure = True
-            opposes_figure = False
-        elif relevant_sentiment < -0.3:
-            supports_figure = False
+        elif "bolsonaro" in voto22 or is_desaprova_lula or is_aval_bolso_bom:
             opposes_figure = True
-        else:
-            # Neutral/undecided — let the LLM decide freely
-            return score
-    else:
-        # Fallback: use static electoral data (original behavior)
-        voto22 = (persona.get("voto_2022") or "").lower()
-        aprov_lula = (persona.get("aprovacao_lula") or "").lower()
-        aval_bolso = (persona.get("q_avaliacao_bolsonaro") or "").lower()
-        leaning = (persona.get("political_leaning") or "").lower()
-
-        is_aprova_lula = aprov_lula and not aprov_lula.startswith("des") and "aprova" in aprov_lula
-        is_desaprova_lula = "desaprova" in aprov_lula
-        is_aval_bolso_bom = any(w in aval_bolso for w in ["bom", "ótimo", "otimo"])
-        is_aval_bolso_ruim = any(w in aval_bolso for w in ["ruim", "péssimo", "pessimo"])
-
-        supports_figure = False
-        opposes_figure = False
-
-        if camp == "left":
-            if "lula" in voto22 or is_aprova_lula:
-                supports_figure = True
-            elif "bolsonaro" in voto22 or is_desaprova_lula or is_aval_bolso_bom:
-                opposes_figure = True
-            elif "direita" in leaning:
-                opposes_figure = True
-            elif "esquerda" in leaning:
-                supports_figure = True
-        elif camp == "right":
-            if "bolsonaro" in voto22 or is_aval_bolso_bom:
-                supports_figure = True
-            elif "lula" in voto22 or is_aprova_lula or is_aval_bolso_ruim:
-                opposes_figure = True
-            elif "esquerda" in leaning:
-                opposes_figure = True
-            elif "direita" in leaning:
-                supports_figure = True
+        elif "direita" in leaning:
+            opposes_figure = True
+        elif "esquerda" in leaning:
+            supports_figure = True
+    elif camp == "right":
+        # Right camp figure/ally — supporters of Bolsonaro support, opponents oppose
+        if "bolsonaro" in voto22 or is_aval_bolso_bom:
+            supports_figure = True
+        elif "lula" in voto22 or is_aprova_lula or is_aval_bolso_ruim:
+            opposes_figure = True
+        elif "esquerda" in leaning:
+            opposes_figure = True
+        elif "direita" in leaning:
+            supports_figure = True
 
     if not supports_figure and not opposes_figure:
         return score  # No clear electoral alignment

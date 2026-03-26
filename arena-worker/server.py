@@ -102,25 +102,7 @@ async def analyze(request: Request):
             asyncio.to_thread(pre_classify, question, context_text)
         )
 
-        all_personas = _ensure_cache()
-
-        # ── Audience ideology filter ──
-        audience_filter = body.get("audience_filter")
-        if audience_filter:
-            FILTER_MAP = {
-                "esquerda": {"P"},
-                "centro": {"M", "T"},
-                "direita": {"C"},
-            }
-            allowed = FILTER_MAP.get(audience_filter, set())
-            if allowed:
-                personas = [p for p in all_personas if (p.get("cluster_id") or "X")[0] in allowed]
-                print(f"[Arena] Audience filter '{audience_filter}': {len(personas)}/{len(all_personas)} personas")
-            else:
-                personas = all_personas
-        else:
-            personas = all_personas
-
+        personas = _ensure_cache()
         total = len(personas)
 
         # 1. Notify personas loaded
