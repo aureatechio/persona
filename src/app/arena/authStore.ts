@@ -108,7 +108,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     try {
       const { data, error } = await supabase
         .from('users')
-        .select('id, email, name, user_type, ideology, state, city, avatar_url')
+        .select('id, email, name, user_type, ideology, state, city, avatar_url, audience_filter')
         .eq('id', userId)
         .single();
       if (!error && data) set({ profile: data as UserProfile });

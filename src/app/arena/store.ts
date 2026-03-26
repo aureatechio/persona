@@ -191,6 +191,7 @@ interface SubmitParams {
   question?: string;
   attachments: Attachment[];
   contentMeta: ContentMeta;
+  audienceFilter?: 'esquerda' | 'centro' | 'direita' | null;
 }
 
 export async function arenaSubmit(params: SubmitParams) {
@@ -364,6 +365,9 @@ export async function arenaSubmit(params: SubmitParams) {
     };
     if (region !== 'brasil') {
       body.geo_filter = { state: region, city: city || null };
+    }
+    if (params.audienceFilter) {
+      body.audience_filter = params.audienceFilter;
     }
 
     // ── Step 4: SSE via XHR ──
