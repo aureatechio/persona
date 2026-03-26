@@ -73,6 +73,7 @@ export type AllSegments = Record<string, SegmentItem[]>;
 // ── Pipeline Steps (mirrors production) ──
 
 export const PIPELINE_STEPS = [
+  { id: 'media_analysis', label: 'Analise de Midia', icon: 'Image' },
   { id: 'web_research', label: 'Pesquisa na Web', icon: 'Globe' },
   { id: 'context_builder', label: 'Construcao de Contexto', icon: 'Brain' },
   { id: 'ideological_frame', label: 'Mapeamento Ideologico', icon: 'Scale' },
@@ -120,6 +121,7 @@ export interface CalibrationStore {
 
   // Actions
   selectStep: (step: string | null) => void;
+  updateStep: (stepId: string, update: Partial<StepState>) => void;
   reset: () => void;
 }
 
@@ -145,6 +147,13 @@ export const useCalibrationStore = create<CalibrationStore>((set) => ({
   segments: null,
 
   selectStep: (step) => set({ selectedStep: step }),
+  updateStep: (stepId, update) => set((s) => ({
+    steps: {
+      ...s.steps,
+      [stepId]: { ...s.steps[stepId], ...update },
+    },
+    selectedStep: update.status === 'running' ? stepId : s.selectedStep,
+  })),
   reset: () =>
     set({
       question: '', geoFilter: null, isProcessing: false, error: null,
@@ -163,6 +172,7 @@ let activeXhr: XMLHttpRequest | null = null;
 export async function calibrationSubmit(
   question: string,
   geoFilter?: { state: string; city?: string },
+  contextText?: string,
 ) {
   const store = useCalibrationStore;
 
@@ -181,6 +191,7 @@ export async function calibrationSubmit(
 
   const body: Record<string, unknown> = { question };
   if (geoFilter) body.geo_filter = geoFilter;
+  if (contextText) body.context_text = contextText;
 
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();

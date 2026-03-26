@@ -7,11 +7,11 @@ import {
 } from '@/app/calibracao/store';
 import {
   Globe, Brain, Scale, Users, Search, FileText, Cpu, BarChart3,
-  Loader2, CheckCircle2, Circle, AlertCircle,
+  Loader2, CheckCircle2, Circle, AlertCircle, Image,
 } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.FC<{ size: number }>> = {
-  Globe, Brain, Scale, Users, Search, FileText, Cpu, BarChart3,
+  Globe, Brain, Scale, Users, Search, FileText, Cpu, BarChart3, Image,
 };
 
 function StatusIcon({ status }: { status: StepStatus }) {
