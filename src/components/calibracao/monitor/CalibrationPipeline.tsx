@@ -14,75 +14,62 @@ const ICON_MAP: Record<string, React.FC<{ size: number }>> = {
   Globe, Brain, Scale, Users, Search, FileText, Cpu, BarChart3, Image,
 };
 
-function StatusIcon({ status }: { status: StepStatus }) {
+function StatusDot({ status }: { status: StepStatus }) {
   switch (status) {
     case 'running':
-      return <Loader2 size={12} className="text-amber-400 animate-spin" />;
+      return <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />;
     case 'complete':
-      return <CheckCircle2 size={12} className="text-emerald-400" />;
+      return <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />;
     case 'error':
-      return <AlertCircle size={12} className="text-red-400" />;
+      return <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />;
     default:
-      return <Circle size={12} className="text-zinc-700" />;
+      return <span className="w-1.5 h-1.5 rounded-full bg-zinc-700 shrink-0" />;
   }
 }
 
 export default function CalibrationPipeline() {
-  const { steps, selectedStep, selectStep, progress, batches } = useCalibrationStore();
+  const { steps, selectedStep, selectStep } = useCalibrationStore();
 
   return (
-    <div className="space-y-0.5 p-3">
-      <h3 className="text-[10px] font-medium uppercase tracking-wider text-zinc-600 mb-3 px-2">
-        Pipeline de Producao
-      </h3>
-      {PIPELINE_STEPS.map((stepDef, idx) => {
-        const step = steps[stepDef.id];
-        if (!step) return null;
-        const isSelected = selectedStep === stepDef.id;
-        const IconComp = ICON_MAP[stepDef.icon] || Circle;
+    <div className="py-3 px-2">
+      <p className="text-[9px] font-medium uppercase tracking-widest text-zinc-700 px-2 mb-2">
+        Steps
+      </p>
+      <div className="space-y-0.5">
+        {PIPELINE_STEPS.map((stepDef) => {
+          const step = steps[stepDef.id];
+          if (!step) return null;
+          const isSelected = selectedStep === stepDef.id;
+          const IconComp = ICON_MAP[stepDef.icon] || Circle;
 
-        let sublabel = '';
-        if (stepDef.id === 'persona_loop' && progress.total > 0) {
-          sublabel = `${progress.processed}/${progress.total} | ${batches.length} batches`;
-        }
-        if (step.latencyMs) {
-          sublabel += sublabel ? ` | ${step.latencyMs}ms` : `${step.latencyMs}ms`;
-        }
-
-        return (
-          <div key={stepDef.id}>
-            {idx > 0 && (
-              <div className="flex justify-center py-0.5">
-                <div className={`w-px h-2 ${step.status === 'idle' ? 'bg-zinc-800/30' : 'bg-emerald-500/20'}`} />
-              </div>
-            )}
+          return (
             <button
+              key={stepDef.id}
               onClick={() => selectStep(isSelected ? null : stepDef.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all duration-200 ${
+              className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-all duration-150 ${
                 isSelected
-                  ? 'bg-white/[0.08] border border-white/[0.12]'
+                  ? 'bg-white/[0.08] border border-white/[0.1]'
                   : 'hover:bg-white/[0.04] border border-transparent'
               }`}
             >
-              <div className={`p-1.5 rounded-lg shrink-0 ${
-                step.status === 'complete' ? 'bg-emerald-500/10 text-emerald-400'
-                  : step.status === 'running' ? 'bg-amber-500/10 text-amber-400'
-                  : step.status === 'error' ? 'bg-red-500/10 text-red-400'
-                  : 'bg-zinc-800/50 text-zinc-600'
+              <div className={`p-1 rounded-md shrink-0 ${
+                step.status === 'complete' ? 'text-emerald-400'
+                  : step.status === 'running' ? 'text-amber-400'
+                  : step.status === 'error' ? 'text-red-400'
+                  : 'text-zinc-700'
               }`}>
-                <IconComp size={14} />
+                <IconComp size={12} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className={`text-xs font-medium truncate ${step.status === 'idle' ? 'text-zinc-600' : 'text-zinc-300'}`}>
-                  {step.label}
-                </p>
-                {sublabel && <p className="text-[10px] text-zinc-600">{sublabel}</p>}
-              </div>
-              <StatusIcon status={step.status} />
+              <span className={`text-[11px] leading-tight truncate flex-1 ${
+                step.status === 'idle' ? 'text-zinc-600' : 'text-zinc-300'
+              }`}>
+                {stepDef.label.replace('Construcao de ', '').replace('Carregamento de ', '').replace('Processamento de ', '').replace('Agregacao de ', '')}
+              </span>
+              <StatusDot status={step.status} />
             </button>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -61,7 +61,7 @@ function PromptViewer({ title, content, defaultOpen = false, accent = 'zinc' }: 
       </button>
       {open && (
         <div className="border-t border-white/[0.04] bg-zinc-950/50">
-          <pre className="text-[13px] text-zinc-300 p-6 overflow-x-auto whitespace-pre-wrap font-mono leading-[1.7] max-h-[600px] overflow-y-auto selection:bg-emerald-500/20">
+          <pre className="text-[13px] text-zinc-300 p-6 overflow-x-auto whitespace-pre-wrap font-mono leading-[1.7] max-h-[80vh] overflow-y-auto selection:bg-emerald-500/20">
             {content}
           </pre>
         </div>

@@ -28,8 +28,8 @@ export default function CalibracaoPage() {
           <div className="absolute top-1/4 bottom-1/4 w-px bg-gradient-to-b from-transparent via-emerald-500/20 to-transparent" />
         </div>
 
-        {/* Right panel — Pipeline Monitor */}
-        <div className="w-[600px] shrink-0 bg-gradient-to-b from-zinc-950/80 to-black overflow-hidden">
+        {/* Right panel — Pipeline Monitor (wider for prompt readability) */}
+        <div className="w-[720px] shrink-0 bg-gradient-to-b from-zinc-950/80 to-black overflow-hidden">
           <CalibrationMonitor />
         </div>
       </div>
