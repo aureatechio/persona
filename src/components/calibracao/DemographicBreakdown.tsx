@@ -1,81 +1,86 @@
 'use client';
 
-import type { AllSegments, SegmentItem } from '@/app/calibracao/store';
+import { useState } from 'react';
+import { SegmentCard } from '@/app/arena/components/SegmentCard';
+import type { AllSegments } from '@/app/calibracao/store';
 
-const SEGMENT_LABELS: Record<string, string> = {
-  gender: 'Genero',
-  religion: 'Religiao',
-  race: 'Raca/Cor',
-  region: 'Regiao',
-  generation: 'Geracao',
-  socialClass: 'Classe Social',
-  education: 'Escolaridade',
-  politicalLeaning: 'Posicao Politica',
-  archetype: 'Arquetipo',
-  clusterMacro: 'Cluster Macro',
-  scoreEco: 'Eixo Economico',
-  scoreCost: 'Eixo Costumes',
-};
-
-function MiniBar({ item }: { item: SegmentItem }) {
-  const total = item.count || 1;
-  const pPct = Math.round((item.positive / total) * 100);
-  const nPct = Math.round((item.negative / total) * 100);
-
-  return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-zinc-400 w-36 truncate shrink-0" title={item.label}>
-        {item.label}
-      </span>
-      <div className="flex-1 flex h-2 rounded-full overflow-hidden bg-zinc-800/50">
-        {pPct > 0 && (
-          <div className="bg-emerald-500/80" style={{ width: `${pPct}%` }} />
-        )}
-        <div className="flex-1 bg-zinc-700/30" />
-        {nPct > 0 && (
-          <div className="bg-red-500/80" style={{ width: `${nPct}%` }} />
-        )}
-      </div>
-      <span className="text-[10px] text-zinc-500 w-10 text-right shrink-0">
-        {item.count}
-      </span>
-    </div>
-  );
-}
-
-function SegmentCard({ label, items }: { label: string; items: SegmentItem[] }) {
-  if (!items || items.length === 0) return null;
-
-  return (
-    <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4">
-      <h4 className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-3">
-        {label}
-      </h4>
-      <div className="space-y-0.5">
-        {items.slice(0, 8).map((item) => (
-          <MiniBar key={item.label} item={item} />
-        ))}
-      </div>
-    </div>
-  );
-}
+const TABS = [
+  {
+    id: 'demografico',
+    label: 'Demografico',
+    segments: [
+      { key: 'gender', title: 'Genero', accent: 'violet' },
+      { key: 'race', title: 'Etnia', accent: 'amber' },
+      { key: 'generation', title: 'Faixa Etaria', accent: 'cyan' },
+      { key: 'religion', title: 'Religiao', accent: 'rose' },
+      { key: 'region', title: 'Regiao', accent: 'sky' },
+      { key: 'socialClass', title: 'Classe Social', accent: 'orange' },
+      { key: 'education', title: 'Escolaridade', accent: 'emerald' },
+    ],
+  },
+  {
+    id: 'eleitoral',
+    label: 'Eleitoral',
+    segments: [
+      { key: 'voto2022', title: 'Voto 2022', accent: 'amber' },
+      { key: 'voto2026', title: 'Intencao 2026', accent: 'sky' },
+      { key: 'aprovacaoLula', title: 'Aprovacao Lula', accent: 'rose' },
+      { key: 'politicalLeaning', title: 'Pos. Politica', accent: 'violet' },
+    ],
+  },
+  {
+    id: 'ideologico',
+    label: 'Ideologico',
+    segments: [
+      { key: 'scoreEco', title: 'Espectro Economico', accent: 'emerald' },
+      { key: 'scoreCost', title: 'Espectro Comportamental', accent: 'fuchsia' },
+      { key: 'archetype', title: 'Arquetipos', accent: 'cyan' },
+      { key: 'clusterMacro', title: 'Cluster Macro', accent: 'indigo' },
+    ],
+  },
+] as const;
 
 export default function DemographicBreakdown({ segments }: { segments: AllSegments | null }) {
+  const [activeTab, setActiveTab] = useState('demografico');
+
   if (!segments) return null;
+
+  const currentTab = TABS.find((t) => t.id === activeTab) || TABS[0];
 
   return (
     <div>
-      <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-4">
-        Breakdowns Demograficos
-      </h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {Object.entries(segments).map(([key, items]) => (
-          <SegmentCard
-            key={key}
-            label={SEGMENT_LABELS[key] || key}
-            items={items as SegmentItem[]}
-          />
+      {/* Tabs */}
+      <div className="flex items-center gap-1 mb-4 p-1 rounded-xl bg-white/[0.02] border border-white/[0.04] w-fit">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+              activeTab === tab.id
+                ? 'bg-white/[0.08] text-white border border-white/[0.1]'
+                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.04] border border-transparent'
+            }`}
+          >
+            {tab.label}
+          </button>
         ))}
+      </div>
+
+      {/* Segment grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {currentTab.segments.map((seg) => {
+          const items = (segments as any)[seg.key];
+          if (!items || !Array.isArray(items) || items.length === 0) return null;
+          return (
+            <SegmentCard
+              key={seg.key}
+              items={items}
+              title={seg.title}
+              accentColor={seg.accent}
+              maxItems={10}
+            />
+          );
+        })}
       </div>
     </div>
   );
