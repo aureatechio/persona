@@ -227,31 +227,25 @@ def build_batch_prompt(
                 f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
             )
 
-        is_media_context = context.tema == "Conteúdo de mídia analisado"
+        context_block = f"""═══ CONTEXTO (leia TUDO para entender do que se trata) ═══
+{question}
 
-        if is_media_context:
-            context_block = f"""PERGUNTA: "{question}"
-
-CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO, é sobre ISSO que você deve opinar):
 {context.contexto}
 {f"FIGURAS MENCIONADAS: {figuras_text}" if figuras_text else ""}
 
-⚠️ VOCÊ ESTÁ REAGINDO AO CONTEÚDO ACIMA. Leia os FATOS, ARGUMENTOS e DADOS apresentados. Sua opinião deve refletir como SEU PERFIL reagiria ao ver esse conteúdo numa rede social. Seja ESPECÍFICO — mencione pontos concretos do conteúdo."""
-        else:
-            context_block = f"""═══ PERGUNTA CENTRAL (é sobre ISSO que você deve opinar) ═══
-"{question}"
-
-═══ CONTEXTO (leia para entender de quem/do que se trata) ═══
-{context.contexto}
-{f"FIGURAS: {figuras_text}" if figuras_text else ""}
-
 ⚠️ INSTRUÇÕES:
-1. LEIA o contexto para entender QUEM É a pessoa ou O QUE aconteceu
-2. RESPONDA À PERGUNTA CENTRAL baseado no SEU PERFIL (idade, classe, ideologia, região)
-3. O contexto te informa os FATOS — sua OPINIÃO vem do seu perfil
-4. Se a pergunta é "deveria estar preso?" → opine sobre ISSO, usando os fatos do contexto"""
+1. LEIA o contexto completo — entenda QUEM, O QUE e POR QUE
+2. Este conteúdo foi postado numa rede social — você está REAGINDO a ele
+3. Baseado no SEU PERFIL (idade, classe, ideologia, região), qual SENTIMENTO este conteúdo desperta em você?
+4. positive = APROVA / concorda / apoia o que está sendo dito
+5. negative = REPROVA / discorda / rejeita o que está sendo dito
+6. neutral = INDIFERENTE / não se importa / não conhece o tema"""
     else:
-        context_block = f'PERGUNTA: "{question}"'
+        context_block = f"""═══ CONTEXTO ═══
+{question}
+
+⚠️ Baseado no SEU PERFIL, qual SENTIMENTO este conteúdo desperta em você?
+positive = APROVA, negative = REPROVA, neutral = INDIFERENTE"""
 
     # ── Classify question type ──
     q_class = classify_question(question, context)
@@ -488,11 +482,12 @@ PERFIS:
 FORMATO JSON OBRIGATÓRIO — responda com um objeto JSON contendo "results":
 {{"results": [{{"id": 1, "sentiment": "positive|negative|neutral", "score": 7.5, "comment": "..."}}, ...]}}
 
-⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
-- positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
-- negative = a CONCLUSÃO do comentário DISCORDA da pergunta
-- ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
-- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
+⚠️ REGRA CRÍTICA DE COERÊNCIA (SENTIMENTO, NÃO TOM):
+- positive = o conteúdo DESPERTA APROVAÇÃO nesta pessoa (concorda, apoia, defende)
+- negative = o conteúdo DESPERTA REPROVAÇÃO nesta pessoa (discorda, rejeita, critica)
+- neutral = INDIFERENTE, não conhece, ou está dividida
+- ❌ NÃO confunda TOM NEGATIVO do comentário com SENTIMENTO NEGATIVO sobre o conteúdo
+- TESTE: "esta pessoa APROVA o que está sendo dito?" → sim = positive, não = negative
 
 {calibration}"""
 
@@ -507,7 +502,7 @@ def build_single_prompt(
     Prompt dedicado para UMA ÚNICA persona.
     O modelo dedica 100% da atenção a este perfil.
     """
-    # Bloco de contexto (idêntico ao batch)
+    # Bloco de contexto
     if context and context.contexto:
         figuras_text = ""
         if context.figuras:
@@ -515,31 +510,25 @@ def build_single_prompt(
                 f'{f.get("nome", "?")} ({f.get("cargo", "?")})' for f in context.figuras
             )
 
-        is_media_context = context.tema == "Conteúdo de mídia analisado"
+        context_block = f"""═══ CONTEXTO (leia TUDO para entender do que se trata) ═══
+{question}
 
-        if is_media_context:
-            context_block = f"""PERGUNTA: "{question}"
-
-CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO, é sobre ISSO que você deve opinar):
 {context.contexto}
 {f"FIGURAS MENCIONADAS: {figuras_text}" if figuras_text else ""}
 
-⚠️ VOCÊ ESTÁ REAGINDO AO CONTEÚDO ACIMA. Leia os FATOS, ARGUMENTOS e DADOS apresentados. Sua opinião deve refletir como SEU PERFIL reagiria ao ver esse conteúdo numa rede social. Seja ESPECÍFICO — mencione pontos concretos do conteúdo."""
-        else:
-            context_block = f"""═══ PERGUNTA CENTRAL (é sobre ISSO que você deve opinar) ═══
-"{question}"
-
-═══ CONTEXTO (leia para entender de quem/do que se trata) ═══
-{context.contexto}
-{f"FIGURAS: {figuras_text}" if figuras_text else ""}
-
 ⚠️ INSTRUÇÕES:
-1. LEIA o contexto para entender QUEM É a pessoa ou O QUE aconteceu
-2. RESPONDA À PERGUNTA CENTRAL baseado no SEU PERFIL (idade, classe, ideologia, região)
-3. O contexto te informa os FATOS — sua OPINIÃO vem do seu perfil
-4. Se a pergunta é "deveria estar preso?" → opine sobre ISSO, usando os fatos do contexto"""
+1. LEIA o contexto completo — entenda QUEM, O QUE e POR QUE
+2. Este conteúdo foi postado numa rede social — você está REAGINDO a ele
+3. Baseado no SEU PERFIL (idade, classe, ideologia, região), qual SENTIMENTO este conteúdo desperta em você?
+4. positive = APROVA / concorda / apoia o que está sendo dito
+5. negative = REPROVA / discorda / rejeita o que está sendo dito
+6. neutral = INDIFERENTE / não se importa / não conhece o tema"""
     else:
-        context_block = f'PERGUNTA: "{question}"'
+        context_block = f"""═══ CONTEXTO ═══
+{question}
+
+⚠️ Baseado no SEU PERFIL, qual SENTIMENTO este conteúdo desperta em você?
+positive = APROVA, negative = REPROVA, neutral = INDIFERENTE"""
 
     # ── Classify question type ──
     q_class = classify_question(question, context)
@@ -665,11 +654,12 @@ Dedique TODA sua atenção ao perfil abaixo. Analise CADA aspecto — escolarida
 FORMATO JSON OBRIGATÓRIO — responda APENAS com:
 {{"sentiment": "positive|negative|neutral", "score": 7.5, "comment": "..."}}
 
-⚠️ REGRA CRÍTICA DE COERÊNCIA (POSIÇÃO FINAL, NÃO TOM):
-- positive = a CONCLUSÃO do comentário CONCORDA com a pergunta
-- negative = a CONCLUSÃO do comentário DISCORDA da pergunta
-- ❌ NÃO confunda TOM NEGATIVO com POSIÇÃO NEGATIVA
-- TESTE: "essa pessoa concorda com [pergunta]?" → sim = positive, não = negative
+⚠️ REGRA CRÍTICA DE COERÊNCIA (SENTIMENTO, NÃO TOM):
+- positive = o conteúdo DESPERTA APROVAÇÃO nesta pessoa (concorda, apoia, defende)
+- negative = o conteúdo DESPERTA REPROVAÇÃO nesta pessoa (discorda, rejeita, critica)
+- neutral = INDIFERENTE, não conhece, ou está dividida
+- ❌ NÃO confunda TOM NEGATIVO do comentário com SENTIMENTO NEGATIVO sobre o conteúdo
+- TESTE: "esta pessoa APROVA o que está sendo dito?" → sim = positive, não = negative
 {coherence_footer}"""
 
 
