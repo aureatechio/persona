@@ -106,8 +106,7 @@ export default function CalibrationInput() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             attachments: [{ type: media.type, data: media.data, name: media.name }],
-            question: finalQuestion,
-            generate_question: !finalQuestion,
+            question: finalQuestion || undefined,
           }),
         });
 
@@ -115,13 +114,9 @@ export default function CalibrationInput() {
           const result = await analyzeRes.json();
           const context = result.context || '';
           const corePoint = result.core_point || '';
-          const generatedQuestion = result.generated_question || '';
           const politicalFigures = result.political_figures || [];
 
-          // Use generated question if user didn't provide one
-          if (!finalQuestion && generatedQuestion) {
-            finalQuestion = generatedQuestion;
-          }
+          // Use core_point as question fallback if user didn't provide one
           if (!finalQuestion && corePoint) {
             finalQuestion = corePoint;
           }
@@ -150,7 +145,7 @@ export default function CalibrationInput() {
                 ? media.data : undefined,
               contexto_extraido: context,
               core_point: corePoint,
-              pergunta_gerada: generatedQuestion || '(nenhuma)',
+              pergunta_gerada: undefined,
               figuras_politicas: politicalFigures,
               contexto_enriquecido: contextText,
               // Full Claude response for inspection

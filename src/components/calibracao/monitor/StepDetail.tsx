@@ -516,10 +516,6 @@ function MediaAnalysisPanel({ step }: { step: StepState }) {
         <DataCard label="Ponto Central Extraido" value={o.core_point} />
       )}
 
-      {/* Generated question */}
-      {o?.pergunta_gerada && o.pergunta_gerada !== '(nenhuma)' && (
-        <DataCard label="Pergunta Gerada pelo Claude" value={o.pergunta_gerada} />
-      )}
 
       {/* Political figures */}
       {o?.figuras_politicas && Array.isArray(o.figuras_politicas) && o.figuras_politicas.length > 0 && (

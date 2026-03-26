@@ -173,7 +173,6 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           body: JSON.stringify({
             attachments: processedAttachments,
             question: q || undefined,
-            generate_question: !q,
           }),
           signal: controller.signal,
         });
@@ -182,14 +181,8 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
           const mediaData = await mediaRes.json();
           console.log('[Arena] Media analysis result:', {
             hasContext: !!mediaData.context,
-            hasQuestion: !!mediaData.generated_question,
             corePoint: mediaData.core_point || 'none',
-            fidelityCorrected: mediaData.fidelity_corrected || false,
           });
-          if (mediaData.fidelity_corrected) {
-            console.warn('[Arena] Fidelity correction applied:', mediaData.fidelity_issue);
-          }
-          if (!q && mediaData.generated_question) q = mediaData.generated_question;
           if (mediaData.core_point) {
             mediaCorePoint = mediaData.core_point;
           }
@@ -230,7 +223,7 @@ export function ArenaMode({ personaCache, onAddBlock, onReplaceBlock, onProcessi
               corePoint: mediaCorePoint || null,
               claudeSummary: mediaData.context || null,
               enrichedContext: enrichedContext || null,
-              generatedQuestion: mediaData.generated_question || null,
+              generatedQuestion: null,
               politicalFigures: politicalFigures.length > 0 ? politicalFigures : null,
             },
           });

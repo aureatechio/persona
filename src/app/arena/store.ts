@@ -207,7 +207,6 @@ export async function arenaSubmit(params: SubmitParams) {
 
   try {
     let enrichedContext = '';
-    let generatedQuestion = '';
     let corePoint = '';
     let politicalFigures: { nome: string; alinhamento: string; posicao_autor?: string }[] = [];
 
@@ -322,8 +321,6 @@ export async function arenaSubmit(params: SubmitParams) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               attachments: [{ type: mediaType, data: mediaData, name: mediaName }],
-              question: '',
-              generate_question: true,
             }),
           });
 
@@ -331,7 +328,6 @@ export async function arenaSubmit(params: SubmitParams) {
             const result = await mediaRes.json();
             const context = result.context || '';
             corePoint = result.core_point || '';
-            generatedQuestion = result.generated_question || '';
             politicalFigures = result.political_figures || [];
 
             if (mediaType === 'video' && mediaData && mediaData !== '__TRANSCRIPTION_FAILED__') {
@@ -354,7 +350,7 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = generatedQuestion || corePoint || params.question || '';
+    const finalQuestion = corePoint || params.question || '';
     const { region, city } = params.contentMeta;
     const body: Record<string, unknown> = {
       question: finalQuestion,
