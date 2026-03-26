@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from arena_analysis.context_builder import ContextResult
-from arena_analysis.persona_extras import build_persona_extras
+from arena_analysis.persona_extras import build_persona_extras, build_persona_extras_expanded
 
 
 # ── Political figure camps (leaders + allies) ────────────────────────────────
@@ -575,7 +575,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
     cluster_id = p.get("cluster_id", "?")
     cluster_name = p.get("nome_grupo", "?")
 
-    extras = build_persona_extras(p)
+    extras_expanded = build_persona_extras_expanded(p)
     persona_block = (
         f'Nome: {p.get("name", "?")}\n'
         f'Gênero: {p.get("gender_identity") or p.get("gender", "?")}, '
@@ -590,7 +590,7 @@ CONTEÚDO ANALISADO (imagem/arquivo que o usuário enviou — LEIA COM ATENÇÃO
         f'Religião: {p.get("macro_religion", "?")}\n'
         f'Cluster: {cluster_id} ({cluster_name})\n'
         f'Score Econômico: {score_eco:.3f} | Score Costumes: {score_cost:.3f}'
-        + (f'\nOpiniões e vivências: {extras}' if extras else '')
+        + (f'\n\n{extras_expanded}' if extras_expanded else '')
     )
 
     # ── Build rules based on question type ──
