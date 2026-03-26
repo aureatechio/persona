@@ -29,6 +29,7 @@ from db import load_all_personas
 from classifier import classify_batch
 from segments import SegmentAccumulator
 from pre_classifier import pre_classify
+from calibration import pre_classify_verbose, classify_batch_verbose
 
 
 # ── Persona cache (in-memory) ────────────────────────────────────────────────
@@ -194,6 +195,177 @@ async def analyze(request: Request):
             "type": "done",
             "data": {"total_personas": total, "processing_time_ms": round(elapsed * 1000)},
         })
+
+    return EventSourceResponse(
+        event_stream(),
+        media_type="text/event-stream",
+    )
+
+
+# ── Calibration endpoint (verbose mode for debugging/tuning) ─────────────────
+
+@app.post("/api/calibracao/analyze")
+async def calibration_analyze(request: Request):
+    body = await request.json()
+    question = body.get("question", "")
+    context_text = body.get("context_text")
+    geo_filter = body.get("geo_filter")
+
+    if not question and not context_text:
+        return {"error": "Missing question or context_text"}
+
+    if not question and context_text:
+        question = context_text[:500]
+
+    async def event_stream():
+        personas = list(_ensure_cache())  # Copy so we can filter
+        original_count = len(personas)
+
+        # 1. Start
+        yield json.dumps({"type": "cal_start", "data": {
+            "question": question,
+            "total_personas": original_count,
+        }})
+
+        # 2. Apply geo filter
+        if geo_filter:
+            state = geo_filter.get("state")
+            city = geo_filter.get("city")
+            sample_removed = []
+
+            filtered = []
+            for p in personas:
+                match_state = not state or (p.get("state") or "").upper() == state.upper()
+                match_city = not city or (p.get("city") or "").lower() == city.lower()
+                if match_state and match_city:
+                    filtered.append(p)
+                elif len(sample_removed) < 5:
+                    sample_removed.append({
+                        "name": p.get("name", "?"),
+                        "state": p.get("state", "?"),
+                        "city": p.get("city", "?"),
+                    })
+
+            personas = filtered
+
+            yield json.dumps({"type": "cal_geo_filter", "data": {
+                "original_count": original_count,
+                "filtered_count": len(personas),
+                "criteria": {"state": state, "city": city},
+                "sample_removed": sample_removed,
+            }})
+        else:
+            yield json.dumps({"type": "cal_geo_filter", "data": {
+                "original_count": original_count,
+                "filtered_count": original_count,
+                "criteria": None,
+                "sample_removed": [],
+            }})
+
+        total = len(personas)
+
+        # 3. Pre-classify (verbose)
+        pre_result = await asyncio.to_thread(pre_classify_verbose, question, context_text)
+
+        yield json.dumps({"type": "cal_pre_classify", "data": {
+            "system_prompt": pre_result["system_prompt"],
+            "user_prompt": pre_result["user_prompt"],
+            "raw_response": pre_result["raw_response"],
+            "parsed": pre_result["result"],
+            "latency_ms": pre_result["latency_ms"],
+            "tokens": pre_result["tokens"],
+        }})
+
+        pre_class = pre_result["result"]
+
+        # 4. Classify in batches (verbose)
+        positive = 0
+        negative = 0
+        neutral = 0
+        processed = 0
+        seg_acc = SegmentAccumulator()
+        start_time = time.time()
+
+        batch_size = AI_BATCH_SIZE
+        batch_total = (total + batch_size - 1) // batch_size
+
+        for batch_idx, offset in enumerate(range(0, total, batch_size)):
+            batch = personas[offset : offset + batch_size]
+
+            # Emit batch start with persona summaries
+            yield json.dumps({"type": "cal_batch_start", "data": {
+                "batch_index": batch_idx,
+                "batch_total": batch_total,
+                "persona_count": len(batch),
+                "persona_ids": [p.get("id", f"idx-{offset+i}") for i, p in enumerate(batch)],
+            }})
+
+            # Classify verbose
+            batch_result = await asyncio.to_thread(
+                classify_batch_verbose, question, batch, context_text, pre_class
+            )
+
+            # Emit batch result with full details
+            persona_details = []
+            for i, (persona, sentiment) in enumerate(zip(batch, batch_result["sentiments"])):
+                if sentiment == "positive":
+                    positive += 1
+                elif sentiment == "negative":
+                    negative += 1
+                else:
+                    neutral += 1
+                seg_acc.add(persona, sentiment)
+
+                persona_details.append({
+                    "id": persona.get("id", f"idx-{offset+i}"),
+                    "name": persona.get("name", "?"),
+                    "state": persona.get("state", "?"),
+                    "age": persona.get("age", 0),
+                    "political_leaning": persona.get("political_leaning", "?"),
+                    "sentiment": sentiment,
+                    "summary": batch_result["persona_summaries"][i] if i < len(batch_result["persona_summaries"]) else "",
+                })
+
+            processed += len(batch)
+
+            yield json.dumps({"type": "cal_batch_result", "data": {
+                "batch_index": batch_idx,
+                "batch_total": batch_total,
+                "prompt": batch_result["prompt"],
+                "raw_response": batch_result["raw_response"],
+                "sentiments": batch_result["sentiments"],
+                "personas": persona_details,
+                "latency_ms": batch_result["latency_ms"],
+                "tokens": batch_result["tokens"],
+            }})
+
+            # Emit progress
+            yield json.dumps({"type": "cal_progress", "data": {
+                "processed": processed,
+                "total": total,
+                "positive": positive,
+                "negative": negative,
+                "neutral": neutral,
+                "segments": seg_acc.to_dict(),
+            }})
+
+        elapsed = time.time() - start_time
+
+        # 5. Final results
+        yield json.dumps({"type": "cal_results", "data": {
+            "total": total,
+            "positive": positive,
+            "negative": negative,
+            "neutral": neutral,
+            "processing_time_ms": round(elapsed * 1000),
+            "segments": seg_acc.to_dict(),
+        }})
+
+        # 6. Done
+        yield json.dumps({"type": "cal_done", "data": {
+            "total_personas": total,
+            "processing_time_ms": round(elapsed * 1000),
+        }})
 
     return EventSourceResponse(
         event_stream(),

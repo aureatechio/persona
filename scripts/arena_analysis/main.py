@@ -38,6 +38,7 @@ from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_promp
 from arena_analysis.electoral_engine import ElectoralEngine
 from arena_analysis.geo_filter import apply_geo_filter
 from arena_analysis.pre_classifier import pre_classify, build_disambiguation_block
+from arena_analysis.calibration_endpoint import CalibrationRequest, calibration_analyze
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -576,6 +577,14 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ── Calibration Endpoint ──────────────────────────────────────────────────────
+
+@app.post("/api/calibracao/analyze")
+async def calibration(request: CalibrationRequest, raw_request: Request):
+    """Verbose pipeline for persona calibration/debugging."""
+    return await calibration_analyze(request, raw_request)
 
 
 # ── Electoral Arena Endpoint ──────────────────────────────────────────────────
