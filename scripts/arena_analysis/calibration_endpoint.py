@@ -322,6 +322,9 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             },
         })
 
+        # ── Determine mode early (used by Step 7 + Step 8) ──
+        is_individual = request.mode == "individual"
+
         # ── STEP 7: Prompt Sample Preview ──
         system_prompt = await get_arena_system_prompt()
         bias = await load_bias_config()
@@ -379,8 +382,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             f.get("stance") in ("attack", "defense")
             for f in pre_class.get("figures", [])
         )
-
-        is_individual = request.mode == "individual"
 
         mode_desc = f"individual (1 por call, GPT-only, 3 chaves)" if is_individual else f"batch de {settings.batch_size}"
         yield sse_event("cal_step", {
