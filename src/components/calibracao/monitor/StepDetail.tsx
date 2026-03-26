@@ -166,7 +166,7 @@ function WebResearchPanel({ step }: { step: StepState }) {
 function ContextBuilderPanel({ step }: { step: StepState }) {
   return (
     <div className="space-y-4">
-      <SectionHeader title="Construcao de Contexto" description="Claude gera ficha de contextualizacao factual a partir da pesquisa web" />
+      <SectionHeader title="Contextualizacao IA" description="Claude contextualiza o conteudo com conhecimento proprio — figuras, termos, historico" />
 
       <div className="flex flex-wrap gap-2">
         {step.latencyMs != null && <MetaChip icon={<Clock size={10} />} label="Latencia" value={`${step.latencyMs}ms`} />}

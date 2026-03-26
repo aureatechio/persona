@@ -129,20 +129,7 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         # ── STEP 1: Start ──
         yield sse_event("cal_start", {"question": request.question})
 
-        # ── STEP 2: Web Research — SKIPPED (Claude contextualiza com conhecimento proprio) ──
-        yield sse_event("cal_step", {
-            "step": "web_research", "status": "complete",
-            "label": "Pesquisa na Web",
-            "description": "Desativada — Claude contextualiza com conhecimento proprio",
-        })
-        yield sse_event("cal_step_detail", {
-            "step": "web_research",
-            "status": "complete",
-            "latency_ms": 0,
-            "output": {"info": "Pesquisa web desativada. Claude usa conhecimento proprio para contextualizar."},
-        })
-
-        # ── STEP 3: Context Builder (Claude contextualiza com conhecimento proprio) ──
+        # ── STEP 2: Context Builder (Claude contextualiza com conhecimento proprio) ──
         context = None
 
         if request.context_text:

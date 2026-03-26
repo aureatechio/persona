@@ -74,8 +74,7 @@ export type AllSegments = Record<string, SegmentItem[]>;
 
 export const PIPELINE_STEPS = [
   { id: 'media_analysis', label: 'Analise de Midia', icon: 'Image' },
-  { id: 'web_research', label: 'Pesquisa na Web', icon: 'Globe' },
-  { id: 'context_builder', label: 'Construcao de Contexto', icon: 'Brain' },
+  { id: 'context_builder', label: 'Contextualizacao IA', icon: 'Brain' },
   { id: 'ideological_frame', label: 'Mapeamento Ideologico', icon: 'Scale' },
   { id: 'persona_loader', label: 'Carregamento de Personas', icon: 'Users' },
   { id: 'pre_classifier', label: 'Pre-Classificacao Semantica', icon: 'Search' },
