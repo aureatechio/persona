@@ -182,12 +182,23 @@ export async function calibrationSubmit(
     activeXhr = null;
   }
 
+  // Preserve media_analysis step if it was already completed by CalibrationInput
+  const prevMediaStep = store.getState().steps.media_analysis;
+  const mediaWasCompleted = prevMediaStep.status === 'complete';
+
   store.getState().reset();
   store.setState({
     question,
     geoFilter: geoFilter || null,
     isProcessing: true,
     startTime: Date.now(),
+    // Restore media_analysis if it was already done (before backend takes over)
+    ...(mediaWasCompleted && {
+      steps: {
+        ...initialSteps(),
+        media_analysis: prevMediaStep,
+      },
+    }),
   });
 
   const body: Record<string, unknown> = { question };
