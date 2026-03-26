@@ -24,6 +24,31 @@ export interface BatchData {
   personas: PersonaBatchDetail[];
 }
 
+export interface PersonaProfile {
+  gender?: string;
+  region?: string;
+  city?: string;
+  education?: string;
+  generation?: string;
+  social_class?: string;
+  religion?: string;
+  race?: string;
+  political_leaning?: string;
+  archetype?: string;
+  cluster?: string;
+  cluster_name?: string;
+  score_eco?: number;
+  score_cost?: number;
+  voto_2022?: string;
+  voto_2026?: string;
+  aprovacao_lula?: string;
+  avaliacao_bolsonaro?: string;
+  career?: Record<string, any>;
+  demographic?: Record<string, any>;
+  psychology?: Record<string, any>;
+  beliefs?: Record<string, any>;
+}
+
 export interface PersonaBatchDetail {
   id: string;
   name: string;
@@ -32,6 +57,7 @@ export interface PersonaBatchDetail {
   sentiment: string;
   score: number;
   comment: string;
+  profile?: PersonaProfile;
 }
 
 export interface SegmentItem {

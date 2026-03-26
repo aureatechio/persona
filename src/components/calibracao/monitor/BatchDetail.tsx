@@ -3,6 +3,7 @@
 import { useCalibrationStore, type BatchData, type PersonaBatchDetail } from '@/app/calibracao/store';
 import { ChevronDown, ChevronRight, Cpu, User } from 'lucide-react';
 import { useState } from 'react';
+import PersonaDrillDown from '../PersonaDrillDown';
 
 function scoreColor(score: number): string {
   if (score >= 7) return 'text-emerald-400';
@@ -14,6 +15,7 @@ function scoreColor(score: number): string {
 
 function BatchRow({ batch }: { batch: BatchData }) {
   const [expanded, setExpanded] = useState(false);
+  const [selectedPersona, setSelectedPersona] = useState<PersonaBatchDetail | null>(null);
 
   const scores = batch.personas.map((p) => p.score);
   const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 5;
@@ -44,9 +46,10 @@ function BatchRow({ batch }: { batch: BatchData }) {
         <div className="border-t border-white/[0.06]">
           <div className="max-h-[400px] overflow-y-auto">
             {batch.personas.map((p, i) => (
-              <div
+              <button
                 key={`${p.id}-${i}`}
-                className="flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.03] last:border-0 hover:bg-white/[0.03] transition-colors duration-150"
+                onClick={() => setSelectedPersona(p)}
+                className="w-full flex items-center gap-3 px-4 py-2.5 border-b border-white/[0.03] last:border-0 hover:bg-white/[0.04] transition-colors duration-150 text-left"
               >
                 <User size={12} className="text-zinc-600 shrink-0" />
                 <span className="text-sm text-zinc-300 flex-1 min-w-0 truncate">{p.name}</span>
@@ -62,9 +65,13 @@ function BatchRow({ batch }: { batch: BatchData }) {
                 }`}>
                   {p.sentiment}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
+
+          {selectedPersona && (
+            <PersonaDrillDown persona={selectedPersona} onClose={() => setSelectedPersona(null)} />
+          )}
 
           {/* Comments preview */}
           {batch.personas.some((p) => p.comment) && (

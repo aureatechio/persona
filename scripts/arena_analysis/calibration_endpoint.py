@@ -376,18 +376,48 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             inc_personas.extend(progress.personas)
             inc_results.extend(progress.results)
 
-            # Batch detail with per-persona results
+            # Batch detail with per-persona results + full profile
             persona_details = []
+            batch_personas_raw = progress.personas  # full persona dicts from DB
             if progress.batch_meta:
-                for ps in progress.batch_meta.get("personas_summary", []):
+                summaries = progress.batch_meta.get("personas_summary", [])
+                for idx_p, ps in enumerate(summaries):
+                    # Get full profile from the raw persona data
+                    full_profile = batch_personas_raw[idx_p] if idx_p < len(batch_personas_raw) else {}
                     persona_details.append({
                         "id": ps.get("id", "?"),
                         "name": ps.get("name", "?"),
-                        "state": ps.get("state", "?"),
-                        "age": ps.get("age", 0),
+                        "state": full_profile.get("state", ps.get("state", "?")),
+                        "age": full_profile.get("age", ps.get("age", 0)),
                         "sentiment": ps.get("sentiment", "neutral"),
                         "score": ps.get("score", 5.0),
-                        "comment": ps.get("comment", "")[:200],
+                        "comment": ps.get("comment", "")[:300],
+                        # Full profile for drill-down
+                        "profile": {
+                            "gender": full_profile.get("gender_identity") or full_profile.get("gender"),
+                            "region": full_profile.get("region_br"),
+                            "city": full_profile.get("city"),
+                            "education": full_profile.get("education_level"),
+                            "generation": full_profile.get("generation"),
+                            "social_class": full_profile.get("social_class"),
+                            "religion": full_profile.get("macro_religion"),
+                            "race": full_profile.get("raca_cor"),
+                            "political_leaning": full_profile.get("political_leaning"),
+                            "archetype": full_profile.get("archetype_primary"),
+                            "cluster": full_profile.get("cluster_id"),
+                            "cluster_name": full_profile.get("nome_grupo"),
+                            "score_eco": full_profile.get("score_economico"),
+                            "score_cost": full_profile.get("score_costumes"),
+                            "voto_2022": full_profile.get("voto_2022"),
+                            "voto_2026": full_profile.get("voto_2026"),
+                            "aprovacao_lula": full_profile.get("aprovacao_lula"),
+                            "avaliacao_bolsonaro": full_profile.get("q_avaliacao_bolsonaro"),
+                            # All career/demographic/psychology/beliefs JSON
+                            "career": full_profile.get("career_json"),
+                            "demographic": full_profile.get("demographic_json"),
+                            "psychology": full_profile.get("psychology_json"),
+                            "beliefs": full_profile.get("beliefs_json"),
+                        },
                     })
 
             batch_total = (total + settings.batch_size - 1) // settings.batch_size
