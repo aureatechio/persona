@@ -86,6 +86,10 @@ class Settings:
     # Persona cache TTL em segundos
     persona_cache_ttl: int = 300
 
+    # Individual mode — 1 persona per call, GPT-only, max parallelism
+    individual_max_parallel: int = 60  # 3 keys × 20 concurrent
+    individual_max_tokens: int = 300  # 1 persona output
+
     # Retry
     max_retries: int = 2  # mais retries — cada persona individual importa
 

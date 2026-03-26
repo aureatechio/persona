@@ -173,6 +173,7 @@ export async function calibrationSubmit(
   question: string,
   geoFilter?: { state: string; city?: string },
   contextText?: string,
+  mode?: 'batch' | 'individual',
 ) {
   const store = useCalibrationStore;
 
@@ -192,6 +193,7 @@ export async function calibrationSubmit(
   const body: Record<string, unknown> = { question };
   if (geoFilter) body.geo_filter = geoFilter;
   if (contextText) body.context_text = contextText;
+  if (mode) body.mode = mode;
 
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();

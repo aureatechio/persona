@@ -75,6 +75,7 @@ class AnalyzeRequest(BaseModel):
     context_text: Optional[str] = None
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
+    individual_mode: bool = False  # 1 persona per call, GPT-only
 
 
 class ElectoralRequest(BaseModel):
@@ -445,6 +446,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             request.question, context, personas,
             verbose=request.verbose, cancelled=cancelled,
             skip_political_enforcement=has_political_figures,
+            individual_mode=request.individual_mode,
         ):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)

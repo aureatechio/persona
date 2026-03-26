@@ -672,11 +672,17 @@ class PersonaLoop:
         system_prompt: str = "",
         bias: BiasConfig | None = None,
         skip_political_enforcement: bool = False,
+        max_tokens_override: int | None = None,
     ) -> list[PersonaResult]:
         tag = f"GPT-{key_id+1}"
         max_retries = settings.max_retries
-        user_prompt = build_batch_prompt(question, context, personas, bias=bias)
+        # Individual mode (1 persona): use build_single_prompt for full attention
+        if len(personas) == 1:
+            user_prompt = build_single_prompt(question, context, personas[0], bias=bias)
+        else:
+            user_prompt = build_batch_prompt(question, context, personas, bias=bias)
         prompt = system_prompt or ARENA_SYSTEM_PROMPT
+        max_tok = max_tokens_override or settings.max_tokens_per_batch
 
         async with semaphore:
             for attempt in range(max_retries + 1):
@@ -684,7 +690,7 @@ class PersonaLoop:
                 try:
                     response = await client.chat.completions.create(
                         model=settings.openai_model,
-                        max_tokens=settings.max_tokens_per_batch,
+                        max_tokens=max_tok,
                         messages=[
                             {"role": "system", "content": prompt},
                             {"role": "user", "content": user_prompt},
@@ -694,6 +700,9 @@ class PersonaLoop:
                     )
                     raw = response.choices[0].message.content or ""
                     pb = bias.political_bias if bias else 0.0
+                    # Individual mode: parse as single persona response
+                    if len(personas) == 1:
+                        return [_parse_single_response(raw, personas[0], tag, question, pb, skip_political_enforcement)]
                     return _parse_response(raw, personas, tag, question, pb, skip_political_enforcement)
 
                 except json.JSONDecodeError:
@@ -726,11 +735,14 @@ class PersonaLoop:
         verbose: bool = False,
         cancelled: asyncio.Event | None = None,
         skip_political_enforcement: bool = False,
+        individual_mode: bool = False,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
         Processa personas em BATCHES (batch_size por chamada).
         Semaphore limita conexões simultâneas para não sobrecarregar o servidor.
         Yield BatchProgress a cada batch completado.
+
+        individual_mode: 1 persona per call, GPT-only, max parallelism.
         """
         # Resolve system prompt from Supabase, fallback to hardcoded
         system_prompt = await get_arena_system_prompt()
@@ -740,13 +752,27 @@ class PersonaLoop:
         bias = await load_bias_config()
 
         total = len(personas)
-        batch_size = settings.batch_size
         num_claude_keys = len(self._claude_clients)
         num_gpt_keys = len(self._openai_clients)
 
+        # Individual mode: 1 persona per call, 100% GPT, higher parallelism
+        if individual_mode:
+            batch_size = 1
+            claude_share = 0.0
+            max_parallel = settings.individual_max_parallel
+            print(f"[PersonaLoop] INDIVIDUAL MODE: batch_size=1, GPT-only, parallel={max_parallel}, keys={num_gpt_keys}")
+        else:
+            batch_size = settings.batch_size
+            claude_share = settings.claude_share
+            max_parallel = settings.max_parallel_openai
+
         # Dividir personas entre Claude e GPT
-        if self._has_openai:
-            split_idx = max(1, int(total * settings.claude_share))
+        if individual_mode:
+            # Individual: ALL personas go to GPT, zero Claude
+            claude_personas = []
+            gpt_personas = personas
+        elif self._has_openai:
+            split_idx = max(1, int(total * claude_share))
             claude_personas = personas[:split_idx]
             gpt_personas = personas[split_idx:]
         else:
@@ -764,9 +790,9 @@ class PersonaLoop:
             f"GPT: {len(gpt_batches)} calls ({num_gpt_keys} keys)"
         )
 
-        # Semaphores to limit concurrent connections (safe for 1vCPU/1GB)
+        # Semaphores to limit concurrent connections
         claude_sem = asyncio.Semaphore(min(settings.max_parallel_claude, len(claude_batches) or 1))
-        gpt_sem = asyncio.Semaphore(min(settings.max_parallel_openai, len(gpt_batches) or 1))
+        gpt_sem = asyncio.Semaphore(min(max_parallel, len(gpt_batches) or 1))
 
         # Build metadata for each batch (model name + personas) for verbose mode
         batch_info: list[tuple[str, list[dict[str, Any]]]] = []
@@ -801,9 +827,10 @@ class PersonaLoop:
                     self._openai_clients[key_id],
                     gpt_sem, key_id, system_prompt, bias,
                     skip_political_enforcement,
+                    max_tokens_override=settings.individual_max_tokens if individual_mode else None,
                 ))
             )
-            batch_info.append(("GPT-4o", batch))
+            batch_info.append(("GPT-4o-mini" if individual_mode else "GPT-4o", batch))
 
         # Process and emit progress as batches complete
         processed = 0

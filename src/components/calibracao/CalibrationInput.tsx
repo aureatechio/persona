@@ -24,6 +24,9 @@ export default function CalibrationInput() {
   const [cities, setCities] = useState<CityOption[]>([]);
   const [loadingCities, setLoadingCities] = useState(false);
 
+  // Mode
+  const [mode, setMode] = useState<'batch' | 'individual'>('batch');
+
   // Media state
   const [attachment, setAttachment] = useState<Attachment | null>(null);
   const [mediaProcessing, setMediaProcessing] = useState(false);
@@ -161,7 +164,7 @@ export default function CalibrationInput() {
 
     if (!finalQuestion) return;
 
-    calibrationSubmit(finalQuestion, geoFilter, contextText || undefined);
+    calibrationSubmit(finalQuestion, geoFilter, contextText || undefined, mode);
   }
 
   const busy = isProcessing || mediaProcessing;
@@ -198,6 +201,26 @@ export default function CalibrationInput() {
         )}
 
         {loadingCities && <Loader2 size={14} className="text-zinc-500 animate-spin" />}
+
+        {/* Mode toggle */}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setMode(mode === 'batch' ? 'individual' : 'batch')}
+            disabled={busy}
+            className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border transition-all duration-200 ${
+              mode === 'individual'
+                ? 'bg-emerald-500/20 border-emerald-500/30'
+                : 'bg-white/[0.04] border-white/[0.08]'
+            } disabled:opacity-50`}
+          >
+            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform duration-200 mt-[2px] ${
+              mode === 'individual' ? 'translate-x-[17px]' : 'translate-x-[2px]'
+            }`} />
+          </button>
+          <span className={`text-[11px] ${mode === 'individual' ? 'text-emerald-400' : 'text-zinc-600'}`}>
+            {mode === 'individual' ? 'Individual (GPT-only)' : 'Batch (producao)'}
+          </span>
+        </div>
       </div>
 
       {/* Row 2: Query + media buttons */}

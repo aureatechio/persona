@@ -45,6 +45,7 @@ class CalibrationRequest(BaseModel):
     question: str
     context_text: Optional[str] = None
     geo_filter: Optional[dict] = None  # {state, city}
+    mode: str = "batch"  # "batch" (production) or "individual" (1 per call, GPT-only)
 
 
 def sse_event(event_type: str, data: dict | list | str) -> str:
@@ -355,10 +356,11 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             for f in pre_class.get("figures", [])
         )
 
+        mode_desc = f"individual (1 por call, GPT-only, 3 chaves)" if is_individual else f"batch de {settings.batch_size}"
         yield sse_event("cal_step", {
             "step": "persona_loop", "status": "running",
             "label": "Processamento de Personas",
-            "description": f"Processando {total} personas com IA em batches de {settings.batch_size}...",
+            "description": f"Processando {total} personas — modo {mode_desc}",
         })
 
         all_results = []
@@ -367,10 +369,13 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         batch_index = 0
         last_segment_count = 0
 
+        is_individual = request.mode == "individual"
+
         async for progress in persona_loop.run(
             request.question, context, personas,
             verbose=True, cancelled=cancelled,
             skip_political_enforcement=has_political_figures,
+            individual_mode=is_individual,
         ):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)
