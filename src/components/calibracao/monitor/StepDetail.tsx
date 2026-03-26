@@ -480,7 +480,84 @@ function GenericStepPanel({ step }: { step: StepState }) {
 
 // ── Route to Panel ──
 
+function MediaAnalysisPanel({ step }: { step: StepState }) {
+  if (!step.input && !step.output) {
+    return (
+      <div className="space-y-4">
+        <SectionHeader title="Analise de Midia" description={step.description || 'Processando midia...'} />
+        {step.status === 'running' && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.03] border border-amber-500/10">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span className="text-sm text-amber-300">{step.description}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const o = step.output;
+  const inp = step.input;
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title="Analise de Midia" description="Claude analisou o conteudo da imagem/video e extraiu contexto" />
+
+      {/* Input info */}
+      {inp && (
+        <div className="flex flex-wrap gap-2">
+          {inp.tipo && <MetaChip icon={<span className="text-[10px]">📎</span>} label="Tipo" value={inp.tipo} />}
+          {inp.nome && <MetaChip icon={<span className="text-[10px]">📄</span>} label="Arquivo" value={inp.nome} />}
+          {inp.tamanho && <MetaChip icon={<span className="text-[10px]">📏</span>} label="Tamanho" value={inp.tamanho} />}
+        </div>
+      )}
+
+      {/* Core point */}
+      {o?.core_point && (
+        <DataCard label="Ponto Central Extraido" value={o.core_point} />
+      )}
+
+      {/* Generated question */}
+      {o?.pergunta_gerada && o.pergunta_gerada !== '(nenhuma)' && (
+        <DataCard label="Pergunta Gerada pelo Claude" value={o.pergunta_gerada} />
+      )}
+
+      {/* Political figures */}
+      {o?.figuras_politicas && Array.isArray(o.figuras_politicas) && o.figuras_politicas.length > 0 && (
+        <div>
+          <p className="text-[11px] text-zinc-600 uppercase tracking-widest mb-2">Figuras Politicas Detectadas</p>
+          <div className="grid gap-2">
+            {o.figuras_politicas.map((fig: any, i: number) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                <span className="text-sm font-semibold text-white">{fig.nome}</span>
+                <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${
+                  fig.posicao_autor === 'contra' ? 'bg-red-500/10 text-red-400 border border-red-500/15'
+                    : fig.posicao_autor === 'a favor' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/15'
+                    : 'bg-zinc-800/50 text-zinc-400 border border-zinc-700/30'
+                }`}>
+                  {fig.posicao_autor || 'neutro'}
+                </span>
+                <span className="text-xs text-zinc-500 ml-auto">{fig.alinhamento}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Extracted context */}
+      {o?.contexto_extraido && (
+        <PromptViewer title="Contexto Extraido pelo Claude" content={o.contexto_extraido} defaultOpen accent="emerald" />
+      )}
+
+      {/* Enriched context (what gets sent to Python) */}
+      {o?.contexto_enriquecido && (
+        <PromptViewer title="Contexto Enriquecido (enviado ao Python)" content={o.contexto_enriquecido} accent="sky" />
+      )}
+    </div>
+  );
+}
+
 const PANEL_MAP: Record<string, (step: StepState) => React.ReactNode> = {
+  media_analysis: (s) => <MediaAnalysisPanel step={s} />,
   web_research: (s) => <WebResearchPanel step={s} />,
   context_builder: (s) => <ContextBuilderPanel step={s} />,
   ideological_frame: (s) => <IdeologicalFramePanel step={s} />,
