@@ -356,6 +356,8 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             for f in pre_class.get("figures", [])
         )
 
+        is_individual = request.mode == "individual"
+
         mode_desc = f"individual (1 por call, GPT-only, 3 chaves)" if is_individual else f"batch de {settings.batch_size}"
         yield sse_event("cal_step", {
             "step": "persona_loop", "status": "running",
@@ -368,8 +370,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         inc_results = []
         batch_index = 0
         last_segment_count = 0
-
-        is_individual = request.mode == "individual"
 
         async for progress in persona_loop.run(
             request.question, context, personas,
