@@ -69,18 +69,21 @@ async def _pre_classify_verbose(question: str, context_text: str | None = None) 
     if context_text:
         user_content += f'\n\nContexto adicional:\n{context_text[:2000]}'
 
-    client = AsyncOpenAI(api_key=keys[0])
+    client = AsyncOpenAI(api_key=keys[0], timeout=30.0)
     start = time.time()
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": PRE_CLASSIFY_SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ],
-            temperature=0, max_tokens=800,
-            response_format={"type": "json_object"},
+        response = await asyncio.wait_for(
+            client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": PRE_CLASSIFY_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_content},
+                ],
+                temperature=0, max_tokens=800,
+                response_format={"type": "json_object"},
+            ),
+            timeout=30.0,
         )
         raw = response.choices[0].message.content.strip()
         latency_ms = round((time.time() - start) * 1000)
