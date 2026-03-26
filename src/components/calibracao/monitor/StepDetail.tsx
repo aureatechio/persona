@@ -543,14 +543,28 @@ function MediaAnalysisPanel({ step }: { step: StepState }) {
         </div>
       )}
 
+      {/* Raw transcription (video only) */}
+      {o?.transcricao_bruta && (
+        <PromptViewer title="Transcricao Bruta (Whisper)" content={o.transcricao_bruta} defaultOpen accent="amber" />
+      )}
+
       {/* Extracted context */}
       {o?.contexto_extraido && (
         <PromptViewer title="Contexto Extraido pelo Claude" content={o.contexto_extraido} defaultOpen accent="emerald" />
       )}
 
+      {/* Full Claude response */}
+      {o?.resposta_completa_claude && (
+        <PromptViewer
+          title="Resposta Completa do Claude (JSON)"
+          content={typeof o.resposta_completa_claude === 'string' ? o.resposta_completa_claude : JSON.stringify(o.resposta_completa_claude, null, 2)}
+          accent="sky"
+        />
+      )}
+
       {/* Enriched context (what gets sent to Python) */}
       {o?.contexto_enriquecido && (
-        <PromptViewer title="Contexto Enriquecido (enviado ao Python)" content={o.contexto_enriquecido} accent="sky" />
+        <PromptViewer title="Contexto Enriquecido (enviado ao Python)" content={o.contexto_enriquecido} accent="zinc" />
       )}
     </div>
   );

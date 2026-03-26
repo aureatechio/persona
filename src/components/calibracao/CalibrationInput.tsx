@@ -145,11 +145,16 @@ export default function CalibrationInput() {
             status: 'complete',
             description: 'Analise de midia concluida',
             output: {
+              // Raw transcription (video) or Claude analysis (image)
+              transcricao_bruta: media.type === 'video' && media.data && media.data !== '__TRANSCRIPTION_FAILED__'
+                ? media.data : undefined,
               contexto_extraido: context,
               core_point: corePoint,
               pergunta_gerada: generatedQuestion || '(nenhuma)',
               figuras_politicas: politicalFigures,
               contexto_enriquecido: contextText,
+              // Full Claude response for inspection
+              resposta_completa_claude: result,
             },
           });
         }
