@@ -51,12 +51,15 @@ RESPONDA APENAS JSON:
   ],
   "cross_candidate_effects": [
     {
-      "candidate_id": "id_outro_candidato",
+      "candidate_id": "USE SOMENTE: lula|flavio|tarcisio|michelle|zema|caiado|ratinho|haddad|eduardo_leite",
       "direction": "positive|negative",
       "magnitude": 0.0-0.3
     }
   ]
-}"""
+}
+
+IDs VÁLIDOS de candidatos (use EXATAMENTE estes, em minúsculo):
+lula, flavio, tarcisio, michelle, zema, caiado, ratinho, haddad, eduardo_leite"""
 
 
 @dataclass
@@ -83,6 +86,33 @@ class ImpactResult:
     summary: str
     affected_segments: list[SegmentImpact]
     cross_candidate_effects: list[CrossEffect]
+
+
+VALID_CANDIDATE_IDS = {"lula", "flavio", "tarcisio", "michelle", "zema", "caiado", "ratinho", "haddad", "eduardo_leite"}
+
+# Mapeamento de nomes comuns para IDs válidos
+_CANDIDATE_ALIASES = {
+    "lula": "lula", "lula_pt": "lula", "pt": "lula",
+    "flavio": "flavio", "flávio": "flavio", "flavio_bolsonaro": "flavio", "flávio_bolsonaro": "flavio",
+    "bolsonaro": "flavio", "jair": "flavio",
+    "tarcisio": "tarcisio", "tarcísio": "tarcisio", "tarcisio_de_freitas": "tarcisio",
+    "michelle": "michelle", "michelle_bolsonaro": "michelle",
+    "zema": "zema", "romeu_zema": "zema",
+    "caiado": "caiado", "ronaldo_caiado": "caiado",
+    "ratinho": "ratinho", "ratinho_jr": "ratinho",
+    "haddad": "haddad", "fernando_haddad": "haddad",
+    "eduardo_leite": "eduardo_leite",
+}
+
+
+def _normalize_candidate_id(raw: str) -> str | None:
+    """Normaliza IDs gerados pela IA para IDs válidos no banco."""
+    if not raw:
+        return None
+    clean = raw.strip().lower().replace(" ", "_").replace(".", "")
+    if clean in VALID_CANDIDATE_IDS:
+        return clean
+    return _CANDIDATE_ALIASES.get(clean)
 
 
 class ImpactAnalyzer:
@@ -130,14 +160,15 @@ Analise o impacto desta notícia nos segmentos eleitorais."""
                 for s in data.get("affected_segments", [])
             ]
 
-            cross = [
-                CrossEffect(
-                    candidate_id=c["candidate_id"],
-                    direction=c.get("direction", "neutral"),
-                    magnitude=float(c.get("magnitude", 0.1)),
-                )
-                for c in data.get("cross_candidate_effects", [])
-            ]
+            cross = []
+            for c in data.get("cross_candidate_effects", []):
+                cid = _normalize_candidate_id(c.get("candidate_id", ""))
+                if cid:  # só aceita IDs válidos
+                    cross.append(CrossEffect(
+                        candidate_id=cid,
+                        direction=c.get("direction", "neutral"),
+                        magnitude=float(c.get("magnitude", 0.1)),
+                    ))
 
             return ImpactResult(
                 news_type=data.get("news_type", "unknown"),

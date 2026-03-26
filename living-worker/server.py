@@ -124,26 +124,29 @@ async def run_update_cycle(is_morning: bool = False):
 
                 total_updates += affected
 
-            # 3e. Efeitos cruzados
+            # 3e. Efeitos cruzados (protegido contra IDs inválidos)
             for cross in impact.cross_candidate_effects:
-                cross_delta = compute_cross_delta(cross)
-                if abs(cross_delta) < 0.0005:
-                    continue
+                try:
+                    cross_delta = compute_cross_delta(cross)
+                    if abs(cross_delta) < 0.0005:
+                        continue
 
-                # Aplicar em todos os clusters (efeito difuso)
-                for macro in ["P", "M", "C", "T"]:
-                    affected = db.apply_sentiment_delta(macro, cross.candidate_id, cross_delta * 0.25)
-                    total_updates += affected
+                    # Aplicar em todos os clusters (efeito difuso)
+                    for macro in ["P", "M", "C", "T"]:
+                        affected = db.apply_sentiment_delta(macro, cross.candidate_id, cross_delta * 0.25)
+                        total_updates += affected
 
-                db.log_sentiment_update(
-                    news_event_id=event_id,
-                    cycle_id=cycle_id,
-                    cluster_id="ALL",
-                    candidate_id=cross.candidate_id,
-                    delta=cross_delta,
-                    personas_affected=0,
-                    reasoning=f"cross:{news.candidate_id}:{impact.news_type}",
-                )
+                    db.log_sentiment_update(
+                        news_event_id=event_id,
+                        cycle_id=cycle_id,
+                        cluster_id="ALL",
+                        candidate_id=cross.candidate_id,
+                        delta=cross_delta,
+                        personas_affected=0,
+                        reasoning=f"cross:{news.candidate_id}:{impact.news_type}",
+                    )
+                except Exception as e:
+                    print(f"[Living] Cross-effect error (skipping): {e}")
 
             news_applied += 1
             print(f"[Living] Applied: {news.headline[:60]} (mag={impact.magnitude:.2f})")
