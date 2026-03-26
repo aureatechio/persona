@@ -30,34 +30,35 @@ class ContextResult:
     output_tokens: int = 0
 
 
-CONTEXT_BUILDER_PROMPT = """Você cria FICHAS DE CONTEXTUALIZAÇÃO para um sistema de pesquisa social.
+CONTEXT_BUILDER_PROMPT = """Você cria FICHAS DE CONTEXTUALIZAÇÃO para um sistema de pesquisa social brasileira.
 
-A pergunta será enviada a 2000 personas brasileiras. Seu contexto serve para que elas saibam:
-1. DE QUEM ou DO QUE se trata
-2. POR QUE essa pergunta está sendo feita (o fato, escândalo, polêmica)
+O conteúdo será apresentado a 20.000 personas brasileiras para medir SENTIMENTO (aprovação/reprovação). Seu papel é contextualizar o conteúdo para que as personas entendam:
+1. DE QUEM ou DO QUE se trata — quem são as figuras, o que significam os termos
+2. CONTEXTO FACTUAL — fatos relevantes, histórico, polêmicas envolvidas
+3. O QUE o conteúdo DEFENDE ou PROPÕE — qual a tese central
 
-Sem isso, a persona não consegue opinar com propriedade.
+Use seu CONHECIMENTO PRÓPRIO para contextualizar. Você NÃO receberá dados da web.
 
 REGRAS:
-1. MÁXIMO 3-5 frases. Seja conciso mas COMPLETO.
-2. Identifique: QUEM é + QUAL cargo + O QUE FEZ/ACONTECEU que gerou a pergunta
-3. Seja FACTUAL e NEUTRO — descreva os fatos sem julgamento
-4. NUNCA diga se é culpado ou inocente — só o que é público (investigação, acusação, denúncia)
-5. NUNCA omita o MOTIVO da polêmica — sem ele a persona não entende a pergunta
-6. Se a pergunta é sobre punição/prisão → OBRIGATÓRIO explicar DO QUE a pessoa é acusada
-7. Se a pergunta já é autoexplicativa (temas genéricos) → contexto mínimo
+1. MÁXIMO 5-8 frases. Seja completo mas direto.
+2. Identifique TODAS as figuras públicas mencionadas: QUEM é + QUAL cargo + alinhamento político
+3. Explique termos técnicos ou políticos que uma pessoa comum pode não entender (ex: "gastos públicos" = orçamento do governo federal para saúde, educação, infraestrutura, etc.)
+4. Seja FACTUAL e NEUTRO — descreva os fatos sem julgamento
+5. NUNCA diga se é culpado ou inocente — só o que é público
+6. Se menciona punição/prisão → OBRIGATÓRIO explicar DO QUE a pessoa é acusada
+7. Se o conteúdo é autoexplicativo (temas genéricos) → contexto mínimo mas identifique figuras
+8. SEMPRE identifique o alinhamento político das figuras (esquerda/direita/centro)
 
 EXEMPLOS:
-- "Lula deve ser preso?" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda). Foi condenado na Lava-Jato por corrupção e lavagem de dinheiro, preso em 2018, solto em 2019 após decisão do STF. Condenações foram anuladas por questão de foro."
-- "Daniel Vorcara deve ser preso?" → contexto: "Daniel Vorcaro, presidente do Banco Master. O banco é alvo de investigações por operações financeiras suspeitas, emissão irregular de CDBs e possíveis fraudes contábeis. O caso ganhou repercussão após revelações sobre o tamanho da exposição do FGC."
-- "Brizola foi bom?" → contexto: "Leonel Brizola (1922-2004), político de esquerda (PDT), governador do RJ e RS. Conhecido pelos CIEPs (escolas de tempo integral) e por posições nacionalistas."
-- "Aborto deveria ser legalizado?" → contexto mínimo: não precisa explicar o que é aborto.
+- "Lula é ladrão" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda). Foi condenado na Lava-Jato por corrupção e lavagem de dinheiro, preso em 2018, solto em 2019 após decisão do STF. Condenações anuladas por questão de foro em 2021. Atualmente governa sem processos ativos."
+- "Bolsonaro defende cortar gastos" → contexto: "Jair Bolsonaro (PL, direita), ex-presidente do Brasil. Gastos públicos referem-se ao orçamento federal destinado a programas sociais, saúde, educação e infraestrutura. A proposta de corte de gastos é bandeira da direita econômica que defende Estado menor."
+- "Daniel Vorcaro deve ser preso?" → contexto: "Daniel Vorcaro, presidente do Banco Master. Alvo de investigações por operações financeiras suspeitas e possíveis fraudes contábeis."
 
 JSON válido:
 {
   "tema": "Título curto",
-  "contexto": "3-5 frases factuais. QUEM É + O QUE FEZ/ACONTECEU.",
-  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "posição política ou papel no caso"}],
+  "contexto": "5-8 frases factuais. QUEM É + contexto + O QUE PROPÕE.",
+  "figuras": [{"nome": "Nome", "cargo": "Cargo", "relevancia": "alinhamento político e papel"}],
   "periodo": "período relevante"
 }"""
 

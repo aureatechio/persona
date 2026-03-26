@@ -129,77 +129,75 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         # ── STEP 1: Start ──
         yield sse_event("cal_start", {"question": request.question})
 
-        # ── STEP 2: Web Research (ALWAYS, same as production) ──
+        # ── STEP 2: Web Research — SKIPPED (Claude contextualiza com conhecimento proprio) ──
         yield sse_event("cal_step", {
-            "step": "web_research", "status": "running",
+            "step": "web_research", "status": "complete",
             "label": "Pesquisa na Web",
-            "description": "Buscando contexto factual via Tavily Search...",
+            "description": "Desativada — Claude contextualiza com conhecimento proprio",
         })
-
-        web_start = time.time()
-        web_result = await web_researcher.research(request.question)
-        web_ms = round((time.time() - web_start) * 1000)
-
         yield sse_event("cal_step_detail", {
             "step": "web_research",
             "status": "complete",
-            "latency_ms": web_ms,
-            "input": {
-                "queries": web_result.queries,
-            },
-            "output": {
-                "snippets": web_result.snippets,
-                "sources": web_result.sources,
-                "combined_context": web_result.combined_context[:5000],
-            },
+            "latency_ms": 0,
+            "output": {"info": "Pesquisa web desativada. Claude usa conhecimento proprio para contextualizar."},
         })
 
-        # ── STEP 3: Context Builder (Claude builds factual context) ──
+        # ── STEP 3: Context Builder (Claude contextualiza com conhecimento proprio) ──
         context = None
 
         if request.context_text:
-            # Media context provided — use directly
-            context = ContextResult(
-                tema="Contexto de midia",
-                contexto=request.context_text,
-            )
-            # Still do web research to complement
-            if web_result.combined_context:
-                ctx_start = time.time()
-                web_ctx = await context_builder.build(
-                    question=request.question,
-                    web_context=web_result.combined_context,
-                )
-                if web_ctx.contexto:
-                    context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
-
+            # Media context provided — use directly, Claude enriches
             yield sse_event("cal_step", {
-                "step": "context_builder", "status": "complete",
+                "step": "context_builder", "status": "running",
                 "label": "Construcao de Contexto",
-                "description": "Contexto de midia recebido + web complementar",
+                "description": "Claude contextualizando conteudo da midia...",
             })
+
+            ctx_start = time.time()
+            # Claude enriches the media context with its own knowledge
+            enriched = await context_builder.build(
+                question=request.question,
+                web_context="",  # No web data — Claude uses own knowledge
+            )
+            ctx_ms = round((time.time() - ctx_start) * 1000)
+
+            context = ContextResult(
+                tema=enriched.tema or "Conteudo de midia",
+                contexto=request.context_text,
+                figuras=enriched.figuras,
+                periodo=enriched.periodo,
+                prompt_tokens=enriched.prompt_tokens,
+                output_tokens=enriched.output_tokens,
+            )
+            # Append Claude's contextual enrichment (who is who, what it means)
+            if enriched.contexto:
+                context.contexto += f"\n\n--- Contextualizacao da IA ---\n{enriched.contexto}"
+
             yield sse_event("cal_step_detail", {
                 "step": "context_builder",
                 "status": "complete",
+                "latency_ms": ctx_ms,
+                "tokens": enriched.prompt_tokens + enriched.output_tokens,
                 "output": {
                     "tema": context.tema,
                     "contexto": context.contexto[:5000],
                     "figuras": context.figuras,
                     "periodo": context.periodo,
+                    "contextualizacao_ia": enriched.contexto[:3000] if enriched.contexto else "",
                 },
             })
         else:
-            # Build context from web research (production flow)
+            # No media — Claude builds full context from its own knowledge
             yield sse_event("cal_step", {
                 "step": "context_builder", "status": "running",
                 "label": "Construcao de Contexto",
-                "description": "Claude esta gerando contexto factual a partir da pesquisa web...",
+                "description": "Claude contextualizando com conhecimento proprio...",
             })
 
             ctx_start = time.time()
             context = await context_builder.build(
                 question=request.question,
-                web_context=web_result.combined_context,
+                web_context="",  # No web data — Claude uses own knowledge
             )
             ctx_ms = round((time.time() - ctx_start) * 1000)
 
@@ -210,7 +208,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                 "tokens": context.prompt_tokens + context.output_tokens,
                 "input": {
                     "question": request.question,
-                    "web_context": web_result.combined_context[:3000],
                 },
                 "output": {
                     "tema": context.tema,
