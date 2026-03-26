@@ -13,13 +13,16 @@ import { useState } from 'react';
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
+    <span
+      role="button"
+      tabIndex={0}
       onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className="p-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] text-zinc-600 hover:text-zinc-300 border border-white/[0.04] hover:border-white/[0.1] transition-all duration-200 active:scale-[0.93]"
+      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } }}
+      className="p-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] text-zinc-600 hover:text-zinc-300 border border-white/[0.04] hover:border-white/[0.1] transition-all duration-200 active:scale-[0.93] cursor-pointer inline-flex"
       title="Copiar"
     >
       {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-    </button>
+    </span>
   );
 }
 
