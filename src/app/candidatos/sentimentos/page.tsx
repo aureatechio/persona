@@ -2,19 +2,16 @@
 
 import { useEffect, useState, useCallback } from "react";
 import {
-  BarChart3,
   TrendingUp,
   TrendingDown,
   RefreshCw,
   Users,
   ArrowLeft,
-  Target,
-  Swords,
-  ChevronDown,
   Crown,
-  Activity,
   Clock,
   Wifi,
+  BarChart3,
+  Minus,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -26,21 +23,9 @@ interface CandidateInfo {
   id: string;
   name: string;
   party: string;
-  leaning: string;
   photo_url?: string | null;
   polling_percent: number;
   sentiment_trend: number;
-}
-
-interface DistributionRow {
-  cluster_macro: string;
-  candidate_id: string;
-  avg_sentiment: number;
-  positive_count: number;
-  negative_count: number;
-  neutral_count: number;
-  total_count: number;
-  pct_positive: number;
 }
 
 interface HistoryPoint {
@@ -51,180 +36,195 @@ interface HistoryPoint {
 
 interface SentimentData {
   candidates: CandidateInfo[];
-  distribution: DistributionRow[];
+  distribution: unknown[];
   lastCycle: { started_at: string; status: string; news_applied: number } | null;
   totalPersonas: number;
 }
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const PARTY_COLORS: Record<string, { bg: string; text: string; border: string; line: string }> = {
-  PT: { bg: "bg-red-500/15", text: "text-red-400", border: "border-red-500/25", line: "#f87171" },
-  PL: { bg: "bg-blue-500/15", text: "text-blue-400", border: "border-blue-500/25", line: "#60a5fa" },
-  PSD: { bg: "bg-orange-500/15", text: "text-orange-400", border: "border-orange-500/25", line: "#fb923c" },
-  Republicanos: { bg: "bg-sky-500/15", text: "text-sky-400", border: "border-sky-500/25", line: "#38bdf8" },
-  Novo: { bg: "bg-violet-500/15", text: "text-violet-400", border: "border-violet-500/25", line: "#a78bfa" },
+const PARTY_COLORS: Record<string, { badge: string; line: string }> = {
+  PT: { badge: "bg-red-500/15 text-red-400 border-red-500/25", line: "#f87171" },
+  PL: { badge: "bg-blue-500/15 text-blue-400 border-blue-500/25", line: "#60a5fa" },
+  PSD: { badge: "bg-orange-500/15 text-orange-400 border-orange-500/25", line: "#fb923c" },
+  Republicanos: { badge: "bg-sky-500/15 text-sky-400 border-sky-500/25", line: "#38bdf8" },
+  Novo: { badge: "bg-violet-500/15 text-violet-400 border-violet-500/25", line: "#a78bfa" },
 };
 
-const CLUSTER_COLORS: Record<string, string> = {
-  P: "text-red-400", M: "text-sky-400", C: "text-blue-400", T: "text-zinc-400",
-};
+// ── Trend Chart ──────────────────────────────────────────────────────────────
 
-// ── Sparkline Component ──────────────────────────────────────────────────────
-
-function Sparkline({ data, color, width = 120, height = 32 }: {
-  data: number[];
-  color: string;
-  width?: number;
-  height?: number;
+function TrendChart({ candidates, history }: {
+  candidates: CandidateInfo[];
+  history: HistoryPoint[];
 }) {
-  if (data.length < 2) return null;
+  // Agrupar por candidato — só Flávio e Lula no chart principal
+  const mainIds = ["flavio", "lula"];
+  const chartCandidates = candidates.filter((c) => mainIds.includes(c.id));
 
-  const min = Math.min(...data) - 0.5;
-  const max = Math.max(...data) + 0.5;
+  // Pegar datas únicas
+  const dates = [...new Set(history.map((h) => h.created_at.split("T")[0]))].sort();
+
+  if (dates.length < 2) {
+    return (
+      <div className="flex items-center justify-center py-8 text-zinc-600 text-sm">
+        <Clock size={14} className="mr-2" />
+        Gráfico disponível após primeiras atualizações
+      </div>
+    );
+  }
+
+  // Montar series
+  const series = chartCandidates.map((c) => {
+    const points = dates.map((date) => {
+      const match = history.find(
+        (h) => h.candidate_id === c.id && h.created_at.startsWith(date)
+      );
+      return match?.polling_percent ?? c.polling_percent;
+    });
+    return { id: c.id, name: c.name, party: c.party, points };
+  });
+
+  const allValues = series.flatMap((s) => s.points);
+  const min = Math.min(...allValues) - 1;
+  const max = Math.max(...allValues) + 1;
   const range = max - min || 1;
 
-  const points = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * height;
-    return `${x},${y}`;
-  }).join(" ");
+  const width = 600;
+  const height = 200;
+  const padL = 40;
+  const padR = 20;
+  const padT = 10;
+  const padB = 30;
+  const chartW = width - padL - padR;
+  const chartH = height - padT - padB;
 
   return (
-    <svg width={width} height={height} className="overflow-visible">
-      <polyline
-        points={points}
-        fill="none"
-        stroke={color}
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity="0.7"
-      />
-      {/* Último ponto com glow */}
-      {data.length > 0 && (() => {
-        const lastX = width;
-        const lastY = height - ((data[data.length - 1] - min) / range) * height;
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" preserveAspectRatio="xMidYMid meet">
+      {/* Grid lines */}
+      {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
+        const y = padT + (1 - pct) * chartH;
+        const val = min + pct * range;
         return (
-          <>
-            <circle cx={lastX} cy={lastY} r="3" fill={color} opacity="0.9" />
-            <circle cx={lastX} cy={lastY} r="6" fill={color} opacity="0.2" />
-          </>
+          <g key={pct}>
+            <line x1={padL} y1={y} x2={width - padR} y2={y} stroke="#27272a" strokeWidth="0.5" />
+            <text x={padL - 5} y={y + 4} textAnchor="end" fill="#52525b" fontSize="10">
+              {val.toFixed(0)}%
+            </text>
+          </g>
         );
-      })()}
+      })}
+
+      {/* Date labels */}
+      {dates.map((date, i) => {
+        const x = padL + (i / (dates.length - 1)) * chartW;
+        const label = new Date(date + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+        return (
+          <text key={date} x={x} y={height - 5} textAnchor="middle" fill="#52525b" fontSize="9">
+            {label}
+          </text>
+        );
+      })}
+
+      {/* Lines */}
+      {series.map((s) => {
+        const color = PARTY_COLORS[s.party]?.line || "#71717a";
+        const pts = s.points.map((v, i) => {
+          const x = padL + (i / (dates.length - 1)) * chartW;
+          const y = padT + ((max - v) / range) * chartH;
+          return `${x},${y}`;
+        }).join(" ");
+
+        const lastX = padL + chartW;
+        const lastY = padT + ((max - s.points[s.points.length - 1]) / range) * chartH;
+
+        return (
+          <g key={s.id}>
+            <polyline points={pts} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={lastX} cy={lastY} r="4" fill={color} />
+            <circle cx={lastX} cy={lastY} r="7" fill={color} opacity="0.2" />
+            <text x={lastX + 8} y={lastY + 4} fill={color} fontSize="11" fontWeight="600">
+              {s.points[s.points.length - 1].toFixed(1)}%
+            </text>
+          </g>
+        );
+      })}
     </svg>
   );
 }
 
-// ── Candidate Row (2o Turno) ─────────────────────────────────────────────────
+// ── Candidate Row ────────────────────────────────────────────────────────────
 
-function CandidateRow({
-  candidate,
-  distribution,
-  history,
-  isLeader,
-  opponentPercent,
-}: {
+function CandidateRow({ candidate, rank, isLeader }: {
   candidate: CandidateInfo;
-  distribution: DistributionRow[];
-  history: number[];
+  rank: number;
   isLeader: boolean;
-  opponentPercent?: number;
 }) {
   const partyColor = PARTY_COLORS[candidate.party] || PARTY_COLORS.PSD;
-
-  const totals = distribution.reduce(
-    (acc, d) => ({ pos: acc.pos + d.positive_count, total: acc.total + d.total_count }),
-    { pos: 0, total: 0 }
-  );
-  const pctFavorable = totals.total > 0 ? (totals.pos / totals.total) * 100 : 0;
-
-  const diff = history.length >= 2 ? history[history.length - 1] - history[0] : 0;
+  const trend = candidate.sentiment_trend;
 
   return (
     <div className={cn(
-      "flex items-center gap-4 p-4 rounded-2xl transition-all duration-300",
+      "flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-300",
       isLeader
         ? "bg-emerald-500/[0.06] border border-emerald-500/20"
         : "bg-white/[0.02] border border-white/[0.04] hover:bg-white/[0.04]"
     )}>
+      {/* Posição */}
+      <span className={cn(
+        "text-sm font-bold w-5 text-center tabular-nums",
+        isLeader ? "text-emerald-400" : "text-zinc-600"
+      )}>
+        {rank}
+      </span>
+
       {/* Foto */}
       <div className={cn(
-        "relative w-14 h-14 rounded-full overflow-hidden shrink-0 border-2",
+        "relative w-10 h-10 rounded-full overflow-hidden shrink-0 border-2",
         isLeader ? "border-emerald-500/40" : "border-white/[0.08]"
       )}>
         {candidate.photo_url ? (
           <Image src={candidate.photo_url} alt={candidate.name} fill className="object-cover" />
         ) : (
           <div className="w-full h-full bg-zinc-800 flex items-center justify-center text-zinc-600">
-            <Users size={22} />
+            <Users size={18} />
           </div>
         )}
         {isLeader && (
-          <div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-emerald-500 rounded-full flex items-center justify-center">
-            <Crown size={8} className="text-black" />
+          <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full flex items-center justify-center">
+            <Crown size={7} className="text-black" />
           </div>
         )}
       </div>
 
       {/* Nome + Partido */}
-      <div className="min-w-0 w-36">
+      <div className="flex-1 min-w-0">
         <h3 className="text-sm font-semibold text-white truncate">{candidate.name}</h3>
         <span className={cn(
-          "inline-flex px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border mt-0.5",
-          partyColor.bg, partyColor.text, partyColor.border
+          "inline-flex px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider border",
+          partyColor.badge
         )}>
           {candidate.party}
         </span>
       </div>
 
-      {/* Porcentagem principal */}
-      <div className="text-center w-24">
+      {/* Porcentagem */}
+      <div className="text-right">
         <div className={cn(
-          "text-2xl font-bold tracking-tight tabular-nums",
+          "text-xl font-bold tracking-tight tabular-nums",
           isLeader ? "text-emerald-400" : "text-white"
         )}>
           {candidate.polling_percent.toFixed(1)}%
         </div>
-        <div className={cn(
-          "text-[10px] flex items-center gap-0.5 justify-center",
-          diff > 0 ? "text-emerald-400" : diff < 0 ? "text-red-400" : "text-zinc-500"
-        )}>
-          {diff > 0 ? <TrendingUp size={9} /> : diff < 0 ? <TrendingDown size={9} /> : null}
-          {diff !== 0 && `${diff > 0 ? "+" : ""}${diff.toFixed(1)}`}
-          {diff === 0 && "—"}
-        </div>
+        <div className="text-[10px] text-zinc-500">intenção de voto</div>
       </div>
 
-      {/* Sparkline */}
-      <div className="hidden md:block">
-        <Sparkline data={history} color={partyColor.line} width={100} height={28} />
-      </div>
-
-      {/* Sentimento favorável */}
-      <div className="hidden lg:block w-20 text-center">
-        <div className="text-sm font-semibold text-zinc-300 tabular-nums">{pctFavorable.toFixed(0)}%</div>
-        <div className="text-[9px] text-zinc-600">favorável</div>
-      </div>
-
-      {/* Mini clusters */}
-      <div className="hidden xl:flex gap-1.5">
-        {["P", "M", "C", "T"].map((macro) => {
-          const row = distribution.find((d) => d.cluster_macro === macro);
-          if (!row) return null;
-          const pct = row.total_count > 0 ? (row.positive_count / row.total_count) * 100 : 0;
-          return (
-            <div key={macro} className="text-center w-8">
-              <div className={cn("text-[9px] font-bold", CLUSTER_COLORS[macro])}>{macro}</div>
-              <div className={cn(
-                "text-[10px] font-semibold tabular-nums",
-                pct >= 55 ? "text-emerald-400/80" : pct >= 40 ? "text-zinc-400" : "text-red-400/80"
-              )}>
-                {pct.toFixed(0)}%
-              </div>
-            </div>
-          );
-        })}
+      {/* Trend */}
+      <div className={cn(
+        "flex items-center gap-0.5 w-14 justify-end",
+        trend > 0 ? "text-emerald-400" : trend < 0 ? "text-red-400" : "text-zinc-600"
+      )}>
+        {trend > 0 ? <TrendingUp size={12} /> : trend < 0 ? <TrendingDown size={12} /> : <Minus size={12} />}
+        <span className="text-xs font-semibold tabular-nums">
+          {trend > 0 ? "+" : ""}{trend.toFixed(1)}
+        </span>
       </div>
     </div>
   );
@@ -247,7 +247,7 @@ export default function SentimentosPage() {
       ]);
       const [sentData, histData] = await Promise.all([sentRes.json(), histRes.json()]);
       setData(sentData);
-      setHistory(histData);
+      setHistory(Array.isArray(histData) ? histData : []);
       setLastUpdate(new Date());
     } catch (e) {
       console.error("Failed to fetch:", e);
@@ -256,11 +256,8 @@ export default function SentimentosPage() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Auto-refresh a cada 5 minutos
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(fetchData, 5 * 60 * 1000);
@@ -270,11 +267,12 @@ export default function SentimentosPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-black p-6 md:p-8">
-        <div className="max-w-5xl mx-auto space-y-4">
-          <div className="h-10 bg-zinc-900/50 rounded-2xl animate-pulse w-80" />
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-20 bg-zinc-900/50 rounded-2xl animate-pulse" />
+        <div className="max-w-3xl mx-auto space-y-4">
+          <div className="h-10 bg-zinc-900/50 rounded-2xl animate-pulse w-60" />
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-16 bg-zinc-900/50 rounded-2xl animate-pulse" />
           ))}
+          <div className="h-48 bg-zinc-900/50 rounded-2xl animate-pulse" />
         </div>
       </div>
     );
@@ -283,29 +281,19 @@ export default function SentimentosPage() {
   if (!data?.candidates?.length) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="text-center">
-          <BarChart3 size={32} className="text-zinc-600 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">Nenhum dado encontrado.</p>
-        </div>
+        <BarChart3 size={32} className="text-zinc-600 mx-auto mb-3" />
+        <p className="text-zinc-500 text-sm">Nenhum dado encontrado.</p>
       </div>
     );
   }
 
-  // Principais: Flávio e Lula (2o turno)
-  const flavio = data.candidates.find((c) => c.id === "flavio");
-  const lula = data.candidates.find((c) => c.id === "lula");
-  const others = data.candidates
-    .filter((c) => c.id !== "flavio" && c.id !== "lula")
-    .sort((a, b) => b.polling_percent - a.polling_percent);
+  // Ordenar por polling (Flávio primeiro, depois Lula, depois os outros)
+  const sorted = [...data.candidates].sort((a, b) => b.polling_percent - a.polling_percent);
+  const leader = sorted[0];
 
-  // Histórico por candidato
-  const getHistory = (candidateId: string) =>
-    history
-      .filter((h) => h.candidate_id === candidateId)
-      .map((h) => h.polling_percent);
-
-  const getDistribution = (candidateId: string) =>
-    (data.distribution || []).filter((d) => d.candidate_id === candidateId);
+  // Brancos/nulos: 100% - soma de todos
+  const totalPercent = sorted.reduce((s, c) => s + c.polling_percent, 0);
+  const brancosNulos = Math.max(0, 100 - totalPercent);
 
   return (
     <div className="min-h-screen bg-black">
@@ -314,149 +302,92 @@ export default function SentimentosPage() {
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl" />
       </div>
 
-      <main className="relative max-w-5xl mx-auto p-6 md:p-8 lg:p-10 space-y-6">
+      <main className="relative max-w-3xl mx-auto p-6 md:p-8 lg:p-10 space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <Link href="/candidatos" className="p-2 rounded-xl hover:bg-white/[0.05] text-zinc-400 hover:text-white transition-colors duration-200">
-                <ArrowLeft size={20} />
-              </Link>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/candidatos" className="p-2 rounded-xl hover:bg-white/[0.05] text-zinc-400 hover:text-white transition-colors duration-200">
+              <ArrowLeft size={20} />
+            </Link>
+            <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight">
+                <h1 className="text-xl md:text-2xl font-bold text-white tracking-tight">
                   Pesquisa Viva
                 </h1>
                 {autoRefresh && (
-                  <span className="relative flex h-2.5 w-2.5">
+                  <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                   </span>
                 )}
               </div>
+              <p className="text-zinc-600 text-xs flex items-center gap-1">
+                <Wifi size={10} />
+                {data.totalPersonas.toLocaleString()} personas · 2º turno
+              </p>
             </div>
-            <p className="text-zinc-500 ml-11 text-sm flex items-center gap-2">
-              <Wifi size={12} />
-              20K personas analisando o cenário eleitoral em tempo real
-            </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {lastUpdate && (
-              <span className="text-[10px] text-zinc-600 flex items-center gap-1">
-                <Clock size={10} />
-                {lastUpdate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-              </span>
+              <span className="text-[10px] text-zinc-600">{lastUpdate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
             )}
             <button
               onClick={() => setAutoRefresh(!autoRefresh)}
               className={cn(
-                "px-3 py-1.5 rounded-lg text-[10px] font-medium uppercase tracking-wider transition-all duration-200",
-                autoRefresh
-                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                  : "bg-white/[0.03] text-zinc-500 border border-white/[0.06]"
+                "px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all duration-200",
+                autoRefresh ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-white/[0.03] text-zinc-500 border border-white/[0.06]"
               )}
             >
-              {autoRefresh ? "Live" : "Pausado"}
+              {autoRefresh ? "Live" : "Off"}
             </button>
-            <button
-              onClick={fetchData}
-              className="p-2 rounded-xl bg-white/[0.05] hover:bg-white/[0.1] text-zinc-400 hover:text-white border border-white/[0.06] transition-all duration-200 active:scale-[0.97]"
-            >
-              <RefreshCw size={14} />
+            <button onClick={fetchData} className="p-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-zinc-400 border border-white/[0.06] transition-all duration-200">
+              <RefreshCw size={12} />
             </button>
           </div>
         </div>
 
-        {/* 2º Turno Principal */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Swords size={16} className="text-emerald-400" />
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
-              2º Turno — Flávio Bolsonaro vs Lula
-            </h2>
-            <span className="ml-auto text-[10px] text-zinc-600">Atlas/Bloomberg mar/2026</span>
-          </div>
+        {/* Ranking de candidatos */}
+        <div className="space-y-2">
+          {sorted.map((candidate, i) => (
+            <CandidateRow
+              key={candidate.id}
+              candidate={candidate}
+              rank={i + 1}
+              isLeader={candidate.id === leader.id}
+            />
+          ))}
 
-          <div className="space-y-3">
-            {flavio && (
-              <CandidateRow
-                candidate={flavio}
-                distribution={getDistribution("flavio")}
-                history={getHistory("flavio")}
-                isLeader={flavio.polling_percent > (lula?.polling_percent || 0)}
-                opponentPercent={lula?.polling_percent}
-              />
-            )}
-            {lula && (
-              <CandidateRow
-                candidate={lula}
-                distribution={getDistribution("lula")}
-                history={getHistory("lula")}
-                isLeader={lula.polling_percent > (flavio?.polling_percent || 0)}
-                opponentPercent={flavio?.polling_percent}
-              />
-            )}
-          </div>
-
-          {/* Diferença */}
-          {flavio && lula && (
-            <div className="mt-4 pt-3 border-t border-white/[0.04] flex items-center justify-center gap-3">
-              <span className="text-xs text-zinc-500">Diferença:</span>
-              <span className={cn(
-                "text-sm font-bold tabular-nums px-3 py-1 rounded-full",
-                flavio.polling_percent > lula.polling_percent
-                  ? "text-blue-400 bg-blue-500/10"
-                  : "text-red-400 bg-red-500/10"
-              )}>
-                {flavio.polling_percent > lula.polling_percent ? "Flávio" : "Lula"} +
-                {Math.abs(flavio.polling_percent - lula.polling_percent).toFixed(1)}%
-              </span>
+          {/* Brancos/Nulos */}
+          <div className="flex items-center gap-4 px-4 py-3 rounded-xl bg-white/[0.01] border border-white/[0.03]">
+            <span className="text-sm font-bold w-5 text-center text-zinc-700">—</span>
+            <div className="w-10 h-10 rounded-full bg-zinc-900 border-2 border-white/[0.04] flex items-center justify-center shrink-0">
+              <Minus size={16} className="text-zinc-700" />
             </div>
-          )}
+            <div className="flex-1">
+              <h3 className="text-sm text-zinc-500">Brancos / Nulos / Indecisos</h3>
+            </div>
+            <div className="text-right">
+              <div className="text-xl font-bold text-zinc-600 tabular-nums">{brancosNulos.toFixed(1)}%</div>
+            </div>
+            <div className="w-14" />
+          </div>
         </div>
 
-        {/* Outros candidatos (2o turno vs Lula) */}
+        {/* Gráfico de tendência */}
         <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Target size={16} className="text-sky-400" />
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider">
-              Outros cenários — 2º Turno vs Lula
-            </h2>
-          </div>
-
-          <div className="space-y-2">
-            {others.map((candidate) => (
-              <CandidateRow
-                key={candidate.id}
-                candidate={candidate}
-                distribution={getDistribution(candidate.id)}
-                history={getHistory(candidate.id)}
-                isLeader={candidate.polling_percent > (lula?.polling_percent || 0)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Legenda */}
-        <div className="flex flex-wrap items-center justify-center gap-4 text-[10px] text-zinc-600">
-          <span>P = Progressista</span>
-          <span>M = Moderado</span>
-          <span>C = Conservador</span>
-          <span>T = Transversal</span>
-          <span className="h-2 w-px bg-zinc-800" />
-          <span>Sparkline = tendência histórica</span>
-          <span className="h-2 w-px bg-zinc-800" />
-          <span>Atualizado 3x/dia via notícias</span>
+          <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <BarChart3 size={14} className="text-emerald-400" />
+            Evolução — Flávio vs Lula
+          </h2>
+          <TrendChart candidates={data.candidates} history={history} />
         </div>
 
         {/* Footer */}
-        <div className="text-center text-xs text-zinc-600 pb-4 space-y-0.5">
-          <p>Referência: Atlas/Bloomberg · 5.028 entrevistas · 18–23/mar/2026</p>
+        <div className="text-center text-[10px] text-zinc-700 pb-4 space-y-0.5">
+          <p>Referência: Atlas/Bloomberg · Atualizado 3x/dia via notícias</p>
           {data.lastCycle && (
-            <p>
-              Último ciclo: {new Date(data.lastCycle.started_at).toLocaleString("pt-BR")} · {data.lastCycle.news_applied} notícias
-            </p>
+            <p>Último ciclo: {new Date(data.lastCycle.started_at).toLocaleString("pt-BR")}</p>
           )}
-          <p>{data.totalPersonas.toLocaleString()} personas · Sentimentos derivados por IA</p>
         </div>
       </main>
     </div>
