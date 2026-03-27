@@ -15,32 +15,75 @@ from config import OPENAI_API_KEY
 
 _client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-# Fields to include in persona context (the ones that matter for opinion analysis)
+# ALL persona fields — since we now do 1 persona per call, we send the COMPLETE
+# profile instead of a curated subset. Every column matters equally for analysis.
 PROFILE_FIELDS = [
-    "gender_identity", "age", "region_br", "generation", "social_class",
-    "education_level", "macro_religion", "raca_cor", "political_leaning",
+    # Demographics
+    "gender_identity", "age", "region_br", "state", "generation", "social_class",
+    "education_level", "macro_religion", "religiao_subtipo", "raca_cor",
+    "political_leaning", "civil_status", "area_type",
+    # Ideological 2D
+    "cluster_id", "nome_grupo", "score_economico", "score_costumes",
+    # Electoral
     "aprovacao_lula", "q_avaliacao_bolsonaro", "voto_2022", "voto_2026",
+    "q_politico_favorito",
     # Temas
     "tema_aborto", "tema_armas", "tema_maconha", "tema_privatizacoes",
     "tema_cotas_raciais", "tema_casamento_gay",
-    # Questionnaire
-    "q_pena_morte", "q_familia_tradicional", "q_racismo_estrutural",
-    "q_meritocracia", "q_religiao_politica", "q_feminismo_bom",
-    "q_democracia_importante", "q_intervencao_militar", "q_impeachment_lula",
-    "q_mudanca_climatica_real", "q_sus_funciona", "q_vacinas_confiar",
-    "q_direitos_lgbt", "q_adocao_homoafetiva", "q_bolsa_familia_bom",
-    "q_amazonia_preservar", "q_energia_renovavel", "q_linguagem_neutra",
-    "q_genero_biologico", "q_homeschooling", "q_voto_obrigatorio",
-    "q_drogas_descriminalizar", "q_maioridade_penal_16", "q_prostituicao_legalizar",
+    # Extra profile
+    "recebe_beneficio", "usa_transporte_publico", "time_futebol",
+    # Questionnaire — ALL fields
+    "q_maior_problema", "q_situacao_economica", "q_perspectiva_futuro",
+    "q_midia_principal", "q_voto_influenciado_por",
+    "q_pena_morte", "q_prisao_perpetua", "q_maioridade_penal_16",
+    "q_policia_violenta", "q_crack_internar_forcado",
+    "q_seguranca_prioridade", "q_camera_facial_aceita", "q_justica_funciona",
+    "q_drogas_descriminalizar",
+    "q_familia_tradicional", "q_feminismo_bom", "q_racismo_estrutural",
+    "q_meritocracia", "q_genero_biologico", "q_linguagem_neutra",
+    "q_ideologia_genero_escola", "q_adocao_homoafetiva", "q_direitos_lgbt",
+    "q_mulher_presidente", "q_divorcio_facilitar", "q_religiao_politica",
+    "q_prostituicao_legalizar", "q_poligamia", "q_aborto_estupro",
+    "q_salario_minimo_aumentar", "q_reforma_tributaria", "q_imposto_ricos",
+    "q_estado_tamanho", "q_bolsa_familia_bom", "q_auxilio_emergencial_voltar",
+    "q_desemprego_principal", "q_inflacao_controle", "q_bitcoin_confiar",
+    "q_banco_central_independente", "q_teto_gastos", "q_previdencia_reforma",
+    "q_13_salario_manter",
+    "q_impeachment_lula", "q_intervencao_militar",
+    "q_corrupcao_problema", "q_democracia_importante", "q_reeleicao",
+    "q_voto_obrigatorio", "q_fake_news_problema", "q_redes_sociais_censuradas",
+    "q_sistema_eleitoral_confiavel", "q_pt_comunista", "q_bolsonaro_ditador",
+    "q_mudanca_climatica_real", "q_amazonia_preservar", "q_agronegocio_desmata",
+    "q_energia_renovavel", "q_queimadas_criminosas",
+    "q_vacinas_confiar", "q_ciencia_importante", "q_terra_plana",
+    "q_sus_funciona", "q_medicina_publica_boa", "q_plano_saude_tem",
+    "q_universidade_publica_gratuita", "q_homeschooling",
+    "q_ensino_distancia", "q_escola_particular_melhor", "q_enem_justo",
     "q_confianca_stf", "q_confianca_congresso", "q_confianca_imprensa",
     "q_confianca_policia", "q_confianca_exercito", "q_confianca_igreja",
-    "q_estado_tamanho", "q_teto_gastos", "q_previdencia_reforma",
-    "q_seguranca_prioridade", "q_policia_violenta",
-    # Tabu implícito
-    "q_ti_sonegaria_imposto", "q_ti_aceitaria_propina", "q_ti_venderia_voto",
-    "q_ti_bater_filho_normal", "q_ti_linchamento_apoiaria", "q_ti_tortura_preso_ok",
-    # Vivências
-    "q_vi_depressao_ansiedade", "q_vi_ja_foi_assaltado", "q_vi_passou_fome",
+    "q_china_ameaca", "q_eua_aliado", "q_imigracao",
+    "q_whatsapp_noticias",
+    # Tabu Implícito — ALL 20
+    "q_ti_racismo_latente", "q_ti_nao_contrataria_negro_chefia",
+    "q_ti_vizinho_negro_incomoda", "q_ti_sonegaria_imposto",
+    "q_ti_aceitaria_propina", "q_ti_venderia_voto",
+    "q_ti_bater_filho_normal", "q_ti_mulher_roupa_culpada",
+    "q_ti_homofobia_violenta", "q_ti_linchamento_apoiaria",
+    "q_ti_tortura_preso_ok", "q_ti_trabalho_infantil_ok",
+    "q_ti_jeitinho_furar_fila", "q_ti_assediaria_mulher_rua",
+    "q_ti_intolerancia_religiosa", "q_ti_preconceito_nordestino",
+    "q_ti_violencia_domestica", "q_ti_compraria_produto_roubado",
+    "q_ti_menor14_sabe_o_que_faz", "q_ti_nepotismo_concurso",
+    # Vivências — ALL 18
+    "q_vi_abuso_sexual_infancia", "q_vi_passou_fome",
+    "q_vi_trabalho_infantil", "q_vi_ja_foi_assaltado",
+    "q_vi_perdeu_familiar_violencia", "q_vi_desempregado_1ano",
+    "q_vi_pai_ausente", "q_vi_sofreu_racismo",
+    "q_vi_sofreu_assedio_sexual", "q_vi_depressao_ansiedade",
+    "q_vi_pensou_suicidio", "q_vi_preso_ou_familiar_preso",
+    "q_vi_sofreu_violencia_domestica", "q_vi_ja_dormiu_na_rua",
+    "q_vi_violencia_policial", "q_vi_nao_completou_estudo",
+    "q_vi_enchente_desastre", "q_vi_dependencia",
 ]
 
 
@@ -105,13 +148,8 @@ def _build_disambiguation(pre_class: dict | None) -> str:
                 f"FIGURA: {name} — Mencionado sem posicao clara de ataque ou defesa.",
             ])
 
-    # Add relevant fields hint if available
-    relevant = pre_class.get("relevant_fields", [])
-    if relevant:
-        lines.extend([
-            "",
-            f"CAMPOS MAIS RELEVANTES da persona para esta classificacao: {', '.join(relevant[:8])}",
-        ])
+    # Note: we no longer highlight "relevant fields" — the classifier
+    # analyzes the COMPLETE persona profile (all columns equally)
 
     lines.append("═══ FIM DA ANALISE SEMANTICA ═══")
     lines.append("")
@@ -157,16 +195,19 @@ def classify_batch(
 
     prompt = f"""Voce e um simulador de opiniao publica brasileira.
 
-{prompt_header}{disambiguation}Abaixo estao {count} personas sinteticas com seus perfis demograficos e opinioes.
-Para CADA persona, analise o perfil completo (ideologia, religiao, classe, educacao, respostas anteriores) e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) com a POSICAO EXPRESSA no texto acima.
+{prompt_header}{disambiguation}Abaixo estao {count} personas sinteticas com seus perfis COMPLETOS — demografia, ideologia, questionario, vieses ocultos e vivencias.
 
-IMPORTANTE:
-- Use o perfil COMPLETO da persona, nao apenas um campo
-- Considere correlacoes reais da sociedade brasileira
-- O voto em 2022/2026 e um forte preditor de posicoes politicas
-- Respostas anteriores a temas similares sao o melhor indicador
-- aprovacao_lula alto = APOIA Lula, baixo = DESAPROVA Lula
-- avaliacao_bolsonaro alto = APOIA Bolsonaro, baixo = DESAPROVA Bolsonaro
+Para CADA persona, analise TODAS as colunas do perfil com IGUAL importancia e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) com a POSICAO EXPRESSA no texto acima.
+
+COMO ANALISAR O PERFIL COMPLETO:
+- TODAS as colunas importam igualmente — nao priorize nenhuma sobre outra
+- Demografia (idade, regiao, classe, escolaridade, religiao) = contexto de vida
+- Scores ideologicos (score_economico, score_costumes) = posicionamento no espectro
+- Respostas do questionario (q_*) = posicoes declaradas sobre temas especificos
+- Vieses ocultos (ti_*) = tendencias implicitas que afetam reacao a temas sensiveis
+- Vivencias (vi_*) = experiencias de vida que moldam perspectiva e empatia
+- Dados eleitorais (voto_2022, voto_2026, aprovacao_lula) = lealdade politica
+- Considere correlacoes reais da sociedade brasileira entre TODOS esses dados
 
 Personas:
 {personas_block}

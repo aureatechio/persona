@@ -269,7 +269,7 @@ function PreClassifierPanel({ step }: { step: StepState }) {
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="Pre-Classificacao Semantica" description="GPT-4o-mini analisa a pergunta para definir o que significa concordar/discordar" />
+      <SectionHeader title="Pre-Classificacao Semantica" description="GPT-4o-mini analisa a pergunta para definir concordar/discordar — classificador usa TODAS as colunas da persona" />
 
       <div className="flex flex-wrap gap-2">
         {step.latencyMs != null && <MetaChip icon={<Clock size={10} />} label="Latencia" value={`${step.latencyMs}ms`} />}
@@ -335,19 +335,13 @@ function PreClassifierPanel({ step }: { step: StepState }) {
             </div>
           )}
 
-          {/* Relevant fields */}
-          {parsed.relevant_fields?.length > 0 && (
-            <div className="pt-3 border-t border-white/[0.04]">
-              <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-2">Campos Relevantes da Persona</p>
-              <div className="flex flex-wrap gap-1.5">
-                {parsed.relevant_fields.map((f: string) => (
-                  <span key={f} className="px-2.5 py-1 bg-white/[0.03] border border-white/[0.05] rounded-lg text-xs text-zinc-400 font-mono">
-                    {f}
-                  </span>
-                ))}
-              </div>
+          {/* All columns indicator */}
+          <div className="pt-3 border-t border-white/[0.04]">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/[0.03] border border-emerald-500/10">
+              <span className="w-2 h-2 rounded-full bg-emerald-500/60 shrink-0" />
+              <span className="text-sm text-emerald-300/80">Analise completa — todas as colunas da persona com igual peso</span>
             </div>
-          )}
+          </div>
         </div>
       )}
 

@@ -131,16 +131,19 @@ def classify_batch_verbose(
 
     prompt = f"""Voce e um simulador de opiniao publica brasileira.
 
-{prompt_header}{disambiguation}Abaixo estao {count} personas sinteticas com seus perfis demograficos e opinioes.
-Para CADA persona, analise o perfil completo (ideologia, religiao, classe, educacao, respostas anteriores) e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) com a POSICAO EXPRESSA no texto acima.
+{prompt_header}{disambiguation}Abaixo estao {count} personas sinteticas com seus perfis COMPLETOS — demografia, ideologia, questionario, vieses ocultos e vivencias.
 
-IMPORTANTE:
-- Use o perfil COMPLETO da persona, nao apenas um campo
-- Considere correlacoes reais da sociedade brasileira
-- O voto em 2022/2026 e um forte preditor de posicoes politicas
-- Respostas anteriores a temas similares sao o melhor indicador
-- aprovacao_lula alto = APOIA Lula, baixo = DESAPROVA Lula
-- avaliacao_bolsonaro alto = APOIA Bolsonaro, baixo = DESAPROVA Bolsonaro
+Para CADA persona, analise TODAS as colunas do perfil com IGUAL importancia e determine se ela provavelmente CONCORDA (positive), DISCORDA (negative) ou e NEUTRA (neutral) com a POSICAO EXPRESSA no texto acima.
+
+COMO ANALISAR O PERFIL COMPLETO:
+- TODAS as colunas importam igualmente — nao priorize nenhuma sobre outra
+- Demografia (idade, regiao, classe, escolaridade, religiao) = contexto de vida
+- Scores ideologicos (score_economico, score_costumes) = posicionamento no espectro
+- Respostas do questionario (q_*) = posicoes declaradas sobre temas especificos
+- Vieses ocultos (ti_*) = tendencias implicitas que afetam reacao a temas sensiveis
+- Vivencias (vi_*) = experiencias de vida que moldam perspectiva e empatia
+- Dados eleitorais (voto_2022, voto_2026, aprovacao_lula) = lealdade politica
+- Considere correlacoes reais da sociedade brasileira entre TODOS esses dados
 
 Personas:
 {personas_block}
