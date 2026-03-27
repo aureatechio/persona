@@ -129,24 +129,37 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         # ── STEP 1: Start ──
         yield sse_event("cal_start", {"question": request.question})
 
-        # ── STEP 2: Context Builder (Claude contextualiza com conhecimento proprio) ──
+        # ── STEP 2: Contextualizacao IA (smart search + context builder) ──
         context = None
 
-        if request.context_text:
-            # Media context provided — use directly, Claude enriches
+        yield sse_event("cal_step", {
+            "step": "context_builder", "status": "running",
+            "label": "Contextualizacao IA",
+            "description": "Claude analisando conteudo e decidindo se precisa buscar na web...",
+        })
+
+        ctx_start = time.time()
+
+        # Step 2a: Claude decides if web search is needed and what to search
+        search_info = await context_builder.smart_search(
+            request.question, request.context_text
+        )
+        web_context = search_info.get("results", "")
+
+        if search_info.get("searched"):
             yield sse_event("cal_step", {
                 "step": "context_builder", "status": "running",
-                "label": "Construcao de Contexto",
-                "description": "Claude contextualizando conteudo da midia...",
+                "label": "Contextualizacao IA",
+                "description": f"Buscou na web: {', '.join(search_info.get('queries', []))} — Contextualizando...",
             })
 
-            ctx_start = time.time()
-            # Claude enriches the media context with its own knowledge
+        # Step 2b: Claude builds context using knowledge + web results (if any)
+        if request.context_text:
+            # Media context provided — Claude enriches it
             enriched = await context_builder.build(
                 question=request.question,
-                web_context="",  # No web data — Claude uses own knowledge
+                web_context=web_context,
             )
-            ctx_ms = round((time.time() - ctx_start) * 1000)
 
             context = ContextResult(
                 tema=enriched.tema or "Conteudo de midia",
@@ -156,54 +169,39 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                 prompt_tokens=enriched.prompt_tokens,
                 output_tokens=enriched.output_tokens,
             )
-            # Append Claude's contextual enrichment (who is who, what it means)
             if enriched.contexto:
                 context.contexto += f"\n\n--- Contextualizacao da IA ---\n{enriched.contexto}"
-
-            yield sse_event("cal_step_detail", {
-                "step": "context_builder",
-                "status": "complete",
-                "latency_ms": ctx_ms,
-                "tokens": enriched.prompt_tokens + enriched.output_tokens,
-                "output": {
-                    "tema": context.tema,
-                    "contexto": context.contexto[:5000],
-                    "figuras": context.figuras,
-                    "periodo": context.periodo,
-                    "contextualizacao_ia": enriched.contexto[:3000] if enriched.contexto else "",
-                },
-            })
         else:
-            # No media — Claude builds full context from its own knowledge
-            yield sse_event("cal_step", {
-                "step": "context_builder", "status": "running",
-                "label": "Construcao de Contexto",
-                "description": "Claude contextualizando com conhecimento proprio...",
-            })
-
-            ctx_start = time.time()
+            # No media — Claude builds full context
             context = await context_builder.build(
                 question=request.question,
-                web_context="",  # No web data — Claude uses own knowledge
+                web_context=web_context,
             )
-            ctx_ms = round((time.time() - ctx_start) * 1000)
 
-            yield sse_event("cal_step_detail", {
-                "step": "context_builder",
-                "status": "complete",
-                "latency_ms": ctx_ms,
-                "tokens": context.prompt_tokens + context.output_tokens,
-                "input": {
-                    "question": request.question,
+        ctx_ms = round((time.time() - ctx_start) * 1000)
+
+        yield sse_event("cal_step_detail", {
+            "step": "context_builder",
+            "status": "complete",
+            "latency_ms": ctx_ms,
+            "tokens": context.prompt_tokens + context.output_tokens,
+            "input": {
+                "question": request.question,
+                "smart_search": {
+                    "searched": search_info.get("searched", False),
+                    "reason": search_info.get("reason", ""),
+                    "queries": search_info.get("queries", []),
                 },
-                "output": {
-                    "tema": context.tema,
-                    "contexto": context.contexto[:5000],
-                    "figuras": context.figuras,
-                    "periodo": context.periodo,
-                    "raw_text": context.raw_text[:3000],
-                },
-            })
+            },
+            "output": {
+                "tema": context.tema,
+                "contexto": context.contexto[:5000],
+                "figuras": context.figuras,
+                "periodo": context.periodo,
+                "web_data": web_context[:2000] if web_context else "",
+                "raw_text": context.raw_text[:3000] if context.raw_text else "",
+            },
+        })
 
         # ── STEP 4: Ideological Frame ──
         ideo_frame = None

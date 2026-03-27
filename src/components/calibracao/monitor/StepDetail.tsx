@@ -164,14 +164,45 @@ function WebResearchPanel({ step }: { step: StepState }) {
 }
 
 function ContextBuilderPanel({ step }: { step: StepState }) {
+  const smartSearch = step.input?.smart_search;
+
   return (
     <div className="space-y-4">
-      <SectionHeader title="Contextualizacao IA" description="Claude contextualiza o conteudo com conhecimento proprio — figuras, termos, historico" />
+      <SectionHeader title="Contextualizacao IA" description="Claude analisa o conteudo, decide se precisa buscar na web, e contextualiza" />
 
       <div className="flex flex-wrap gap-2">
         {step.latencyMs != null && <MetaChip icon={<Clock size={10} />} label="Latencia" value={`${step.latencyMs}ms`} />}
         {step.tokens != null && <MetaChip icon={<Zap size={10} />} label="Tokens" value={step.tokens} />}
+        {smartSearch && (
+          <MetaChip
+            icon={<Globe size={10} />}
+            label="Busca Web"
+            value={smartSearch.searched ? `Sim (${smartSearch.queries?.length || 0} queries)` : 'Nao necessaria'}
+          />
+        )}
       </div>
+
+      {/* Smart search decision */}
+      {smartSearch && (
+        <div className={`px-4 py-3 rounded-xl border text-sm ${
+          smartSearch.searched
+            ? 'bg-sky-500/[0.03] border-sky-500/10 text-sky-300'
+            : 'bg-zinc-800/20 border-zinc-700/20 text-zinc-400'
+        }`}>
+          <span className="font-medium">{smartSearch.searched ? 'Buscou na web' : 'Usou conhecimento proprio'}</span>
+          {smartSearch.reason && <span className="text-zinc-500 ml-2">— {smartSearch.reason}</span>}
+          {smartSearch.queries?.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {smartSearch.queries.map((q: string, i: number) => (
+                <div key={i} className="flex items-center gap-2 text-xs text-zinc-500">
+                  <Search size={10} className="text-sky-400 shrink-0" />
+                  <span>{q}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Output cards */}
       {step.output?.tema && <DataCard label="Tema Detectado" value={step.output.tema} />}
@@ -197,12 +228,13 @@ function ContextBuilderPanel({ step }: { step: StepState }) {
 
       {step.output?.periodo && <DataCard label="Periodo" value={step.output.periodo} />}
 
-      {step.output?.raw_text && (
-        <PromptViewer title="Resposta Raw do Claude" content={step.output.raw_text} accent="zinc" />
+      {/* Web data if searched */}
+      {step.output?.web_data && (
+        <PromptViewer title="Dados da Web (busca inteligente)" content={step.output.web_data} accent="sky" />
       )}
 
-      {step.input?.web_context && (
-        <PromptViewer title="Input: Contexto Web Recebido" content={step.input.web_context} accent="zinc" />
+      {step.output?.raw_text && (
+        <PromptViewer title="Resposta Raw do Claude" content={step.output.raw_text} accent="zinc" />
       )}
     </div>
   );

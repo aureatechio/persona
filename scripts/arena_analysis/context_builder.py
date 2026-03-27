@@ -101,11 +101,119 @@ JSON:
 {"visao_direita": "...", "visao_esquerda": "...", "eixo": "economic|costumes", "direcao_direita": "favor|contra"}"""
 
 
+SMART_SEARCH_PROMPT = """Você é um analista que decide se precisa buscar informações atualizadas na internet para contextualizar um conteúdo.
+
+Seu conhecimento vai até maio de 2025. Se o conteúdo menciona:
+- Figuras públicas conhecidas (Lula, Bolsonaro, etc.) → provavelmente NÃO precisa buscar
+- Eventos recentes (após maio 2025) → SIM, precisa buscar
+- Pessoas menos conhecidas → SIM, precisa buscar para identificar
+- Temas genéricos (aborto, armas, privatização) → NÃO precisa buscar
+- Dados específicos (números, datas, leis) → pode precisar verificar
+
+Responda APENAS com JSON:
+{"needs_search": true|false, "queries": ["busca específica 1", "busca específica 2"], "reason": "motivo curto"}
+
+REGRAS:
+- Máximo 2 queries (seja cirúrgico)
+- Queries devem ser ESPECÍFICAS, não genéricas
+- Se não precisa buscar, queries = []
+- Prefira NÃO buscar quando seu conhecimento é suficiente"""
+
+
 class ContextBuilder:
-    """Cria contexto estruturado a partir da pergunta + dados da web."""
+    """Cria contexto estruturado — decide se precisa buscar na web e contextualiza."""
 
     def __init__(self):
         self._client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self._tavily = None
+
+    def _get_tavily(self):
+        if self._tavily is None:
+            try:
+                from tavily import TavilyClient
+                self._tavily = TavilyClient(api_key=settings.tavily_api_key)
+            except Exception:
+                pass
+        return self._tavily
+
+    async def smart_search(self, question: str, context_text: str | None = None) -> dict:
+        """
+        Claude decides what to search, then executes targeted queries.
+        Returns: {"searched": bool, "queries": [...], "results": "combined text", "reason": "..."}
+        """
+        # Step 1: Claude decides if search is needed
+        content = f'CONTEÚDO: "{question}"'
+        if context_text:
+            content += f'\n\nCONTEXTO ADICIONAL DA MÍDIA:\n{context_text[:1000]}'
+
+        try:
+            response = await self._client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                system=SMART_SEARCH_PROMPT,
+                messages=[{"role": "user", "content": content}],
+                temperature=0.0,
+            )
+
+            raw = next((b.text for b in response.content if b.type == "text"), "")
+            raw = raw.strip()
+            if raw.startswith("```"):
+                raw = re.sub(r"^```json?\n?", "", raw)
+                raw = re.sub(r"\n?```$", "", raw)
+
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                decision = json.loads(json_match.group())
+            else:
+                decision = json.loads(raw)
+
+            needs_search = decision.get("needs_search", False)
+            queries = decision.get("queries", [])[:2]
+            reason = decision.get("reason", "")
+
+            print(f"[SmartSearch] needs_search={needs_search} | reason={reason}")
+
+            if not needs_search or not queries:
+                return {"searched": False, "queries": [], "results": "", "reason": reason}
+
+            # Step 2: Execute targeted searches via Tavily
+            tavily = self._get_tavily()
+            if not tavily:
+                print("[SmartSearch] Tavily not available, skipping web search")
+                return {"searched": False, "queries": queries, "results": "", "reason": "Tavily indisponível"}
+
+            loop = asyncio.get_event_loop()
+            search_results = []
+            for q in queries:
+                try:
+                    res = await loop.run_in_executor(
+                        None,
+                        lambda q=q: tavily.search(
+                            query=q,
+                            search_depth="basic",
+                            max_results=3,
+                            include_answer=True,
+                            include_raw_content=False,
+                        ),
+                    )
+                    answer = res.get("answer", "")
+                    snippets = [r.get("content", "")[:400] for r in res.get("results", [])[:3]]
+                    if answer:
+                        search_results.append(f"RESPOSTA: {answer}")
+                    for i, s in enumerate(snippets):
+                        if s:
+                            search_results.append(f"[{q}] {s}")
+                except Exception as e:
+                    print(f"[SmartSearch] Search error for '{q}': {e}")
+
+            combined = "\n\n".join(search_results)[:3000]
+            print(f"[SmartSearch] {len(queries)} queries → {len(combined)} chars")
+
+            return {"searched": True, "queries": queries, "results": combined, "reason": reason}
+
+        except Exception as e:
+            print(f"[SmartSearch] Decision error: {e}")
+            return {"searched": False, "queries": [], "results": "", "reason": f"Erro: {e}"}
 
     async def build(
         self,
