@@ -34,7 +34,7 @@ from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
 from arena_analysis.geo_filter import apply_geo_filter
 from arena_analysis.pre_classifier import pre_classify, build_disambiguation_block
@@ -75,7 +75,7 @@ class AnalyzeRequest(BaseModel):
     context_text: Optional[str] = None
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
-    individual_mode: bool = False  # 1 persona per call, GPT-only
+    individual_mode: bool = True  # always individual (1 persona per call, GPT-only)
 
 
 class ElectoralRequest(BaseModel):
@@ -194,113 +194,66 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         context = None
 
-        # Se já temos contexto da mídia (imagem/arquivo analisado), usar diretamente
+        # ── 1b. Smart Search + Context Builder (Claude decides what to search) ──
+        yield sse_event("phase", {
+            "phase": "building_context",
+            "message": "Claude analisando conteudo e contextualizando...",
+        })
+
+        # Claude decides if web search is needed, executes targeted queries if so
+        search_info = await context_builder.smart_search(
+            request.question, request.context_text
+        )
+        web_context = search_info.get("results", "")
+
+        yield sse_event("log", {
+            "step": "web_research",
+            "level": "info",
+            "message": f"Busca inteligente: {'buscou na web' if search_info.get('searched') else 'conhecimento proprio'} — {search_info.get('reason', '')}",
+            "detail": {
+                "searched": search_info.get("searched", False),
+                "queries": search_info.get("queries", []),
+                "reason": search_info.get("reason", ""),
+            },
+        })
+
         if request.context_text:
-            context = ContextResult(
-                tema="Conteúdo de mídia analisado",
-                contexto=request.context_text,
+            # Media context provided — Claude enriches it
+            enriched = await context_builder.build(
+                question=request.question,
+                web_context=web_context,
             )
-            print(f"[Pipeline] Contexto de mídia recebido ({len(request.context_text)} chars)")
-
-            # Web research complementar — run in parallel with context building
-            yield sse_event("phase", {
-                "phase": "web_research",
-                "message": "Pesquisando contexto complementar na web...",
-            })
-            web_result = await web_researcher.research(request.question)
-            if web_result.combined_context:
-                web_ctx = await context_builder.build(
-                    question=request.question,
-                    web_context=web_result.combined_context,
-                )
-                if web_ctx.contexto:
-                    context.contexto += f"\n\n--- Contexto web complementar ---\n{web_ctx.contexto}"
-
-            yield sse_event("web_complete", {
-                "snippets_count": len(web_result.snippets),
-                "sources_count": len(web_result.sources),
-            })
-
-            # Emit web research details for monitor
-            yield sse_event("log", {
-                "step": "web_research",
-                "level": "info",
-                "message": f"Pesquisa concluida: {len(web_result.snippets)} trechos de {len(web_result.sources)} fontes",
-                "detail": {
-                    "queries": web_result.queries,
-                    "snippets": web_result.snippets,
-                    "sources": web_result.sources,
-                },
-            })
-
-            yield sse_event("phase", {
-                "phase": "building_context",
-                "message": "Contexto de mídia recebido",
-            })
-
-            # Emit context details for monitor
-            yield sse_event("log", {
-                "step": "context_builder",
-                "level": "info",
-                "message": f"Contexto de mídia: {context.tema}",
-                "detail": {
-                    "tema": context.tema,
-                    "contexto": context.contexto[:2000],
-                    "figuras": context.figuras,
-                    "periodo": context.periodo,
-                },
-            })
-
+            context = ContextResult(
+                tema=enriched.tema or "Conteudo de midia",
+                contexto=request.context_text,
+                figuras=enriched.figuras,
+                periodo=enriched.periodo,
+                prompt_tokens=enriched.prompt_tokens,
+                output_tokens=enriched.output_tokens,
+            )
+            if enriched.contexto:
+                context.contexto += f"\n\n--- Contextualizacao da IA ---\n{enriched.contexto}"
+            total_tokens += enriched.prompt_tokens + enriched.output_tokens
+            print(f"[Pipeline] Contexto de midia enriquecido ({len(context.contexto)} chars)")
         else:
-            # ── 1b. Web Research ─────────────────────────────────────
-            yield sse_event("phase", {
-                "phase": "web_research",
-                "message": "Pesquisando contexto na web...",
-            })
-
-            web_result = await web_researcher.research(request.question)
-
-            yield sse_event("web_complete", {
-                "snippets_count": len(web_result.snippets),
-                "sources_count": len(web_result.sources),
-            })
-
-            # Emit web research details for monitor
-            yield sse_event("log", {
-                "step": "web_research",
-                "level": "info",
-                "message": f"Pesquisa concluida: {len(web_result.snippets)} trechos de {len(web_result.sources)} fontes",
-                "detail": {
-                    "queries": web_result.queries,
-                    "snippets": web_result.snippets,
-                    "sources": web_result.sources,
-                },
-            })
-
-            # ── 1c. Context Builder (skip validator — saves 3-5s) ────
-            yield sse_event("phase", {
-                "phase": "building_context",
-                "message": "Criando contexto com IA...",
-            })
-
+            # No media — Claude builds full context
             context = await context_builder.build(
                 question=request.question,
-                web_context=web_result.combined_context,
+                web_context=web_context,
             )
             total_tokens += context.prompt_tokens + context.output_tokens
 
-            # Emit context builder details for monitor
-            yield sse_event("log", {
-                "step": "context_builder",
-                "level": "info",
-                "message": f"Contexto criado: {context.tema}",
-                "detail": {
-                    "tema": context.tema,
-                    "contexto": context.contexto[:2000],
-                    "figuras": context.figuras,
-                    "periodo": context.periodo,
-                },
-            })
+        yield sse_event("log", {
+            "step": "context_builder",
+            "level": "info",
+            "message": f"Contexto criado: {context.tema}",
+            "detail": {
+                "tema": context.tema,
+                "contexto": context.contexto[:2000],
+                "figuras": context.figuras,
+                "periodo": context.periodo,
+            },
+        })
 
         # Check cancellation before waiting for personas
         if cancelled.is_set():
@@ -381,14 +334,19 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         # ── 4c. Prompt Sample — build and emit the actual prompt for monitor ──
         if total_personas > 0:
-            sample_batch = personas[:min(settings.batch_size, total_personas)]
-            sample_prompt = build_batch_prompt(request.question, context, sample_batch)
+            if request.individual_mode:
+                sample_prompt = build_single_prompt(request.question, context, personas[0])
+                sample_count = 1
+            else:
+                sample_batch = personas[:min(settings.batch_size, total_personas)]
+                sample_prompt = build_batch_prompt(request.question, context, sample_batch)
+                sample_count = len(sample_batch)
             yield sse_event("batch_detail", {
                 "type": "prompt_sample",
                 "system_prompt": ARENA_SYSTEM_PROMPT[:3000],
                 "user_prompt": sample_prompt,
-                "persona_count": len(sample_batch),
-                "note": f"Prompt real do 1o batch ({len(sample_batch)} personas). Este e o contexto + perfis exatos enviados a IA.",
+                "persona_count": sample_count,
+                "note": f"Prompt real ({sample_count} persona{'s' if sample_count > 1 else ''} por call). Contexto + perfil exato enviado a IA.",
             })
 
         # ── 4d. Await pre-classification (should already be done — ~800ms) ──
