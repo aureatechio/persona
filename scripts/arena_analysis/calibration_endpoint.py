@@ -29,7 +29,7 @@ from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
 from arena_analysis.comment_prompt import (
-    ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt,
+    ARENA_SYSTEM_PROMPT, build_single_prompt,
     get_arena_system_prompt, load_bias_config, classify_question,
 )
 from arena_analysis.pre_classifier import (
@@ -45,7 +45,6 @@ class CalibrationRequest(BaseModel):
     question: str
     context_text: Optional[str] = None
     geo_filter: Optional[dict] = None  # {state, city}
-    mode: str = "batch"  # "batch" (production) or "individual" (1 per call, GPT-only)
 
 
 def sse_event(event_type: str, data: dict | list | str) -> str:
@@ -307,57 +306,30 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             },
         })
 
-        # ── Determine mode early (used by Step 7 + Step 8) ──
-        is_individual = request.mode == "individual"
-
         # ── STEP 7: Prompt Sample Preview ──
         system_prompt = await get_arena_system_prompt()
         bias = await load_bias_config()
 
         if total > 0:
-            if is_individual:
-                # Individual mode: show prompt for a SINGLE persona with all fields
-                sample_persona = personas[0]
-                sample_user_prompt = build_single_prompt(request.question, context, sample_persona, bias=bias)
+            sample_persona = personas[0]
+            sample_user_prompt = build_single_prompt(request.question, context, sample_persona, bias=bias)
 
-                yield sse_event("cal_step", {
-                    "step": "prompt_preview", "status": "complete",
-                    "label": "Preview do Prompt",
-                    "description": "Prompt real enviado para CADA persona individualmente (1 por call)",
-                })
-                yield sse_event("cal_step_detail", {
-                    "step": "prompt_preview",
-                    "status": "complete",
-                    "input": {
-                        "system_prompt": system_prompt[:8000],
-                        "user_prompt": sample_user_prompt[:15000],
-                        "persona_count": 1,
-                        "batch_size": 1,
-                        "model_split": "100% GPT (individual mode, 3 chaves paralelo)",
-                        "sample_persona_name": sample_persona.get("name", "?"),
-                    },
-                })
-            else:
-                # Batch mode: show prompt for a batch of personas
-                sample_batch = personas[:min(settings.batch_size, total)]
-                sample_user_prompt = build_batch_prompt(request.question, context, sample_batch, bias=bias)
-
-                yield sse_event("cal_step", {
-                    "step": "prompt_preview", "status": "complete",
-                    "label": "Preview do Prompt",
-                    "description": f"Prompt real que sera enviado para cada batch de {settings.batch_size} personas",
-                })
-                yield sse_event("cal_step_detail", {
-                    "step": "prompt_preview",
-                    "status": "complete",
-                    "input": {
-                        "system_prompt": system_prompt[:8000],
-                        "user_prompt": sample_user_prompt[:15000],
-                        "persona_count": len(sample_batch),
-                        "batch_size": settings.batch_size,
-                        "model_split": f"{int(settings.claude_share*100)}% Claude / {int((1-settings.claude_share)*100)}% GPT",
-                    },
-                })
+            yield sse_event("cal_step", {
+                "step": "prompt_preview", "status": "complete",
+                "label": "Preview do Prompt",
+                "description": "Prompt real enviado para CADA persona (1 por call, GPT-only, 3 chaves)",
+            })
+            yield sse_event("cal_step_detail", {
+                "step": "prompt_preview",
+                "status": "complete",
+                "input": {
+                    "system_prompt": system_prompt[:8000],
+                    "user_prompt": sample_user_prompt[:15000],
+                    "persona_count": 1,
+                    "model_split": "100% GPT-4o-mini (3 chaves paralelo)",
+                    "sample_persona_name": sample_persona.get("name", "?"),
+                },
+            })
 
         if cancelled.is_set():
             return
@@ -368,11 +340,10 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             for f in pre_class.get("figures", [])
         )
 
-        mode_desc = f"individual (1 por call, GPT-only, 3 chaves)" if is_individual else f"batch de {settings.batch_size}"
         yield sse_event("cal_step", {
             "step": "persona_loop", "status": "running",
             "label": "Processamento de Personas",
-            "description": f"Processando {total} personas — modo {mode_desc}",
+            "description": f"Processando {total} personas — 1 por call, GPT-only, 3 chaves",
         })
 
         all_results = []
@@ -385,7 +356,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             request.question, context, personas,
             verbose=True, cancelled=cancelled,
             skip_political_enforcement=has_political_figures,
-            individual_mode=is_individual,
         ):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)
@@ -400,9 +370,9 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                     # Get full profile from the raw persona data
                     full_profile = batch_personas_raw[idx_p] if idx_p < len(batch_personas_raw) else {}
 
-                    # Generate the exact prompt sent for this persona (individual mode)
+                    # Generate the exact prompt sent for this persona
                     persona_prompt = ""
-                    if is_individual and full_profile:
+                    if full_profile:
                         try:
                             persona_prompt = build_single_prompt(
                                 request.question, context, full_profile, bias=bias,

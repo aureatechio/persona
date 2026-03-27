@@ -735,14 +735,11 @@ class PersonaLoop:
         verbose: bool = False,
         cancelled: asyncio.Event | None = None,
         skip_political_enforcement: bool = False,
-        individual_mode: bool = False,
+        **kwargs,
     ) -> AsyncGenerator[BatchProgress, None]:
         """
-        Processa personas em BATCHES (batch_size por chamada).
-        Semaphore limita conexões simultâneas para não sobrecarregar o servidor.
-        Yield BatchProgress a cada batch completado.
-
-        individual_mode: 1 persona per call, GPT-only, max parallelism.
+        Processa personas INDIVIDUALMENTE (1 por call, GPT-only, 3 chaves em paralelo).
+        Yield BatchProgress a cada persona completada.
         """
         # Resolve system prompt from Supabase, fallback to hardcoded
         system_prompt = await get_arena_system_prompt()
@@ -752,46 +749,17 @@ class PersonaLoop:
         bias = await load_bias_config()
 
         total = len(personas)
-        num_claude_keys = len(self._claude_clients)
         num_gpt_keys = len(self._openai_clients)
+        max_parallel = settings.individual_max_parallel
 
-        # Individual mode: 1 persona per call, 100% GPT, higher parallelism
-        if individual_mode:
-            batch_size = 1
-            claude_share = 0.0
-            max_parallel = settings.individual_max_parallel
-            print(f"[PersonaLoop] INDIVIDUAL MODE: batch_size=1, GPT-only, parallel={max_parallel}, keys={num_gpt_keys}")
-        else:
-            batch_size = settings.batch_size
-            claude_share = settings.claude_share
-            max_parallel = settings.max_parallel_openai
+        print(f"[PersonaLoop] {total} personas | 1 per call, GPT-only, parallel={max_parallel}, keys={num_gpt_keys}")
 
-        # Dividir personas entre Claude e GPT
-        if individual_mode:
-            # Individual: ALL personas go to GPT, zero Claude
-            claude_personas = []
-            gpt_personas = personas
-        elif self._has_openai:
-            split_idx = max(1, int(total * claude_share))
-            claude_personas = personas[:split_idx]
-            gpt_personas = personas[split_idx:]
-        else:
-            claude_personas = personas
-            gpt_personas = []
+        # ALL personas go to GPT (individual mode only)
+        gpt_batches = _chunk_list(personas, 1)  # 1 persona per batch
 
-        # Chunk into batches
-        claude_batches = _chunk_list(claude_personas, batch_size)
-        gpt_batches = _chunk_list(gpt_personas, batch_size)
-        total_calls = len(claude_batches) + len(gpt_batches)
+        print(f"[PersonaLoop] {total} personas → {len(gpt_batches)} API calls (GPT-4o-mini)")
 
-        print(
-            f"[PersonaLoop] {total} personas | batch_size={batch_size} → {total_calls} API calls | "
-            f"Claude: {len(claude_batches)} calls ({num_claude_keys} keys) | "
-            f"GPT: {len(gpt_batches)} calls ({num_gpt_keys} keys)"
-        )
-
-        # Semaphores to limit concurrent connections
-        claude_sem = asyncio.Semaphore(min(settings.max_parallel_claude, len(claude_batches) or 1))
+        # Semaphore to limit concurrent connections
         gpt_sem = asyncio.Semaphore(min(max_parallel, len(gpt_batches) or 1))
 
         # Build metadata for each batch (model name + personas) for verbose mode
@@ -802,21 +770,8 @@ class PersonaLoop:
             result = await coro
             return idx, result
 
-        # Create all tasks — round-robin by key
+        # Create all tasks — round-robin across GPT keys
         all_tasks = []
-        for i, batch in enumerate(claude_batches):
-            key_id = i % num_claude_keys
-            idx = len(all_tasks)
-            all_tasks.append(
-                _tagged(idx, self._process_claude_batch(
-                    question, context, batch,
-                    self._claude_limiters[key_id],
-                    self._claude_clients[key_id],
-                    claude_sem, key_id, system_prompt, bias,
-                    skip_political_enforcement,
-                ))
-            )
-            batch_info.append(("Claude Sonnet 4", batch))
         for i, batch in enumerate(gpt_batches):
             key_id = i % num_gpt_keys
             idx = len(all_tasks)
@@ -827,10 +782,10 @@ class PersonaLoop:
                     self._openai_clients[key_id],
                     gpt_sem, key_id, system_prompt, bias,
                     skip_political_enforcement,
-                    max_tokens_override=settings.individual_max_tokens if individual_mode else None,
+                    max_tokens_override=settings.individual_max_tokens,
                 ))
             )
-            batch_info.append(("GPT-4o-mini" if individual_mode else "GPT-4o", batch))
+            batch_info.append(("GPT-4o-mini", batch))
 
         # Process and emit progress as batches complete
         processed = 0

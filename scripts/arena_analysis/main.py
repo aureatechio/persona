@@ -34,7 +34,7 @@ from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.persona_loader import load_personas
 from arena_analysis.persona_loop import PersonaLoop
 from arena_analysis.results_aggregator import aggregate_results
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_batch_prompt, build_single_prompt
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_single_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
 from arena_analysis.geo_filter import apply_geo_filter
 from arena_analysis.pre_classifier import pre_classify, build_disambiguation_block
@@ -75,7 +75,6 @@ class AnalyzeRequest(BaseModel):
     context_text: Optional[str] = None
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
-    individual_mode: bool = True  # always individual (1 persona per call, GPT-only)
 
 
 class ElectoralRequest(BaseModel):
@@ -334,19 +333,13 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         # ── 4c. Prompt Sample — build and emit the actual prompt for monitor ──
         if total_personas > 0:
-            if request.individual_mode:
-                sample_prompt = build_single_prompt(request.question, context, personas[0])
-                sample_count = 1
-            else:
-                sample_batch = personas[:min(settings.batch_size, total_personas)]
-                sample_prompt = build_batch_prompt(request.question, context, sample_batch)
-                sample_count = len(sample_batch)
+            sample_prompt = build_single_prompt(request.question, context, personas[0])
             yield sse_event("batch_detail", {
                 "type": "prompt_sample",
                 "system_prompt": ARENA_SYSTEM_PROMPT[:3000],
                 "user_prompt": sample_prompt,
-                "persona_count": sample_count,
-                "note": f"Prompt real ({sample_count} persona{'s' if sample_count > 1 else ''} por call). Contexto + perfil exato enviado a IA.",
+                "persona_count": 1,
+                "note": "Prompt real (1 persona por call, GPT-only, 3 chaves paralelo).",
             })
 
         # ── 4d. Await pre-classification (should already be done — ~800ms) ──
@@ -404,7 +397,6 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             request.question, context, personas,
             verbose=request.verbose, cancelled=cancelled,
             skip_political_enforcement=has_political_figures,
-            individual_mode=request.individual_mode,
         ):
             all_results.extend(progress.results)
             inc_personas.extend(progress.personas)
