@@ -57,6 +57,7 @@ export interface PersonaBatchDetail {
   sentiment: string;
   score: number;
   comment: string;
+  user_prompt?: string;
   profile?: PersonaProfile;
 }
 

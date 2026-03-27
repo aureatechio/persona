@@ -391,7 +391,7 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             inc_personas.extend(progress.personas)
             inc_results.extend(progress.results)
 
-            # Batch detail with per-persona results + full profile
+            # Batch detail with per-persona results + full profile + prompt
             persona_details = []
             batch_personas_raw = progress.personas  # full persona dicts from DB
             if progress.batch_meta:
@@ -399,6 +399,17 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                 for idx_p, ps in enumerate(summaries):
                     # Get full profile from the raw persona data
                     full_profile = batch_personas_raw[idx_p] if idx_p < len(batch_personas_raw) else {}
+
+                    # Generate the exact prompt sent for this persona (individual mode)
+                    persona_prompt = ""
+                    if is_individual and full_profile:
+                        try:
+                            persona_prompt = build_single_prompt(
+                                request.question, context, full_profile, bias=bias,
+                            )
+                        except Exception:
+                            persona_prompt = ""
+
                     persona_details.append({
                         "id": ps.get("id", "?"),
                         "name": ps.get("name", "?"),
@@ -407,6 +418,8 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                         "sentiment": ps.get("sentiment", "neutral"),
                         "score": ps.get("score", 5.0),
                         "comment": ps.get("comment", "")[:300],
+                        # Exact prompt sent for this persona
+                        "user_prompt": persona_prompt[:15000] if persona_prompt else "",
                         # Full profile for drill-down
                         "profile": {
                             "gender": full_profile.get("gender_identity") or full_profile.get("gender"),

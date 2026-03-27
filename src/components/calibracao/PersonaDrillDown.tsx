@@ -1,6 +1,7 @@
 'use client';
 
-import { X, User, MessageCircle, Vote, Brain, MapPin, GraduationCap, Heart, Shield, Briefcase, Scale } from 'lucide-react';
+import { X, User, MessageCircle, Vote, Brain, MapPin, GraduationCap, Heart, Shield, Briefcase, Scale, FileText, ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
+import { useState } from 'react';
 import type { PersonaBatchDetail } from '@/app/calibracao/store';
 
 function scoreColor(score: number): string {
@@ -98,6 +99,58 @@ function JsonSection({ title, data }: { title: string; data?: Record<string, any
   );
 }
 
+function PromptSection({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="bg-white/[0.02] border border-white/[0.05] rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 px-4 py-3 hover:bg-white/[0.03] transition-colors duration-150 text-left"
+      >
+        <span className="text-emerald-400">
+          <FileText size={14} />
+        </span>
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-500 flex-1">
+          Prompt Enviado para a IA
+        </h4>
+        <span className="text-[10px] text-zinc-600 tabular-nums">{prompt.length.toLocaleString()} chars</span>
+        <span
+          role="button"
+          tabIndex={0}
+          onClick={(e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(prompt);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.stopPropagation();
+              navigator.clipboard.writeText(prompt);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            }
+          }}
+          className="p-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] text-zinc-600 hover:text-zinc-300 border border-white/[0.04] hover:border-white/[0.1] transition-all duration-200 active:scale-[0.93] cursor-pointer inline-flex"
+          title="Copiar prompt"
+        >
+          {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+        </span>
+        {open ? <ChevronDown size={13} className="text-zinc-500" /> : <ChevronRight size={13} className="text-zinc-500" />}
+      </button>
+      {open && (
+        <div className="border-t border-white/[0.04] bg-zinc-950/50">
+          <pre className="text-[12px] text-zinc-300 p-5 overflow-x-auto whitespace-pre-wrap font-mono leading-[1.65] max-h-[60vh] overflow-y-auto selection:bg-emerald-500/20">
+            {prompt}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Props {
   persona: PersonaBatchDetail;
   onClose: () => void;
@@ -160,6 +213,11 @@ export default function PersonaDrillDown({ persona, onClose }: Props) {
                 &ldquo;{persona.comment}&rdquo;
               </p>
             </Section>
+          )}
+
+          {/* User Prompt sent to AI */}
+          {persona.user_prompt && (
+            <PromptSection prompt={persona.user_prompt} />
           )}
 
           {/* Demographics */}
