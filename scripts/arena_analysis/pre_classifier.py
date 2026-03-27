@@ -46,7 +46,7 @@ INSTRUCOES:
    - negative_means: o que significa quando uma persona DISCORDA
    - neutral_means: o que significa quando uma persona e neutra
 
-5. LISTE OS CAMPOS RELEVANTES da persona que o classificador deve priorizar.
+5. NOTA: O classificador analisa TODAS as colunas da persona com igual importancia (demografia, questionario, vieses ocultos, vivencias). Voce NAO precisa listar campos relevantes — todos sao analisados.
 
 REGRAS CRITICAS PARA NEGACOES:
 - "X e corrupto" = ATAQUE a X (stance: attack)
@@ -75,10 +75,9 @@ FORMATO DE RESPOSTA (use EXATAMENTE estes nomes de campo em ingles):
     "negative_means": "O que significa discordar do texto",
     "neutral_means": "O que significa ser neutro"
   },
-  "relevant_fields": ["aprovacao_lula", "voto_2022"]
 }
 
-Responda APENAS com JSON valido usando os nomes de campo EXATOS acima (type, figures, core_position, classification_guide, relevant_fields)."""
+Responda APENAS com JSON valido usando os nomes de campo EXATOS acima (type, figures, core_position, classification_guide). NAO inclua "relevant_fields" — o classificador analisa TODAS as colunas."""
 
 
 _FALLBACK = {
@@ -192,9 +191,8 @@ def build_disambiguation_block(pre_class: dict | None) -> str:
                 f"→ Quem se OPOE a {name} → score BAIXO (0-3)",
             ])
 
-    relevant = pre_class.get("relevant_fields", [])
-    if relevant:
-        lines.append(f"\nCAMPOS PRIORITARIOS: {', '.join(relevant[:8])}")
+    # Note: we no longer highlight "relevant fields" — the classifier
+    # analyzes the COMPLETE persona profile (all columns equally)
 
     lines.append("═══ FIM DA ANALISE SEMANTICA ═══")
     lines.append("")
