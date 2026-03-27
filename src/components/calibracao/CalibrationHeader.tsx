@@ -5,7 +5,7 @@ import { Gauge, RotateCcw, Square, Clock, Activity } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 export default function CalibrationHeader() {
-  const { isProcessing, startTime, endTime, progress, error } = useCalibrationStore();
+  const { isProcessing, startTime, endTime, progress, error, cost } = useCalibrationStore();
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -103,8 +103,15 @@ export default function CalibrationHeader() {
         )}
 
         {!isProcessing && !error && progress.total > 0 && (
-          <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-400">
-            Concluido
+          <div className="flex items-center gap-2">
+            {cost && (
+              <div className="px-2.5 py-1 rounded-lg bg-amber-500/5 border border-amber-500/10 text-[11px] text-amber-400 tabular-nums" title={`GPT: ${cost.gpt4o_mini.calls} calls, ${cost.gpt4o_mini.input_tokens.toLocaleString()} in + ${cost.gpt4o_mini.output_tokens.toLocaleString()} out`}>
+                ${cost.total_usd.toFixed(2)}
+              </div>
+            )}
+            <div className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-400">
+              Concluido
+            </div>
           </div>
         )}
 

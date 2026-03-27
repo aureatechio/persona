@@ -26,7 +26,7 @@ from openai import AsyncOpenAI
 
 from arena_analysis.config import settings
 from arena_analysis.persona_loader import load_personas
-from arena_analysis.persona_loop import PersonaLoop
+from arena_analysis.persona_loop import PersonaLoop, _token_tracker, _GPT4O_MINI_INPUT_PRICE, _GPT4O_MINI_OUTPUT_PRICE
 from arena_analysis.results_aggregator import aggregate_results
 from arena_analysis.comment_prompt import (
     ARENA_SYSTEM_PROMPT, build_single_prompt,
@@ -499,10 +499,33 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             "segments": segments,
         })
 
+        # Calculate total cost
+        gpt_input_cost = (_token_tracker["prompt"] / 1_000_000) * _GPT4O_MINI_INPUT_PRICE
+        gpt_output_cost = (_token_tracker["completion"] / 1_000_000) * _GPT4O_MINI_OUTPUT_PRICE
+        gpt_total = gpt_input_cost + gpt_output_cost
+        # Claude costs (Haiku smart_search + Sonnet context_builder + Sonnet ideo_frame)
+        # Haiku: $0.80/1M input, $4/1M output | Sonnet: $3/1M input, $15/1M output
+        # Estimated ~5000 input + 1000 output tokens for Claude steps
+        claude_est = (5000 / 1_000_000) * 3.0 + (1000 / 1_000_000) * 15.0
+        # Pre-classifier GPT-4o-mini ~2000 tokens
+        pre_class_est = (2000 / 1_000_000) * _GPT4O_MINI_INPUT_PRICE + (300 / 1_000_000) * _GPT4O_MINI_OUTPUT_PRICE
+        total_cost = gpt_total + claude_est + pre_class_est
+
         yield sse_event("cal_done", {
             "total_personas": len(all_results),
             "processing_time_ms": round(elapsed * 1000),
             "avgScore": avg_score,
+            "cost": {
+                "gpt4o_mini": {
+                    "calls": _token_tracker["calls"],
+                    "input_tokens": _token_tracker["prompt"],
+                    "output_tokens": _token_tracker["completion"],
+                    "cost_usd": round(gpt_total, 4),
+                },
+                "claude_estimated_usd": round(claude_est, 4),
+                "pre_classifier_estimated_usd": round(pre_class_est, 4),
+                "total_usd": round(total_cost, 4),
+            },
         })
 
     async def generate_with_cleanup():

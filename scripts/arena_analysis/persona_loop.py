@@ -46,6 +46,14 @@ class BatchProgress:
     personas: list[dict[str, Any]] = field(default_factory=list)
 
 
+# ── Token tracking (reset per run) ──
+_token_tracker: dict[str, int] = {"prompt": 0, "completion": 0, "calls": 0}
+
+# GPT-4o-mini pricing (per 1M tokens)
+_GPT4O_MINI_INPUT_PRICE = 0.15   # $0.15 / 1M input tokens
+_GPT4O_MINI_OUTPUT_PRICE = 0.60  # $0.60 / 1M output tokens
+
+
 def _chunk_list(lst: list, size: int) -> list[list]:
     """Divide lista em chunks de tamanho N."""
     return [lst[i : i + size] for i in range(0, len(lst), size)]
@@ -699,6 +707,11 @@ class PersonaLoop:
                         response_format={"type": "json_object"},
                     )
                     raw = response.choices[0].message.content or ""
+                    # Track tokens
+                    if response.usage:
+                        _token_tracker["prompt"] += response.usage.prompt_tokens
+                        _token_tracker["completion"] += response.usage.completion_tokens
+                        _token_tracker["calls"] += 1
                     pb = bias.political_bias if bias else 0.0
                     # Individual mode: parse as single persona response
                     if len(personas) == 1:
@@ -741,6 +754,11 @@ class PersonaLoop:
         Processa personas INDIVIDUALMENTE (1 por call, GPT-only, 3 chaves em paralelo).
         Yield BatchProgress a cada persona completada.
         """
+        # Reset token tracker for this run
+        _token_tracker["prompt"] = 0
+        _token_tracker["completion"] = 0
+        _token_tracker["calls"] = 0
+
         # Resolve system prompt from Supabase, fallback to hardcoded
         system_prompt = await get_arena_system_prompt()
         print(f"[PersonaLoop] System prompt loaded ({len(system_prompt)} chars)", flush=True)
@@ -851,7 +869,19 @@ class PersonaLoop:
             )
 
         avg_score = round(score_sum / processed, 2) if processed > 0 else 5.0
+
+        # Calculate and log cost
+        input_cost = (_token_tracker["prompt"] / 1_000_000) * _GPT4O_MINI_INPUT_PRICE
+        output_cost = (_token_tracker["completion"] / 1_000_000) * _GPT4O_MINI_OUTPUT_PRICE
+        total_cost = input_cost + output_cost
+
         print(
             f"[PersonaLoop] Concluido: {processed}/{total} personas. "
             f"P={positive} N={negative} U={neutral} | avgScore={avg_score}"
+        )
+        print(
+            f"[PersonaLoop] 💰 CUSTO GPT-4o-mini: "
+            f"input={_token_tracker['prompt']:,} tokens (${input_cost:.4f}) | "
+            f"output={_token_tracker['completion']:,} tokens (${output_cost:.4f}) | "
+            f"TOTAL: ${total_cost:.4f} ({_token_tracker['calls']} calls)"
         )

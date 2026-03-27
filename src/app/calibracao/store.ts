@@ -119,6 +119,9 @@ export interface CalibrationStore {
   // Segments
   segments: AllSegments | null;
 
+  // Cost
+  cost: { total_usd: number; gpt4o_mini: { calls: number; input_tokens: number; output_tokens: number; cost_usd: number } } | null;
+
   // Actions
   selectStep: (step: string | null) => void;
   updateStep: (stepId: string, update: Partial<StepState>) => void;
@@ -145,6 +148,7 @@ export const useCalibrationStore = create<CalibrationStore>((set) => ({
   batches: [],
   progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5, scoreSum: 0 },
   segments: null,
+  cost: null,
 
   selectStep: (step) => set({ selectedStep: step }),
   updateStep: (stepId, update) => set((s) => ({
@@ -162,6 +166,7 @@ export const useCalibrationStore = create<CalibrationStore>((set) => ({
       batches: [],
       progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5, scoreSum: 0 },
       segments: null,
+      cost: null,
     }),
 }));
 
@@ -330,6 +335,7 @@ export async function calibrationSubmit(
           store.setState({
             isProcessing: false,
             endTime: Date.now(),
+            cost: data.cost ?? null,
           });
           break;
       }
