@@ -1,14 +1,21 @@
 """
-Arena Analysis — FastAPI com SSE streaming.
+✅ BACKEND DE PRODUÇÃO DA ARENA — este é o código que roda em produção.
 
-Orquestra o pipeline completo:
-  1. Web Research (SEMPRE)
-  2. Context Builder (IA cria contexto)
-  3. Context Validator (IA verifica)
-  4. Persona Loop (processa TODAS em batches)
-  5. Results Aggregator (agrega → dashboard)
+DO app: arena-analysis-api (a38cc4e4) — porta 8000
+URL: https://arena-analysis-api-2puat.ondigitalocean.app
+deploy_on_push: true (deploya automaticamente a cada push em main)
 
-Uso:
+⚠️  NÃO confundir com arena-worker/ (código legado, NÃO usado pela arena).
+
+Pipeline:
+  1. Web Research (Tavily)
+  2. Context Builder (Claude contextualiza)
+  3. Ideological Frame (mapeamento esquerda/direita)
+  4. Pre-Classifier (GPT-4o-mini disambigua concordar/discordar)
+  5. Persona Loop (1 persona por call, GPT, 3 chaves paralelo)
+  6. Results Aggregator (agrega por segmento demográfico)
+
+Uso local:
   cd scripts
   uvicorn arena_analysis.main:app --port 8001 --reload
 """

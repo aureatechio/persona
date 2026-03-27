@@ -1,12 +1,11 @@
 """
-AI-powered persona sentiment classifier.
+⚠️  CÓDIGO LEGADO — NÃO É O BACKEND DE PRODUÇÃO DA ARENA ⚠️
+O backend real está em: scripts/arena_analysis/
+Veja scripts/arena_analysis/persona_loop.py e comment_prompt.py
 
-For each batch of personas, sends a structured prompt to GPT-4o-mini
-asking it to classify each persona's likely stance on the question,
-based on their full demographic/opinion profile.
+---
 
-v3: Uses pre-classifier output for semantic disambiguation instead of
-hardcoded word lists and regex patterns.
+AI-powered persona sentiment classifier (versão antiga/batch).
 """
 
 import json

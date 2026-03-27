@@ -1,9 +1,10 @@
 """
-Verbose wrappers for calibration mode.
+⚠️  CÓDIGO LEGADO — NÃO É O BACKEND DE PRODUÇÃO DA ARENA ⚠️
+O backend real está em: scripts/arena_analysis/calibration_endpoint.py
 
-These functions wrap the existing classifier and pre_classifier to capture
-the full prompts sent, raw API responses, and per-persona details — enabling
-the calibration UI to show exactly what happened at each step.
+---
+
+Verbose wrappers for calibration mode (versão antiga).
 """
 
 import json

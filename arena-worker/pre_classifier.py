@@ -1,14 +1,10 @@
 """
-AI Pre-Classifier — Semantic analysis of the question/content BEFORE persona classification.
+⚠️  CÓDIGO LEGADO — NÃO É O BACKEND DE PRODUÇÃO DA ARENA ⚠️
+O backend real está em: scripts/arena_analysis/pre_classifier.py
 
-Runs ONCE per analysis request. Uses GPT-4o-mini to understand:
-- What type of content this is (political figure, policy, moral extreme, etc.)
-- Which political figures are mentioned and whether they're being attacked or defended
-- What "positive" and "negative" mean in the context of THIS specific question
-- Which persona fields are most relevant
+---
 
-The output is injected into every classify_batch call, replacing all hardcoded
-word lists, regex patterns, and if/else chains with semantic understanding.
+AI Pre-Classifier (versão antiga).
 """
 
 import json

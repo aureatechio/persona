@@ -1,14 +1,12 @@
 """
-AI Pre-Classifier — Semantic analysis of the question/content BEFORE persona classification.
+✅ BACKEND DE PRODUÇÃO — Pre-Classifier da Arena.
 
-Runs ONCE per analysis request. Uses GPT-4o-mini to understand:
-- What type of content this is (political figure, policy, moral extreme, etc.)
-- Which political figures are mentioned and whether they're being attacked or defended
-- What "positive" and "negative" mean in the context of THIS specific question
-- Which persona fields are most relevant
+Roda 1x por análise. GPT-4o-mini analisa a pergunta e produz guia de
+classificação (o que significa concordar/discordar). O resultado é
+injetado no contexto de cada persona via build_disambiguation_block().
 
-The output is injected into every batch prompt (via build_batch_prompt),
-replacing hardcoded word lists and regex patterns with semantic understanding.
+O classificador analisa TODAS as colunas da persona com igual peso —
+não prioriza campos específicos.
 """
 from __future__ import annotations
 

@@ -1,14 +1,19 @@
 """
-Arena Worker — FastAPI SSE server.
+⚠️  CÓDIGO LEGADO — NÃO É O BACKEND DE PRODUÇÃO DA ARENA ⚠️
 
-Receives a question, loads personas from Supabase, classifies each one's
-sentiment using GPT-4o-mini, and streams progress via Server-Sent Events.
+Este arena-worker/ é uma versão ANTIGA e simplificada que NÃO roda em produção.
+Roda no DO app "video-duda" (2a5e2bce) — porta 3002.
 
-SSE protocol (matches what the Next.js frontend expects):
-  data: {"type":"personas_loaded","data":{"count":20000}}
-  data: {"type":"progress","data":{"processed":500,"total":20000,"positive":230,"negative":200,"neutral":70}}
-  data: {"type":"results","data":{...full simulation result...}}
-  data: {"type":"done","data":{"total_personas":20000}}
+╔══════════════════════════════════════════════════════════════════╗
+║  O BACKEND REAL DA ARENA ESTÁ EM:                              ║
+║  scripts/arena_analysis/                                        ║
+║  DO app: arena-analysis-api (a38cc4e4) — porta 8000             ║
+║  deploy_on_push: true                                           ║
+║                                                                  ║
+║  Se precisar alterar prompts, classificação, persona loop,      ║
+║  pré-classificação, ou qualquer coisa da Arena:                 ║
+║  → EDITE scripts/arena_analysis/, NÃO este diretório.           ║
+╚══════════════════════════════════════════════════════════════════╝
 """
 
 import json
