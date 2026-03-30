@@ -294,28 +294,21 @@ export default function ArenaPage() {
     return () => clearTimeout(timer);
   }, [chatMessages, currentHistoryId]);
 
-  // File picker — uses a persistent hidden input in the DOM for iOS compatibility
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingFileType = useRef<'image' | 'video'>('image');
+  // File picker — record video still needs a programmatic ref (camera capture)
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileSelected = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Called by AttachmentMenu's native <label> file inputs (no input.click() needed)
+  const handleFileFromMenu = useCallback((file: File, type: 'image' | 'video') => {
     console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
 
-    // Reset input so same file can be selected again
-    if (fileInputRef.current) fileInputRef.current.value = '';
-
-    const type = pendingFileType.current;
     const mimeType = file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg');
     const id = Date.now().toString();
 
-    // Add attachment immediately with no uri (shows loading state)
+    // Add attachment immediately with no uri (shows loading spinner)
     setAttachments((prev) => [...prev, { id, type, name: file.name, mimeType, file, uri: undefined }]);
 
     if (type === 'image') {
-      // FileReader forces full download — fixes iCloud/cloud photos not yet on device
+      // FileReader forces full iCloud download before creating URI
       const reader = new FileReader();
       reader.onload = (ev) => {
         const uri = ev.target?.result as string | undefined;
@@ -328,30 +321,26 @@ export default function ArenaPage() {
       };
       reader.readAsDataURL(file);
     } else {
-      // Video/audio: blob URL is fine
       let uri: string | undefined;
       try { uri = URL.createObjectURL(file); } catch {}
       setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
     }
   }, []);
 
-  const pickFile = useCallback((accept: string, type: 'image' | 'video', capture?: boolean) => {
-    const input = fileInputRef.current;
+  const handleRecordVideo = useCallback(() => {
+    const input = videoInputRef.current;
     if (!input) return;
-    pendingFileType.current = type;
-    input.accept = accept;
-    if (capture) {
-      input.setAttribute('capture', 'environment');
-    } else {
-      input.removeAttribute('capture');
-    }
+    input.accept = 'video/*';
+    input.setAttribute('capture', 'environment');
     input.click();
   }, []);
 
-  const handleRecordVideo = () => pickFile('video/*', 'video', true);
-  const handlePickImage = () => pickFile('image/*', 'image');
-  const handlePickVideo = () => pickFile('video/*', 'video');
-  const handlePickAudio = () => pickFile('audio/*', 'video');
+  const handleRecordedVideo = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    handleFileFromMenu(file, 'video');
+  }, [handleFileFromMenu]);
 
   const handleSendMessage = (text: string) => {
     if (!isAuthenticated) { setShowAuthModal(true); return; }
@@ -517,11 +506,11 @@ export default function ArenaPage() {
         </div>
       )}
 
-      {/* File input — positioned off-screen instead of display:none for iOS PWA compatibility */}
+      {/* Video capture input — only used for "Gravar vídeo" (camera) */}
       <input
-        ref={fileInputRef}
+        ref={videoInputRef}
         type="file"
-        onChange={handleFileSelected}
+        onChange={handleRecordedVideo}
         style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, pointerEvents: 'none' }}
       />
 
@@ -666,7 +655,7 @@ export default function ArenaPage() {
 
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />
-      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onRecordVideo={handleRecordVideo} onPickImage={handlePickImage} onPickVideo={handlePickVideo} onPickAudio={handlePickAudio} />
+      <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onFileSelected={handleFileFromMenu} onRecordVideo={handleRecordVideo} />
       <PlatformSelector visible={showPlatformSelector} onClose={() => setShowPlatformSelector(false)} onConfirm={handlePlatformConfirm} />
     </div>
   );

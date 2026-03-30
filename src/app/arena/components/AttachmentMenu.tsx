@@ -1,5 +1,6 @@
-// Arena PWA — AttachmentMenu (exact match of mobile AttachmentMenu.tsx)
-// 4 options: Gravar vídeo, Carregar imagem, Carregar vídeo, Carregar áudio
+// Arena PWA — AttachmentMenu
+// Uses native <label> + <input type="file"> for maximum iOS compatibility
+// (no input.click() — avoids iOS PWA gesture chain issues with iCloud photos)
 
 'use client';
 
@@ -9,25 +10,24 @@ import { Camera, ImageIcon, Film, Music, X } from 'lucide-react';
 interface AttachmentMenuProps {
   visible: boolean;
   onClose: () => void;
+  onFileSelected: (file: File, type: 'image' | 'video') => void;
   onRecordVideo: () => void;
-  onPickImage: () => void;
-  onPickVideo: () => void;
-  onPickAudio: () => void;
 }
 
-const OPTIONS = [
-  { id: 'record-video', label: 'Gravar vídeo', icon: Camera, color: '#8b5cf6' },
-  { id: 'pick-image', label: 'Carregar imagem', icon: ImageIcon, color: '#34d399' },
-  { id: 'pick-video', label: 'Carregar vídeo', icon: Film, color: '#38bdf8' },
-  { id: 'pick-audio', label: 'Carregar áudio', icon: Music, color: '#f59e0b' },
+const FILE_OPTIONS = [
+  { id: 'pick-image', label: 'Carregar imagem', icon: ImageIcon, color: '#34d399', accept: 'image/*', type: 'image' as const },
+  { id: 'pick-video', label: 'Carregar vídeo', icon: Film, color: '#38bdf8', accept: 'video/*', type: 'video' as const },
+  { id: 'pick-audio', label: 'Carregar áudio', icon: Music, color: '#f59e0b', accept: 'audio/*', type: 'video' as const },
 ] as const;
 
-export function AttachmentMenu({ visible, onClose, onRecordVideo, onPickImage, onPickVideo, onPickAudio }: AttachmentMenuProps) {
-  const handlers: Record<string, () => void> = {
-    'record-video': onRecordVideo,
-    'pick-image': onPickImage,
-    'pick-video': onPickVideo,
-    'pick-audio': onPickAudio,
+export function AttachmentMenu({ visible, onClose, onFileSelected, onRecordVideo }: AttachmentMenuProps) {
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
+    const file = e.target.files?.[0];
+    // Reset so the same file can be re-selected
+    e.target.value = '';
+    if (!file) return;
+    onFileSelected(file, type);
+    onClose();
   };
 
   return (
@@ -48,23 +48,38 @@ export function AttachmentMenu({ visible, onClose, onRecordVideo, onPickImage, o
           >
             {/* Options card */}
             <div className="rounded-[20px] overflow-hidden" style={{ backgroundColor: 'rgba(24,24,27,0.95)', border: '0.5px solid rgba(255,255,255,0.08)' }}>
-              {OPTIONS.map((opt, i) => {
+              {/* Record video — uses camera capture, needs programmatic trigger */}
+              <div>
+                <button
+                  onClick={() => { onRecordVideo(); onClose(); }}
+                  className="w-full flex items-center gap-3 px-4 h-[52px] hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors"
+                >
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: '#8b5cf615' }}>
+                    <Camera size={20} style={{ color: '#8b5cf6' }} />
+                  </div>
+                  <span className="text-sm font-semibold text-zinc-200">Gravar vídeo</span>
+                </button>
+                <div className="h-[0.5px] ml-16" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }} />
+              </div>
+
+              {/* File options — each is a native <label> wrapping an <input type="file"> */}
+              {FILE_OPTIONS.map((opt, i) => {
                 const Icon = opt.icon;
                 return (
                   <div key={opt.id}>
-                    <button
-                      onClick={() => {
-                        handlers[opt.id]?.();
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-3 px-4 h-[52px] hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors"
-                    >
+                    <label className="w-full flex items-center gap-3 px-4 h-[52px] hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors cursor-pointer">
                       <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: `${opt.color}15` }}>
                         <Icon size={20} style={{ color: opt.color }} />
                       </div>
                       <span className="text-sm font-semibold text-zinc-200">{opt.label}</span>
-                    </button>
-                    {i < OPTIONS.length - 1 && (
+                      <input
+                        type="file"
+                        accept={opt.accept}
+                        onChange={(e) => handleFile(e, opt.type)}
+                        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
+                      />
+                    </label>
+                    {i < FILE_OPTIONS.length - 1 && (
                       <div className="h-[0.5px] ml-16" style={{ backgroundColor: 'rgba(255,255,255,0.04)' }} />
                     )}
                   </div>
