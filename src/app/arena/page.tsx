@@ -304,21 +304,35 @@ export default function ArenaPage() {
 
     console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
 
-    let uri: string | undefined;
-    try { uri = URL.createObjectURL(file); } catch {}
-
-    const att: Attachment = {
-      id: Date.now().toString(),
-      type: pendingFileType.current,
-      name: file.name,
-      mimeType: file.type || (pendingFileType.current === 'video' ? 'video/mp4' : 'image/jpeg'),
-      file,
-      uri,
-    };
-    setAttachments((prev) => [...prev, att]);
-
     // Reset input so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    const type = pendingFileType.current;
+    const mimeType = file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg');
+    const id = Date.now().toString();
+
+    // Add attachment immediately with no uri (shows loading state)
+    setAttachments((prev) => [...prev, { id, type, name: file.name, mimeType, file, uri: undefined }]);
+
+    if (type === 'image') {
+      // FileReader forces full download — fixes iCloud/cloud photos not yet on device
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const uri = ev.target?.result as string | undefined;
+        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
+      };
+      reader.onerror = () => {
+        let uri: string | undefined;
+        try { uri = URL.createObjectURL(file); } catch {}
+        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // Video/audio: blob URL is fine
+      let uri: string | undefined;
+      try { uri = URL.createObjectURL(file); } catch {}
+      setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
+    }
   }, []);
 
   const pickFile = useCallback((accept: string, type: 'image' | 'video', capture?: boolean) => {
@@ -522,6 +536,10 @@ export default function ArenaPage() {
                   <img src={att.uri} alt="" className="w-full h-full object-cover" />
                 ) : att.uri && att.type === 'video' ? (
                   <video src={att.uri} className="w-full h-full object-cover" muted playsInline />
+                ) : !att.uri ? (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="w-6 h-6 border-2 border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-1">
                     <span className="text-2xl">{att.type === 'video' ? '🎬' : '🖼'}</span>
