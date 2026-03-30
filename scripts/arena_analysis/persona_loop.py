@@ -404,11 +404,23 @@ def _parse_single_response(raw: str, persona: dict[str, Any], tag: str = "", que
     # Enforce political coherence — correct incoherent scores for political questions
     # When skip_political_enforcement=True, the AI pre-classifier already handled
     # disambiguation in the prompt, so we skip the regex-based tone detection
+    original_score = score
     if question:
         score = _enforce_political_coherence(score, persona, question, political_bias,
                                              skip_enforcement=skip_political_enforcement)
         # Enforce thematic coherence — correct scores based on declared opinions
         score = _enforce_thematic_coherence(score, persona, question, political_bias)
+
+    # ── Guard: prevent enforcement from flipping sentiment ──
+    # If GPT gave a positive score (>=6) and enforcement pushed it to negative (<=4),
+    # the comment text is ALREADY positive — flipping the score creates contradiction.
+    # Clamp to neutral zone instead of crossing the boundary.
+    original_positive = original_score >= 6.0
+    original_negative = original_score <= 4.0
+    if original_positive and score <= 4.0:
+        score = 4.5  # clamp to neutral, don't flip to negative
+    elif original_negative and score >= 6.0:
+        score = 5.5  # clamp to neutral, don't flip to positive
 
     # Derive sentiment from score (ensures coherence)
     # Narrower neutral band (4.0-6.0) — Brazilians are opinionated
