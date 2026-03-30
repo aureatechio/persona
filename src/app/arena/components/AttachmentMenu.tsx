@@ -54,8 +54,8 @@ export function AttachmentMenu({ visible, onClose, onRecordVideo, onPickImage, o
                   <div key={opt.id}>
                     <button
                       onClick={() => {
+                        handlers[opt.id]?.();
                         onClose();
-                        setTimeout(() => handlers[opt.id]?.(), 400);
                       }}
                       className="w-full flex items-center gap-3 px-4 h-[52px] hover:bg-white/[0.06] active:bg-white/[0.06] transition-colors"
                     >

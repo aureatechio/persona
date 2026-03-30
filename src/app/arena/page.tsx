@@ -517,12 +517,12 @@ export default function ArenaPage() {
         </div>
       )}
 
-      {/* Hidden file input (persistent in DOM for iOS PWA compatibility) */}
+      {/* File input — positioned off-screen instead of display:none for iOS PWA compatibility */}
       <input
         ref={fileInputRef}
         type="file"
-        className="hidden"
         onChange={handleFileSelected}
+        style={{ position: 'fixed', top: -9999, left: -9999, opacity: 0, pointerEvents: 'none' }}
       />
 
       {/* ═══ HAS ATTACHMENT — previews ═══ */}
