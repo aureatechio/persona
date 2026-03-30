@@ -301,30 +301,53 @@ export default function ArenaPage() {
   const handleFileFromMenu = useCallback((file: File, type: 'image' | 'video') => {
     console.log(`[File] Selected: ${file.name}, type: ${file.type}, size: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
 
-    const mimeType = file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg');
     const id = Date.now().toString();
 
-    // Read file IMMEDIATELY (before menu unmounts and iOS invalidates the File reference)
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const dataUrl = ev.target?.result as string | undefined;
-      if (type === 'image' && dataUrl) {
-        // Store both preview URI and base64 for arenaSubmit (avoids re-reading File)
-        const base64 = dataUrl.split(',')[1];
-        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri: dataUrl, base64 } : a));
-      } else {
-        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri: dataUrl } : a));
-      }
-    };
-    reader.onerror = () => {
+    // Add attachment with loading state immediately
+    setAttachments((prev) => [...prev, {
+      id, type, name: file.name,
+      mimeType: type === 'image' ? 'image/jpeg' : (file.type || 'video/mp4'),
+      file, uri: undefined,
+    }]);
+
+    if (type === 'image') {
+      // Convert ANY image format (HEIC, BMP, TIFF, etc.) to JPEG via canvas
+      // This is critical for iOS which uses HEIC — Claude only supports jpeg/png/gif/webp
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0);
+        URL.revokeObjectURL(objectUrl);
+
+        const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        const base64 = jpegDataUrl.split(',')[1];
+        setAttachments((prev) => prev.map((a) => a.id === id
+          ? { ...a, uri: jpegDataUrl, base64, mimeType: 'image/jpeg' }
+          : a
+        ));
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        // Fallback: try FileReader directly (might work for JPEG/PNG)
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string | undefined;
+          const base64 = dataUrl?.split(',')[1];
+          setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri: dataUrl, base64 } : a));
+        };
+        reader.readAsDataURL(file);
+      };
+      img.src = objectUrl;
+    } else {
+      // Video/audio: blob URL for preview
       let uri: string | undefined;
       try { uri = URL.createObjectURL(file); } catch {}
       setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
-    };
-
-    // Add attachment with loading state, then start reading
-    setAttachments((prev) => [...prev, { id, type, name: file.name, mimeType, file, uri: undefined }]);
-    reader.readAsDataURL(file);
+    }
   }, []);
 
   const handleRecordVideo = useCallback(() => {
