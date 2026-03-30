@@ -53,9 +53,15 @@ REGRAS CRITICAS PARA NEGACOES:
 - "X nao deveria ser preso, e inocente" = DEFESA de X
 - "X roubou mas fez" = MISTO, mas predomina visao ambivalente-positiva
 
-IRONIA E SARCASMO:
-- "Claro que X e honesto, ne?" = provavelmente ATAQUE (sarcasmo)
+IRONIA E SARCASMO BRASILEIRO — ATENCAO REDOBRADA:
+Brasileiros usam sarcasmo PESADO. Detecte estes padroes:
+- "Claro que X e honesto, ne?" = ATAQUE (sarcasmo)
 - "Parabens X por destruir o pais" = ATAQUE (sarcasmo)
+- "X e tao honesto quanto o Fernandinho Beira-Mar" = ATAQUE (comparacao com criminoso = sarcasmo)
+- "Nosso grande democrata" / "genio incompreendido" = ATAQUE (elogio desproporcional = sarcasmo)
+- "Claro, porque funcionou tao bem da ultima vez" = ATAQUE (referencia a fracasso)
+- "Parabens, destruiu o pais em tempo recorde" = ATAQUE (elogio + acao negativa)
+REGRA: Se o elogio e DESPROPORCIONAL, COMPARATIVO com algo negativo, ou seguido de resultado ruim → e SARCASMO → classifique como ATAQUE.
 - Quando ambiguo, classifique como o significado mais provavel
 
 AFIRMACOES COMPOSTAS:

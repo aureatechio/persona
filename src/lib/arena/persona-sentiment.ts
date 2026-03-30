@@ -228,8 +228,8 @@ function classifyResponse(value: unknown): number {
   ];
   if (neutralPatterns.some(p => v.includes(p))) return 0;
 
-  // Unknown text — lean toward an opinion rather than always neutral
-  return Math.random() < 0.5 ? -1 : 1;
+  // Unknown text — return neutral to avoid injecting noise
+  return 0;
 }
 
 // ── Response Classification (0-10 Score) ─────────────────────────────────────
@@ -240,7 +240,7 @@ function classifyResponse(value: unknown): number {
  * Text fields are mapped to score ranges based on intensity.
  */
 function classifyResponseScore(value: unknown): number {
-  if (value == null || value === '') return 4.0 + Math.random() * 2.0; // no data = spread 4.0-6.0
+  if (value == null || value === '') return NaN; // no data — caller should filter out
 
   // Numeric fields (1-10) — use directly
   if (typeof value === 'number') {
@@ -557,9 +557,9 @@ function computeHolisticSentiment(
 
   const compositeSignal = signal / signalCount;
 
-  // Add significant noise since we don't have a direct data match
-  const noise = (Math.random() - 0.5) * 0.6;
-  const finalScore = compositeSignal * 0.4 + noise;
+  // Add moderate noise — but signal should dominate over randomness
+  const noise = (Math.random() - 0.5) * 0.35;
+  const finalScore = compositeSignal * 0.65 + noise;
 
   if (finalScore > 0.10) return 'positive';
   if (finalScore < -0.10) return 'negative';
@@ -1032,6 +1032,7 @@ export function computePersonaScore(
       if (value == null || value === '') continue;
 
       let score = classifyResponseScore(value);
+      if (isNaN(score)) continue; // skip fields with no data
       if (inverted) score = 10 - score;
 
       directScores.push(score);

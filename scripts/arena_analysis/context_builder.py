@@ -48,6 +48,7 @@ REGRAS:
 6. Se menciona punição/prisão → OBRIGATÓRIO explicar DO QUE a pessoa é acusada
 7. Se o conteúdo é autoexplicativo (temas genéricos) → contexto mínimo mas identifique figuras
 8. SEMPRE identifique o alinhamento político das figuras (esquerda/direita/centro)
+9. HONESTIDADE TEMPORAL: Seu conhecimento vai até maio de 2025. Se o conteúdo menciona eventos que você NÃO tem certeza absoluta (especialmente de 2026 em diante), inclua no contexto: "[Informação pode estar desatualizada]". NUNCA invente fatos que você não tem certeza.
 
 EXEMPLOS:
 - "Lula é ladrão" → contexto: "Luiz Inácio Lula da Silva, presidente do Brasil (PT, esquerda). Foi condenado na Lava-Jato por corrupção e lavagem de dinheiro, preso em 2018, solto em 2019 após decisão do STF. Condenações anuladas por questão de foro em 2021. Atualmente governa sem processos ativos."
