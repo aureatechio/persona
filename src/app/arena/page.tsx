@@ -304,27 +304,27 @@ export default function ArenaPage() {
     const mimeType = file.type || (type === 'video' ? 'video/mp4' : 'image/jpeg');
     const id = Date.now().toString();
 
-    // Add attachment immediately with no uri (shows loading spinner)
-    setAttachments((prev) => [...prev, { id, type, name: file.name, mimeType, file, uri: undefined }]);
-
-    if (type === 'image') {
-      // FileReader forces full iCloud download before creating URI
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const uri = ev.target?.result as string | undefined;
-        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
-      };
-      reader.onerror = () => {
-        let uri: string | undefined;
-        try { uri = URL.createObjectURL(file); } catch {}
-        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
-      };
-      reader.readAsDataURL(file);
-    } else {
+    // Read file IMMEDIATELY (before menu unmounts and iOS invalidates the File reference)
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string | undefined;
+      if (type === 'image' && dataUrl) {
+        // Store both preview URI and base64 for arenaSubmit (avoids re-reading File)
+        const base64 = dataUrl.split(',')[1];
+        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri: dataUrl, base64 } : a));
+      } else {
+        setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri: dataUrl } : a));
+      }
+    };
+    reader.onerror = () => {
       let uri: string | undefined;
       try { uri = URL.createObjectURL(file); } catch {}
       setAttachments((prev) => prev.map((a) => a.id === id ? { ...a, uri } : a));
-    }
+    };
+
+    // Add attachment with loading state, then start reading
+    setAttachments((prev) => [...prev, { id, type, name: file.name, mimeType, file, uri: undefined }]);
+    reader.readAsDataURL(file);
   }, []);
 
   const handleRecordVideo = useCallback(() => {

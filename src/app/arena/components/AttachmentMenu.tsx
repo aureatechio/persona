@@ -23,11 +23,14 @@ const FILE_OPTIONS = [
 export function AttachmentMenu({ visible, onClose, onFileSelected, onRecordVideo }: AttachmentMenuProps) {
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
     const file = e.target.files?.[0];
-    // Reset so the same file can be re-selected
-    e.target.value = '';
     if (!file) return;
+    // Pass file to parent BEFORE any cleanup (iOS can invalidate File on input reset/unmount)
     onFileSelected(file, type);
-    onClose();
+    // Delay close so the DOM input stays alive while FileReader starts
+    setTimeout(() => {
+      e.target.value = '';
+      onClose();
+    }, 100);
   };
 
   return (
