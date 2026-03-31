@@ -102,6 +102,7 @@ export interface ContentMeta {
   region: string;
   city?: string;
   contentType?: string;
+  attachmentType?: 'image' | 'video' | 'audio' | 'text';
 }
 
 export interface RadarData {
@@ -113,9 +114,23 @@ export interface RadarData {
   emocional: number;
 }
 
+export interface PlatformSummary {
+  platform: string;
+  summary: string;
+}
+
+export interface DashboardHighlight {
+  segmentName: string;
+  type: 'high_approval' | 'high_rejection' | 'high_neutrality';
+  percentage: number;
+  description: string;
+}
+
 export interface AnaliseData {
   headline: string;
   summary?: string;
+  platformSummaries?: PlatformSummary[];
+  dashboardHighlights?: DashboardHighlight[];
   score: number;
   tags: string[];
   stats: { value: string; label: string }[];

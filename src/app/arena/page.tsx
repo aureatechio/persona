@@ -233,7 +233,7 @@ export default function ArenaPage() {
       phase: 'complete',
       contentMeta: contentMeta ? {
         ...contentMeta,
-        mediaType: Array.isArray(contentMeta.mediaType) ? contentMeta.mediaType.join(', ') : contentMeta.mediaType,
+        mediaType: contentMeta.mediaType,
       } : {},
       avgScore: avgScore || 0,
       stateBreakdown: stateBreakdown || {},
@@ -383,6 +383,19 @@ export default function ArenaPage() {
 
     const isTextOnly = attachments.length === 0 && pendingTextQuestion;
 
+    // Detect attachment type (image / video / audio / text)
+    let attachmentType: 'image' | 'video' | 'audio' | 'text' = 'text';
+    if (!isTextOnly && attachments.length > 0) {
+      const att = attachments[0];
+      if (att.type === 'image') {
+        attachmentType = 'image';
+      } else if (att.mimeType?.startsWith('audio/')) {
+        attachmentType = 'audio';
+      } else {
+        attachmentType = 'video';
+      }
+    }
+
     // Save to store (persists across tab navigation)
     setUserMediaContext({
       text: platforms.join(', '),
@@ -397,6 +410,7 @@ export default function ArenaPage() {
         candidateIdeology: profile.ideology === 'esquerda' ? 'esquerda' : 'direita',
         region: profile.state || 'brasil',
         city: profile.city || undefined,
+        attachmentType,
       },
     });
     setAttachments([]);

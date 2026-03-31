@@ -5,6 +5,42 @@ const anthropic = new Anthropic();
 
 export const maxDuration = 120;
 
+// Extract the most extreme metrics from segments for dashboard highlights
+function extractHighlights(segments: Record<string, any[]>): string {
+  const highlights: { label: string; category: string; type: string; pct: number }[] = [];
+
+  const categoryNames: Record<string, string> = {
+    gender: 'Genero', religion: 'Religiao', race: 'Raca/Etnia', region: 'Regiao',
+    generation: 'Geracao', socialClass: 'Classe Social', education: 'Escolaridade',
+    politicalLeaning: 'Posicao Politica', voto2022: 'Voto 2022', voto2026: 'Intencao 2026',
+  };
+
+  for (const [category, items] of Object.entries(segments || {})) {
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const total = (item.positive || 0) + (item.negative || 0) + (item.neutral || 0);
+      if (total < 10) continue;
+
+      const pctPos = (item.positive / total) * 100;
+      const pctNeg = (item.negative / total) * 100;
+      const pctNeu = (item.neutral / total) * 100;
+      const catLabel = categoryNames[category] || category;
+
+      if (pctPos >= 70) highlights.push({ label: item.label, category: catLabel, type: 'aprovacao', pct: Math.round(pctPos) });
+      if (pctNeg >= 70) highlights.push({ label: item.label, category: catLabel, type: 'rejeicao', pct: Math.round(pctNeg) });
+      if (pctNeu >= 70) highlights.push({ label: item.label, category: catLabel, type: 'neutralidade', pct: Math.round(pctNeu) });
+    }
+  }
+
+  highlights.sort((a, b) => b.pct - a.pct);
+  const top = highlights.slice(0, 5);
+
+  if (top.length === 0) return '';
+
+  return `\nPONTOS DE DESTAQUE DO DASHBOARD (segmentos com metricas extremas):\n` +
+    top.map(h => `- ${h.label} (${h.category}): ${h.pct}% ${h.type}`).join('\n');
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta } = body;
@@ -39,11 +75,18 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
   const rawMediaType = contentMeta?.mediaType;
   const mediaTypes: string[] = Array.isArray(rawMediaType)
     ? rawMediaType
-    : rawMediaType ? [rawMediaType] : ['nao especificado'];
+    : rawMediaType ? rawMediaType.split(',').map((s: string) => s.trim()).filter(Boolean) : ['nao especificado'];
   const mediaLabel = mediaTypes.join(', ');
   const ideologyLabel = contentMeta?.candidateIdeology || 'nao especificado';
   const regionLabel = contentMeta?.region === 'brasil' ? 'Brasil (Nacional)' :
     (contentMeta?.city ? `${contentMeta.city} - ${contentMeta.region}` : contentMeta?.region || 'Brasil');
+
+  // Attachment type (image/video/audio/text)
+  const attachmentType = contentMeta?.attachmentType || 'text';
+  const attachmentLabels: Record<string, string> = {
+    image: 'IMAGEM', video: 'VIDEO', audio: 'AUDIO', text: 'TEXTO',
+  };
+  const attachmentLabel = attachmentLabels[attachmentType] || 'CONTEUDO';
 
   const platformKnowledge: Record<string, string> = {
     instagram: `REGRAS ESPECIFICAS DA PLATAFORMA — INSTAGRAM:
@@ -147,16 +190,33 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
     .filter(Boolean)
     .join('\n\n');
 
+  // Extract dashboard highlights from segments
+  const highlightsBlock = segments ? extractHighlights(segments) : '';
+
   const contentTypeLabel = contentMeta?.contentType || 'conteudo';
+
+  // Build the platformSummaries example for the JSON schema
+  const platformSummariesExample = mediaTypes.map(p => {
+    const pName = p.trim();
+    return `    { "platform": "${pName}", "summary": "Analise direta e prescritiva para ${pName.toUpperCase()}. DEVE comecar com 'Seu ${attachmentType === 'image' ? 'imagem' : attachmentType === 'video' ? 'video' : attachmentType === 'audio' ? 'audio' : 'conteudo'}...' Max 350 chars." }`;
+  }).join(',\n');
 
   const systemPrompt = `Voce e um CMO (Chief Marketing Officer) de altissimo nivel, especialista em performance de conteudo politico. Voce NAO analisa opiniao politica — voce analisa PERFORMANCE DE CONTEUDO. Seu trabalho e dizer ao candidato exatamente o que fazer para que o material performe melhor.
 
 Voce e PRESCRITIVO, nao descritivo. Voce COMANDA o caminho, nao descreve o que aconteceu. Use verbos no imperativo: "Faca X", "Ajuste Y", "Elimine Z".
 
 CONTEXTO DO MATERIAL:
-- Plataforma: ${mediaLabel.toUpperCase()}
+- Plataformas selecionadas: ${mediaLabel.toUpperCase()}
+- Tipo de midia enviada: ${attachmentLabel}
 - Posicionamento ideologico do candidato: ${ideologyLabel}
 - Regiao alvo: ${regionLabel}
+
+TIPO DE MIDIA — COMO REFERENCIAR:
+O usuario enviou: ${attachmentLabel}. Em CADA platformSummary, SEMPRE referencie diretamente o que foi enviado:
+- Se IMAGEM: comece com "Sua imagem...", fale sobre composicao, legenda, CTA visual, enquadramento
+- Se VIDEO: comece com "Seu video...", fale sobre hook, roteiro, retencao, cortes, CTA
+- Se AUDIO: comece com "Seu audio...", fale sobre abertura, tom de voz, ritmo, clareza, CTA
+- Se TEXTO: comece com "Seu conteudo...", fale sobre copy, estrutura, gancho, chamada
 
 ${platformBlock}
 
@@ -164,7 +224,18 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
 
 {
   "headline": "Frase curta e direta de impacto, orientada a acao. Maximo 20 palavras. Estilo McKinsey.",
-  "summary": "Guia pratico dizendo o que a pessoa precisa fazer para melhorar ESTA publicacao (maximo 250 caracteres). OBRIGATORIO: inclua pelo menos UMA frase/chamada alternativa entre aspas simples que a pessoa possa copiar e usar. Exemplo: Troque a legenda por algo mais direto como 'Voce sabia que 3 em cada 10 familias perderam renda esse ano?' — isso puxa emocao e gera compartilhamento.",
+  "platformSummaries": [
+${platformSummariesExample}
+  ],
+  "summary": "Resumo geral consolidado (fallback). Guia pratico do que melhorar. Max 250 chars. Inclua frase copiavel entre aspas simples.",
+  "dashboardHighlights": [
+    {
+      "segmentName": "Nome do segmento (ex: Evangelicos)",
+      "type": "high_approval|high_rejection|high_neutrality",
+      "percentage": 90,
+      "description": "Frase impactante e direta (ex: '92% dos evangelicos aprovaram — este e seu publico-chave')"
+    }
+  ],
   "score": 6.5,
   "tags": ["${mediaLabel} · ${contentMeta?.region?.toUpperCase() || 'BR'}", "${contentTypeLabel} · Tema do conteudo"],
   "stats": [
@@ -205,24 +276,32 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
 }
 
 REGRAS DO JSON:
+- "platformSummaries": EXATAMENTE ${mediaTypes.length} item(ns), um para CADA plataforma selecionada: ${mediaTypes.join(', ')}. Cada summary e uma ANALISE INDEPENDENTE e FOCAL para aquele canal. CADA summary DEVE:
+  1. Comecar referenciando o tipo de midia enviada ("Seu video...", "Sua imagem...", "Seu audio...", "Seu conteudo...")
+  2. Apontar diretamente o que NAO esta funcionando naquele canal especifico — ser DIRETO e ANALITICO
+  3. Dar pelo menos UMA recomendacao prescritiva com dados dos segmentos demograficos
+  4. Incluir pelo menos UMA frase/chamada copiavel entre aspas simples
+  5. NAO repetir a mesma analise entre canais — cada canal tem regras DISTINTAS e a analise deve refletir isso
+  6. Maximo 350 caracteres por summary
+- Foco por canal: Instagram = hook visual, legenda, formato (Reels/Carrossel); YouTube = thumbnail, titulo, retencao, SEO; TikTok = hook imediato, trend, linguagem informal; TV = mensagem unica, emocao, repeticao; Radio = audio puro, jingle, tom; Outdoor = brevidade (7 palavras), contraste; Impresso = hierarquia visual, titulo
+- "summary": fallback geral caso o frontend nao suporte platformSummaries. Max 250 chars com frase copiavel
+- "dashboardHighlights": os 3-5 dados mais EXTREMOS e surpreendentes do dashboard. Use os PONTOS DE DESTAQUE fornecidos no contexto. Cada item deve ter segmentName, type (high_approval/high_rejection/high_neutrality), percentage (inteiro), description (frase impactante). Se nenhum ponto extremo foi fornecido, identifique os segmentos com MAIOR variacao no breakdown demografico
 - "score": nota de 0.0 a 10.0 avaliando a performance geral do conteudo (considere aprovacao, engajamento potencial e adequacao a plataforma)
 - "tags": EXATAMENTE 2 tags — primeira: plataforma + regiao, segunda: tipo de conteudo + tema principal
-- "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas credIveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
+- "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas crediveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
 - "recommendations": EXATAMENTE 5 itens. As 3 PRIMEIRAS (prioridade) devem melhorar A MIDIA ENVIADA sem mudar formato. As 2 ULTIMAS (importante/oportunidade) podem sugerir formatos complementares como estrategia avancada. Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout. O campo "gain" e CRITICO — deve mostrar o GANHO CONCRETO que o candidato tera se seguir a recomendacao (ex: "+40% alcance organico", "+2x compartilhamentos", "Ativa 35% do Nordeste"). SEMPRE com numero/porcentagem
-- "projectedScore": nota projetada de 0.0 a 10.0 se TODAS as recomendacoes forem seguidas. Deve ser visivelmente maior que o score atual (diferença minima de 1.5 pontos)
+- "projectedScore": nota projetada de 0.0 a 10.0 se TODAS as recomendacoes forem seguidas. Deve ser visivelmente maior que o score atual (diferenca minima de 1.5 pontos)
 - "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
 - "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
 - "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
 
-REGRA CRITICA — DOIS NIVEIS DE RECOMENDACAO:
-
-NIVEL 1 — SUMMARY (paragrafo do chat, visivel imediatamente):
-- O "summary" foca EXCLUSIVAMENTE em melhorar A MIDIA QUE FOI ENVIADA. Nao sugira mudar de formato.
+REGRA CRITICA — SENSIBILIDADE AO TIPO DE MIDIA:
+- O "summary" e cada "platformSummary" focam EXCLUSIVAMENTE em melhorar A MIDIA QUE FOI ENVIADA (${attachmentLabel}). Nao sugira mudar de formato.
 - Se enviou IMAGEM: melhore a legenda, a copy, o CTA, a composicao. Trabalhe COM aquela imagem.
 - Se enviou VIDEO: melhore o hook, o roteiro, as legendas, o CTA. Trabalhe COM aquele video.
 - Se enviou AUDIO: melhore o tom, a abertura, o CTA. Trabalhe COM aquele audio.
-- O "summary" DEVE incluir pelo menos UMA frase/chamada alternativa concreta entre aspas simples (ex: 'Voce sabe quantos policiais morreram esse ano?'). Essa frase e para o usuario copiar e usar NA MESMA MIDIA.
-- NUNCA no summary sugira trocar o formato (ex: se enviou imagem, nao diga "grave um video").
+- Se enviou TEXTO: melhore o copy, o gancho, a estrutura, o CTA. Trabalhe COM aquele texto.
+- NUNCA sugira trocar o formato (ex: se enviou imagem, nao diga "grave um video") nos summaries.
 
 NIVEL 2 — RECOMMENDATIONS (analise expandida, visivel quando o usuario clica "ver mais"):
 - As primeiras 3 recomendacoes (prioridade) devem ser para melhorar A MIDIA ENVIADA (mesmo formato).
@@ -233,7 +312,7 @@ REGRAS GERAIS:
 - Portugues brasileiro, tom de CMO senior — direto, assertivo, sem rodeios
 - NUNCA analise se a opiniao e certa ou errada — analise apenas PERFORMANCE
 - Cada recomendacao deve citar dados especificos (grupos demograficos, porcentagens)
-- TODA sugestao deve ser contextualizada para ${mediaLabel.toUpperCase()}
+- TODA sugestao deve ser contextualizada para as plataformas selecionadas
 - Considere o posicionamento ideologico: sugestoes devem ser coerentes com o posicionamento ${ideologyLabel} do candidato
 - Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
 - RESPONDA APENAS O JSON, nada mais. Sem \`\`\`json, sem explicacoes, APENAS o objeto JSON.`;
@@ -248,13 +327,14 @@ RESULTADO GERAL:
 
 BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
+${highlightsBlock}
 
 Produza a analise de performance no formato JSON especificado.`;
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-20250514',
-      max_tokens: 2500,
+      max_tokens: 4000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });

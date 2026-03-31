@@ -1,5 +1,5 @@
 // Arena PWA — Analysis Summary + Expandable Details
-// With copy button on suggested phrases
+// With per-platform summaries, dashboard highlights, and copy buttons
 
 'use client';
 
@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check,
   MessageCircle, Target, Globe, Video, Mic, Image, Layout, MapPin, Lightbulb,
+  Instagram, Youtube, Tv, Radio, Megaphone, FileText, Search,
 } from 'lucide-react';
 
 // Map icon names from API to Lucide components
@@ -23,6 +24,18 @@ const ICON_MAP: Record<string, React.ComponentType<any>> = {
   image: Image,
   layout: Layout,
 };
+
+// Platform display config
+const PLATFORM_CONFIG: Record<string, { label: string; color: string; Icon: React.ComponentType<any> }> = {
+  instagram: { label: 'Instagram', color: '#e879f9', Icon: Instagram },
+  youtube: { label: 'YouTube', color: '#f87171', Icon: Youtube },
+  tiktok: { label: 'TikTok', color: '#22d3ee', Icon: Video },
+  tv: { label: 'TV', color: '#38bdf8', Icon: Tv },
+  radio: { label: 'Rádio', color: '#fbbf24', Icon: Radio },
+  outdoor: { label: 'Outdoor', color: '#34d399', Icon: Megaphone },
+  impresso: { label: 'Impresso', color: '#a1a1aa', Icon: FileText },
+};
+
 import type { AnaliseData } from '../types';
 import { ScoreRing } from './ScoreRing';
 import { RadarChart } from './RadarChart';
@@ -40,11 +53,9 @@ function CopyButton({ text }: { text: string }) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      // Haptic feedback
       if (navigator.vibrate) navigator.vibrate(50);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback for older browsers
       const textarea = document.createElement('textarea');
       textarea.value = text;
       document.body.appendChild(textarea);
@@ -93,11 +104,10 @@ function CopyablePhrase({ text }: { text: string }) {
 }
 
 // ── Extract quoted phrases from text ──
-// Matches: "...", "...", «...», '...' (single quotes around phrases > 10 chars)
 function extractPhrases(text: string): { before: string; phrases: string[]; after: string } {
   const patterns = [
-    /[""«]([^""»]+)[""»]/g,           // double/smart quotes
-    /(?<!\w)'([^']{10,}[?!.]?)'(?!\w)/g,  // single quotes (not contractions)
+    /["\u201C\u201D\u00AB]([^"\u201C\u201D\u00BB]+)["\u201C\u201D\u00BB]/g,
+    /(?<!\w)'([^']{10,}[?!.]?)'(?!\w)/g,
   ];
   const phrases: string[] = [];
   for (const regex of patterns) {
@@ -112,13 +122,97 @@ function extractPhrases(text: string): { before: string; phrases: string[]; afte
   return { before: text, phrases, after: '' };
 }
 
+// ── Platform Summary Bubble ──
+function PlatformSummaryBubble({ platform, summary }: { platform: string; summary: string }) {
+  const config = PLATFORM_CONFIG[platform] || { label: platform, color: '#a1a1aa', Icon: Globe };
+  const { label, color, Icon } = config;
+  const { phrases } = extractPhrases(summary);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4 }}
+      className="max-w-[88%] self-start rounded-2xl rounded-bl-sm p-3 bg-white/[0.03] border border-white/[0.06]"
+    >
+      {/* Platform badge */}
+      <div className="flex items-center gap-1.5 mb-2">
+        <div
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full"
+          style={{ backgroundColor: `${color}15`, border: `0.5px solid ${color}30` }}
+        >
+          <Icon size={12} style={{ color }} />
+          <span className="text-[11px] font-bold tracking-wide" style={{ color }}>
+            {label}
+          </span>
+        </div>
+      </div>
+
+      {/* Summary text */}
+      <p className="text-sm text-zinc-200 leading-relaxed">
+        {summary}
+      </p>
+
+      {/* Copyable phrases */}
+      {phrases.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {phrases.map((phrase, i) => (
+            <CopyablePhrase key={i} text={phrase} />
+          ))}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+// ── Dashboard Highlights Section ──
+function DashboardHighlights({ highlights }: { highlights: AnaliseData['dashboardHighlights'] }) {
+  if (!highlights || highlights.length === 0) return null;
+
+  const typeColors: Record<string, string> = {
+    high_approval: '#34d399',
+    high_rejection: '#fb7185',
+    high_neutrality: '#fbbf24',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.1 }}
+      className="max-w-[88%] self-start rounded-2xl rounded-bl-sm p-3 bg-white/[0.03] border border-white/[0.06]"
+    >
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <Search size={13} className="text-amber-400" />
+        <span className="text-[11px] font-bold text-amber-400 tracking-wide">Pontos de Destaque</span>
+      </div>
+      <div className="space-y-2">
+        {highlights.map((h, i) => {
+          const dotColor = typeColors[h.type] || '#fbbf24';
+          return (
+            <div key={i} className="flex items-start gap-2.5">
+              <div
+                className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                style={{ backgroundColor: dotColor }}
+              />
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                {h.description}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
 // ── Recommendation Row with copy on phrases ──
 function RecommendationRow({ rec, index }: { rec: AnaliseData['recommendations'][0]; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const priorityColors: Record<string, string> = {
     alta: '#fb7185',
     prioridade: '#fb7185',
-    média: '#fbbf24',
+    'média': '#fbbf24',
     importante: '#fbbf24',
     baixa: '#34d399',
     oportunidade: '#34d399',
@@ -212,39 +306,58 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
 export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
   const [showFull, setShowFull] = useState(false);
 
-  // Extract copyable phrases from the summary text
+  const hasPlatformSummaries = analiseData.platformSummaries && analiseData.platformSummaries.length > 0;
+
+  // Fallback: extract copyable phrases from the generic summary
   const summaryText = analiseData.summary || analiseData.headline || '';
   const { phrases: summaryPhrases } = extractPhrases(summaryText);
 
   return (
     <>
-      {/* Summary bubble with copyable phrases */}
+      {/* Platform-specific summaries OR generic fallback */}
+      {hasPlatformSummaries ? (
+        <div className="space-y-2">
+          {analiseData.platformSummaries!.map((ps, i) => (
+            <PlatformSummaryBubble key={i} platform={ps.platform} summary={ps.summary} />
+          ))}
+        </div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="max-w-[88%] self-start rounded-2xl rounded-bl-sm p-3 bg-white/[0.03] border border-white/[0.06]"
+        >
+          <div className="flex items-center gap-1.5 mb-2">
+            <Sparkles size={14} className="text-emerald-400" />
+            <span className="text-[11px] font-bold text-emerald-400 tracking-wide">Análise pronta</span>
+          </div>
+          <p className="text-sm text-zinc-200 leading-relaxed">
+            {summaryText}
+          </p>
+          {summaryPhrases.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {summaryPhrases.map((phrase, i) => (
+                <CopyablePhrase key={i} text={phrase} />
+              ))}
+            </div>
+          )}
+        </motion.div>
+      )}
+
+      {/* Dashboard Highlights */}
+      <DashboardHighlights highlights={analiseData.dashboardHighlights} />
+
+      {/* Expand/Collapse button */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="max-w-[88%] self-start rounded-2xl rounded-bl-sm p-3 bg-white/[0.03] border border-white/[0.06]"
+        transition={{ duration: 0.4, delay: 0.2 }}
+        className="max-w-[88%] self-start"
       >
-        <div className="flex items-center gap-1.5 mb-2">
-          <Sparkles size={14} className="text-emerald-400" />
-          <span className="text-[11px] font-bold text-emerald-400 tracking-wide">Análise pronta</span>
-        </div>
-        <p className="text-sm text-zinc-200 leading-relaxed">
-          {summaryText}
-        </p>
-
-        {/* Copyable phrases extracted from summary */}
-        {summaryPhrases.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {summaryPhrases.map((phrase, i) => (
-              <CopyablePhrase key={i} text={phrase} />
-            ))}
-          </div>
-        )}
-
         <button
           onClick={() => setShowFull(!showFull)}
-          className="flex items-center gap-1.5 mt-3 pt-2.5 border-t border-white/[0.06] w-full"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] transition-all duration-200"
         >
           {showFull ? <ChevronUp size={14} className="text-emerald-400" /> : <ChevronDown size={14} className="text-emerald-400" />}
           <span className="text-xs font-semibold text-emerald-400">
@@ -345,7 +458,6 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
                           <p className="text-xs text-emerald-400 mt-0.5">{step.benefit}</p>
                         </div>
                       </div>
-                      {/* Copy the full step as actionable text */}
                       <div className="flex justify-end mt-2">
                         <CopyButton text={`${step.title}: ${step.benefit}`} />
                       </div>
