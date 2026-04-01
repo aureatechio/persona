@@ -12,7 +12,7 @@ export default function CalibrationMonitor() {
       </div>
 
       {/* Step detail (fills remaining space, scrollable) */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-y-auto">
         <StepDetail />
       </div>
     </div>
