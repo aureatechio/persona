@@ -731,9 +731,7 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
             )}
 
             {/* Specialist Panel */}
-            {analiseData.specialistPanel && (
-              <SpecialistPanelSection panel={analiseData.specialistPanel} />
-            )}
+            {/* Specialist panel removed from UI — feeds Duda's analysis behind the scenes */}
 
             {/* Recommendations */}
             {analiseData.recommendations?.length > 0 && (
