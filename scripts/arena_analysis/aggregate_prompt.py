@@ -183,13 +183,17 @@ OUTPUT JSON SCHEMA (responda EXATAMENTE neste formato):
   ],
 
   "stateBreakdown": {{
-    "SP": {{"count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}},
-    ...
+    "AC": {{"count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}},
+    "AL": {{}}, "AM": {{}}, "AP": {{}}, "BA": {{}}, "CE": {{}}, "DF": {{}}, "ES": {{}},
+    "GO": {{}}, "MA": {{}}, "MG": {{}}, "MS": {{}}, "MT": {{}}, "PA": {{}}, "PB": {{}},
+    "PE": {{}}, "PI": {{}}, "PR": {{}}, "RJ": {{}}, "RN": {{}}, "RO": {{}}, "RR": {{}},
+    "RS": {{}}, "SC": {{}}, "SE": {{}}, "SP": {{}}, "TO": {{}}
   }},
 
   "cityBreakdown": {{
-    "SP": [{{"city": "Sao Paulo", "lat": -23.55, "lng": -46.63, "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}],
-    ...
+    "SP": [{{"city": "Sao Paulo", "lat": -23.55, "lng": -46.63, "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
+    "RJ": [{{"city": "Rio de Janeiro", ...}}, ...],
+    ... (top 5 cidades por estado, apenas estados com personas)
   }}
 }}
 
@@ -199,7 +203,8 @@ REGRAS DE VALIDACAO:
 - Soma dos counts de todos os labels em cada segmento = {total_personas}
 - avgScore = media ponderada dos scores (0-10) de todas as personas no segmento
 - Comentarios: use as persona_samples fornecidas como base (nome, cidade, estado, geracao, etc.)
-- stateBreakdown e cityBreakdown devem refletir a distribuicao geografica do perfil
+- stateBreakdown DEVE incluir TODOS os 27 estados brasileiros (AC,AL,AM,AP,BA,CE,DF,ES,GO,MA,MG,MS,MT,PA,PB,PE,PI,PR,RJ,RN,RO,RR,RS,SC,SE,SP,TO) com counts proporcionais a distribuicao geografica do perfil
+- cityBreakdown: top 3-5 cidades por estado (apenas estados com mais personas)
 """
 
 
