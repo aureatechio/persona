@@ -1,10 +1,11 @@
-// Arena PWA — Platform selector with platform icons
+// Arena PWA — Platform selector with media-aware filtering
+// Platforms incompatible with the uploaded media type are visually separated
 
 'use client';
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, Twitter } from 'lucide-react';
+import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, Twitter, Image, Video, Mic, FileText, Lock, Check } from 'lucide-react';
 import { PLATFORMS } from '../constants';
 
 // Platform icons mapping
@@ -35,6 +36,13 @@ const PLATFORM_COMPATIBILITY: Record<string, string[]> = {
   text: ['x', 'impresso'],
 };
 
+const MEDIA_LABELS: Record<string, { label: string; icon: React.ComponentType<any>; color: string }> = {
+  image: { label: 'Imagem', icon: Image, color: '#e879f9' },
+  video: { label: 'Vídeo', icon: Video, color: '#f87171' },
+  audio: { label: 'Áudio', icon: Mic, color: '#fbbf24' },
+  text: { label: 'Texto', icon: FileText, color: '#a3a3a3' },
+};
+
 interface PlatformSelectorProps {
   visible: boolean;
   onClose: () => void;
@@ -45,8 +53,13 @@ interface PlatformSelectorProps {
 export function PlatformSelector({ visible, onClose, onConfirm, attachmentType = 'text' }: PlatformSelectorProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const allowedIds = PLATFORM_COMPATIBILITY[attachmentType] || PLATFORM_COMPATIBILITY.text;
+  const media = MEDIA_LABELS[attachmentType] || MEDIA_LABELS.text;
+  const MediaIcon = media.icon;
 
-  // Reset selection when attachment type changes
+  // Split platforms into available and unavailable
+  const availablePlatforms = PLATFORMS.filter((p) => allowedIds.includes(p.id));
+  const unavailablePlatforms = PLATFORMS.filter((p) => !allowedIds.includes(p.id));
+
   useEffect(() => {
     setSelected([]);
   }, [attachmentType]);
@@ -81,47 +94,78 @@ export function PlatformSelector({ visible, onClose, onConfirm, attachmentType =
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-2xl border-t border-white/[0.08] rounded-t-2xl"
+            className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-2xl border-t border-white/[0.08] rounded-t-3xl"
             style={{ paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}
           >
             {/* Handle */}
-            <div className="flex justify-center pt-3 pb-2">
+            <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-white/[0.15]" />
             </div>
 
             <div className="px-5 pb-4">
-              <h3 className="text-lg font-bold text-white tracking-tight mb-1">Onde será publicado?</h3>
-              <p className="text-xs text-zinc-500 mb-5">
-                {attachmentType === 'text'
-                  ? 'Selecione as plataformas para análise específica'
-                  : `Plataformas compatíveis com ${attachmentType === 'image' ? 'imagem' : attachmentType === 'video' ? 'vídeo' : 'áudio'}`}
-              </p>
+              {/* Header with media type badge */}
+              <div className="flex items-start justify-between mb-5">
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Onde será publicado?</h3>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">Canais compatíveis com seu conteúdo</p>
+                </div>
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.15, type: 'spring', stiffness: 500 }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border"
+                  style={{
+                    backgroundColor: `${media.color}10`,
+                    borderColor: `${media.color}30`,
+                  }}
+                >
+                  <MediaIcon size={13} style={{ color: media.color }} />
+                  <span className="text-[11px] font-bold" style={{ color: media.color }}>
+                    {media.label}
+                  </span>
+                </motion.div>
+              </div>
 
-              {/* Platform grid with icons */}
-              <div className="grid grid-cols-3 gap-2.5 mb-5">
-                {PLATFORMS.map((p) => {
+              {/* Available platforms */}
+              <div className={`grid gap-2.5 mb-3 ${availablePlatforms.length <= 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {availablePlatforms.map((p, i) => {
                   const isSelected = selected.includes(p.id);
-                  const isDisabled = !allowedIds.includes(p.id);
                   const Icon = PLATFORM_ICONS[p.id];
 
                   return (
-                    <button
+                    <motion.button
                       key={p.id}
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.05 + i * 0.06, duration: 0.35, ease: [0.25, 1, 0.5, 1] }}
                       onClick={() => toggle(p.id)}
-                      disabled={isDisabled}
-                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all duration-200 ${
-                        isDisabled
-                          ? 'opacity-20 cursor-not-allowed border-white/[0.03] bg-white/[0.01]'
-                          : isSelected
-                            ? 'bg-white/[0.06] border-white/[0.15] active:scale-95'
-                            : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04] active:scale-95'
+                      className={`relative flex flex-col items-center gap-2 py-3.5 rounded-2xl border transition-all duration-200 active:scale-[0.96] ${
+                        isSelected
+                          ? 'border-white/[0.2] bg-white/[0.07]'
+                          : 'border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]'
                       }`}
-                      style={isSelected && !isDisabled ? { boxShadow: `0 0 20px -5px ${p.color}40` } : undefined}
+                      style={isSelected ? {
+                        boxShadow: `0 0 24px -6px ${p.color}35, inset 0 1px 0 ${p.color}15`,
+                        borderColor: `${p.color}40`,
+                      } : undefined}
                     >
+                      {/* Selected checkmark */}
+                      {isSelected && (
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: p.color }}
+                        >
+                          <Check size={11} className="text-black" strokeWidth={3} />
+                        </motion.div>
+                      )}
+
                       <div
-                        className="w-10 h-10 rounded-xl flex items-center justify-center"
+                        className="w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200"
                         style={{
                           backgroundColor: isSelected ? `${p.color}20` : 'rgba(255,255,255,0.04)',
+                          border: isSelected ? `1px solid ${p.color}30` : '1px solid rgba(255,255,255,0.04)',
                         }}
                       >
                         {p.id === 'tiktok' ? (
@@ -132,26 +176,75 @@ export function PlatformSelector({ visible, onClose, onConfirm, attachmentType =
                           <span className="text-sm font-bold" style={{ color: isSelected ? p.color : '#71717a' }}>{p.label[0]}</span>
                         )}
                       </div>
-                      <span className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-zinc-500'}`}>
+                      <span className={`text-[11px] font-semibold transition-colors duration-200 ${isSelected ? 'text-white' : 'text-zinc-500'}`}>
                         {p.label}
                       </span>
-                    </button>
+                    </motion.button>
                   );
                 })}
               </div>
 
+              {/* Unavailable platforms */}
+              {unavailablePlatforms.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  {/* Divider */}
+                  <div className="flex items-center gap-3 my-3">
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-zinc-800/60 to-transparent" />
+                    <div className="flex items-center gap-1.5">
+                      <Lock size={10} className="text-zinc-600" />
+                      <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-wider">
+                        Não compatível com {media.label.toLowerCase()}
+                      </span>
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-zinc-800/60 to-transparent" />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    {unavailablePlatforms.map((p) => {
+                      const Icon = PLATFORM_ICONS[p.id];
+                      return (
+                        <div
+                          key={p.id}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                        >
+                          <div className="w-5 h-5 rounded flex items-center justify-center opacity-30">
+                            {p.id === 'tiktok' ? (
+                              <TikTokIcon size={13} color="#52525b" />
+                            ) : Icon ? (
+                              <Icon size={13} className="text-zinc-700" />
+                            ) : null}
+                          </div>
+                          <span className="text-[10px] font-medium text-zinc-700 line-through decoration-zinc-700/50">
+                            {p.label}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+
               {/* Confirm */}
-              <button
+              <motion.button
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
                 onClick={handleConfirm}
                 disabled={selected.length === 0}
-                className={`w-full py-3.5 rounded-xl font-semibold text-sm active:scale-[0.98] transition-all duration-200 ${
+                className={`w-full py-3.5 rounded-xl font-semibold text-sm mt-5 active:scale-[0.98] transition-all duration-200 ${
                   selected.length > 0
                     ? 'bg-emerald-500 text-black shadow-lg shadow-emerald-500/25 hover:bg-emerald-400'
                     : 'bg-white/[0.04] text-zinc-600 cursor-not-allowed'
                 }`}
               >
-                {selected.length > 0 ? `Continuar (${selected.length}) →` : 'Selecione ao menos uma'}
-              </button>
+                {selected.length > 0
+                  ? `Analisar em ${selected.length} ${selected.length === 1 ? 'canal' : 'canais'} →`
+                  : 'Selecione ao menos um canal'}
+              </motion.button>
             </div>
           </motion.div>
         </>
