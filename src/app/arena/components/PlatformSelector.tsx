@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper } from 'lucide-react';
 import { PLATFORMS } from '../constants';
@@ -26,16 +26,32 @@ function TikTokIcon({ size = 20, color = '#fff' }: { size?: number; color?: stri
   );
 }
 
+// Plataformas compativeis por tipo de arquivo
+const PLATFORM_COMPATIBILITY: Record<string, string[]> = {
+  image: ['instagram', 'outdoor', 'impresso'],
+  video: ['instagram', 'youtube', 'tiktok', 'tv'],
+  audio: ['radio', 'youtube'],
+  text: ['instagram', 'youtube', 'tiktok', 'tv', 'radio', 'outdoor', 'impresso'],
+};
+
 interface PlatformSelectorProps {
   visible: boolean;
   onClose: () => void;
   onConfirm: (platforms: string[]) => void;
+  attachmentType?: 'image' | 'video' | 'audio' | 'text';
 }
 
-export function PlatformSelector({ visible, onClose, onConfirm }: PlatformSelectorProps) {
+export function PlatformSelector({ visible, onClose, onConfirm, attachmentType = 'text' }: PlatformSelectorProps) {
   const [selected, setSelected] = useState<string[]>([]);
+  const allowedIds = PLATFORM_COMPATIBILITY[attachmentType] || PLATFORM_COMPATIBILITY.text;
+
+  // Reset selection when attachment type changes
+  useEffect(() => {
+    setSelected([]);
+  }, [attachmentType]);
 
   const toggle = (id: string) => {
+    if (!allowedIds.includes(id)) return;
     setSelected((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     );
@@ -74,24 +90,32 @@ export function PlatformSelector({ visible, onClose, onConfirm }: PlatformSelect
 
             <div className="px-5 pb-4">
               <h3 className="text-lg font-bold text-white tracking-tight mb-1">Onde será publicado?</h3>
-              <p className="text-xs text-zinc-500 mb-5">Selecione as plataformas para análise específica</p>
+              <p className="text-xs text-zinc-500 mb-5">
+                {attachmentType === 'text'
+                  ? 'Selecione as plataformas para análise específica'
+                  : `Plataformas compatíveis com ${attachmentType === 'image' ? 'imagem' : attachmentType === 'video' ? 'vídeo' : 'áudio'}`}
+              </p>
 
               {/* Platform grid with icons */}
               <div className="grid grid-cols-3 gap-2.5 mb-5">
                 {PLATFORMS.map((p) => {
                   const isSelected = selected.includes(p.id);
+                  const isDisabled = !allowedIds.includes(p.id);
                   const Icon = PLATFORM_ICONS[p.id];
 
                   return (
                     <button
                       key={p.id}
                       onClick={() => toggle(p.id)}
-                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all duration-200 active:scale-95 ${
-                        isSelected
-                          ? 'bg-white/[0.06] border-white/[0.15]'
-                          : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04]'
+                      disabled={isDisabled}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all duration-200 ${
+                        isDisabled
+                          ? 'opacity-20 cursor-not-allowed border-white/[0.03] bg-white/[0.01]'
+                          : isSelected
+                            ? 'bg-white/[0.06] border-white/[0.15] active:scale-95'
+                            : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.04] active:scale-95'
                       }`}
-                      style={isSelected ? { boxShadow: `0 0 20px -5px ${p.color}40` } : undefined}
+                      style={isSelected && !isDisabled ? { boxShadow: `0 0 20px -5px ${p.color}40` } : undefined}
                     >
                       <div
                         className="w-10 h-10 rounded-xl flex items-center justify-center"

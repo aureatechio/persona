@@ -693,7 +693,20 @@ export default function ArenaPage() {
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />
       <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onFileSelected={handleFileFromMenu} onRecordVideo={handleRecordVideo} />
-      <PlatformSelector visible={showPlatformSelector} onClose={() => setShowPlatformSelector(false)} onConfirm={handlePlatformConfirm} />
+      <PlatformSelector
+        visible={showPlatformSelector}
+        onClose={() => setShowPlatformSelector(false)}
+        onConfirm={handlePlatformConfirm}
+        attachmentType={
+          attachments.length > 0
+            ? attachments[0].type === 'image'
+              ? 'image'
+              : attachments[0].mimeType?.startsWith('audio/')
+                ? 'audio'
+                : 'video'
+            : 'text'
+        }
+      />
     </div>
   );
 }
