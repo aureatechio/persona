@@ -59,17 +59,20 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
       return;
     }
 
-    // Phase 2: personas done, analysis generating (80% → slowly to 97%)
+    // Phase 2: personas done, analysis generating (80% → smoothly to 99%, NEVER stops)
     if (personasDone && analiseLoading) {
       setDisplayProgress((prev) => Math.max(prev, 0.8));
-      // Tick up slowly from current to 97%
       if (analysisTicker.current) clearInterval(analysisTicker.current);
       analysisTicker.current = setInterval(() => {
         setDisplayProgress((prev) => {
-          if (prev >= 0.97) { clearInterval(analysisTicker.current!); return 0.97; }
-          return prev + 0.003; // ~0.3% per tick (every 200ms = ~30s to reach 97%)
+          if (prev < 0.80) return 0.80;
+          // Fast phase: 80→95% in ~15s (0.005 per 150ms)
+          if (prev < 0.95) return Math.min(prev + 0.005, 0.95);
+          // Slow phase: 95→99% crawls (0.001 per 150ms = ~60s)
+          // NEVER stops, NEVER hits 100%
+          return Math.min(prev + 0.001, 0.99);
         });
-      }, 200);
+      }, 150);
       return () => { if (analysisTicker.current) clearInterval(analysisTicker.current); };
     }
 
@@ -240,7 +243,7 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
           className="h-full rounded bg-emerald-400"
           initial={{ width: 0 }}
           animate={{ width: `${Math.round(progress * 100)}%` }}
-          transition={{ duration: 2, ease: [0.33, 1, 0.68, 1] }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
 
