@@ -68,14 +68,18 @@ async def analyze(
     context: ContextResult | None,
     pre_classification: dict[str, Any] | None = None,
     ideological_frame: str | None = None,
+    geo_filter: dict[str, Any] | None = None,
+    total_personas_override: int | None = None,
 ) -> dict[str, Any]:
     """
     Analise agregada: 1 chamada a GPT-4o para derivar scores por segmento.
 
     Retorna dict no formato identico ao results_aggregator.aggregate_results().
+    geo_filter: {"state": "ES", "city": null} — filtra resultados para estado/cidade
+    total_personas_override: numero real de personas apos filtro geo
     """
     profile = await load_profile()
-    total = profile.get("total_personas", 20000)
+    total = total_personas_override or profile.get("total_personas", 20000)
 
     # Build context string
     ctx_str = ""
@@ -83,6 +87,16 @@ async def analyze(
         ctx_str = context.contexto or ""
         if ideological_frame:
             ctx_str += f"\n\nFRAME IDEOLOGICO:\n{ideological_frame}"
+
+    # Geo filter instruction
+    if geo_filter and geo_filter.get("state"):
+        state = geo_filter["state"]
+        city = geo_filter.get("city")
+        geo_instruction = f"\n\nFILTRO GEOGRAFICO ATIVO: Analise APENAS personas do estado {state}"
+        if city:
+            geo_instruction += f", cidade {city}"
+        geo_instruction += f".\nO total_personas e {total} (apenas desta regiao). stateBreakdown e cityBreakdown devem conter APENAS dados de {state}."
+        ctx_str += geo_instruction
 
     # Build user prompt
     user_prompt = build_user_prompt(

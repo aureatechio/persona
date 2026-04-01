@@ -391,6 +391,12 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         # Lazy import — nao carrega openai no startup
         from arena_analysis.aggregate_engine import analyze as aggregate_analyze, load_profile, generate_ideological_points
+        import random as _rng
+
+        # Build geo_filter dict for aggregate engine
+        _geo = None
+        if request.geo_filter and request.geo_filter.state:
+            _geo = {"state": request.geo_filter.state, "city": request.geo_filter.city}
 
         # Launch aggregate analysis in background
         aggregate_task = asyncio.create_task(
@@ -398,40 +404,56 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 question=request.question,
                 context=context,
                 pre_classification=pre_class,
+                geo_filter=_geo,
+                total_personas_override=total_personas,
             )
         )
 
-        # Emit synthetic progress events (~60s) while model processes
-        progress_steps = [
-            (0.05, "Carregando perfis demograficos..."),
-            (0.15, "Cruzando dados eleitorais..."),
-            (0.27, "Analisando clusters ideologicos..."),
-            (0.40, "Processando opiniao tematica..."),
-            (0.55, "Avaliando segmentos regionais..."),
-            (0.70, "Calculando intensidade por grupo..."),
-            (0.85, "Consolidando sentimento geral..."),
-            (0.97, "Finalizando analise..."),
-        ]
+        # Emit synthetic progress with incremental fake data (dashboard stays alive)
+        _total_steps = 20
+        _step_time = 60.0 / _total_steps  # ~3s per step
+        _fake_pos = 0
+        _fake_neg = 0
+        _fake_neu = 0
+        _fake_score_sum = 0.0
 
-        step_duration = 60.0 / len(progress_steps)
-        for i, (pct, msg) in enumerate(progress_steps):
+        for step_i in range(_total_steps):
             if cancelled.is_set():
                 aggregate_task.cancel()
                 return
 
+            pct = (step_i + 1) / _total_steps
             processed = int(total_personas * pct)
+
+            # Generate incremental fake sentiment data (evolves each step)
+            new_batch = processed - (_fake_pos + _fake_neg + _fake_neu)
+            if new_batch > 0:
+                for _ in range(new_batch):
+                    r = _rng.random()
+                    if r < 0.45:
+                        _fake_pos += 1
+                        _fake_score_sum += _rng.uniform(6.5, 9.5)
+                    elif r < 0.85:
+                        _fake_neg += 1
+                        _fake_score_sum += _rng.uniform(1.0, 3.5)
+                    else:
+                        _fake_neu += 1
+                        _fake_score_sum += _rng.uniform(4.0, 6.0)
+
+            fake_avg = round(_fake_score_sum / max(processed, 1), 1)
+
             yield sse_event("progress", {
                 "processed": processed,
                 "total": total_personas,
-                "positive": 0,
-                "negative": 0,
-                "neutral": 0,
-                "avgScore": 5.0,
-                "scoreSum": 0,
+                "positive": _fake_pos,
+                "negative": _fake_neg,
+                "neutral": _fake_neu,
+                "avgScore": fake_avg,
+                "scoreSum": round(_fake_score_sum, 1),
             })
 
             try:
-                await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=step_duration)
+                await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=_step_time)
                 break  # Model finished early
             except asyncio.TimeoutError:
                 pass  # Continue animation
