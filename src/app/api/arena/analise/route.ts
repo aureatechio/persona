@@ -342,15 +342,15 @@ ${platformSummariesExample}
   ],
   "projectedScore": 8.5,
   "insight": {
-    "title": "Dado surpreendente ou oportunidade oculta nos dados",
-    "description": "Contexto com numeros: X% aprova, Y% compartilha Z vezes mais que a media.",
-    "action": "Acao concreta e imediata que explora esse insight"
+    "title": "Dado surpreendente em 1 frase",
+    "description": "Contexto curto com numero. Max 80 chars.",
+    "action": "Acao simples que o candidato faz agora"
   },
   "nextSteps": [
     {
-      "title": "Acao concreta no imperativo",
-      "benefit": "Resultado esperado com metrica",
-      "deadline": "hoje|amanha|3 dias|essa semana|proximo ciclo"
+      "title": "O que fazer agora com esse material",
+      "benefit": "Resultado esperado",
+      "deadline": "hoje|amanha|essa semana"
     }
   ],
   "radar": {
@@ -392,10 +392,10 @@ REGRAS DO JSON:
 - "score": nota de 0.0 a 10.0 avaliando a performance geral do conteudo (considere aprovacao, engajamento potencial e adequacao a plataforma)
 - "tags": EXATAMENTE 2 tags — primeira: plataforma + regiao, segunda: tipo de conteudo + tema principal
 - "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas crediveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
-- "recommendations": EXATAMENTE 5 itens. As 3 PRIMEIRAS (prioridade) devem melhorar A MIDIA ENVIADA sem mudar formato. As 2 ULTIMAS (importante/oportunidade) podem sugerir formatos complementares como estrategia avancada. Icons disponiveis: video, message, map, sparkles, globe, target, trending, mic, image, layout. O campo "gain" e CRITICO — deve mostrar o GANHO CONCRETO que o candidato tera se seguir a recomendacao (ex: "+40% alcance organico", "+2x compartilhamentos", "Ativa 35% do Nordeste"). SEMPRE com numero/porcentagem
-- "projectedScore": nota projetada de 0.0 a 10.0 se TODAS as recomendacoes forem seguidas. Deve ser visivelmente maior que o score atual (diferenca minima de 1.5 pontos)
-- "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
-- "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
+- "recommendations": EXATAMENTE 3 itens, todos para melhorar A MIDIA ENVIADA (nao sugira outro formato). Cada um com sugestao de TEXTO PRONTO no "detail"
+- "projectedScore": nota projetada se seguir as recomendacoes (minimo 1.5 acima do score)
+- "insight": 1 dado surpreendente, curto e direto
+- "nextSteps": EXATAMENTE 2 passos simples (o que fazer AGORA com esse material)
 - "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
 - "specialistPanel": Se os PARECERES DOS ESPECIALISTAS foram fornecidos na mensagem, copie-os EXATAMENTE como recebidos no campo specialistPanel (com consensus, divergences e specialists). Se nao foram fornecidos, OMITA este campo
 
@@ -407,10 +407,10 @@ REGRA CRITICA — SENSIBILIDADE AO TIPO DE MIDIA:
 - Se enviou TEXTO: melhore o copy, o gancho, a estrutura, o CTA. Trabalhe COM aquele texto.
 - NUNCA sugira trocar o formato (ex: se enviou imagem, nao diga "grave um video") nos summaries.
 
-NIVEL 2 — RECOMMENDATIONS (analise expandida, visivel quando o usuario clica "ver mais"):
-- As primeiras 3 recomendacoes (prioridade) devem ser para melhorar A MIDIA ENVIADA (mesmo formato).
-- As ultimas 2 recomendacoes (importante/oportunidade) PODEM sugerir formatos complementares como estrategia avancada. Ex: "Alem desta imagem, considere gravar um Reels mostrando bastidores" — isso e uma SUGESTAO EXTRA, nao uma substituicao.
-- Deixe claro que sao sugestoes complementares, nao substituicoes.
+RECOMMENDATIONS (3 melhorias para o material enviado):
+- Todas sobre o MATERIAL ENVIADO (nunca sugira outro formato)
+- Cada uma com texto pronto entre aspas simples no campo "detail"
+- Prioridades: 1a = mais urgente, 3a = bonus
 
 REGRAS GERAIS:
 - Portugues brasileiro, tom da DUDA — direta, confiante, prescritiva, como consultora sentada com o candidato
@@ -488,8 +488,8 @@ Produza a analise de performance no formato JSON especificado.`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-20250514',
-      max_tokens: 3000,
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
