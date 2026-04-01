@@ -61,23 +61,22 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
       return;
     }
 
-    // Phase 2: personas done, waiting for or generating Duda analysis (70→99%)
-    // This covers BOTH the gap before analiseLoading=true AND during loading
+    // Phase 2: personas done → specialists + Duda running (70→99% over ~60s)
+    // Smooth deceleration: moves steadily, slows near end, NEVER stops
     if (personasDone) {
-      // Start ticker if not already running
       if (!analysisTicker.current) {
         setDisplayProgress((prev) => Math.max(prev, 0.7));
+        const startTime = Date.now();
         analysisTicker.current = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000; // seconds since phase 2 started
           setDisplayProgress((prev) => {
             if (prev < 0.70) return 0.70;
-            // Fast: 70→90% in ~20s
-            if (prev < 0.90) return Math.min(prev + 0.004, 0.90);
-            // Medium: 90→96% in ~30s
-            if (prev < 0.96) return Math.min(prev + 0.001, 0.96);
-            // Crawl: 96→99% very slowly (NEVER stops, NEVER hits 100%)
-            return Math.min(prev + 0.0003, 0.99);
+            // Logarithmic curve: fast start, smooth deceleration
+            // At 10s: ~82%, 20s: ~88%, 30s: ~92%, 40s: ~95%, 60s: ~97%, 120s: ~99%
+            const target = 0.70 + 0.29 * (1 - 1 / (1 + elapsed / 15));
+            return Math.max(prev, Math.min(target, 0.99));
           });
-        }, 150);
+        }, 200);
       }
       return () => {
         if (analysisTicker.current) { clearInterval(analysisTicker.current); analysisTicker.current = null; }
