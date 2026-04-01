@@ -304,7 +304,16 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
   );
 }
 
-// ── Specialist Icon Map ──
+// ── Gabinete Estratégico — Consultant Profiles ──
+
+const CONSULTANT_PROFILES: Record<string, { title: string; dept: string; color: string; initial: string }> = {
+  comunicacao_politica: { title: 'Consultor de Comunicação Política', dept: 'ESTRATÉGIA', color: '#818cf8', initial: 'CP' },
+  assuntos_religiosos: { title: 'Consultor de Segmentos Religiosos', dept: 'SEGMENTAÇÃO', color: '#fbbf24', initial: 'SR' },
+  marketing_digital: { title: 'Consultor de Performance Digital', dept: 'DIGITAL', color: '#22d3ee', initial: 'PD' },
+  psicologia_social: { title: 'Consultor de Comportamento Eleitoral', dept: 'INTELIGÊNCIA', color: '#a78bfa', initial: 'CE' },
+  compliance_legal: { title: 'Consultor Jurídico-Eleitoral', dept: 'COMPLIANCE', color: '#f87171', initial: 'JE' },
+};
+
 const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<any>> = {
   bullseye: Crosshair,
   church: Church,
@@ -321,172 +330,174 @@ const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> 
 };
 
 const RISK_LABELS: Record<string, string> = {
-  baixo: 'BAIXO',
-  medio: 'MEDIO',
-  alto: 'ALTO',
-  critico: 'CRITICO',
+  baixo: 'Sob controle',
+  medio: 'Atenção',
+  alto: 'Risco elevado',
+  critico: 'Ação imediata',
 };
 
-// ── Risk level bar (visual indicator) ──
-function RiskBar({ level }: { level: string }) {
-  const segments = ['baixo', 'medio', 'alto', 'critico'];
-  const activeIdx = segments.indexOf(level);
-  return (
-    <div className="flex gap-0.5 mt-1">
-      {segments.map((seg, i) => (
-        <div
-          key={seg}
-          className="h-[3px] flex-1 rounded-full transition-all duration-300"
-          style={{
-            backgroundColor: i <= activeIdx
-              ? RISK_COLORS[seg]?.text || '#52525b'
-              : 'rgba(255,255,255,0.04)',
-            opacity: i <= activeIdx ? 1 : 0.5,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
-// ── Specialist Card (expandable, redesigned) ──
-function SpecialistCard({ specialist, index }: { specialist: SpecialistInsight; index: number }) {
-  const [expanded, setExpanded] = useState(false);
+// ── Consultant Briefing Card ──
+function ConsultantBriefing({ specialist, index }: { specialist: SpecialistInsight; index: number }) {
+  const [open, setOpen] = useState(false);
+  const profile = CONSULTANT_PROFILES[specialist.id] || {
+    title: specialist.name, dept: 'ANÁLISE', color: '#a1a1aa', initial: specialist.name.slice(0, 2).toUpperCase(),
+  };
   const Icon = SPECIALIST_ICON_MAP[specialist.emoji] || Users;
   const risk = RISK_COLORS[specialist.riskLevel] || RISK_COLORS.medio;
   const riskLabel = RISK_LABELS[specialist.riskLevel] || specialist.riskLevel;
 
-  const priorityConfig: Record<string, { color: string; label: string }> = {
-    urgente: { color: '#fb7185', label: 'URGENTE' },
-    importante: { color: '#fbbf24', label: 'IMPORTANTE' },
-    oportunidade: { color: '#34d399', label: 'OPORTUNIDADE' },
+  const prioColors: Record<string, string> = {
+    urgente: '#fb7185',
+    importante: '#fbbf24',
+    oportunidade: '#34d399',
   };
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.08, duration: 0.3 }}
+      initial={{ opacity: 0, x: -12 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.1 + index * 0.1, duration: 0.4, ease: [0.25, 1, 0.5, 1] }}
     >
       <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full text-left rounded-2xl border transition-all duration-300 overflow-hidden"
+        onClick={() => setOpen(!open)}
+        className="w-full text-left rounded-2xl overflow-hidden transition-all duration-300"
         style={{
-          backgroundColor: expanded ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)',
-          borderColor: expanded ? `${risk.text}25` : 'rgba(255,255,255,0.06)',
+          backgroundColor: open ? 'rgba(255,255,255,0.025)' : 'rgba(255,255,255,0.012)',
+          border: `1px solid ${open ? `${profile.color}20` : 'rgba(255,255,255,0.05)'}`,
         }}
       >
-        {/* Compact header */}
-        <div className="flex items-center gap-3 p-3.5">
-          {/* Avatar */}
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 relative"
-            style={{ backgroundColor: risk.bg, border: `1px solid ${risk.border}` }}
-          >
-            <Icon size={18} style={{ color: risk.text }} />
-            {/* Risk dot */}
-            <div
-              className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-zinc-950"
-              style={{ backgroundColor: risk.text }}
-            />
-          </div>
+        {/* Top accent line */}
+        <div className="h-[2px] w-full" style={{ background: `linear-gradient(90deg, ${profile.color}50, transparent 70%)` }} />
 
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-0.5">
-              <p className="text-[13px] font-bold text-white leading-tight truncate">{specialist.name}</p>
-              <span
-                className="text-[8px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0"
-                style={{ backgroundColor: risk.bg, color: risk.text, border: `0.5px solid ${risk.border}` }}
+        <div className="p-3.5">
+          {/* Header row */}
+          <div className="flex items-start gap-3">
+            {/* Avatar with initials */}
+            <div className="relative shrink-0">
+              <div
+                className="w-11 h-11 rounded-xl flex items-center justify-center"
+                style={{
+                  background: `linear-gradient(135deg, ${profile.color}18, ${profile.color}08)`,
+                  border: `1px solid ${profile.color}25`,
+                }}
               >
-                {riskLabel}
-              </span>
+                <span className="text-[13px] font-black tracking-tight" style={{ color: profile.color }}>
+                  {profile.initial}
+                </span>
+              </div>
+              {/* Status indicator */}
+              <div
+                className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-[2px] border-zinc-950 flex items-center justify-center"
+                style={{ backgroundColor: risk.text }}
+              >
+                <div className="w-1.5 h-1.5 rounded-full bg-white/80" />
+              </div>
             </div>
-            <p className="text-[11px] text-zinc-400 leading-snug line-clamp-2">{specialist.verdict}</p>
-            <RiskBar level={specialist.riskLevel} />
+
+            <div className="flex-1 min-w-0">
+              {/* Department tag */}
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="text-[8px] font-extrabold uppercase tracking-[2px] px-2 py-[2px] rounded"
+                  style={{ color: profile.color, backgroundColor: `${profile.color}12` }}
+                >
+                  {profile.dept}
+                </span>
+                <span
+                  className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-[2px] rounded-full"
+                  style={{ backgroundColor: risk.bg, color: risk.text, border: `0.5px solid ${risk.border}` }}
+                >
+                  {riskLabel}
+                </span>
+              </div>
+              {/* Title */}
+              <p className="text-[12px] font-bold text-white/90 leading-tight">{profile.title}</p>
+            </div>
+
+            <motion.div
+              animate={{ rotate: open ? 180 : 0 }}
+              transition={{ duration: 0.2 }}
+              className="shrink-0 mt-2"
+            >
+              <ChevronDown size={13} className="text-zinc-600" />
+            </motion.div>
           </div>
 
-          <motion.div
-            animate={{ rotate: expanded ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-            className="shrink-0"
-          >
-            <ChevronDown size={14} className="text-zinc-600" />
-          </motion.div>
+          {/* Verdict (always visible) */}
+          <div className="mt-3 pl-14">
+            <p className="text-[11px] text-zinc-400 leading-relaxed italic">&ldquo;{specialist.verdict}&rdquo;</p>
+          </div>
         </div>
 
-        {/* Expanded content */}
+        {/* Expanded briefing */}
         <AnimatePresence>
-          {expanded && (
+          {open && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.25 }}
+              transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
               className="overflow-hidden"
             >
-              <div className="px-3.5 pb-3.5 pt-0 space-y-3">
-                {/* Divider */}
-                <div className="h-px bg-gradient-to-r from-transparent via-zinc-800/60 to-transparent" />
+              <div className="px-3.5 pb-4 space-y-3">
+                <div className="h-px" style={{ background: `linear-gradient(90deg, ${profile.color}20, transparent 60%)` }} />
 
-                {/* Key Points */}
+                {/* Key Points as briefing items */}
                 {specialist.keyPoints?.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Pontos-chave</p>
-                    {specialist.keyPoints.map((point, i) => (
-                      <div key={i} className="flex items-start gap-2.5">
-                        <div
-                          className="w-1 h-1 rounded-full mt-[7px] shrink-0"
-                          style={{ backgroundColor: risk.text }}
-                        />
-                        <p className="text-[11px] text-zinc-300 leading-relaxed">{point}</p>
-                      </div>
-                    ))}
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[2px] mb-2" style={{ color: profile.color }}>
+                      Parecer
+                    </p>
+                    <div className="space-y-2">
+                      {specialist.keyPoints.map((point, i) => (
+                        <div key={i} className="flex items-start gap-2.5 pl-1">
+                          <div className="w-4 h-4 rounded flex items-center justify-center shrink-0 mt-0.5"
+                            style={{ backgroundColor: `${profile.color}10` }}>
+                            <span className="text-[8px] font-bold" style={{ color: profile.color }}>{i + 1}</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-300 leading-relaxed">{point}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
-                {/* Recommendations */}
+                {/* Recommendations as action items */}
                 {specialist.recommendations?.length > 0 && (
-                  <div className="space-y-1.5">
-                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">O que fazer</p>
-                    {specialist.recommendations.map((rec, i) => {
-                      const prio = priorityConfig[rec.priority] || priorityConfig.importante;
-                      return (
-                        <div
-                          key={i}
-                          className="flex items-start gap-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]"
-                        >
-                          <ArrowRight size={12} style={{ color: prio.color }} className="shrink-0 mt-0.5" />
-                          <div className="flex-1 min-w-0">
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[2px] mb-2" style={{ color: profile.color }}>
+                      Recomendações
+                    </p>
+                    <div className="space-y-1.5">
+                      {specialist.recommendations.map((rec, i) => {
+                        const pc = prioColors[rec.priority] || '#fbbf24';
+                        return (
+                          <div key={i} className="p-2.5 rounded-xl bg-white/[0.015] border border-white/[0.04]">
                             <p className="text-[11px] text-zinc-300 leading-relaxed">{rec.text}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span
-                                className="text-[8px] font-extrabold uppercase tracking-wider"
-                                style={{ color: prio.color }}
-                              >
-                                {prio.label}
-                              </span>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <div className="flex items-center gap-1">
+                                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: pc }} />
+                                <span className="text-[8px] font-extrabold uppercase tracking-wider" style={{ color: pc }}>
+                                  {rec.priority}
+                                </span>
+                              </div>
                               {rec.segment && (
-                                <span className="text-[9px] text-zinc-600">· {rec.segment}</span>
+                                <span className="text-[9px] text-zinc-600">| {rec.segment}</span>
                               )}
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
-                {/* Data Highlight */}
+                {/* Data highlight */}
                 {specialist.dataHighlight && (
-                  <div
-                    className="p-3 rounded-xl"
-                    style={{ backgroundColor: risk.bg, border: `0.5px solid ${risk.border}` }}
-                  >
+                  <div className="p-3 rounded-xl" style={{ backgroundColor: `${profile.color}08`, border: `0.5px solid ${profile.color}18` }}>
                     <div className="flex items-center gap-1.5 mb-1.5">
-                      <Lightbulb size={11} style={{ color: risk.text }} />
-                      <p className="text-[9px] font-extrabold uppercase tracking-widest" style={{ color: risk.text }}>
-                        Dado em destaque
-                      </p>
+                      <Lightbulb size={11} style={{ color: profile.color }} />
+                      <p className="text-[9px] font-bold uppercase tracking-[2px]" style={{ color: profile.color }}>Inteligência</p>
                     </div>
                     <p className="text-[11px] text-zinc-300 leading-relaxed">{specialist.dataHighlight}</p>
                   </div>
@@ -500,11 +511,10 @@ function SpecialistCard({ specialist, index }: { specialist: SpecialistInsight; 
   );
 }
 
-// ── Specialist Panel Section (redesigned) ──
+// ── Gabinete Estratégico — Main Section ──
 function SpecialistPanelSection({ panel }: { panel: SpecialistPanel }) {
   if (!panel?.specialists?.length) return null;
 
-  // Compute overall risk (highest among specialists)
   const riskOrder = ['baixo', 'medio', 'alto', 'critico'];
   const highestRisk = panel.specialists.reduce((max, s) => {
     const idx = riskOrder.indexOf(s.riskLevel);
@@ -515,53 +525,93 @@ function SpecialistPanelSection({ panel }: { panel: SpecialistPanel }) {
 
   return (
     <div className="space-y-3">
-      {/* Section header with glow */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
+      {/* Section header — "Gabinete Estratégico" */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.5 }}
+        className="relative overflow-hidden rounded-2xl p-4"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005))',
+          border: '1px solid rgba(255,255,255,0.06)',
+        }}
+      >
+        {/* Subtle grid pattern */}
+        <div
+          className="absolute inset-0 opacity-[0.03]"
+          style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '20px 20px' }}
+        />
+
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{ background: `linear-gradient(135deg, ${overallRisk.text}20, transparent)`, border: `1px solid ${overallRisk.border}` }}
+            >
+              <ShieldCheck size={17} style={{ color: overallRisk.text }} />
+            </div>
+            <div>
+              <p className="text-[13px] font-extrabold text-white tracking-tight">Gabinete Estratégico</p>
+              <p className="text-[10px] text-zinc-500">{panel.specialists.length} consultores analisaram seu conteúdo</p>
+            </div>
+          </div>
           <div
-            className="w-6 h-6 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: overallRisk.bg, border: `0.5px solid ${overallRisk.border}` }}
+            className="px-2.5 py-1 rounded-lg text-[9px] font-bold"
+            style={{ backgroundColor: overallRisk.bg, color: overallRisk.text, border: `0.5px solid ${overallRisk.border}` }}
           >
-            <ShieldCheck size={13} style={{ color: overallRisk.text }} />
+            {RISK_LABELS[highestRisk] || highestRisk}
           </div>
-          <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px]">PAINEL DE ESPECIALISTAS</p>
         </div>
-        <div className="flex-1 h-px bg-gradient-to-r from-zinc-800/60 to-transparent" />
-        <span
-          className="text-[9px] font-extrabold px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: overallRisk.bg, color: overallRisk.text, border: `0.5px solid ${overallRisk.border}` }}
+      </motion.div>
+
+      {/* Consensus briefing */}
+      {panel.consensus && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.4 }}
+          className="rounded-2xl p-4"
+          style={{
+            background: 'linear-gradient(135deg, rgba(52,211,153,0.04), rgba(52,211,153,0.01))',
+            border: '1px solid rgba(52,211,153,0.12)',
+          }}
         >
-          {panel.specialists.length} analistas
-        </span>
-      </div>
-
-      {/* Consensus + Divergence row */}
-      <div className="grid grid-cols-1 gap-2">
-        {panel.consensus && (
-          <div className="bg-emerald-500/[0.04] border border-emerald-500/15 rounded-xl p-3.5">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Check size={12} className="text-emerald-400" />
-              <p className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-widest">Consenso da equipe</p>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-5 h-5 rounded-md bg-emerald-500/10 flex items-center justify-center">
+              <Check size={11} className="text-emerald-400" />
             </div>
-            <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.consensus}</p>
+            <p className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-[2px]">Consenso do gabinete</p>
           </div>
-        )}
+          <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.consensus}</p>
+        </motion.div>
+      )}
 
-        {panel.divergences && (
-          <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-xl p-3.5">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Target size={12} className="text-amber-400" />
-              <p className="text-[9px] font-extrabold text-amber-400 uppercase tracking-widest">Ponto de divergencia</p>
+      {/* Divergence */}
+      {panel.divergences && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.4 }}
+          className="rounded-2xl p-4"
+          style={{
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.04), rgba(251,191,36,0.01))',
+            border: '1px solid rgba(251,191,36,0.12)',
+          }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-5 h-5 rounded-md bg-amber-500/10 flex items-center justify-center">
+              <Target size={11} className="text-amber-400" />
             </div>
-            <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.divergences}</p>
+            <p className="text-[9px] font-extrabold text-amber-400 uppercase tracking-[2px]">Divergência identificada</p>
           </div>
-        )}
-      </div>
+          <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.divergences}</p>
+        </motion.div>
+      )}
 
-      {/* Specialist Cards */}
-      <div className="space-y-2">
+      {/* Consultant briefings */}
+      <div className="space-y-2.5">
         {panel.specialists.map((specialist, i) => (
-          <SpecialistCard key={specialist.id} specialist={specialist} index={i} />
+          <ConsultantBriefing key={specialist.id} specialist={specialist} index={i} />
         ))}
       </div>
     </div>
