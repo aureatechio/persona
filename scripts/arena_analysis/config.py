@@ -73,6 +73,15 @@ class Settings:
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")
     )
 
+    # Legacy — usado por electoral_engine, calibration_endpoint, persona_loop
+    batch_size: int = 10
+    max_parallel_claude: int = 8
+    max_parallel_openai: int = 40
+    claude_share: float = 0.10
+    max_tokens_per_batch: int = 1500
+    individual_max_parallel: int = 60
+    individual_max_tokens: int = 300
+
     # Web search
     max_web_results: int = 5
 
@@ -80,8 +89,8 @@ class Settings:
     persona_cache_ttl: int = 300
 
     # Aggregate Engine — 1 chamada potente em vez de 20k individuais
-    aggregate_model: str = "gpt-4o"  # modelo para analise agregada
-    aggregate_max_tokens: int = 12000  # output budget para JSON completo
+    aggregate_model: str = "gpt-4o"
+    aggregate_max_tokens: int = 12000
     aggregate_progress_duration: int = 60  # duracao da animacao de progresso em segundos
 
     # Retry
