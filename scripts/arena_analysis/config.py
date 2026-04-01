@@ -73,14 +73,12 @@ class Settings:
         default_factory=lambda: os.environ.get("TAVILY_API_KEY", "")
     )
 
-    # Legacy — usado por electoral_engine, calibration_endpoint, persona_loop
+    # Batching — 10 personas por chamada (20k personas → 2000 calls)
     batch_size: int = 10
-    max_parallel_claude: int = 8
-    max_parallel_openai: int = 40
-    claude_share: float = 0.10
-    max_tokens_per_batch: int = 1500
-    individual_max_parallel: int = 60
-    individual_max_tokens: int = 300
+    max_parallel_claude: int = 8  # 1 key × 45 RPM (margem vs 50 RPM limit)
+    max_parallel_openai: int = 40  # semaphore-controlled, safe for 1vCPU/1GB
+    claude_share: float = 0.10  # 10% Claude Sonnet, 90% GPT-4o
+    max_tokens_per_batch: int = 1500  # 10 personas × ~80 tokens each (short comments)
 
     # Web search
     max_web_results: int = 5
@@ -88,13 +86,12 @@ class Settings:
     # Persona cache TTL em segundos
     persona_cache_ttl: int = 300
 
-    # Aggregate Engine — 1 chamada potente em vez de 20k individuais
-    aggregate_model: str = "gpt-4o"
-    aggregate_max_tokens: int = 12000
-    aggregate_progress_duration: int = 60  # duracao da animacao de progresso em segundos
+    # Individual mode — 1 persona per call, GPT-only, max parallelism
+    individual_max_parallel: int = 60  # 3 keys × 20 concurrent
+    individual_max_tokens: int = 300  # 1 persona output
 
     # Retry
-    max_retries: int = 2
+    max_retries: int = 2  # mais retries — cada persona individual importa
 
 
 settings = Settings()
