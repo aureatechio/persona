@@ -39,7 +39,6 @@ from arena_analysis.config import settings
 from arena_analysis.web_researcher import ArenaWebResearcher
 from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.persona_loader import load_personas
-from arena_analysis.aggregate_engine import analyze as aggregate_analyze, load_profile, generate_ideological_points
 from arena_analysis.results_aggregator import aggregate_results
 from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_single_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
@@ -376,6 +375,9 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "message": f"Analisando sentimento de {total_personas} personas...",
         })
 
+        # Lazy import — evita carregar openai no startup
+        from arena_analysis.aggregate_engine import analyze as aggregate_analyze
+
         # Launch aggregate analysis in background
         aggregate_task = asyncio.create_task(
             aggregate_analyze(
@@ -488,6 +490,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
         # Generate synthetic ideological points from profile + analysis results
         try:
+            from arena_analysis.aggregate_engine import load_profile, generate_ideological_points
             profile = await load_profile()
             ideological_points = generate_ideological_points(profile, final_results)
         except Exception as pts_err:
@@ -544,7 +547,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
 @app.post("/api/arena/recompute-profile")
 async def recompute_profile():
-    """Recomputa o perfil estatístico agregado das personas."""
+    """Recomputa o perfil estatistico agregado das personas."""
     from arena_analysis.aggregate_builder import build_aggregate_profile, save_profile
     try:
         profile = await build_aggregate_profile()
