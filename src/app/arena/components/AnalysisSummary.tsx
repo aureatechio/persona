@@ -327,147 +327,241 @@ const RISK_LABELS: Record<string, string> = {
   critico: 'CRITICO',
 };
 
-// ── Specialist Card (expandable) ──
-function SpecialistCard({ specialist }: { specialist: SpecialistInsight }) {
+// ── Risk level bar (visual indicator) ──
+function RiskBar({ level }: { level: string }) {
+  const segments = ['baixo', 'medio', 'alto', 'critico'];
+  const activeIdx = segments.indexOf(level);
+  return (
+    <div className="flex gap-0.5 mt-1">
+      {segments.map((seg, i) => (
+        <div
+          key={seg}
+          className="h-[3px] flex-1 rounded-full transition-all duration-300"
+          style={{
+            backgroundColor: i <= activeIdx
+              ? RISK_COLORS[seg]?.text || '#52525b'
+              : 'rgba(255,255,255,0.04)',
+            opacity: i <= activeIdx ? 1 : 0.5,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Specialist Card (expandable, redesigned) ──
+function SpecialistCard({ specialist, index }: { specialist: SpecialistInsight; index: number }) {
   const [expanded, setExpanded] = useState(false);
   const Icon = SPECIALIST_ICON_MAP[specialist.emoji] || Users;
   const risk = RISK_COLORS[specialist.riskLevel] || RISK_COLORS.medio;
   const riskLabel = RISK_LABELS[specialist.riskLevel] || specialist.riskLevel;
 
-  const priorityColors: Record<string, string> = {
-    urgente: '#fb7185',
-    importante: '#fbbf24',
-    oportunidade: '#34d399',
+  const priorityConfig: Record<string, { color: string; label: string }> = {
+    urgente: { color: '#fb7185', label: 'URGENTE' },
+    importante: { color: '#fbbf24', label: 'IMPORTANTE' },
+    oportunidade: { color: '#34d399', label: 'OPORTUNIDADE' },
   };
 
   return (
-    <button
-      onClick={() => setExpanded(!expanded)}
-      className="w-full text-left bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 hover:bg-white/[0.04] transition-all duration-200"
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.3 }}
     >
-      <div className="flex items-start gap-3">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-          style={{ backgroundColor: risk.bg, border: `0.5px solid ${risk.border}` }}
-        >
-          <Icon size={15} style={{ color: risk.text }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="text-[13px] font-semibold text-white leading-5">{specialist.name}</p>
-            <span
-              className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
-              style={{ backgroundColor: risk.bg, color: risk.text, border: `0.5px solid ${risk.border}` }}
-            >
-              {riskLabel}
-            </span>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full text-left rounded-2xl border transition-all duration-300 overflow-hidden"
+        style={{
+          backgroundColor: expanded ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.015)',
+          borderColor: expanded ? `${risk.text}25` : 'rgba(255,255,255,0.06)',
+        }}
+      >
+        {/* Compact header */}
+        <div className="flex items-center gap-3 p-3.5">
+          {/* Avatar */}
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 relative"
+            style={{ backgroundColor: risk.bg, border: `1px solid ${risk.border}` }}
+          >
+            <Icon size={18} style={{ color: risk.text }} />
+            {/* Risk dot */}
+            <div
+              className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-zinc-950"
+              style={{ backgroundColor: risk.text }}
+            />
           </div>
-          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{specialist.verdict}</p>
 
-          <AnimatePresence>
-            {expanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-0.5">
+              <p className="text-[13px] font-bold text-white leading-tight truncate">{specialist.name}</p>
+              <span
+                className="text-[8px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0"
+                style={{ backgroundColor: risk.bg, color: risk.text, border: `0.5px solid ${risk.border}` }}
               >
+                {riskLabel}
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-400 leading-snug line-clamp-2">{specialist.verdict}</p>
+            <RiskBar level={specialist.riskLevel} />
+          </div>
+
+          <motion.div
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+            className="shrink-0"
+          >
+            <ChevronDown size={14} className="text-zinc-600" />
+          </motion.div>
+        </div>
+
+        {/* Expanded content */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden"
+            >
+              <div className="px-3.5 pb-3.5 pt-0 space-y-3">
+                {/* Divider */}
+                <div className="h-px bg-gradient-to-r from-transparent via-zinc-800/60 to-transparent" />
+
                 {/* Key Points */}
                 {specialist.keyPoints?.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Pontos-chave</p>
                     {specialist.keyPoints.map((point, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 mt-1.5 shrink-0" />
-                        <p className="text-xs text-zinc-300 leading-relaxed">{point}</p>
+                      <div key={i} className="flex items-start gap-2.5">
+                        <div
+                          className="w-1 h-1 rounded-full mt-[7px] shrink-0"
+                          style={{ backgroundColor: risk.text }}
+                        />
+                        <p className="text-[11px] text-zinc-300 leading-relaxed">{point}</p>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Specialist Recommendations */}
+                {/* Recommendations */}
                 {specialist.recommendations?.length > 0 && (
-                  <div className="mt-3 space-y-1.5">
-                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recomendacoes</p>
-                    {specialist.recommendations.map((rec, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
-                      >
-                        <div className="flex-1">
-                          <p className="text-xs text-zinc-300 leading-relaxed">{rec.text}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            {rec.priority && (
+                  <div className="space-y-1.5">
+                    <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">O que fazer</p>
+                    {specialist.recommendations.map((rec, i) => {
+                      const prio = priorityConfig[rec.priority] || priorityConfig.importante;
+                      return (
+                        <div
+                          key={i}
+                          className="flex items-start gap-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]"
+                        >
+                          <ArrowRight size={12} style={{ color: prio.color }} className="shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] text-zinc-300 leading-relaxed">{rec.text}</p>
+                            <div className="flex items-center gap-2 mt-1">
                               <span
-                                className="text-[9px] font-bold uppercase tracking-wider"
-                                style={{ color: priorityColors[rec.priority] || '#fbbf24' }}
+                                className="text-[8px] font-extrabold uppercase tracking-wider"
+                                style={{ color: prio.color }}
                               >
-                                {rec.priority}
+                                {prio.label}
                               </span>
-                            )}
-                            {rec.segment && (
-                              <span className="text-[9px] text-zinc-500">{rec.segment}</span>
-                            )}
+                              {rec.segment && (
+                                <span className="text-[9px] text-zinc-600">· {rec.segment}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
                 {/* Data Highlight */}
                 {specialist.dataHighlight && (
                   <div
-                    className="mt-3 p-2.5 rounded-lg"
+                    className="p-3 rounded-xl"
                     style={{ backgroundColor: risk.bg, border: `0.5px solid ${risk.border}` }}
                   >
-                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: risk.text }}>
-                      Dado em destaque
-                    </p>
-                    <p className="text-xs text-zinc-300 leading-relaxed">{specialist.dataHighlight}</p>
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <Lightbulb size={11} style={{ color: risk.text }} />
+                      <p className="text-[9px] font-extrabold uppercase tracking-widest" style={{ color: risk.text }}>
+                        Dado em destaque
+                      </p>
+                    </div>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">{specialist.dataHighlight}</p>
                   </div>
                 )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-        <ChevronDown
-          size={14}
-          className="text-zinc-600 shrink-0 mt-1 transition-transform duration-200"
-          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0)' }}
-        />
-      </div>
-    </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </button>
+    </motion.div>
   );
 }
 
-// ── Specialist Panel Section ──
+// ── Specialist Panel Section (redesigned) ──
 function SpecialistPanelSection({ panel }: { panel: SpecialistPanel }) {
   if (!panel?.specialists?.length) return null;
 
+  // Compute overall risk (highest among specialists)
+  const riskOrder = ['baixo', 'medio', 'alto', 'critico'];
+  const highestRisk = panel.specialists.reduce((max, s) => {
+    const idx = riskOrder.indexOf(s.riskLevel);
+    const maxIdx = riskOrder.indexOf(max);
+    return idx > maxIdx ? s.riskLevel : max;
+  }, 'baixo' as string);
+  const overallRisk = RISK_COLORS[highestRisk] || RISK_COLORS.medio;
+
   return (
     <div className="space-y-3">
-      <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px]">PAINEL DE ESPECIALISTAS</p>
-
-      {/* Consensus */}
-      {panel.consensus && (
-        <div className="bg-emerald-500/[0.04] border border-emerald-500/15 rounded-xl p-3.5">
-          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1.5">Consenso</p>
-          <p className="text-xs text-zinc-300 leading-relaxed">{panel.consensus}</p>
+      {/* Section header with glow */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-6 h-6 rounded-lg flex items-center justify-center"
+            style={{ backgroundColor: overallRisk.bg, border: `0.5px solid ${overallRisk.border}` }}
+          >
+            <ShieldCheck size={13} style={{ color: overallRisk.text }} />
+          </div>
+          <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px]">PAINEL DE ESPECIALISTAS</p>
         </div>
-      )}
+        <div className="flex-1 h-px bg-gradient-to-r from-zinc-800/60 to-transparent" />
+        <span
+          className="text-[9px] font-extrabold px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: overallRisk.bg, color: overallRisk.text, border: `0.5px solid ${overallRisk.border}` }}
+        >
+          {panel.specialists.length} analistas
+        </span>
+      </div>
 
-      {/* Divergences */}
-      {panel.divergences && (
-        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-xl p-3.5">
-          <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">Divergencia</p>
-          <p className="text-xs text-zinc-300 leading-relaxed">{panel.divergences}</p>
-        </div>
-      )}
+      {/* Consensus + Divergence row */}
+      <div className="grid grid-cols-1 gap-2">
+        {panel.consensus && (
+          <div className="bg-emerald-500/[0.04] border border-emerald-500/15 rounded-xl p-3.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Check size={12} className="text-emerald-400" />
+              <p className="text-[9px] font-extrabold text-emerald-400 uppercase tracking-widest">Consenso da equipe</p>
+            </div>
+            <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.consensus}</p>
+          </div>
+        )}
+
+        {panel.divergences && (
+          <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-xl p-3.5">
+            <div className="flex items-center gap-1.5 mb-2">
+              <Target size={12} className="text-amber-400" />
+              <p className="text-[9px] font-extrabold text-amber-400 uppercase tracking-widest">Ponto de divergencia</p>
+            </div>
+            <p className="text-[12px] text-zinc-200 leading-relaxed">{panel.divergences}</p>
+          </div>
+        )}
+      </div>
 
       {/* Specialist Cards */}
       <div className="space-y-2">
-        {panel.specialists.map((specialist) => (
-          <SpecialistCard key={specialist.id} specialist={specialist} />
+        {panel.specialists.map((specialist, i) => (
+          <SpecialistCard key={specialist.id} specialist={specialist} index={i} />
         ))}
       </div>
     </div>
