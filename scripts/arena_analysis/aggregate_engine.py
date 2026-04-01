@@ -104,7 +104,7 @@ async def analyze(
             {"role": "system", "content": AGGREGATE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=12000,
+        max_tokens=16000,
         temperature=0.7,
         response_format={"type": "json_object"},
     )
@@ -113,17 +113,33 @@ async def analyze(
     elapsed = time.time() - start
     tokens_in = response.usage.prompt_tokens if response.usage else 0
     tokens_out = response.usage.completion_tokens if response.usage else 0
+    finish_reason = response.choices[0].finish_reason
 
-    print(f"[AggregateEngine] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out tokens")
+    print(f"[AggregateEngine] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out | finish: {finish_reason}")
 
-    # Parse JSON
+    if finish_reason == "length":
+        print(f"[AggregateEngine] WARNING: output truncated at {tokens_out} tokens — JSON may be incomplete")
+
+    # Parse JSON — try to repair truncated JSON
     cleaned = _clean_json_response(raw)
     try:
         result = json.loads(cleaned)
     except json.JSONDecodeError as e:
         print(f"[AggregateEngine] JSON parse error: {e}")
-        print(f"[AggregateEngine] Raw response (first 500 chars): {cleaned[:500]}")
-        raise RuntimeError(f"GPT returned invalid JSON: {e}")
+        # Try to repair truncated JSON by closing open brackets
+        repaired = cleaned
+        open_braces = repaired.count("{") - repaired.count("}")
+        open_brackets = repaired.count("[") - repaired.count("]")
+        # Remove trailing comma or incomplete value
+        repaired = repaired.rstrip().rstrip(",")
+        repaired += "]" * open_brackets + "}" * open_braces
+        try:
+            result = json.loads(repaired)
+            print(f"[AggregateEngine] JSON repaired successfully (closed {open_braces} braces, {open_brackets} brackets)")
+        except json.JSONDecodeError as e2:
+            print(f"[AggregateEngine] JSON repair failed: {e2}")
+            print(f"[AggregateEngine] Raw tail (last 200 chars): ...{cleaned[-200:]}")
+            raise RuntimeError(f"GPT returned invalid JSON: {e}")
 
     # Validate basic structure
     required_keys = ["total", "positive", "negative", "neutral", "segments", "comments"]

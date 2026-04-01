@@ -414,7 +414,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         ]
 
         step_duration = 60.0 / len(progress_steps)
-        for pct, msg in progress_steps:
+        for i, (pct, msg) in enumerate(progress_steps):
             if cancelled.is_set():
                 aggregate_task.cancel()
                 return
@@ -428,10 +428,6 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 "neutral": 0,
                 "avgScore": 5.0,
                 "scoreSum": 0,
-            })
-            yield sse_event("phase", {
-                "phase": "processing_personas",
-                "message": msg,
             })
 
             try:
