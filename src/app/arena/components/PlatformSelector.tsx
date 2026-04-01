@@ -30,8 +30,8 @@ function TikTokIcon({ size = 20, color = '#fff' }: { size?: number; color?: stri
 const PLATFORM_COMPATIBILITY: Record<string, string[]> = {
   image: ['instagram', 'outdoor', 'impresso'],
   video: ['instagram', 'youtube', 'tiktok', 'tv'],
-  audio: ['radio', 'youtube'],
-  text: ['instagram', 'youtube', 'tiktok', 'tv', 'radio', 'outdoor', 'impresso'],
+  audio: ['radio'],
+  text: ['instagram', 'tiktok', 'tv', 'radio', 'outdoor', 'impresso'],
 };
 
 interface PlatformSelectorProps {
