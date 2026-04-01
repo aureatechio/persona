@@ -116,15 +116,12 @@ async def startup():
 async def health():
     return {
         "status": "ok",
-        "engine": "arena_analysis",
-        "version": "2.0.0",
-        "model": settings.model,
-        "batch_size": settings.batch_size,
-        "max_parallel_claude": settings.max_parallel_claude,
-        "max_parallel_openai": settings.max_parallel_openai,
-        "claude_keys": len(settings.anthropic_api_keys),
+        "engine": "aggregate",
+        "version": "3.0.0",
+        "aggregate_model": settings.aggregate_model,
+        "smart_model": settings.smart_model,
         "openai_keys": len(settings.openai_api_keys),
-        "claude_share": settings.claude_share,
+        "claude_keys": len(settings.anthropic_api_keys),
     }
 
 
@@ -1334,11 +1331,10 @@ if __name__ == "__main__":
     import os
 
     port = int(os.environ.get("PORT", 8000))
-    print("\n  Arena Analysis v2.0.0 (Speed Optimized)")
-    print(f"  Model: {settings.model}")
-    print(f"  Batch: {settings.batch_size} personas | Tokens: {settings.max_tokens_per_batch}")
-    print(f"  Claude: {len(settings.anthropic_api_keys)} keys, max {settings.max_parallel_claude}p ({int(settings.claude_share*100)}%)")
-    print(f"  GPT:    {len(settings.openai_api_keys)} keys, max {settings.max_parallel_openai}p ({int((1-settings.claude_share)*100)}%)")
+    print("\n  Arena Analysis v3.0.0 (Aggregate Engine)")
+    print(f"  Aggregate model: {settings.aggregate_model}")
+    print(f"  Smart model: {settings.smart_model}")
+    print(f"  OpenAI keys: {len(settings.openai_api_keys)} | Claude keys: {len(settings.anthropic_api_keys)}")
     print(f"  Starting on http://localhost:{port}")
     print(f"  Docs: http://localhost:{port}/docs\n")
     uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=300)
