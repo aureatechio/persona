@@ -106,10 +106,8 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
-    print("[Startup] Pre-warming persona cache...")
-    await asyncio.to_thread(load_personas)
-    print(f"[Startup] Cache pronto | Claude keys: {len(settings.anthropic_api_keys)} | GPT keys: {len(settings.openai_api_keys)}")
+    """Startup leve — personas serao carregadas na primeira request."""
+    print(f"[Startup] Arena v3.0 ready | Aggregate model: {settings.aggregate_model} | GPT keys: {len(settings.openai_api_keys)} | Claude keys: {len(settings.anthropic_api_keys)}")
 
 
 @app.get("/api/arena/health")
