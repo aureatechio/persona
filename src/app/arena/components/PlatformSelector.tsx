@@ -29,8 +29,8 @@ function TikTokIcon({ size = 20, color = '#fff' }: { size?: number; color?: stri
 
 // Plataformas compativeis por tipo de arquivo
 const PLATFORM_COMPATIBILITY: Record<string, string[]> = {
-  image: ['instagram', 'outdoor', 'impresso'],
-  video: ['instagram', 'youtube', 'tiktok', 'tv'],
+  image: ['instagram', 'x', 'outdoor', 'impresso'],
+  video: ['instagram', 'youtube', 'tiktok', 'x', 'tv'],
   audio: ['radio'],
   text: ['x', 'impresso'],
 };

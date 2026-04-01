@@ -203,7 +203,8 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
 - Hashtags: maximo 1-2 por tweet — excesso parece spam e reduz alcance
 - Quote tweets com opiniao propria geram mais alcance que retweets simples
 - Horarios de pico: 8h-10h (manha) e 18h-22h (noite) — quando publico politico esta ativo
-- Imagens e videos aumentam engajamento em 2-3x vs texto puro
+- IMAGEM no X: imagens aumentam engajamento em 2-3x vs texto puro. Formatos ideais: 16:9 (horizontal) ou 1:1. Infograficos, prints de dados e memes politicos viralizam forte. Texto sobreposto na imagem deve ser legivel em miniatura (mobile)
+- VIDEO no X: videos curtos (30-60s) performam melhor. Autoplay sem som — legendas queimadas sao OBRIGATORIAS. Primeiros 3 segundos definem retencao. Videos nativos (upload direto) tem 6x mais alcance que links do YouTube
 - Enquetes geram engajamento massivo — usar para temas polemicos
 - Respostas rapidas a trending topics multiplicam visibilidade
 - Linguagem direta e assertiva — X nao perdoa rodeios
