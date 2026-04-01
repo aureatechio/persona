@@ -4,13 +4,14 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper } from 'lucide-react';
+import { Instagram, Youtube, Tv, Radio, Megaphone, Newspaper, Twitter } from 'lucide-react';
 import { PLATFORMS } from '../constants';
 
 // Platform icons mapping
 const PLATFORM_ICONS: Record<string, React.ComponentType<any>> = {
   instagram: Instagram,
   youtube: Youtube,
+  x: Twitter,
   tv: Tv,
   radio: Radio,
   outdoor: Megaphone,
@@ -31,7 +32,7 @@ const PLATFORM_COMPATIBILITY: Record<string, string[]> = {
   image: ['instagram', 'outdoor', 'impresso'],
   video: ['instagram', 'youtube', 'tiktok', 'tv'],
   audio: ['radio'],
-  text: ['instagram', 'tiktok', 'tv', 'radio', 'outdoor', 'impresso'],
+  text: ['x', 'impresso'],
 };
 
 interface PlatformSelectorProps {

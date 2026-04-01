@@ -38,6 +38,7 @@ export const PLATFORMS = [
   { id: 'instagram', label: 'Instagram', color: '#e879f9' },
   { id: 'youtube', label: 'YouTube', color: '#f87171' },
   { id: 'tiktok', label: 'TikTok', color: '#22d3ee' },
+  { id: 'x', label: 'X (Twitter)', color: '#a3a3a3' },
   { id: 'tv', label: 'TV', color: '#38bdf8' },
   { id: 'radio', label: 'Rádio', color: '#fbbf24' },
   { id: 'outdoor', label: 'Outdoor', color: '#34d399' },

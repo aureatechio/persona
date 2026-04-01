@@ -193,7 +193,23 @@ Intencao 2026: ${formatSeg(segments.voto2026)}`;
 - Distribuicao segmentada por bairro/regiao maximiza relevancia
 - Texto deve ser escaneavel: bullets, negritos, numeros — nao blocos de texto
 - Foto profissional do candidato e obrigatoria — evitar fotos amadoras
-- Cores do partido/campanha devem ser consistentes com o restante da comunicacao`
+- Cores do partido/campanha devem ser consistentes com o restante da comunicacao`,
+
+    x: `REGRAS ESPECIFICAS DA PLATAFORMA — X (TWITTER):
+- Limite de 280 caracteres por tweet — cada palavra conta, zero desperdicio
+- Threads (fio) permitem narrativa longa: tweet 1 = gancho irresistivel, demais = desenvolvimento
+- Algoritmo prioriza: engajamento rapido (likes, retweets, replies nos primeiros 30 minutos)
+- Tom opinativo e provocativo performa melhor que tom institucional — X e arena de debate
+- Hashtags: maximo 1-2 por tweet — excesso parece spam e reduz alcance
+- Quote tweets com opiniao propria geram mais alcance que retweets simples
+- Horarios de pico: 8h-10h (manha) e 18h-22h (noite) — quando publico politico esta ativo
+- Imagens e videos aumentam engajamento em 2-3x vs texto puro
+- Enquetes geram engajamento massivo — usar para temas polemicos
+- Respostas rapidas a trending topics multiplicam visibilidade
+- Linguagem direta e assertiva — X nao perdoa rodeios
+- Evitar apagar tweets (gera print e efeito Streisand)
+- Comunidades e Espacos (audio ao vivo) ampliam autoridade
+- Fixar tweet principal com mensagem-chave da campanha`
   };
 
   // Include platform knowledge for ALL selected platforms

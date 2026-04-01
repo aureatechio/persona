@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check,
   MessageCircle, Target, Globe, Video, Mic, Image, Layout, MapPin, Lightbulb,
-  Instagram, Youtube, Tv, Radio, Megaphone, FileText, Search,
+  Instagram, Youtube, Tv, Radio, Megaphone, FileText, Search, Twitter,
   Crosshair, Church, Brain, ShieldCheck, Users,
 } from 'lucide-react';
 
@@ -35,6 +35,7 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string; Icon: Reac
   radio: { label: 'Rádio', color: '#fbbf24', Icon: Radio },
   outdoor: { label: 'Outdoor', color: '#34d399', Icon: Megaphone },
   impresso: { label: 'Impresso', color: '#a1a1aa', Icon: FileText },
+  x: { label: 'X (Twitter)', color: '#a3a3a3', Icon: Twitter },
 };
 
 import type { AnaliseData, SpecialistInsight, SpecialistPanel } from '../types';
