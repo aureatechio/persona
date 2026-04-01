@@ -9,6 +9,7 @@ import {
   ChevronDown, ChevronUp, Sparkles, TrendingUp, ArrowRight, Copy, Check,
   MessageCircle, Target, Globe, Video, Mic, Image, Layout, MapPin, Lightbulb,
   Instagram, Youtube, Tv, Radio, Megaphone, FileText, Search,
+  Crosshair, Church, Brain, ShieldCheck, Users,
 } from 'lucide-react';
 
 // Map icon names from API to Lucide components
@@ -36,7 +37,7 @@ const PLATFORM_CONFIG: Record<string, { label: string; color: string; Icon: Reac
   impresso: { label: 'Impresso', color: '#a1a1aa', Icon: FileText },
 };
 
-import type { AnaliseData } from '../types';
+import type { AnaliseData, SpecialistInsight, SpecialistPanel } from '../types';
 import { ScoreRing } from './ScoreRing';
 import { RadarChart } from './RadarChart';
 
@@ -302,6 +303,176 @@ function ProjectedScoreCard({ current, projected }: { current: number; projected
   );
 }
 
+// ── Specialist Icon Map ──
+const SPECIALIST_ICON_MAP: Record<string, React.ComponentType<any>> = {
+  bullseye: Crosshair,
+  church: Church,
+  'trending-up': TrendingUp,
+  brain: Brain,
+  'shield-check': ShieldCheck,
+};
+
+const RISK_COLORS: Record<string, { bg: string; text: string; border: string }> = {
+  baixo: { bg: 'rgba(52,211,153,0.1)', text: '#34d399', border: 'rgba(52,211,153,0.2)' },
+  medio: { bg: 'rgba(251,191,36,0.1)', text: '#fbbf24', border: 'rgba(251,191,36,0.2)' },
+  alto: { bg: 'rgba(251,113,133,0.1)', text: '#fb7185', border: 'rgba(251,113,133,0.2)' },
+  critico: { bg: 'rgba(239,68,68,0.15)', text: '#ef4444', border: 'rgba(239,68,68,0.3)' },
+};
+
+const RISK_LABELS: Record<string, string> = {
+  baixo: 'BAIXO',
+  medio: 'MEDIO',
+  alto: 'ALTO',
+  critico: 'CRITICO',
+};
+
+// ── Specialist Card (expandable) ──
+function SpecialistCard({ specialist }: { specialist: SpecialistInsight }) {
+  const [expanded, setExpanded] = useState(false);
+  const Icon = SPECIALIST_ICON_MAP[specialist.emoji] || Users;
+  const risk = RISK_COLORS[specialist.riskLevel] || RISK_COLORS.medio;
+  const riskLabel = RISK_LABELS[specialist.riskLevel] || specialist.riskLevel;
+
+  const priorityColors: Record<string, string> = {
+    urgente: '#fb7185',
+    importante: '#fbbf24',
+    oportunidade: '#34d399',
+  };
+
+  return (
+    <button
+      onClick={() => setExpanded(!expanded)}
+      className="w-full text-left bg-white/[0.02] border border-white/[0.06] rounded-xl p-3.5 hover:bg-white/[0.04] transition-all duration-200"
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+          style={{ backgroundColor: risk.bg, border: `0.5px solid ${risk.border}` }}
+        >
+          <Icon size={15} style={{ color: risk.text }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-[13px] font-semibold text-white leading-5">{specialist.name}</p>
+            <span
+              className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full"
+              style={{ backgroundColor: risk.bg, color: risk.text, border: `0.5px solid ${risk.border}` }}
+            >
+              {riskLabel}
+            </span>
+          </div>
+          <p className="text-xs text-zinc-400 mt-1 leading-relaxed">{specialist.verdict}</p>
+
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden"
+              >
+                {/* Key Points */}
+                {specialist.keyPoints?.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    {specialist.keyPoints.map((point, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-zinc-600 mt-1.5 shrink-0" />
+                        <p className="text-xs text-zinc-300 leading-relaxed">{point}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Specialist Recommendations */}
+                {specialist.recommendations?.length > 0 && (
+                  <div className="mt-3 space-y-1.5">
+                    <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Recomendacoes</p>
+                    {specialist.recommendations.map((rec, i) => (
+                      <div
+                        key={i}
+                        className="flex items-start gap-2 p-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                      >
+                        <div className="flex-1">
+                          <p className="text-xs text-zinc-300 leading-relaxed">{rec.text}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            {rec.priority && (
+                              <span
+                                className="text-[9px] font-bold uppercase tracking-wider"
+                                style={{ color: priorityColors[rec.priority] || '#fbbf24' }}
+                              >
+                                {rec.priority}
+                              </span>
+                            )}
+                            {rec.segment && (
+                              <span className="text-[9px] text-zinc-500">{rec.segment}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Data Highlight */}
+                {specialist.dataHighlight && (
+                  <div
+                    className="mt-3 p-2.5 rounded-lg"
+                    style={{ backgroundColor: risk.bg, border: `0.5px solid ${risk.border}` }}
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: risk.text }}>
+                      Dado em destaque
+                    </p>
+                    <p className="text-xs text-zinc-300 leading-relaxed">{specialist.dataHighlight}</p>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+        <ChevronDown
+          size={14}
+          className="text-zinc-600 shrink-0 mt-1 transition-transform duration-200"
+          style={{ transform: expanded ? 'rotate(180deg)' : 'rotate(0)' }}
+        />
+      </div>
+    </button>
+  );
+}
+
+// ── Specialist Panel Section ──
+function SpecialistPanelSection({ panel }: { panel: SpecialistPanel }) {
+  if (!panel?.specialists?.length) return null;
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[10px] font-extrabold text-zinc-500 uppercase tracking-[1.5px]">PAINEL DE ESPECIALISTAS</p>
+
+      {/* Consensus */}
+      {panel.consensus && (
+        <div className="bg-emerald-500/[0.04] border border-emerald-500/15 rounded-xl p-3.5">
+          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1.5">Consenso</p>
+          <p className="text-xs text-zinc-300 leading-relaxed">{panel.consensus}</p>
+        </div>
+      )}
+
+      {/* Divergences */}
+      {panel.divergences && (
+        <div className="bg-amber-500/[0.04] border border-amber-500/15 rounded-xl p-3.5">
+          <p className="text-[10px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">Divergencia</p>
+          <p className="text-xs text-zinc-300 leading-relaxed">{panel.divergences}</p>
+        </div>
+      )}
+
+      {/* Specialist Cards */}
+      <div className="space-y-2">
+        {panel.specialists.map((specialist) => (
+          <SpecialistCard key={specialist.id} specialist={specialist} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ──
 export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
   const [showFull, setShowFull] = useState(false);
@@ -412,6 +583,11 @@ export function AnalysisSummary({ analiseData }: AnalysisSummaryProps) {
             {/* Projected Score */}
             {analiseData.projectedScore > 0 && (
               <ProjectedScoreCard current={analiseData.score} projected={analiseData.projectedScore} />
+            )}
+
+            {/* Specialist Panel */}
+            {analiseData.specialistPanel && (
+              <SpecialistPanelSection panel={analiseData.specialistPanel} />
             )}
 
             {/* Recommendations */}

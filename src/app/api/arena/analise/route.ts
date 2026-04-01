@@ -7,7 +7,7 @@ export const maxDuration = 120;
 
 // Extract the most extreme metrics from segments for dashboard highlights
 function extractHighlights(segments: Record<string, any[]>): string {
-  const highlights: { label: string; category: string; type: string; pct: number }[] = [];
+  const highlights: { label: string; category: string; type: string; pct: number; sampleSize: number }[] = [];
 
   const categoryNames: Record<string, string> = {
     gender: 'Genero', religion: 'Religiao', race: 'Raca/Etnia', region: 'Regiao',
@@ -15,20 +15,32 @@ function extractHighlights(segments: Record<string, any[]>): string {
     politicalLeaning: 'Posicao Politica', voto2022: 'Voto 2022', voto2026: 'Intencao 2026',
   };
 
+  // Calculate proportional minimum sample size to avoid distorted percentages
+  const allTotals: number[] = [];
+  for (const items of Object.values(segments || {})) {
+    if (!Array.isArray(items)) continue;
+    for (const item of items) {
+      const t = (item.positive || 0) + (item.negative || 0) + (item.neutral || 0);
+      if (t > 0) allTotals.push(t);
+    }
+  }
+  const avgSegmentSize = allTotals.length > 0 ? allTotals.reduce((a, b) => a + b, 0) / allTotals.length : 0;
+  const minSampleSize = Math.max(30, Math.round(avgSegmentSize * 0.02));
+
   for (const [category, items] of Object.entries(segments || {})) {
     if (!Array.isArray(items)) continue;
     for (const item of items) {
       const total = (item.positive || 0) + (item.negative || 0) + (item.neutral || 0);
-      if (total < 10) continue;
+      if (total < minSampleSize) continue;
 
       const pctPos = (item.positive / total) * 100;
       const pctNeg = (item.negative / total) * 100;
       const pctNeu = (item.neutral / total) * 100;
       const catLabel = categoryNames[category] || category;
 
-      if (pctPos >= 70) highlights.push({ label: item.label, category: catLabel, type: 'aprovacao', pct: Math.round(pctPos) });
-      if (pctNeg >= 70) highlights.push({ label: item.label, category: catLabel, type: 'rejeicao', pct: Math.round(pctNeg) });
-      if (pctNeu >= 70) highlights.push({ label: item.label, category: catLabel, type: 'neutralidade', pct: Math.round(pctNeu) });
+      if (pctPos >= 70) highlights.push({ label: item.label, category: catLabel, type: 'aprovacao', pct: Math.round(pctPos), sampleSize: total });
+      if (pctNeg >= 70) highlights.push({ label: item.label, category: catLabel, type: 'rejeicao', pct: Math.round(pctNeg), sampleSize: total });
+      if (pctNeu >= 70) highlights.push({ label: item.label, category: catLabel, type: 'neutralidade', pct: Math.round(pctNeu), sampleSize: total });
     }
   }
 
@@ -38,7 +50,7 @@ function extractHighlights(segments: Record<string, any[]>): string {
   if (top.length === 0) return '';
 
   return `\nPONTOS DE DESTAQUE DO DASHBOARD (segmentos com metricas extremas):\n` +
-    top.map(h => `- ${h.label} (${h.category}): ${h.pct}% ${h.type}`).join('\n');
+    top.map(h => `- ${h.label} (${h.category}): ${h.pct}% ${h.type} (n=${h.sampleSize})`).join('\n');
 }
 
 export async function POST(req: NextRequest) {
@@ -231,6 +243,13 @@ REGRAS DA DUDA:
 - NAO analise se a opiniao politica e certa ou errada — analise apenas PERFORMANCE DO CONTEUDO
 - Crie urgencia: o candidato deve sentir que PRECISA agir AGORA
 
+EQUIPE DE ESPECIALISTAS:
+Voce tem uma equipe de 5 especialistas que analisou o material ANTES de voce. Os pareceres deles serao fornecidos na mensagem do usuario, na secao "PARECERES DA EQUIPE DE ESPECIALISTAS". Use esses pareceres para:
+- INCORPORAR as perspectivas na sua analise principal (headline, platformSummaries, recommendations, nextSteps) de forma natural, sem citar os especialistas pelo nome
+- Incluir os pareceres ORIGINAIS no campo "specialistPanel" do JSON de resposta
+- Se algum especialista identificou risco ALTO ou CRITICO, priorize essa informacao nas recomendacoes
+- Se houver DIVERGENCIA entre especialistas, mencione-a de forma sutil na analise
+
 CONTEXTO DO MATERIAL:
 - Plataformas selecionadas: ${mediaLabel.toUpperCase()}
 - Tipo de midia enviada: ${attachmentLabel}
@@ -298,6 +317,24 @@ ${platformSummariesExample}
     "conversao": 4.0,
     "adequacao": 8.0,
     "emocional": 6.5
+  },
+  "specialistPanel": {
+    "consensus": "O que todos os 5 especialistas concordam sobre este conteudo (1-2 frases diretas)",
+    "divergences": "Onde ha discordancia entre especialistas (ex: marketing digital sugere X mas compliance alerta Y). Pode ser null se nao houver",
+    "specialists": [
+      {
+        "id": "comunicacao_politica",
+        "name": "Comunicacao Politica",
+        "emoji": "bullseye",
+        "verdict": "Frase direta do especialista sobre o conteudo. Max 80 chars.",
+        "riskLevel": "baixo|medio|alto|critico",
+        "keyPoints": ["Ponto 1 com dado especifico", "Ponto 2 com dado especifico", "Ponto 3 (opcional)"],
+        "recommendations": [
+          { "text": "Recomendacao especifica deste especialista", "priority": "urgente|importante|oportunidade", "segment": "Segmento demografico alvo (opcional)" }
+        ],
+        "dataHighlight": "Um dado surpreendente que so este especialista notou (opcional)"
+      }
+    ]
   }
 }
 
@@ -320,6 +357,7 @@ REGRAS DO JSON:
 - "insight": O dado MAIS surpreendente e acionavel dos dados demograficos. Algo que o candidato provavelmente nao percebeu. Deve gerar urgencia
 - "nextSteps": EXATAMENTE 5 passos ordenados por urgencia. Deadlines devem ser realistas e escalonadas (primeiro "hoje", depois progressivamente)
 - "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
+- "specialistPanel": Se os PARECERES DOS ESPECIALISTAS foram fornecidos na mensagem, copie-os EXATAMENTE como recebidos no campo specialistPanel (com consensus, divergences e specialists). Se nao foram fornecidos, OMITA este campo
 
 REGRA CRITICA — SENSIBILIDADE AO TIPO DE MIDIA:
 - O "summary" e cada "platformSummary" focam EXCLUSIVAMENTE em melhorar A MIDIA QUE FOI ENVIADA (${attachmentLabel}). Nao sugira mudar de formato.
@@ -343,6 +381,47 @@ REGRAS GERAIS:
 - Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
 - RESPONDA APENAS O JSON, nada mais. Sem \`\`\`json, sem explicacoes, APENAS o objeto JSON.`;
 
+  // ── Step 1: Call specialist-worker Python service ──
+  const specialistWorkerUrl = process.env.SPECIALIST_WORKER_URL || 'http://localhost:3011';
+  let specialistPanel: any = null;
+  let specialistBlock = '';
+
+  try {
+    const specialistController = new AbortController();
+    const specialistTimeout = setTimeout(() => specialistController.abort(), 30000);
+
+    const specialistRes = await fetch(`${specialistWorkerUrl}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question, positive, negative, neutral, totalPersonas, segments, contentMeta }),
+      signal: specialistController.signal,
+    });
+    clearTimeout(specialistTimeout);
+
+    if (specialistRes.ok) {
+      specialistPanel = await specialistRes.json();
+      // Format specialist opinions for DUDA's context
+      const specLines = (specialistPanel.specialists || []).map((s: any) =>
+        `[${s.name}] (Risco: ${s.riskLevel}) — ${s.verdict}\n  Pontos: ${(s.keyPoints || []).join('; ')}`
+      ).join('\n\n');
+
+      specialistBlock = `
+
+PARECERES DA EQUIPE DE ESPECIALISTAS:
+Consenso: ${specialistPanel.consensus || 'Nao disponivel'}
+${specialistPanel.divergences ? `Divergencia: ${specialistPanel.divergences}` : ''}
+
+${specLines}
+
+Use esses pareceres para enriquecer sua analise. Incorpore as perspectivas dos especialistas de forma natural, sem cita-los pelo nome.`;
+    } else {
+      console.warn('[Analise] Specialist worker returned non-OK:', specialistRes.status);
+    }
+  } catch (err) {
+    console.warn('[Analise] Specialist worker unavailable, proceeding without:', (err as Error).message);
+  }
+
+  // ── Step 2: Call DUDA (Claude Opus) with specialist context ──
   const userMessage = `MATERIAL ANALISADO: "${question}"
 
 RESULTADO GERAL:
@@ -354,13 +433,14 @@ RESULTADO GERAL:
 BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
 ${highlightsBlock}
+${specialistBlock}
 
 Produza a analise de performance no formato JSON especificado.`;
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-20250514',
-      max_tokens: 4000,
+      max_tokens: 6000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
@@ -374,6 +454,24 @@ Produza a analise de performance no formato JSON especificado.`;
     }
 
     const parsed = JSON.parse(jsonStr);
+
+    // Inject the specialist panel from Python (not from DUDA's generation)
+    if (specialistPanel) {
+      parsed.specialistPanel = {
+        consensus: specialistPanel.consensus,
+        divergences: specialistPanel.divergences || null,
+        specialists: (specialistPanel.specialists || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          emoji: s.emoji,
+          verdict: s.verdict,
+          riskLevel: s.riskLevel,
+          keyPoints: s.keyPoints || [],
+          recommendations: s.recommendations || [],
+          dataHighlight: s.dataHighlight || null,
+        })),
+      };
+    }
 
     return Response.json(parsed);
   } catch (err) {
