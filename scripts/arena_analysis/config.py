@@ -90,8 +90,12 @@ class Settings:
     individual_max_parallel: int = 60  # 3 keys × 20 concurrent
     individual_max_tokens: int = 300  # 1 persona output
 
+    # Aggregate Engine
+    aggregate_model: str = "gpt-4o"
+    aggregate_max_tokens: int = 12000
+
     # Retry
-    max_retries: int = 2  # mais retries — cada persona individual importa
+    max_retries: int = 2
 
 
 settings = Settings()

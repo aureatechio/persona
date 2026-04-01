@@ -107,10 +107,15 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
-    print("[Startup] Pre-warming persona cache...")
-    await asyncio.to_thread(load_personas)
-    print(f"[Startup] Cache pronto | Claude keys: {len(settings.anthropic_api_keys)} | GPT keys: {len(settings.openai_api_keys)}")
+    """Pre-warm personas em background (nao bloqueia health check)."""
+    async def _warm():
+        try:
+            await asyncio.to_thread(load_personas)
+            print(f"[Startup] Cache pronto | keys: {len(settings.openai_api_keys)} GPT, {len(settings.anthropic_api_keys)} Claude")
+        except Exception as e:
+            print(f"[Startup] Pre-warm failed (will retry on first request): {e}")
+    asyncio.create_task(_warm())
+    print("[Startup] Arena v3.0 — pre-warming in background")
 
 
 @app.get("/api/arena/health")
@@ -374,126 +379,118 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 contexto=disambiguation,
             )
 
-        # ── 5. Persona Loop ──────────────────────────────────────────
+        # ── 5. Aggregate Engine (substitui persona loop de 20k) ─────
         if cancelled.is_set():
-            print("[Pipeline] Cancelled before persona loop — aborting")
+            print("[Pipeline] Cancelled before aggregate engine — aborting")
             return
 
         yield sse_event("phase", {
             "phase": "processing_personas",
-            "message": f"Processando {total_personas} personas com IA...",
+            "message": f"Analisando sentimento de {total_personas} personas...",
         })
 
-        all_results = []
-        # Incremental aggregator for progressive segments
-        inc_personas: list[dict] = []
-        inc_results: list = []
-        last_segment_count = 0
-        last_inc_agg: dict | None = None
-        FIRST_SEGMENT_AT = 50   # emit segments early (after ~50 personas ≈ 3-5s)
-        SEGMENT_INTERVAL = 200  # then every ~200 personas
+        # Lazy import — nao carrega openai no startup
+        from arena_analysis.aggregate_engine import analyze as aggregate_analyze, load_profile, generate_ideological_points
 
-        # Skip hardcoded political enforcement when AI pre-classifier detected political figures
-        # (the disambiguation block in the prompt already handles framing correctly)
-        has_political_figures = any(
-            f.get("stance") in ("attack", "defense")
-            for f in pre_class.get("figures", [])
+        # Launch aggregate analysis in background
+        aggregate_task = asyncio.create_task(
+            aggregate_analyze(
+                question=request.question,
+                context=context,
+                pre_classification=pre_class,
+            )
         )
 
-        async for progress in persona_loop.run(
-            request.question, context, personas,
-            verbose=request.verbose, cancelled=cancelled,
-            skip_political_enforcement=has_political_figures,
-        ):
-            all_results.extend(progress.results)
-            inc_personas.extend(progress.personas)
-            inc_results.extend(progress.results)
+        # Emit synthetic progress events (~60s) while model processes
+        progress_steps = [
+            (0.05, "Carregando perfis demograficos..."),
+            (0.15, "Cruzando dados eleitorais..."),
+            (0.27, "Analisando clusters ideologicos..."),
+            (0.40, "Processando opiniao tematica..."),
+            (0.55, "Avaliando segmentos regionais..."),
+            (0.70, "Calculando intensidade por grupo..."),
+            (0.85, "Consolidando sentimento geral..."),
+            (0.97, "Finalizando analise..."),
+        ]
 
-            avg_score = round(progress.score_sum / progress.processed, 1) if progress.processed > 0 else 5.0
-            progress_data: dict = {
-                "processed": progress.processed,
-                "total": progress.total,
-                "positive": progress.positive,
-                "negative": progress.negative,
-                "neutral": progress.neutral,
-                "avgScore": avg_score,
-                "scoreSum": progress.score_sum,
-            }
-
-            # Emit segments periodically
-            threshold = FIRST_SEGMENT_AT if last_segment_count == 0 else SEGMENT_INTERVAL
-            if progress.processed - last_segment_count >= threshold or progress.processed == progress.total:
-                try:
-                    inc_agg = await asyncio.to_thread(
-                        aggregate_results, inc_personas, inc_results, request.question
-                    )
-                    last_inc_agg = inc_agg
-                    progress_data["segments"] = inc_agg.get("segments")
-                    progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
-                    progress_data["cityBreakdown"] = inc_agg.get("cityBreakdown")
-                    progress_data["politicalFigures"] = inc_agg.get("politicalFigures", [])
-                    progress_data["quadrants"] = inc_agg.get("quadrants", [])
-                    progress_data["clusterResults"] = inc_agg.get("clusterResults", [])
-                    last_segment_count = progress.processed
-                except Exception as seg_err:
-                    print(f"[Pipeline] Incremental segment error: {seg_err}")
-
-            yield sse_event("progress", progress_data)
-
-            if request.verbose and progress.batch_meta:
-                yield sse_event("batch_detail", progress.batch_meta)
-
-            # Check cancellation after each batch
+        step_duration = 60.0 / len(progress_steps)
+        for pct, msg in progress_steps:
             if cancelled.is_set():
-                print(f"[Pipeline] Cancelled during persona loop at {progress.processed}/{progress.total}")
+                aggregate_task.cancel()
                 return
 
-        # ── 6. Aggregate Results ──────────────────────────────────────
+            processed = int(total_personas * pct)
+            yield sse_event("progress", {
+                "processed": processed,
+                "total": total_personas,
+                "positive": 0,
+                "negative": 0,
+                "neutral": 0,
+                "avgScore": 5.0,
+                "scoreSum": 0,
+            })
+            yield sse_event("phase", {
+                "phase": "processing_personas",
+                "message": msg,
+            })
+
+            try:
+                await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=step_duration)
+                break  # Model finished early
+            except asyncio.TimeoutError:
+                pass  # Continue animation
+            except Exception:
+                break  # Error — will be caught below
+
+        # Await final result
+        try:
+            final_results = await aggregate_task
+        except Exception as e:
+            print(f"[Pipeline] Aggregate engine error: {e}")
+            import traceback
+            traceback.print_exc()
+            final_results = {
+                "total": total_personas, "positive": 0, "negative": 0, "neutral": 0,
+                "avgScore": 5.0, "processingTime": 0, "archetypes": [], "clusterResults": [],
+                "comments": [], "ideologicalPoints": [], "quadrants": [], "regions": [],
+                "generations": [], "educationLevels": [], "politicalFigures": [],
+                "intensityBands": [], "segments": {}, "stateBreakdown": {}, "cityBreakdown": {},
+            }
+
+        # ── 6. Emit final progress (100%) with real data ──────────────
         yield sse_event("phase", {
             "phase": "aggregating",
             "message": f"Agregando resultados de {total_personas} personas...",
         })
 
         processing_time = (time.time() - start_time) * 1000
+        final_results["processingTime"] = processing_time
 
+        yield sse_event("progress", {
+            "processed": total_personas,
+            "total": total_personas,
+            "positive": final_results.get("positive", 0),
+            "negative": final_results.get("negative", 0),
+            "neutral": final_results.get("neutral", 0),
+            "avgScore": final_results.get("avgScore", 5.0),
+            "scoreSum": final_results.get("avgScore", 5.0) * total_personas,
+            "segments": final_results.get("segments"),
+            "stateBreakdown": final_results.get("stateBreakdown"),
+            "cityBreakdown": final_results.get("cityBreakdown"),
+            "politicalFigures": final_results.get("politicalFigures", []),
+            "quadrants": final_results.get("quadrants", []),
+            "clusterResults": final_results.get("clusterResults", []),
+        })
+
+        # Generate synthetic ideological points from profile + analysis results
         try:
-            # Reuse last incremental aggregation (already has all data) — skip redundant re-aggregation
-            if last_inc_agg is not None:
-                final_results = last_inc_agg
-                print(f"[Pipeline] Reusing last incremental aggregation (skipped re-aggregation of {total_personas} personas)")
-            else:
-                final_results = await asyncio.to_thread(
-                    aggregate_results, personas, all_results, request.question
-                )
-            final_results["processingTime"] = processing_time
-        except Exception as e:
-            print(f"[Pipeline] Aggregator error: {e}")
-            import traceback
-            traceback.print_exc()
-            # Fallback: retorna dados mínimos do progress
-            pos = sum(1 for r in all_results if r.sentiment == "positive")
-            neg = sum(1 for r in all_results if r.sentiment == "negative")
-            neu = sum(1 for r in all_results if r.sentiment == "neutral")
-            final_results = {
-                "total": len(all_results),
-                "positive": pos,
-                "negative": neg,
-                "neutral": neu,
-                "processingTime": processing_time,
-                "archetypes": [],
-                "clusterResults": [],
-                "comments": [{"personaName": r.persona_id, "sentiment": r.sentiment, "comment": r.comment, "archetype": "", "age": 0, "location": "", "state": "", "region": "", "generation": ""} for r in all_results],
-                "ideologicalPoints": [],
-                "quadrants": [],
-                "regions": [],
-                "generations": [],
-                "educationLevels": [],
-                "politicalFigures": [],
-                "intensityBands": [],
-            }
+            profile = await load_profile()
+            ideological_points = generate_ideological_points(profile, final_results)
+        except Exception as pts_err:
+            print(f"[Pipeline] Ideological points generation error: {pts_err}")
+            ideological_points = []
 
-        # Extract ideologicalPoints to stream in chunks (avoids 5-10MB single SSE event)
-        ideological_points = final_results.pop("ideologicalPoints", [])
+        final_results.pop("ideologicalPoints", None)
         yield sse_event("results", final_results)
 
         # Stream ideological points in small chunks to keep connection alive
@@ -536,6 +533,20 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ── Recompute Aggregate Profile ──────────────────────────────────────────────
+
+@app.post("/api/arena/recompute-profile")
+async def recompute_profile():
+    """Recomputa o perfil estatistico agregado das personas."""
+    from arena_analysis.aggregate_builder import build_aggregate_profile, save_profile
+    try:
+        profile = await build_aggregate_profile()
+        await save_profile(profile)
+        return {"status": "ok", "total_personas": profile["total_personas"]}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ── Calibration Endpoint ──────────────────────────────────────────────────────
