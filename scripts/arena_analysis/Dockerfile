@@ -12,4 +12,7 @@ COPY scripts/arena_analysis/ ./arena_analysis/
 
 EXPOSE 8000
 
-CMD ["uvicorn", "arena_analysis.main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-max-requests", "1000", "--timeout-keep-alive", "30"]
+# PYTHONUNBUFFERED=1 garante que logs aparecem imediatamente no DO
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-u", "-m", "uvicorn", "arena_analysis.main:app", "--host", "0.0.0.0", "--port", "8000", "--limit-max-requests", "1000", "--timeout-keep-alive", "30"]
