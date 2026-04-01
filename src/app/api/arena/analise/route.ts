@@ -55,7 +55,7 @@ function extractHighlights(segments: Record<string, any[]>): string {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta } = body;
+  const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta, specialistPanel: precomputedSpecialists } = body;
 
   const total = positive + negative + neutral;
   const pctPos = total > 0 ? ((positive / total) * 100).toFixed(1) : '0';
@@ -398,44 +398,53 @@ REGRAS GERAIS:
 - Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
 - RESPONDA APENAS O JSON, nada mais. Sem \`\`\`json, sem explicacoes, APENAS o objeto JSON.`;
 
-  // ── Step 1: Call specialist-worker Python service ──
+  // ── Step 1: Call specialist-worker Python service (or use pre-computed) ──
   const specialistWorkerUrl = process.env.SPECIALIST_WORKER_URL || 'http://localhost:3011';
   let specialistPanel: any = null;
   let specialistBlock = '';
 
-  try {
-    const specialistController = new AbortController();
-    const specialistTimeout = setTimeout(() => specialistController.abort(), 30000);
+  function buildSpecialistBlock(panel: any): string {
+    const specLines = (panel.specialists || []).map((s: any) =>
+      `[${s.name}] (Risco: ${s.riskLevel}) — ${s.verdict}\n  Pontos: ${(s.keyPoints || []).join('; ')}`
+    ).join('\n\n');
 
-    const specialistRes = await fetch(`${specialistWorkerUrl}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, positive, negative, neutral, totalPersonas, segments, contentMeta }),
-      signal: specialistController.signal,
-    });
-    clearTimeout(specialistTimeout);
-
-    if (specialistRes.ok) {
-      specialistPanel = await specialistRes.json();
-      // Format specialist opinions for DUDA's context
-      const specLines = (specialistPanel.specialists || []).map((s: any) =>
-        `[${s.name}] (Risco: ${s.riskLevel}) — ${s.verdict}\n  Pontos: ${(s.keyPoints || []).join('; ')}`
-      ).join('\n\n');
-
-      specialistBlock = `
+    return `
 
 PARECERES DA EQUIPE DE ESPECIALISTAS:
-Consenso: ${specialistPanel.consensus || 'Nao disponivel'}
-${specialistPanel.divergences ? `Divergencia: ${specialistPanel.divergences}` : ''}
+Consenso: ${panel.consensus || 'Nao disponivel'}
+${panel.divergences ? `Divergencia: ${panel.divergences}` : ''}
 
 ${specLines}
 
 Use esses pareceres para enriquecer sua analise. Incorpore as perspectivas dos especialistas de forma natural, sem cita-los pelo nome.`;
-    } else {
-      console.warn('[Analise] Specialist worker returned non-OK:', specialistRes.status);
+  }
+
+  if (precomputedSpecialists?.specialists?.length) {
+    // Use pre-computed specialist panel (from calibration screen)
+    specialistPanel = precomputedSpecialists;
+    specialistBlock = buildSpecialistBlock(specialistPanel);
+  } else {
+    try {
+      const specialistController = new AbortController();
+      const specialistTimeout = setTimeout(() => specialistController.abort(), 30000);
+
+      const specialistRes = await fetch(`${specialistWorkerUrl}/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, positive, negative, neutral, totalPersonas, segments, contentMeta }),
+        signal: specialistController.signal,
+      });
+      clearTimeout(specialistTimeout);
+
+      if (specialistRes.ok) {
+        specialistPanel = await specialistRes.json();
+        specialistBlock = buildSpecialistBlock(specialistPanel);
+      } else {
+        console.warn('[Analise] Specialist worker returned non-OK:', specialistRes.status);
+      }
+    } catch (err) {
+      console.warn('[Analise] Specialist worker unavailable, proceeding without:', (err as Error).message);
     }
-  } catch (err) {
-    console.warn('[Analise] Specialist worker unavailable, proceeding without:', (err as Error).message);
   }
 
   // ── Step 2: Call DUDA (Claude Opus) with specialist context ──

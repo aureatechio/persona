@@ -16,14 +16,6 @@ export interface StepState {
   output?: Record<string, any>;
 }
 
-export interface BatchData {
-  batchIndex: number;
-  batchTotal: number;
-  model: string;
-  personaCount: number;
-  personas: PersonaBatchDetail[];
-}
-
 export interface PersonaProfile {
   gender?: string;
   region?: string;
@@ -49,6 +41,17 @@ export interface PersonaProfile {
   beliefs?: Record<string, any>;
 }
 
+export interface SegmentItem {
+  label: string;
+  count: number;
+  positive: number;
+  negative: number;
+  neutral: number;
+}
+
+export type AllSegments = Record<string, SegmentItem[]>;
+
+// Legacy types — kept for backward compatibility with PersonaSampleList/PersonaDrillDown
 export interface PersonaBatchDetail {
   id: string;
   name: string;
@@ -61,17 +64,51 @@ export interface PersonaBatchDetail {
   profile?: PersonaProfile;
 }
 
-export interface SegmentItem {
-  label: string;
-  count: number;
-  positive: number;
-  negative: number;
-  neutral: number;
+export interface BatchData {
+  batchIndex: number;
+  batchTotal: number;
+  model: string;
+  personaCount: number;
+  personas: PersonaBatchDetail[];
 }
 
-export type AllSegments = Record<string, SegmentItem[]>;
+// ── Specialist Types ──
 
-// ── Pipeline Steps (mirrors production) ──
+export interface SpecialistResult {
+  id: string;
+  name: string;
+  emoji: string;
+  verdict: string;
+  riskLevel: string;
+  keyPoints: string[];
+  recommendations: { text: string; priority: string; segment?: string }[];
+  dataHighlight?: string;
+}
+
+export interface SpecialistPanelData {
+  consensus: string;
+  divergences: string | null;
+  specialists: SpecialistResult[];
+  processingTimeMs: number;
+}
+
+export interface DudaAnalysis {
+  headline: string;
+  platformSummaries?: { platform: string; summary: string }[];
+  summary?: string;
+  score: number;
+  projectedScore: number;
+  recommendations: any[];
+  nextSteps: any[];
+  radar: Record<string, number>;
+  stats?: { value: string; label: string }[];
+  insight?: { title: string; description: string; action: string };
+  dashboardHighlights?: any[];
+  specialistPanel?: any;
+  tags?: string[];
+}
+
+// ── Pipeline Steps (mirrors production v3) ──
 
 export const PIPELINE_STEPS = [
   { id: 'media_analysis', label: 'Analise de Midia', icon: 'Image' },
@@ -79,9 +116,10 @@ export const PIPELINE_STEPS = [
   { id: 'ideological_frame', label: 'Mapeamento Ideologico', icon: 'Scale' },
   { id: 'persona_loader', label: 'Carregamento de Personas', icon: 'Users' },
   { id: 'pre_classifier', label: 'Pre-Classificacao Semantica', icon: 'Search' },
-  { id: 'prompt_preview', label: 'Preview do Prompt', icon: 'FileText' },
-  { id: 'persona_loop', label: 'Processamento de Personas', icon: 'Cpu' },
+  { id: 'aggregate_engine', label: 'Motor de Inferencia', icon: 'Cpu' },
   { id: 'aggregation', label: 'Agregacao de Resultados', icon: 'BarChart3' },
+  { id: 'specialists', label: 'Especialistas IA', icon: 'Bot' },
+  { id: 'duda_analysis', label: 'Duda Marqueteira', icon: 'Sparkles' },
 ] as const;
 
 export type StepId = (typeof PIPELINE_STEPS)[number]['id'];
@@ -102,9 +140,6 @@ export interface CalibrationStore {
   startTime: number | null;
   endTime: number | null;
 
-  // Batches
-  batches: BatchData[];
-
   // Progress
   progress: {
     processed: number;
@@ -119,8 +154,15 @@ export interface CalibrationStore {
   // Segments
   segments: AllSegments | null;
 
+  // Legacy batches (kept for PersonaSampleList compatibility)
+  batches: BatchData[];
+
   // Cost
-  cost: { total_usd: number; gpt4o_mini: { calls: number; input_tokens: number; output_tokens: number; cost_usd: number } } | null;
+  cost: { total_usd: number; aggregate_engine?: any; claude_estimated_usd?: number; pre_classifier_estimated_usd?: number } | null;
+
+  // Specialist & Duda
+  specialistPanel: SpecialistPanelData | null;
+  dudaAnalysis: DudaAnalysis | null;
 
   // Actions
   selectStep: (step: string | null) => void;
@@ -145,10 +187,12 @@ export const useCalibrationStore = create<CalibrationStore>((set) => ({
   selectedStep: null,
   startTime: null,
   endTime: null,
-  batches: [],
   progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5, scoreSum: 0 },
   segments: null,
+  batches: [],
   cost: null,
+  specialistPanel: null,
+  dudaAnalysis: null,
 
   selectStep: (step) => set({ selectedStep: step }),
   updateStep: (stepId, update) => set((s) => ({
@@ -163,12 +207,104 @@ export const useCalibrationStore = create<CalibrationStore>((set) => ({
       question: '', geoFilter: null, isProcessing: false, error: null,
       steps: initialSteps(), selectedStep: null,
       startTime: null, endTime: null,
-      batches: [],
       progress: { processed: 0, total: 0, positive: 0, negative: 0, neutral: 0, avgScore: 5, scoreSum: 0 },
-      segments: null,
-      cost: null,
+      segments: null, batches: [], cost: null,
+      specialistPanel: null, dudaAnalysis: null,
     }),
 }));
+
+// ── Post-Processing (specialists + Duda) ──
+
+async function triggerPostProcessing() {
+  const store = useCalibrationStore;
+  const { progress, segments, question } = store.getState();
+
+  // --- Step: Specialists ---
+  store.getState().updateStep('specialists', {
+    status: 'running',
+    label: 'Especialistas IA',
+    description: '5 agentes analisando em paralelo via Claude...',
+  });
+
+  let specialistData: SpecialistPanelData | null = null;
+
+  try {
+    const specialistRes = await fetch('/api/calibracao/specialists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        positive: progress.positive,
+        negative: progress.negative,
+        neutral: progress.neutral,
+        totalPersonas: progress.total,
+        segments: segments || {},
+        contentMeta: {},
+      }),
+    });
+
+    if (specialistRes.ok) {
+      specialistData = await specialistRes.json();
+      store.setState({ specialistPanel: specialistData });
+      store.getState().updateStep('specialists', {
+        status: 'complete',
+        latencyMs: specialistData?.processingTimeMs,
+        output: specialistData as any,
+      });
+    } else {
+      throw new Error(`Specialist worker: ${specialistRes.status}`);
+    }
+  } catch (err) {
+    store.getState().updateStep('specialists', {
+      status: 'error',
+      description: `Erro: ${(err as Error).message}`,
+    });
+  }
+
+  // --- Step: Duda Analysis ---
+  store.getState().updateStep('duda_analysis', {
+    status: 'running',
+    label: 'Duda Marqueteira',
+    description: 'Claude Opus gerando recomendacoes estrategicas...',
+  });
+
+  try {
+    const dudaRes = await fetch('/api/arena/analise', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question,
+        positive: progress.positive,
+        negative: progress.negative,
+        neutral: progress.neutral,
+        totalPersonas: progress.total,
+        segments: segments || {},
+        contentMeta: {},
+        // Pass pre-computed specialist panel to avoid double-calling
+        ...(specialistData ? { specialistPanel: specialistData } : {}),
+      }),
+    });
+
+    if (dudaRes.ok) {
+      const dudaData = await dudaRes.json();
+      store.setState({ dudaAnalysis: dudaData });
+      store.getState().updateStep('duda_analysis', {
+        status: 'complete',
+        output: dudaData,
+      });
+    } else {
+      throw new Error(`Duda: ${dudaRes.status}`);
+    }
+  } catch (err) {
+    store.getState().updateStep('duda_analysis', {
+      status: 'error',
+      description: `Erro: ${(err as Error).message}`,
+    });
+  }
+
+  // Mark processing as done
+  store.setState({ isProcessing: false, endTime: Date.now() });
+}
 
 // ── SSE Submit ──
 
@@ -197,7 +333,6 @@ export async function calibrationSubmit(
     geoFilter: geoFilter || null,
     isProcessing: true,
     startTime: Date.now(),
-    // Restore media_analysis if it was already done (before backend takes over)
     ...(mediaWasCompleted && {
       steps: {
         ...initialSteps(),
@@ -284,18 +419,6 @@ export async function calibrationSubmit(
           break;
         }
 
-        case 'cal_batch': {
-          const newBatch: BatchData = {
-            batchIndex: data.batch_index,
-            batchTotal: data.batch_total,
-            model: data.model,
-            personaCount: data.persona_count,
-            personas: data.personas || [],
-          };
-          store.setState({ batches: [...s().batches, newBatch] });
-          break;
-        }
-
         case 'cal_progress':
           store.setState({
             progress: {
@@ -325,16 +448,18 @@ export async function calibrationSubmit(
             },
             steps: {
               ...s().steps,
-              persona_loop: { ...s().steps.persona_loop, status: 'complete' },
+              aggregate_engine: { ...s().steps.aggregate_engine, status: 'complete' },
               aggregation: { ...s().steps.aggregation, status: 'complete' },
             },
           });
+          // Trigger frontend post-processing (specialists + Duda)
+          triggerPostProcessing();
           break;
 
         case 'cal_done':
+          // Backend is done — but post-processing may still be running
+          // isProcessing is set to false by triggerPostProcessing when complete
           store.setState({
-            isProcessing: false,
-            endTime: Date.now(),
             cost: data.cost ?? null,
           });
           break;
@@ -353,7 +478,7 @@ export async function calibrationSubmit(
       if (sseBuffer.trim().startsWith('data: ')) {
         try { handleEvent(JSON.parse(sseBuffer.trim().slice(6))); } catch {}
       }
-      store.setState({ isProcessing: false, endTime: Date.now() });
+      // Don't set isProcessing false here — post-processing handles that
       resolve();
     };
 
