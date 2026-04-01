@@ -422,7 +422,7 @@ REGRAS GERAIS:
 - RESPONDA APENAS O JSON, nada mais. Sem \`\`\`json, sem explicacoes, APENAS o objeto JSON.`;
 
   // ── Step 1: Call specialist-worker Python service (or use pre-computed) ──
-  const specialistWorkerUrl = process.env.SPECIALIST_WORKER_URL || 'http://localhost:3011';
+  const specialistWorkerUrl = process.env.SPECIALIST_WORKER_URL || 'https://arena-analysis-api-2puat.ondigitalocean.app/specialists';
   let specialistPanel: any = null;
   let specialistBlock = '';
 
