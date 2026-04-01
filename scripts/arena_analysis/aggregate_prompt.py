@@ -251,29 +251,71 @@ PRE-CLASSIFICACAO DO CONTEUDO:
          negativo significa = {pre_classification.get('negative_means', 'rejeita')}
 """
 
-    # Format profile sections compactly
-    demographics_str = json.dumps(profile.get("demographics", {}), ensure_ascii=False, indent=None)
-    electoral_str = json.dumps(profile.get("electoral", {}), ensure_ascii=False, indent=None)
-    ideological_str = json.dumps(profile.get("ideological", {}), ensure_ascii=False, indent=None)
-    clusters_str = json.dumps(profile.get("clusters", {}), ensure_ascii=False, indent=None)
-    thematic_str = json.dumps(profile.get("thematic_opinions", {}), ensure_ascii=False, indent=None)
-    geographic_str = json.dumps(profile.get("geographic", {}), ensure_ascii=False, indent=None)
-    cross_tabs_str = json.dumps(profile.get("cross_tabulations", {}), ensure_ascii=False, indent=None)
+    # ── Compact profile to reduce tokens (~56K → ~8K) ──
 
-    # Persona samples for comment generation
+    # Demographics: just label→count
+    def _compact_demo(data: dict) -> str:
+        lines = []
+        for category, items in data.items():
+            if isinstance(items, dict):
+                parts = [f"{k}:{v}" for k, v in items.items() if v]
+                lines.append(f"  {category}: {', '.join(parts)}")
+        return "\n".join(lines) if lines else json.dumps(data, ensure_ascii=False)
+
+    demographics_str = _compact_demo(profile.get("demographics", {}))
+    electoral_str = _compact_demo(profile.get("electoral", {}))
+    ideological_str = _compact_demo(profile.get("ideological", {}))
+
+    # Thematic: compact
+    thematic_str = _compact_demo(profile.get("thematic_opinions", {}))
+
+    # Clusters: 1 line per cluster (id, name, count, avg_eco, avg_cost)
+    clusters_data = profile.get("clusters", {})
+    cluster_items = clusters_data.get("clusters", clusters_data)
+    cluster_lines = []
+    if isinstance(cluster_items, dict):
+        for cid, cdata in cluster_items.items():
+            if isinstance(cdata, dict):
+                cluster_lines.append(
+                    f"  {cid} ({cdata.get('name', cid)}): n={cdata.get('count', 0)}, eco={cdata.get('avg_score_eco', 0):.2f}, cost={cdata.get('avg_score_cost', 0):.2f}, regiao={cdata.get('dominant_region', '?')}"
+                )
+    clusters_str = "\n".join(cluster_lines) if cluster_lines else json.dumps(clusters_data, ensure_ascii=False)
+
+    # Geographic: just state→count (1 line)
+    geo_data = profile.get("geographic", {})
+    states = geo_data.get("states", geo_data)
+    if isinstance(states, dict):
+        geo_parts = [f"{st}:{d.get('count', d) if isinstance(d, dict) else d}" for st, d in states.items()]
+        geographic_str = "  " + ", ".join(geo_parts)
+    else:
+        geographic_str = json.dumps(geo_data, ensure_ascii=False)
+
+    # Persona samples: only 30 (for comment generation), compact fields
     samples = profile.get("persona_samples", [])
-    samples_str = json.dumps(samples[:200], ensure_ascii=False, indent=None)
+    compact_samples = []
+    for s in samples[:30]:
+        compact_samples.append({
+            "name": s.get("name", ""),
+            "age": s.get("age", 0),
+            "city": s.get("city", ""),
+            "state": s.get("state", ""),
+            "gender": s.get("gender", ""),
+            "education": s.get("education_level", ""),
+            "generation": s.get("generation", ""),
+            "political": s.get("political_leaning", ""),
+            "cluster": s.get("cluster_id", ""),
+            "religion": s.get("macro_religion", ""),
+        })
+    samples_str = json.dumps(compact_samples, ensure_ascii=False, indent=None)
 
     total = profile.get("total_personas", 20000)
 
-    return f"""CONTEUDO A SER ANALISADO:
-"{question}"
+    return f"""CONTEUDO: "{question}"
 
-CONTEXTO FACTUAL:
-{context or "Sem contexto adicional."}
+CONTEXTO: {context or "Sem contexto adicional."}
 {pre_class_block}
 
-===== SENTIMENTO GERAL DAS {total:,} PERSONAS =====
+=== PERFIL DAS {total:,} PERSONAS ===
 
 DEMOGRAFICO:
 {demographics_str}
@@ -284,21 +326,18 @@ ELEITORAL:
 IDEOLOGICO:
 {ideological_str}
 
-CLUSTERS (24 grupos ideologicos):
+CLUSTERS:
 {clusters_str}
 
-OPINIOES TEMATICAS DECLARADAS:
+OPINIOES TEMATICAS:
 {thematic_str}
 
-GEOGRAFICO:
+ESTADOS (count por UF):
 {geographic_str}
 
-CROSS-TABULATIONS:
-{cross_tabs_str}
-
-===== PERSONAS REPRESENTATIVAS (para gerar comentarios) =====
+=== PERSONAS PARA COMENTARIOS (30) ===
 {samples_str}
 
 {build_output_schema(total)}
 
-Analise o conteudo e DERIVE os scores por segmento. Responda APENAS com o JSON."""
+DERIVE os scores e responda APENAS com JSON."""
