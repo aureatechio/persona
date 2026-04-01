@@ -52,6 +52,8 @@ from arena_analysis.results_aggregator import aggregate_results
 print("[Boot] results_aggregator OK", flush=True)
 from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_single_prompt
 print("[Boot] comment_prompt OK", flush=True)
+from arena_analysis.persona_loop import PersonaLoop
+print("[Boot] persona_loop OK", flush=True)
 from arena_analysis.electoral_engine import ElectoralEngine
 print("[Boot] electoral_engine OK", flush=True)
 from arena_analysis.geo_filter import apply_geo_filter
@@ -79,6 +81,7 @@ app.add_middleware(
 # ── Singletons ────────────────────────────────────────────────────────────────
 web_researcher = ArenaWebResearcher()
 context_builder = ContextBuilder()
+persona_loop = PersonaLoop()  # mantido para electoral_engine/calibration
 electoral_engine = ElectoralEngine()
 
 
@@ -120,8 +123,10 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    """Startup leve — personas serao carregadas na primeira request."""
-    print(f"[Startup] Arena v3.0 ready | Aggregate model: {settings.aggregate_model} | GPT keys: {len(settings.openai_api_keys)} | Claude keys: {len(settings.anthropic_api_keys)}")
+    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
+    print("[Startup] Pre-warming persona cache...", flush=True)
+    await asyncio.to_thread(load_personas)
+    print(f"[Startup] Cache pronto | Aggregate model: {settings.aggregate_model} | GPT keys: {len(settings.openai_api_keys)}", flush=True)
 
 
 @app.get("/api/arena/health")
