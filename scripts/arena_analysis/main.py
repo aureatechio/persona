@@ -21,10 +21,6 @@ Uso local:
 """
 from __future__ import annotations
 
-import sys
-print("[Boot] Python", sys.version, flush=True)
-print("[Boot] Importing modules...", flush=True)
-
 import asyncio
 import base64
 import json
@@ -39,29 +35,17 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 from openai import OpenAI
 
-print("[Boot] Importing arena modules...", flush=True)
 from arena_analysis.config import settings
-print("[Boot] config OK", flush=True)
 from arena_analysis.web_researcher import ArenaWebResearcher
-print("[Boot] web_researcher OK", flush=True)
 from arena_analysis.context_builder import ContextBuilder, ContextResult
-print("[Boot] context_builder OK", flush=True)
 from arena_analysis.persona_loader import load_personas
-print("[Boot] persona_loader OK", flush=True)
-from arena_analysis.results_aggregator import aggregate_results
-print("[Boot] results_aggregator OK", flush=True)
-from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_single_prompt
-print("[Boot] comment_prompt OK", flush=True)
 from arena_analysis.persona_loop import PersonaLoop
-print("[Boot] persona_loop OK", flush=True)
+from arena_analysis.results_aggregator import aggregate_results
+from arena_analysis.comment_prompt import ARENA_SYSTEM_PROMPT, build_single_prompt
 from arena_analysis.electoral_engine import ElectoralEngine
-print("[Boot] electoral_engine OK", flush=True)
 from arena_analysis.geo_filter import apply_geo_filter
-print("[Boot] geo_filter OK", flush=True)
 from arena_analysis.pre_classifier import pre_classify, build_disambiguation_block
-print("[Boot] pre_classifier OK", flush=True)
 from arena_analysis.calibration_endpoint import CalibrationRequest, calibration_analyze
-print("[Boot] All imports OK", flush=True)
 
 # ── App Setup ─────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -123,10 +107,10 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
-    print("[Startup] Pre-warming persona cache...", flush=True)
-    await asyncio.to_thread(load_personas)
-    print(f"[Startup] Cache pronto | Aggregate model: {settings.aggregate_model} | GPT keys: {len(settings.openai_api_keys)}", flush=True)
+    """Startup rapido — personas carregam lazy na primeira request.
+    Pre-warm removido porque bloqueava o health check no DO (20s delay insuficiente para 20k personas).
+    """
+    print(f"[Startup] Arena v3.0 ready | Model: {settings.aggregate_model}")
 
 
 @app.get("/api/arena/health")
