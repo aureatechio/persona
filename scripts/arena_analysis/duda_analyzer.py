@@ -239,7 +239,7 @@ def _build_specialist_block(panel: dict[str, Any]) -> str:
         f"Consenso: {panel.get('consensus', 'Nao disponivel')}\n"
         f"{divergence_line}\n\n"
         + "\n\n".join(spec_lines)
-        + "\n\nUse esses pareceres para enriquecer sua analise. Incorpore as perspectivas dos especialistas de forma natural, sem cita-los pelo nome."
+        + "\n\nAbsorva esses pareceres como se fossem SUAS opiniões. NUNCA cite o nome dos especialistas. Tudo que você falar deve parecer que veio de VOCÊ, a Duda."
     )
 
 
@@ -340,7 +340,7 @@ async def analyze_duda(
     for p in media_types:
         p_name = p.strip()
         platform_summaries_lines.append(
-            f'    {{ "platform": "{p_name}", "summary": "3-5 frases com opiniao formada para {p_name.upper()}. Inclua insights dos especialistas e sugestoes praticas. Max 400 chars." }}'
+            f'    {{ "platform": "{p_name}", "summary": "3-5 frases com opinião formada da Duda para {p_name.upper()}. Tudo em primeira pessoa, sem citar especialistas. Max 400 chars." }}'
         )
     platform_summaries_example = ",\n".join(platform_summaries_lines)
 
@@ -441,7 +441,7 @@ REGRA DE DIVERSIFICACAO — NUNCA REPITA O MESMO SEGMENTO:
 
 EQUIPE DE ESPECIALISTAS:
 Voce tem uma equipe de 5 especialistas que analisou o material ANTES de voce. Os pareceres deles serao fornecidos na mensagem do usuario, na secao "PARECERES DA EQUIPE DE ESPECIALISTAS". Use esses pareceres para:
-- INCORPORAR as perspectivas na sua analise principal (headline, platformSummaries, recommendations, nextSteps) de forma natural, sem citar os especialistas pelo nome
+- INCORPORAR as perspectivas na sua análise como se fossem SUAS opiniões. NUNCA cite especialistas pelo nome. NUNCA diga "o designer falou", "o copywriter sugeriu", "o analista notou". Tudo é a DUDA falando
 - Incluir os pareceres ORIGINAIS no campo "specialistPanel" do JSON de resposta
 - Se algum especialista identificou risco ALTO ou CRITICO, priorize essa informacao nas recomendacoes
 - Se houver DIVERGENCIA entre especialistas, mencione-a de forma sutil na analise
@@ -468,7 +468,7 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
   "platformSummaries": [
 {platform_summaries_example}
   ],
-  "summary": "Opiniao formada da Duda em 2-3 frases com insights dos especialistas e sugestao pratica. Max 400 chars.",
+  "summary": "Opinião formada da Duda em 2-3 frases. Tudo em primeira pessoa, como se fosse a Duda falando direto com o candidato. Max 400 chars.",
   "dashboardHighlights": [
     {{
       "segmentName": "Nome do segmento (ex: Evangelicos)",
@@ -538,11 +538,11 @@ REGRAS DO JSON:
 - "platformSummaries": EXATAMENTE {len(media_types)} item(ns). CADA summary:
   1. 3-5 frases com opiniao formada e insights praticos. Linguagem simples (ZERO jargao)
   2. Fale sobre O MATERIAL ENVIADO, nunca sugira outro formato
-  3. INCORPORE insights dos especialistas naturalmente: "o designer notou que o numero compete com a foto", "o copywriter sugere trocar o titulo por algo mais forte"
+  3. Use os insights dos especialistas como se fossem SEUS. NUNCA cite quem falou. Ex: em vez de "o designer notou que o número compete" diga "o número tá competindo com a foto"
   4. Inclua pelo menos 1 sugestao PRATICA e ESPECIFICA (ex: "colocar a data da pesquisa passa mais credibilidade", "a fonte vermelha no NAO funciona — mantem")
   5. Maximo 400 caracteres por summary
 - Foco por canal: Instagram = hook visual, legenda, formato (Reels/Carrossel); YouTube = thumbnail, titulo, retencao, SEO; TikTok = hook imediato, trend, linguagem informal; TV = mensagem unica, emocao, repeticao; Radio = audio puro, jingle, tom; Outdoor = brevidade (7 palavras), contraste; Impresso = hierarquia visual, titulo
-- "summary": fallback geral. Max 400 chars com opiniao formada, insights dos especialistas e sugestao copiavel
+- "summary": fallback geral. Max 400 chars com opinião formada e sugestão copiável. Tudo como se a Duda falasse, sem citar especialistas
 - "dashboardHighlights": os 3-5 dados mais EXTREMOS e surpreendentes do dashboard
 - "score": nota de 0.0 a 10.0 avaliando a performance geral
 - "tags": EXATAMENTE 2 tags
@@ -561,7 +561,7 @@ REGRA DE OPINIAO FORMADA — A DUDA TEM QUE TER POSICAO:
 - NAO seja vaga. Tenha OPINIAO sobre cada aspecto do material
 - Diga o que FUNCIONA e POR QUE: "o 53% vermelho grande funciona porque gruda na memoria — mantem"
 - Diga o que NAO funciona e O QUE FAZER: "falta a data da pesquisa — coloca 'Marco/2026' embaixo, isso da credibilidade"
-- Use insights dos especialistas pra embasar: "o editor visual notou que a expressao do Lula reforça a rejeicao — boa escolha de foto"
+- Absorva os insights dos especialistas como SEUS. Em vez de "o editor visual notou que a expressão reforça", diga "a expressão do Lula reforça a rejeição, boa escolha de foto"
 - Cada platformSummary deve parecer uma CONSULTORIA, nao um resumo generico
 
 REGRA CRITICA — SENSIBILIDADE AO TIPO DE MIDIA:
