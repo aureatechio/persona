@@ -597,27 +597,26 @@ def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) ->
             if count == 0:
                 continue
 
-            # Regional bias: how much this state's lean aligns with content lean
+            # Regional bias: strong variation for visible map colors
             state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
             bias = 0.0
             if lean == "right":
-                # Right content: states leaning right (positive lean) approve more
-                bias = state_lean * 0.25  # +0.25 max shift for SC, -0.20 for BA
+                bias = state_lean * 0.40  # SC(+0.7): +0.28, BA(-0.8): -0.32
             elif lean == "left":
-                # Left content: states leaning left (negative lean) approve more
-                bias = -state_lean * 0.25  # BA approves more, SC approves less
-            # consensus: no regional bias
+                bias = -state_lean * 0.40  # BA(-0.8): +0.32, SC(+0.7): -0.28
+            elif lean == "consensus":
+                bias = random.uniform(-0.05, 0.05)  # Slight random for consensus
 
             # Apply bias to pos/neg ratios
-            adj_pos_ratio = max(0.05, min(0.90, base_pos_ratio + bias))
-            adj_neg_ratio = max(0.05, min(0.90, base_neg_ratio - bias))
+            adj_pos_ratio = max(0.08, min(0.85, base_pos_ratio + bias))
+            adj_neg_ratio = max(0.08, min(0.85, base_neg_ratio - bias))
 
-            st_pos = max(0, int(count * adj_pos_ratio + random.uniform(-count * 0.03, count * 0.03)))
-            st_neg = max(0, int(count * adj_neg_ratio + random.uniform(-count * 0.03, count * 0.03)))
+            st_pos = max(0, int(count * adj_pos_ratio + random.uniform(-count * 0.04, count * 0.04)))
+            st_neg = max(0, int(count * adj_neg_ratio + random.uniform(-count * 0.04, count * 0.04)))
             st_neu = max(0, count - st_pos - st_neg)
 
-            # Score also shifts with regional bias
-            score_shift = bias * 4.0  # Up to ±1.0 point shift
+            # Score shifts strongly for visible color variation on map
+            score_shift = bias * 8.0  # Up to ±2.5 points shift (BA: score ~2.5, SC: score ~7.5 for right content)
             state_breakdown[st] = {
                 "count": count,
                 "positive": st_pos,
@@ -642,18 +641,18 @@ def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) ->
             state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
             bias = 0.0
             if lean == "right":
-                bias = state_lean * 0.25
+                bias = state_lean * 0.40
             elif lean == "left":
-                bias = -state_lean * 0.25
+                bias = -state_lean * 0.40
 
-            adj_pos = max(0.05, min(0.90, base_pos_ratio + bias))
-            adj_neg = max(0.05, min(0.90, base_neg_ratio - bias))
+            adj_pos = max(0.08, min(0.85, base_pos_ratio + bias))
+            adj_neg = max(0.08, min(0.85, base_neg_ratio - bias))
 
-            c_pos = max(0, int(count * adj_pos + random.uniform(-count * 0.03, count * 0.03)))
-            c_neg = max(0, int(count * adj_neg + random.uniform(-count * 0.03, count * 0.03)))
+            c_pos = max(0, int(count * adj_pos + random.uniform(-count * 0.04, count * 0.04)))
+            c_neg = max(0, int(count * adj_neg + random.uniform(-count * 0.04, count * 0.04)))
             c_neu = max(0, count - c_pos - c_neg)
 
-            score_shift = bias * 4.0
+            score_shift = bias * 8.0
             city_breakdown.setdefault(st, []).append({
                 "city": city.get("city", ""),
                 "lat": city.get("lat"),

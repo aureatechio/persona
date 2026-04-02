@@ -8,11 +8,38 @@ import 'leaflet/dist/leaflet.css';
 import type { CityData, CommentResult } from '../types';
 
 function scoreToHex(score: number): string {
-  if (score <= 2) return '#fb7185';
-  if (score <= 4) return '#fb923c';
-  if (score <= 6) return '#fbbf24';
-  if (score <= 8) return '#34d399';
-  return '#6ee7b7';
+  // Gradiente contínuo: vermelho (0) → laranja (3) → amarelo (5) → verde (7) → verde claro (10)
+  const s = Math.max(0, Math.min(10, score));
+  if (s <= 3) {
+    // Vermelho → Laranja (0-3)
+    const t = s / 3;
+    const r = Math.round(251 + (251 - 251) * t);
+    const g = Math.round(113 + (146 - 113) * t);
+    const b = Math.round(133 + (60 - 133) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  if (s <= 5) {
+    // Laranja → Amarelo (3-5)
+    const t = (s - 3) / 2;
+    const r = Math.round(251 + (251 - 251) * t);
+    const g = Math.round(146 + (191 - 146) * t);
+    const b = Math.round(60 + (36 - 60) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  if (s <= 7) {
+    // Amarelo → Verde (5-7)
+    const t = (s - 5) / 2;
+    const r = Math.round(251 + (52 - 251) * t);
+    const g = Math.round(191 + (211 - 191) * t);
+    const b = Math.round(36 + (153 - 36) * t);
+    return `rgb(${r},${g},${b})`;
+  }
+  // Verde → Verde claro (7-10)
+  const t = (s - 7) / 3;
+  const r = Math.round(52 + (110 - 52) * t);
+  const g = Math.round(211 + (231 - 211) * t);
+  const b = Math.round(153 + (183 - 153) * t);
+  return `rgb(${r},${g},${b})`;
 }
 
 function sentimentColor(s: string): string {
