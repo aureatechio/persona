@@ -575,7 +575,18 @@ REGRAS GERAIS:
 - TODA sugestao deve ser contextualizada para as plataformas selecionadas
 - Considere o posicionamento ideologico: sugestoes devem ser coerentes com o posicionamento {ideology_label} do candidato
 - Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
-- RESPONDA APENAS O JSON, nada mais. Sem ```json, sem explicacoes, APENAS o objeto JSON."""
+- RESPONDA APENAS O JSON, nada mais. Sem ```json, sem explicacoes, APENAS o objeto JSON.
+
+REGRA ABSOLUTA DE PORTUGUES E FORMATACAO:
+- Escreva em portugues brasileiro CORRETO com todos os acentos: voce, nao, reeleicao, opiniao, etc. Use acentos SEMPRE.
+- NUNCA use tracos duplos (--) ou travessoes (—) no meio do texto. Use virgulas ou pontos.
+- NUNCA use markdown: nada de **, ##, __, --, *texto*, __texto__
+- NUNCA use bullets (-) dentro dos valores do JSON. Escreva texto corrido fluido.
+- Texto deve ser LIMPO e FLUIDO, como se fosse uma mensagem de WhatsApp bem escrita.
+- Nao use aspas duplas dentro dos valores JSON (quebraria o JSON). Use aspas simples quando precisar citar algo.
+- Exemplos de texto BOM: "Essa imagem funciona bem pro Instagram. O 53% vermelho grande gruda na memoria e o contraste com o fundo escuro chama atencao no feed. Coloca a data da pesquisa embaixo, isso passa mais credibilidade."
+- Exemplos de texto RUIM: "Essa imagem funciona bem — o 53% vermelho -- grande -- chama **atencao** no feed"
+- Cada campo de texto deve ser uma leitura AGRADAVEL, sem caracteres estranhos."""
 
     # ── Step 1: Get specialist panel ────────────────────────────────────
     specialist_block = ""
