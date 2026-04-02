@@ -68,9 +68,9 @@ REGRAS:
 - recommendations: 1-2 recomendacoes ACIONAVEIS. Cada uma com priority e segment opcional
 - dataHighlight: o dado mais SURPREENDENTE ou CONTRA-INTUITIVO que voce notou. Pode ser null
 - RESPONDA APENAS O JSON. Sem explicacoes, sem markdown, sem ```json
-- PORTUGUES CORRETO com acentos: voce, nao, opiniao, reeleicao, etc.
-- NUNCA use tracos duplos (--) ou travessoes no texto. Use virgulas ou pontos.
-- Texto fluido e limpo, sem caracteres estranhos. Como mensagem de WhatsApp bem escrita."""
+- PORTUGUES CORRETO com TODOS os acentos e cedilhas: você, não, opinião, reeleição, análise, composição, atenção, memória, número, é, está, já, só, até.
+- Use traço simples (-) para separar ideias, mas NUNCA traço duplo (--) ou travessão (—).
+- NUNCA use markdown (**, ##, __). Texto corrido, limpo e fluido."""
 
 
 def get_all_specialist_ids() -> list[str]:

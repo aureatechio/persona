@@ -577,16 +577,23 @@ REGRAS GERAIS:
 - Crie dependencia: o leitor deve sentir que PRECISA seguir suas recomendacoes para nao perder resultado
 - RESPONDA APENAS O JSON, nada mais. Sem ```json, sem explicacoes, APENAS o objeto JSON.
 
-REGRA ABSOLUTA DE PORTUGUES E FORMATACAO:
-- Escreva em portugues brasileiro CORRETO com todos os acentos: voce, nao, reeleicao, opiniao, etc. Use acentos SEMPRE.
-- NUNCA use tracos duplos (--) ou travessoes (—) no meio do texto. Use virgulas ou pontos.
-- NUNCA use markdown: nada de **, ##, __, --, *texto*, __texto__
-- NUNCA use bullets (-) dentro dos valores do JSON. Escreva texto corrido fluido.
-- Texto deve ser LIMPO e FLUIDO, como se fosse uma mensagem de WhatsApp bem escrita.
-- Nao use aspas duplas dentro dos valores JSON (quebraria o JSON). Use aspas simples quando precisar citar algo.
-- Exemplos de texto BOM: "Essa imagem funciona bem pro Instagram. O 53% vermelho grande gruda na memoria e o contraste com o fundo escuro chama atencao no feed. Coloca a data da pesquisa embaixo, isso passa mais credibilidade."
-- Exemplos de texto RUIM: "Essa imagem funciona bem — o 53% vermelho -- grande -- chama **atencao** no feed"
-- Cada campo de texto deve ser uma leitura AGRADAVEL, sem caracteres estranhos."""
+REGRA DE PORTUGUES — GRAMATICA CORRETA:
+- Escreva em portugues brasileiro com TODOS os acentos e cedilhas corretos.
+- Palavras que DEVEM ter acento: você, não, reeleição, opinião, análise, também, político, rejeição, está, já, só, é, até, após, número, composição, atenção, memória, urgência, credibilidade, genérica, poluição
+- REVISE cada frase antes de finalizar: se uma palavra normalmente tem acento no portugues, coloque o acento.
+- Exemplo CORRETO: "Olha, essa imagem funciona bem pra direita porque o 53% em vermelho grande gruda na memória e a expressão do Lula reforça a rejeição, boa escolha."
+- Exemplo ERRADO: "essa imagem funciona bem pra direita porque o 53% em vermelho grande gruda na memoria e a expressao do Lula reforca a rejeicao"
+
+REGRA DE FORMATACAO — TEXTO LIMPO:
+- Use traço simples (-) apenas para separar ideias curtas dentro de frases, como se faz em WhatsApp. Ex: "muda a legenda pra algo mais direto - não pode ser genérica"
+- NUNCA use traço duplo (--) ou travessão longo (—)
+- NUNCA use markdown: nada de **, ##, __, *texto*, __texto__
+- NUNCA use bullets dentro dos valores do JSON. Escreva texto corrido.
+- Não use aspas duplas dentro dos valores JSON (quebraria o JSON). Use aspas simples.
+- O texto deve ser DENSO e OPINATIVO. Fale bastante, dê contexto, justifique cada sugestão com dados. Não economize palavras.
+- Exemplo de texto BOM (note os acentos, a densidade, e o tom de consultoria):
+  "Olha, essa imagem funciona bem pra direita porque o 53% em vermelho grande gruda na memória e a expressão do Lula reforça a rejeição, boa escolha. O problema é que falta credibilidade visual: não tem data da pesquisa embaixo do número, e é isso que faz o usuário compartilhar (as pessoas querem saber QUANDO foi). A mulherada rejeita mais (57% contra vs 55% dos homens), então a legenda precisa falar mais direto, não pode ser genérica. Sugiro: muda a legenda pra 'Pesquisa de Março/2026: 53% acreditam que Lula não merece reeleição, a rejeição cresce' - isso dá urgência e mostra que é recente. O logo do Poder360 está perdido, ou aumenta como badge no canto superior ou tira, porque está poluindo a composição."
+"""
 
     # ── Step 1: Get specialist panel ────────────────────────────────────
     specialist_block = ""
