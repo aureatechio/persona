@@ -55,7 +55,7 @@ function extractHighlights(segments: Record<string, any[]>): string {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta, specialistPanel: precomputedSpecialists } = body;
+  const { question, positive, negative, neutral, totalPersonas, segments, phase, contentMeta, specialistPanel: precomputedSpecialists, visualStructure } = body;
 
   const total = positive + negative + neutral;
   const pctPos = total > 0 ? ((positive / total) * 100).toFixed(1) : '0';
@@ -278,6 +278,15 @@ REGRA ABSOLUTA DE MIDIA — NUNCA VIOLE:
 - Se enviou TEXTO: fale APENAS sobre ESSE texto
 - O candidato quer saber como MELHORAR o que ele ja fez, mantendo a MESMA mensagem
 
+REGRA DE CRITICA VISUAL — QUANDO HOUVER DADOS DE ESTRUTURA VISUAL:
+- Se a secao "ESTRUTURA VISUAL DO MATERIAL" estiver presente na mensagem, voce TEM dados sobre o design
+- Use esses dados para fazer criticas ESPECIFICAS ao design: "o numero 53% ta grande demais e compete com a foto", "a fonte branca no fundo escuro funciona bem", "o logo do Poder360 ta perdido — destaca como badge ou tira"
+- Suas sugestoes visuais devem ser ACIONAVEIS e DIRETAS: "muda a cor do titulo pra vermelho", "aumenta o logo", "tira a seta que ta poluindo", "coloca o nome do instituto embaixo como credito"
+- Inclua pelo menos 1 recommendation focada em melhoria VISUAL do material quando houver dados visuais
+- Nas platformSummaries, mencione aspectos visuais especificos quando relevante ("essa composicao funciona pra Instagram porque o numero grande chama atencao no feed")
+- Para VIDEO: comente a identidade visual, as legendas sobrepostas, o enquadramento, as cores. Sugira ajustes visuais ("coloca legenda maior", "muda a cor do lower third")
+- MANTENHA a mensagem original — so melhore a FORMA VISUAL, nao o conteudo
+
 REGRA DE SUGESTOES PRATICAS — O DIFERENCIAL DA DUDA:
 - NAO diga "melhore a legenda". Diga "Troca a legenda por: 'texto sugerido aqui'"
 - NAO diga "use um CTA melhor". Diga "No final, escreve: 'texto sugerido aqui'"
@@ -491,6 +500,18 @@ Use esses pareceres para enriquecer sua analise. Incorpore as perspectivas dos e
   }
 
   // ── Step 2: Call DUDA (Claude Opus) with specialist context ──
+  const visualBlock = visualStructure ? `
+
+ESTRUTURA VISUAL DO MATERIAL (analise computacional da imagem/video):
+${visualStructure}
+
+Use esses dados visuais para dar sugestoes ESPECIFICAS sobre o design do material. Exemplos do tipo de critica esperada:
+- "Diminui o 53%, ta competindo com a foto do Lula — escolhe um ou outro como heroi visual"
+- "O logo do Poder360 ta perdido no meio — ou destaca como badge no topo ou tira"
+- "A fonte vermelha no 'nao' ta boa, reforça a negatividade — mantem"
+- "Coloca 'Parana Pesquisas' embaixo como credito, nao como titulo"
+` : '';
+
   const userMessage = `MATERIAL ANALISADO: "${question}"
 
 RESULTADO GERAL:
@@ -503,6 +524,7 @@ BREAKDOWN DEMOGRAFICO:
 ${segmentsSummary || 'Ainda sendo calculado...'}
 ${highlightsBlock}
 ${specialistBlock}
+${visualBlock}
 
 Produza a analise de performance no formato JSON especificado.`;
 

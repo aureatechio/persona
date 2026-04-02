@@ -94,6 +94,11 @@ class Settings:
     aggregate_model: str = "gpt-4o"
     aggregate_max_tokens: int = 12000
 
+    # Visual Analyzer (GPT-4o vision)
+    vision_model: str = "gpt-4o"
+    vision_max_tokens: int = 2500
+    vision_timeout: int = 15
+
     # Retry
     max_retries: int = 2
 

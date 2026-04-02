@@ -82,6 +82,7 @@ class AnalyzeRequest(BaseModel):
     context_text: Optional[str] = None
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
+    image_url: Optional[str] = None
 
 
 class ElectoralRequest(BaseModel):
@@ -204,8 +205,48 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         )
 
         context = None
+        visual_result = None
 
-        # ── 1b. Smart Search + Context Builder (Claude decides what to search) ──
+        # ── 1b. Visual Analysis (runs BEFORE context building to provide context) ──
+        if request.image_url:
+            from arena_analysis.visual_analyzer import analyze_image
+            yield sse_event("phase", {
+                "phase": "visual_analysis",
+                "message": "Analisando estrutura visual da imagem...",
+            })
+            try:
+                visual_result = await analyze_image(request.image_url, "url")
+                if visual_result and visual_result.get("content_analysis"):
+                    # Visual analysis replaces frontend Haiku — provides context + question
+                    request.context_text = (
+                        "--- ANALISE VISUAL DO MATERIAL ---\n"
+                        f"{visual_result['content_analysis']}\n\n"
+                        "--- ESTRUTURA VISUAL (para critica do Duda) ---\n"
+                        f"{visual_result['visual_structure']}"
+                    )
+                    # Use core_point as question if user didn't type one
+                    if visual_result.get("core_point") and (not request.question or len(request.question) < 10):
+                        request.question = visual_result["core_point"]
+
+                    # Append political figures to context
+                    figures = visual_result.get("political_figures", [])
+                    if figures:
+                        request.context_text += "\n\n--- Figuras politicas mencionadas ---\n"
+                        request.context_text += "\n".join(
+                            f"{f.get('nome', '?')} (alinhamento: {f.get('alinhamento', '?')}) — autor {f.get('posicao_autor', 'neutro')} a essa figura"
+                            for f in figures
+                        )
+
+                    yield sse_event("log", {
+                        "step": "visual_analysis",
+                        "level": "info",
+                        "message": f"Analise visual completa: {len(visual_result.get('content_analysis', ''))} chars conteudo, {len(visual_result.get('visual_structure', ''))} chars estrutura",
+                    })
+                    print(f"[Pipeline] Visual analysis done — question='{request.question[:80]}', context={len(request.context_text)} chars")
+            except Exception as e:
+                print(f"[Pipeline] Visual analysis error (continuing): {e}")
+
+        # ── 1c. Smart Search + Context Builder (Claude decides what to search) ──
         yield sse_event("phase", {
             "phase": "building_context",
             "message": "Claude analisando conteudo e contextualizando...",
@@ -509,6 +550,12 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             ideological_points = []
 
         final_results.pop("ideologicalPoints", None)
+
+        # Inject visual structure into results for Duda
+        if visual_result and visual_result.get("visual_structure"):
+            final_results["visual_structure"] = visual_result["visual_structure"]
+            final_results["content_analysis"] = visual_result.get("content_analysis", "")
+
         yield sse_event("results", final_results)
 
         # Stream ideological points in small chunks to keep connection alive
@@ -1226,11 +1273,21 @@ async def transcribe_url(req: TranscribeRequest):
 
             print(f"[Transcribe] Downloaded {total_size / (1024*1024):.1f}MB")
 
-            # 2. Extract audio via FFmpeg
+            # 2a. Extract video frames for visual analysis (runs in parallel with FFmpeg + Whisper)
+            visual_frames_task = None
+            try:
+                from arena_analysis.visual_analyzer import extract_and_analyze_frames
+                visual_frames_task = asyncio.create_task(
+                    extract_and_analyze_frames(tmp_input.name, num_frames=4)
+                )
+                print("[Transcribe] Frame extraction started in parallel")
+            except Exception as vfe:
+                print(f"[Transcribe] Frame extraction setup failed (continuing): {vfe}")
+
+            # 2b. Extract audio via FFmpeg
             tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
             tmp_audio.close()
 
-            # Delete input video ASAP after FFmpeg reads it (pipe approach)
             print("[Transcribe] Extracting audio via FFmpeg...")
             ffmpeg_result = await asyncio.to_thread(
                 subprocess.run,
@@ -1249,7 +1306,14 @@ async def transcribe_url(req: TranscribeRequest):
                 timeout=120,
             )
 
-            # Free disk space immediately — input video no longer needed
+            # Wait for frame extraction before deleting video file
+            if visual_frames_task:
+                try:
+                    await visual_frames_task
+                except Exception:
+                    pass  # errors handled inside task
+
+            # Free disk space — input video no longer needed
             if tmp_input and os.path.exists(tmp_input.name):
                 os.unlink(tmp_input.name)
                 tmp_input = None
@@ -1313,7 +1377,21 @@ async def transcribe_url(req: TranscribeRequest):
                 return JSONResponse({"error": "Falha na transcricao", "detail": error_msg}, status_code=500)
 
             print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars")
-            return JSONResponse({"transcript": transcript})
+
+            # Collect visual frame analysis if available
+            video_visual = None
+            if visual_frames_task:
+                try:
+                    video_visual = visual_frames_task.result()
+                except Exception as ve:
+                    print(f"[Transcribe] Frame analysis failed (continuing): {ve}")
+
+            response_data: dict[str, Any] = {"transcript": transcript}
+            if video_visual and video_visual.get("content_analysis"):
+                response_data["visual_analysis"] = video_visual
+                print(f"[Transcribe] Visual analysis included: {len(video_visual.get('content_analysis', ''))} chars")
+
+            return JSONResponse(response_data)
 
         except subprocess.TimeoutExpired:
             print("[Transcribe] FFmpeg timed out (120s)")

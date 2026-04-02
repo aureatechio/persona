@@ -207,8 +207,8 @@ export async function arenaSubmit(params: SubmitParams) {
 
   try {
     let enrichedContext = '';
-    let corePoint = '';
-    let politicalFigures: { nome: string; alinhamento: string; posicao_autor?: string }[] = [];
+    let imageSignedUrl: string | undefined;
+    let imageStoragePath: string | undefined;
 
     const imageAtt = params.attachments.find((a) => a.type === 'image');
     const videoAtt = params.attachments.find((a) => a.type === 'video');
@@ -227,12 +227,42 @@ export async function arenaSubmit(params: SubmitParams) {
           mediaName = imageAtt.name || 'photo.jpg';
           store.updateData({ ...store.data, question: 'Preparando imagem...' } as any, 'analyzing');
 
-          if (imageAtt.base64) {
-            mediaData = `data:${imageAtt.mimeType || 'image/jpeg'};base64,${imageAtt.base64}`;
-          } else if (imageAtt.file) {
-            // Convert File to base64
-            const base64 = await fileToBase64(imageAtt.file);
-            mediaData = `data:${imageAtt.file.type || 'image/jpeg'};base64,${base64}`;
+          // Upload image to Supabase → Python visual analyzer handles all analysis via URL
+          try {
+            const imgFile = imageAtt.file || (() => {
+              const bin = atob(imageAtt.base64!);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              return new Blob([bytes], { type: imageAtt.mimeType || 'image/jpeg' });
+            })();
+            const ext = mediaName.split('.').pop() || 'jpg';
+            const urlRes = await fetch('/api/transcribe-video/upload-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: `image.${ext}` }),
+            });
+            if (urlRes.ok) {
+              const { signedUrl: uploadUrl, path } = await urlRes.json();
+              imageStoragePath = path;
+              const putRes = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': imageAtt.mimeType || imageAtt.file?.type || 'image/jpeg' },
+                body: imgFile,
+              });
+              if (putRes.ok) {
+                const dlRes = await fetch('/api/transcribe-video/download-url', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path }),
+                });
+                if (dlRes.ok) {
+                  const { signedUrl } = await dlRes.json();
+                  imageSignedUrl = signedUrl;
+                }
+              }
+            }
+          } catch (uploadErr: any) {
+            console.warn('[Arena] Image upload for visual analysis failed (continuing):', uploadErr.message);
           }
         }
 
@@ -296,6 +326,14 @@ export async function arenaSubmit(params: SubmitParams) {
               const transcribeData = await transcribeRes.json();
               const transcript = transcribeData.transcript || '';
               mediaData = transcript.length > 10 ? transcript : '__TRANSCRIPTION_FAILED__';
+              // Capture video visual analysis from frame extraction
+              if (transcribeData.visual_analysis) {
+                const va = transcribeData.visual_analysis;
+                if (va.content_analysis) {
+                  mediaData += `\n\n--- ANALISE VISUAL DOS FRAMES DO VIDEO ---\n${va.content_analysis}`;
+                  mediaData += `\n\n--- ESTRUTURA VISUAL DO VIDEO ---\n${va.visual_structure || ''}`;
+                }
+              }
             } else {
               mediaData = '__TRANSCRIPTION_FAILED__';
             }
@@ -312,37 +350,11 @@ export async function arenaSubmit(params: SubmitParams) {
           }
         }
 
-        // ── Step 2: Analyze media via Claude ──
-        if (mediaData) {
-          store.updateData({ ...store.data, question: 'Analisando conteúdo...' } as any, 'analyzing');
-
-          const mediaRes = await fetch('/api/analyze-media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              attachments: [{ type: mediaType, data: mediaData, name: mediaName }],
-            }),
-          });
-
-          if (mediaRes.ok) {
-            const result = await mediaRes.json();
-            const context = result.context || '';
-            corePoint = result.core_point || '';
-            politicalFigures = result.political_figures || [];
-
-            if (mediaType === 'video' && mediaData && mediaData !== '__TRANSCRIPTION_FAILED__') {
-              enrichedContext = `--- Transcrição completa da mídia ---\n${mediaData}`;
-            } else {
-              enrichedContext = `--- Contexto extraído da mídia ---\n${context}`;
-            }
-
-            if (politicalFigures.length > 0) {
-              enrichedContext += '\n\n--- Figuras políticas mencionadas ---\n';
-              enrichedContext += politicalFigures.map((f) =>
-                `${f.nome} (alinhamento: ${f.alinhamento}) — autor ${f.posicao_autor || 'neutro'} a essa figura`
-              ).join('\n');
-            }
-          }
+        // ── Step 2: Build context from media ──
+        // Images: Python visual analyzer handles everything via image_url (no frontend analysis needed)
+        // Videos: transcript + frame analysis go as context_text for Python to enrich
+        if (mediaType === 'video' && mediaData && mediaData !== '__TRANSCRIPTION_FAILED__') {
+          enrichedContext = `--- Transcrição completa da mídia ---\n${mediaData}`;
         }
       } catch (err: any) {
         console.warn('[Arena] Media pipeline error:', err.message);
@@ -350,13 +362,14 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = corePoint || params.question || '';
+    const finalQuestion = params.question || '';
     const { region, city } = params.contentMeta;
     const body: Record<string, unknown> = {
       question: finalQuestion,
       context_text: enrichedContext,
       verbose: true,
       content_meta: params.contentMeta,
+      image_url: imageSignedUrl || undefined,
     };
     if (region !== 'brasil') {
       body.geo_filter = { state: region, city: city || null };
@@ -481,6 +494,14 @@ export async function arenaSubmit(params: SubmitParams) {
   } finally {
     useArenaStore.getState().setSubmitting(false);
     activeXhr = null;
+    // Cleanup uploaded image from Supabase Storage
+    if (imageStoragePath) {
+      fetch('/api/transcribe-video/download-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: imageStoragePath, action: 'delete' }),
+      }).catch(() => {});
+    }
   }
 }
 
@@ -522,6 +543,7 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           web_research: 'researching',
           building_context: 'context',
           loading_personas: 'loading',
+          visual_analysis: 'analyzing',
         };
         data.phase = 'collecting';
         collectingStatus = statusMap[pythonPhase] || 'analyzing';

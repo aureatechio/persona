@@ -237,6 +237,7 @@ export default function ArenaPage() {
       } : {},
       avgScore: avgScore || 0,
       stateBreakdown: stateBreakdown || {},
+      visualStructure: simulation?.visual_structure || '',
     });
 
     const tryFetch = (attempt: number) => {
