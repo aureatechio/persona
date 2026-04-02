@@ -118,7 +118,7 @@ async def analyze(
             {"role": "system", "content": AGGREGATE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=16000,
+        max_tokens=settings.aggregate_max_tokens,
         temperature=0.7,
         response_format={"type": "json_object"},
     )

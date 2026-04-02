@@ -97,13 +97,10 @@ REGRAS ABSOLUTAS:
    Responda EXCLUSIVAMENTE com JSON valido seguindo o schema fornecido.
    Sem markdown, sem texto antes ou depois, APENAS o JSON.
 
-11. COMENTARIOS (30 no total)
-   - 10 comentarios positivos, 10 negativos, 10 neutros
-   - Cada comentario deve parecer um post REAL de redes sociais brasileiras
-   - Varie por: regiao (oxe, bah, mano, mermao, uai), escolaridade (erros gramaticais para fundamental, correto para superior), geracao (Gen Z=abreviacoes+emoji, Boomer=MAIUSCULA), classe (D/E=visceral, A/B=articulado)
-   - Comentarios CURTOS: 3-15 palavras tipico, 15% com apenas 1-5 palavras
-   - Inclua humor (~40%), palavroes (caralho, porra, pqp), risadas (kkkk, kkkkkkk, rsrs)
-   - Score do comentario deve ser coerente com o sentimento (positive >= 6, negative <= 4)
+11. COMENTARIOS (9 no total)
+   - 3 positivos, 3 negativos, 3 neutros
+   - Posts CURTOS de redes sociais (3-10 palavras)
+   - Varie regiao e geracao. Score: positive >= 6, negative <= 4
 """
 
 
@@ -203,32 +200,17 @@ OUTPUT JSON SCHEMA (responda EXATAMENTE neste formato):
       "politicalLeaning": "Direita",
       "score": 2.5
     }},
-    ... (EXATAMENTE 30 comentarios: 10 positivos, 10 negativos, 10 neutros)
-  ],
-
-  "stateBreakdown": {{
-    "AC": {{"count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}},
-    "AL": {{}}, "AM": {{}}, "AP": {{}}, "BA": {{}}, "CE": {{}}, "DF": {{}}, "ES": {{}},
-    "GO": {{}}, "MA": {{}}, "MG": {{}}, "MS": {{}}, "MT": {{}}, "PA": {{}}, "PB": {{}},
-    "PE": {{}}, "PI": {{}}, "PR": {{}}, "RJ": {{}}, "RN": {{}}, "RO": {{}}, "RR": {{}},
-    "RS": {{}}, "SC": {{}}, "SE": {{}}, "SP": {{}}, "TO": {{}}
-  }},
-
-  "cityBreakdown": {{
-    "SP": [{{"city": "Sao Paulo", "lat": -23.55, "lng": -46.63, "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
-    "RJ": [{{"city": "Rio de Janeiro", ...}}, ...],
-    ... (top 5 cidades por estado, apenas estados com personas)
-  }}
+    ... (EXATAMENTE 9 comentarios: 3 positivos, 3 negativos, 3 neutros)
+  ]
 }}
+
+NAO inclua stateBreakdown nem cityBreakdown no JSON — sao gerados separadamente.
 
 REGRAS DE VALIDACAO:
 - total = positive + negative + neutral = {total_personas}
 - Para CADA item em CADA segmento: positive + negative + neutral = count
 - Soma dos counts de todos os labels em cada segmento = {total_personas}
-- avgScore = media ponderada dos scores (0-10) de todas as personas no segmento
-- Comentarios: use as persona_samples fornecidas como base (nome, cidade, estado, geracao, etc.)
-- stateBreakdown DEVE incluir TODOS os 27 estados brasileiros (AC,AL,AM,AP,BA,CE,DF,ES,GO,MA,MG,MS,MT,PA,PB,PE,PI,PR,RJ,RN,RO,RR,RS,SC,SE,SP,TO) com counts proporcionais a distribuicao geografica do perfil
-- cityBreakdown: top 3-5 cidades por estado (apenas estados com mais personas)
+- Comentarios: use as persona_samples como base (nome, cidade, estado, geracao)
 """
 
 
