@@ -7,35 +7,35 @@ This file defines the specialist metadata and builds the shared data context.
 
 # Specialist metadata (prompts come from Supabase)
 SPECIALISTS = {
-    "comunicacao_politica": {
-        "id": "comunicacao_politica",
-        "name": "Comunicacao Politica",
-        "emoji": "bullseye",
-        "prompt_id": "specialist_comunicacao_politica",
+    "designer_politico": {
+        "id": "designer_politico",
+        "name": "Designer Politico",
+        "emoji": "palette",
+        "prompt_id": "specialist_designer_politico",
     },
-    "assuntos_religiosos": {
-        "id": "assuntos_religiosos",
-        "name": "Assuntos Religiosos",
-        "emoji": "church",
-        "prompt_id": "specialist_assuntos_religiosos",
-    },
-    "marketing_digital": {
-        "id": "marketing_digital",
-        "name": "Marketing Digital",
+    "estrategista_redes": {
+        "id": "estrategista_redes",
+        "name": "Estrategista de Redes",
         "emoji": "trending-up",
-        "prompt_id": "specialist_marketing_digital",
+        "prompt_id": "specialist_estrategista_redes",
     },
-    "psicologia_social": {
-        "id": "psicologia_social",
-        "name": "Psicologia Social",
-        "emoji": "brain",
-        "prompt_id": "specialist_psicologia_social",
+    "copywriter_politico": {
+        "id": "copywriter_politico",
+        "name": "Copywriter Politico",
+        "emoji": "pencil",
+        "prompt_id": "specialist_copywriter_politico",
     },
-    "compliance_legal": {
-        "id": "compliance_legal",
-        "name": "Compliance Legal",
-        "emoji": "shield-check",
-        "prompt_id": "specialist_compliance_legal",
+    "analista_opiniao": {
+        "id": "analista_opiniao",
+        "name": "Analista de Opiniao Publica",
+        "emoji": "bar-chart",
+        "prompt_id": "specialist_analista_opiniao",
+    },
+    "editor_visual": {
+        "id": "editor_visual",
+        "name": "Editor de Video/Imagem",
+        "emoji": "image",
+        "prompt_id": "specialist_editor_visual",
     },
 }
 
