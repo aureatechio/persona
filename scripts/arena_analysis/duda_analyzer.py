@@ -655,43 +655,70 @@ REGRA DE FORMATACAO — TEXTO LIMPO:
         f"\nProduza a analise de performance no formato JSON especificado."
     )
 
-    # ── Step 3: Call Claude ─────────────────────────────────────────────
-    api_key = _next_key()
-    aclient = anthropic.AsyncAnthropic(api_key=api_key)
+    # ── Step 3: Call Claude (Opus for quality, with retry on JSON failure) ──
+    DUDA_MODEL = "claude-opus-4-20250514"
+    MAX_RETRIES = 2
+    parsed = None
 
-    print(f"[DudaAnalyzer] Calling claude-sonnet-4-20250514 | {len(system_prompt)} chars system | {len(user_message)} chars user")
-    start = time.time()
+    for attempt in range(1, MAX_RETRIES + 1):
+        api_key = _next_key()
+        aclient = anthropic.AsyncAnthropic(api_key=api_key)
 
-    response = await aclient.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
-    )
+        print(f"[DudaAnalyzer] Attempt {attempt}/{MAX_RETRIES} | {DUDA_MODEL} | {len(system_prompt)} chars system | {len(user_message)} chars user")
+        start = time.time()
 
-    elapsed = time.time() - start
-    raw = response.content[0].text if response.content and response.content[0].type == "text" else ""
-    tokens_in = response.usage.input_tokens if response.usage else 0
-    tokens_out = response.usage.output_tokens if response.usage else 0
+        response = await aclient.messages.create(
+            model=DUDA_MODEL,
+            max_tokens=3500,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_message}],
+        )
 
-    print(f"[DudaAnalyzer] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out | stop: {response.stop_reason}")
+        elapsed = time.time() - start
+        raw = response.content[0].text if response.content and response.content[0].type == "text" else ""
+        tokens_in = response.usage.input_tokens if response.usage else 0
+        tokens_out = response.usage.output_tokens if response.usage else 0
 
-    # ── Step 4: Parse JSON response ─────────────────────────────────────
-    json_str = _clean_json_response(raw)
+        print(f"[DudaAnalyzer] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out | stop: {response.stop_reason}")
 
-    try:
-        parsed = json.loads(json_str)
-    except json.JSONDecodeError:
-        # Try to find JSON boundaries manually
-        first_brace = json_str.find("{")
-        last_brace = json_str.rfind("}")
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        # ── Step 4: Parse JSON response (with auto-repair) ──────────────
+        json_str = _clean_json_response(raw)
+
+        try:
+            parsed = json.loads(json_str)
+            break  # Success
+        except json.JSONDecodeError:
+            # Try to find JSON boundaries manually
+            first_brace = json_str.find("{")
+            last_brace = json_str.rfind("}")
+            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                try:
+                    parsed = json.loads(json_str[first_brace : last_brace + 1])
+                    break  # Success with boundary extraction
+                except json.JSONDecodeError:
+                    pass
+
+            # Try auto-repair: fix common issues (truncated JSON, unescaped quotes)
             try:
-                parsed = json.loads(json_str[first_brace : last_brace + 1])
-            except json.JSONDecodeError as e2:
-                print(f"[DudaAnalyzer] JSON parse error after boundary extraction: {e2}")
-                print(f"[DudaAnalyzer] Raw tail (last 200 chars): ...{json_str[-200:]}")
-                raise RuntimeError(f"Claude returned invalid JSON: {e2}") from e2
+                # If JSON was truncated (stop_reason=max_tokens), try to close it
+                repaired = json_str[first_brace:] if first_brace != -1 else json_str
+                # Count open braces/brackets and close them
+                open_braces = repaired.count("{") - repaired.count("}")
+                open_brackets = repaired.count("[") - repaired.count("]")
+                repaired = repaired + ("]" * open_brackets) + ("}" * open_braces)
+                parsed = json.loads(repaired)
+                print(f"[DudaAnalyzer] JSON auto-repaired (closed {open_braces} braces, {open_brackets} brackets)")
+                break
+            except json.JSONDecodeError:
+                pass
+
+            if attempt < MAX_RETRIES:
+                print(f"[DudaAnalyzer] JSON parse failed, retrying ({attempt}/{MAX_RETRIES})...")
+                print(f"[DudaAnalyzer] Raw tail: ...{json_str[-300:]}")
+            else:
+                print(f"[DudaAnalyzer] JSON parse error after {MAX_RETRIES} attempts")
+                print(f"[DudaAnalyzer] Raw tail: ...{json_str[-300:]}")
+                raise RuntimeError(f"Claude returned invalid JSON after {MAX_RETRIES} attempts")
         else:
             raise RuntimeError("Claude returned no valid JSON")
 
