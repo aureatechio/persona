@@ -205,10 +205,11 @@ export async function arenaSubmit(params: SubmitParams) {
   store.setSubmitting(true);
   store.setCollectingStatus('analyzing');
 
+  let imageStoragePath: string | undefined;
+
   try {
     let enrichedContext = '';
     let imageSignedUrl: string | undefined;
-    let imageStoragePath: string | undefined;
 
     const imageAtt = params.attachments.find((a) => a.type === 'image');
     const videoAtt = params.attachments.find((a) => a.type === 'video');

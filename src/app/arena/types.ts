@@ -183,6 +183,8 @@ export interface EnhancedSimulationResult {
   comments: CommentResult[];
   processingTime: number;
   ideologicalPoints: any[];
+  visual_structure?: string;
+  content_analysis?: string;
 }
 
 export interface GeoCity {
