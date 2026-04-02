@@ -553,9 +553,26 @@ def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any
         result["politicalFigures"] = []
 
 
+# ── Regional political lean (based on real Brazilian voting patterns) ────────
+# Negative = leans LEFT, Positive = leans RIGHT, 0 = swing
+_STATE_POLITICAL_LEAN: dict[str, float] = {
+    # Nordeste — forte esquerda (Lula dominou em 2022)
+    "MA": -0.7, "PI": -0.7, "CE": -0.8, "RN": -0.6, "PB": -0.6,
+    "PE": -0.7, "AL": -0.5, "SE": -0.6, "BA": -0.8,
+    # Norte — centro-esquerda
+    "AM": -0.4, "PA": -0.3, "AP": -0.5, "TO": 0.1, "RO": 0.3, "RR": 0.2, "AC": 0.2,
+    # Centro-Oeste — centro-direita (agronegócio)
+    "MT": 0.4, "MS": 0.3, "GO": 0.3, "DF": 0.0,
+    # Sudeste — swing (dividido)
+    "SP": 0.2, "RJ": 0.1, "MG": -0.1, "ES": 0.1,
+    # Sul — forte direita (Bolsonaro dominou em 2022)
+    "PR": 0.5, "SC": 0.7, "RS": 0.4,
+}
+
+
 def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) -> None:
-    """Fill stateBreakdown and cityBreakdown from profile geographic data.
-    Uses the global avgScore from GPT result + regional variation."""
+    """Fill stateBreakdown and cityBreakdown with regional political bias.
+    Nordeste favors left content, Sul/Sudeste favors right content."""
     geo = profile.get("geographic", {})
     states_data = geo.get("states", {})
     cities_data = geo.get("cities", [])
@@ -564,43 +581,79 @@ def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) ->
     total_neg = result.get("negative", 0)
     total_neu = result.get("neutral", 0)
     total_all = total_pos + total_neg + total_neu or 1
-    pos_ratio = total_pos / total_all
-    neg_ratio = total_neg / total_all
+    base_pos_ratio = total_pos / total_all
+    base_neg_ratio = total_neg / total_all
 
-    # Build stateBreakdown from profile states (all 27)
+    # Detect content lean for regional bias
+    question = result.get("_question", "")
+    pre_class = None  # Already applied in _apply_political_bias
+    lean = _detect_ideological_lean(question, pre_class)
+
+    # Build stateBreakdown with regional political bias
     if states_data and isinstance(states_data, dict):
         state_breakdown = {}
         for st, sdata in states_data.items():
             count = sdata.get("count", 0) if isinstance(sdata, dict) else int(sdata or 0)
             if count == 0:
                 continue
-            # Distribute positive/negative/neutral proportionally with slight variation
-            st_pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.05, count * 0.05)))
-            st_neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.05, count * 0.05)))
+
+            # Regional bias: how much this state's lean aligns with content lean
+            state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
+            bias = 0.0
+            if lean == "right":
+                # Right content: states leaning right (positive lean) approve more
+                bias = state_lean * 0.25  # +0.25 max shift for SC, -0.20 for BA
+            elif lean == "left":
+                # Left content: states leaning left (negative lean) approve more
+                bias = -state_lean * 0.25  # BA approves more, SC approves less
+            # consensus: no regional bias
+
+            # Apply bias to pos/neg ratios
+            adj_pos_ratio = max(0.05, min(0.90, base_pos_ratio + bias))
+            adj_neg_ratio = max(0.05, min(0.90, base_neg_ratio - bias))
+
+            st_pos = max(0, int(count * adj_pos_ratio + random.uniform(-count * 0.03, count * 0.03)))
+            st_neg = max(0, int(count * adj_neg_ratio + random.uniform(-count * 0.03, count * 0.03)))
             st_neu = max(0, count - st_pos - st_neg)
+
+            # Score also shifts with regional bias
+            score_shift = bias * 4.0  # Up to ±1.0 point shift
             state_breakdown[st] = {
                 "count": count,
                 "positive": st_pos,
                 "negative": st_neg,
                 "neutral": st_neu,
-                "avgScore": round(global_avg + random.uniform(-0.8, 0.8), 1),
+                "avgScore": round(max(1.0, min(9.5, global_avg + score_shift + random.uniform(-0.3, 0.3))), 1),
             }
         if state_breakdown:
             result["stateBreakdown"] = state_breakdown
 
-    # Build cityBreakdown from profile cities
+    # Build cityBreakdown with same regional bias
     if cities_data and isinstance(cities_data, list):
         city_breakdown: dict[str, list] = {}
-        for city in cities_data[:100]:  # top 100 cities
+        for city in cities_data[:100]:
             st = city.get("state", "")
             if not st:
                 continue
             count = city.get("count", 0)
             if count == 0:
                 continue
-            c_pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.05, count * 0.05)))
-            c_neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.05, count * 0.05)))
+
+            state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
+            bias = 0.0
+            if lean == "right":
+                bias = state_lean * 0.25
+            elif lean == "left":
+                bias = -state_lean * 0.25
+
+            adj_pos = max(0.05, min(0.90, base_pos_ratio + bias))
+            adj_neg = max(0.05, min(0.90, base_neg_ratio - bias))
+
+            c_pos = max(0, int(count * adj_pos + random.uniform(-count * 0.03, count * 0.03)))
+            c_neg = max(0, int(count * adj_neg + random.uniform(-count * 0.03, count * 0.03)))
             c_neu = max(0, count - c_pos - c_neg)
+
+            score_shift = bias * 4.0
             city_breakdown.setdefault(st, []).append({
                 "city": city.get("city", ""),
                 "lat": city.get("lat"),
@@ -609,7 +662,7 @@ def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) ->
                 "positive": c_pos,
                 "negative": c_neg,
                 "neutral": c_neu,
-                "avgScore": round(global_avg + random.uniform(-1.0, 1.0), 1),
+                "avgScore": round(max(1.0, min(9.5, global_avg + score_shift + random.uniform(-0.5, 0.5))), 1),
             })
         if city_breakdown:
             result["cityBreakdown"] = city_breakdown
