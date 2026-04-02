@@ -83,6 +83,7 @@ class AnalyzeRequest(BaseModel):
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
     image_url: Optional[str] = None
+    content_meta: Optional[dict] = None
 
 
 class ElectoralRequest(BaseModel):
@@ -570,7 +571,33 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     print(f"[Pipeline] Cancelled during points streaming at {i + len(chunk)}/{total_points}")
                     break
 
-        # ── 7. Done ──────────────────────────────────────────────────
+        # ── 7. Duda Analysis (strategic recommendations) ──────────
+        if not cancelled.is_set():
+            yield sse_event("phase", {
+                "phase": "duda_analysis",
+                "message": "Duda analisando resultados...",
+            })
+            try:
+                from arena_analysis.duda_analyzer import analyze_duda
+                duda_result = await analyze_duda(
+                    question=request.question,
+                    positive=final_results.get("positive", 0),
+                    negative=final_results.get("negative", 0),
+                    neutral=final_results.get("neutral", 0),
+                    total_personas=total_personas,
+                    segments=final_results.get("segments", {}),
+                    content_meta=request.content_meta or {},
+                    visual_structure=visual_result.get("visual_structure", "") if visual_result else "",
+                )
+                yield sse_event("duda", duda_result)
+                print(f"[Pipeline] Duda analysis complete: headline='{duda_result.get('headline', '')[:50]}'")
+            except Exception as duda_err:
+                print(f"[Pipeline] Duda analysis error: {duda_err}")
+                import traceback
+                traceback.print_exc()
+                yield sse_event("duda", {"error": f"Falha na analise da Duda: {str(duda_err)[:200]}"})
+
+        # ── 8. Done ──────────────────────────────────────────────────
         yield sse_event("done", {
             "processing_time_ms": processing_time,
             "total_personas": total_personas,
@@ -598,6 +625,43 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ── Duda Standalone Endpoint (backward-compat for calibracao/apresentacao) ────
+
+class DudaRequest(BaseModel):
+    question: str = ""
+    positive: int = 0
+    negative: int = 0
+    neutral: int = 0
+    totalPersonas: int = 0
+    segments: dict = {}
+    contentMeta: dict = {}
+    visualStructure: str = ""
+    specialistPanel: Optional[dict] = None
+
+
+@app.post("/api/duda/analyze")
+async def duda_standalone(req: DudaRequest):
+    """Endpoint standalone da Duda para chamadas diretas (calibracao, apresentacao)."""
+    try:
+        from arena_analysis.duda_analyzer import analyze_duda
+        result = await analyze_duda(
+            question=req.question,
+            positive=req.positive,
+            negative=req.negative,
+            neutral=req.neutral,
+            total_personas=req.totalPersonas,
+            segments=req.segments,
+            content_meta=req.contentMeta,
+            visual_structure=req.visualStructure,
+            specialist_panel=req.specialistPanel,
+        )
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": f"Falha na analise: {str(e)[:200]}"}, status_code=500)
 
 
 # ── Recompute Aggregate Profile ──────────────────────────────────────────────

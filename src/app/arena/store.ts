@@ -545,6 +545,7 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           building_context: 'context',
           loading_personas: 'loading',
           visual_analysis: 'analyzing',
+          duda_analysis: 'analyzing',
         };
         data.phase = 'collecting';
         collectingStatus = statusMap[pythonPhase] || 'analyzing';
@@ -605,6 +606,17 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           ...data.simulation,
           ideologicalPoints: [...(data.simulation.ideologicalPoints || []), ...payload.data],
         };
+      }
+      break;
+    }
+    case 'duda': {
+      // Duda analysis arrived from Python pipeline — set directly in store
+      immediate = true;
+      const dudaResult = payload.data;
+      if (dudaResult && !dudaResult.error) {
+        useArenaStore.getState().setAnaliseData(dudaResult);
+      } else if (dudaResult?.error) {
+        useArenaStore.getState().setAnaliseError(dudaResult.error);
       }
       break;
     }

@@ -220,46 +220,13 @@ export default function ArenaPage() {
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 300);
   }, [phase, analiseLoading, analiseData, chatMessages.length]);
 
-  // Auto-call analise on complete (uses store state — persists across navigation)
+  // Duda analysis now arrives via SSE event 'duda' from Python pipeline — no separate fetch needed
+  // Set loading state when streaming starts so UI shows loading indicator
   useEffect(() => {
-    if (!isComplete || !simulation || analiseLoading || analiseData) return;
-    setAnaliseLoading(true);
-
-    const payload = JSON.stringify({
-      question: question || '',
-      positive, negative, neutral,
-      totalPersonas: totalPersonas || 0,
-      segments: segments || {},
-      phase: 'complete',
-      contentMeta: contentMeta ? {
-        ...contentMeta,
-        mediaType: contentMeta.mediaType,
-      } : {},
-      avgScore: avgScore || 0,
-      stateBreakdown: stateBreakdown || {},
-      visualStructure: simulation?.visual_structure || '',
-    });
-
-    const tryFetch = (attempt: number) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 90000);
-
-      fetch('/api/arena/analise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        signal: controller.signal,
-      })
-        .then((r) => { clearTimeout(timeout); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then((json) => { if (json.error) throw new Error(json.error); setAnaliseData(json); })
-        .catch((err) => {
-          clearTimeout(timeout);
-          if (attempt < 2) setTimeout(() => tryFetch(attempt + 1), 2000);
-          else setAnaliseError('Falha ao gerar análise. Toque para tentar novamente.');
-        });
-    };
-    tryFetch(1);
-  }, [isComplete, simulation, analiseData, analiseLoading]);
+    if (isStreaming && !analiseLoading && !analiseData) {
+      setAnaliseLoading(true);
+    }
+  }, [isStreaming, analiseLoading, analiseData]);
 
   // Auto-save analysis to history when analiseData is set
   useEffect(() => {
