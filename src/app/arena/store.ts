@@ -532,7 +532,8 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
     case 'phase': {
       immediate = true;
       const pythonPhase = payload.data?.phase;
-      if (pythonPhase === 'aggregating') {
+      if (pythonPhase === 'aggregating' || pythonPhase === 'duda_analysis') {
+        // Duda runs after aggregate — keep the progress bar running (70→99%)
         data.phase = 'aggregating';
         collectingStatus = null;
       } else if (pythonPhase === 'processing_personas') {
@@ -545,7 +546,6 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           building_context: 'context',
           loading_personas: 'loading',
           visual_analysis: 'analyzing',
-          duda_analysis: 'analyzing',
         };
         data.phase = 'collecting';
         collectingStatus = statusMap[pythonPhase] || 'analyzing';
