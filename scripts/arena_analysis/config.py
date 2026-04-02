@@ -91,7 +91,7 @@ class Settings:
     individual_max_tokens: int = 300  # 1 persona output
 
     # Aggregate Engine
-    aggregate_model: str = "gpt-4o"
+    aggregate_model: str = "gpt-4o-mini"
     aggregate_max_tokens: int = 8000
 
     # Visual Analyzer (GPT-4o vision)

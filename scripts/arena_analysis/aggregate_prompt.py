@@ -57,47 +57,16 @@ REGRAS ABSOLUTAS:
    - q_pena_morte, q_bolsa_familia_bom, q_sus_funciona, q_vacinas_confiar: idem
    A opiniao DECLARADA da persona tem PRIORIDADE sobre o score ideologico geral.
 
-6. POLARIZACAO IDEOLOGICA (REGRA MAIS IMPORTANTE)
-   TODO conteudo politico tem um VIES ideologico, mesmo que nao mencione nomes.
-   Antes de derivar scores, IDENTIFIQUE:
-   - Este conteudo e mais alinhado com DIREITA ou ESQUERDA?
-   - Exemplos de conteudo de DIREITA: privatizacao, seguranca/policia, reducao de impostos, familia tradicional, meritocracia, agronegocio, contra cotas, armas, contra aborto
-   - Exemplos de conteudo de ESQUERDA: programas sociais, SUS, educacao publica, cotas, direitos LGBT, meio ambiente, contra privatizacao, reforma agraria, contra armas
-
-   DEPOIS aplique:
-   - Conteudo alinhado com DIREITA → eleitores de Bolsonaro (voto_2022=Bolsonaro) e clusters C1-C8 tendem a APROVAR (score 7-10), eleitores de Lula e clusters P1-P6 tendem a REPROVAR (score 1-4)
-   - Conteudo alinhado com ESQUERDA → o OPOSTO
-   - Clusters M1-M8 (moderados) ficam DIVIDIDOS (score 4-7)
-   - Clusters T1-T2 (transversais) sao IMPREVISIVEIS
-
-   EXCECOES (temas que UNEM esquerda e direita):
-   - Corrupcao: TODOS reprovam corrupcao (mas discordam sobre QUEM e corrupto)
-   - Seguranca basica: ninguem quer ser assaltado
-   - Inflacao/carestia: todos sofrem com preco alto
-   - Catastrofes naturais: enchentes, seca — solidariedade une
-   - Criancas/educacao infantil: consenso amplo
-   Nesses temas, a polarizacao DIMINUI e os scores ficam mais proximos entre esquerda e direita.
-
-   SEMPRE deve haver DIVISAO entre os segmentos — nao existe conteudo politico que agrada TODOS. Mesmo nos temas de consenso, a INTENSIDADE varia (evangelicos mais intensos, jovens mais moderados, etc).
-
-7. COERENCIA ELEITORAL (figura politica mencionada)
-   Se o conteudo menciona diretamente Lula, Bolsonaro, ou aliados:
-   - Eleitores de Lula: DEFENDEM Lula/PT/aliados, ATACAM Bolsonaro/PL/aliados
-   - Eleitores de Bolsonaro: o OPOSTO
-   - A intensidade depende do score_economico: quanto mais extremo (±0.7+), mais radical a reacao
-   - Aliados de Lula: Haddad, Boulos, Gleisi, Dino, Janones
-   - Aliados de Bolsonaro: Tarcisio, Zema, Marçal, Moro, Zambelli
-
-9. COERENCIA CLUSTER ↔ SEGMENTO
+6. COERENCIA CLUSTER ↔ SEGMENTO
    - Cluster C2 (Conservador Religioso) deve alinhar com: evangelico, mais velho, direita, conservador nos costumes
    - Cluster P3 (Progressista Urbano) deve alinhar com: jovem, universitario, esquerda, progressista
    - Cross-tabulations mostram a relacao exata — USE-AS
 
-10. FORMATO DE OUTPUT
+7. FORMATO DE OUTPUT
    Responda EXCLUSIVAMENTE com JSON valido seguindo o schema fornecido.
    Sem markdown, sem texto antes ou depois, APENAS o JSON.
 
-11. COMENTARIOS (9 no total)
+8. COMENTARIOS (9 no total)
    - 3 positivos, 3 negativos, 3 neutros
    - Posts CURTOS de redes sociais (3-10 palavras)
    - Varie regiao e geracao. Score: positive >= 6, negative <= 4
