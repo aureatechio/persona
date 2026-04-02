@@ -451,9 +451,42 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             )
         )
 
-        # Emit synthetic progress with incremental fake data (dashboard stays alive)
+        # Build fake segments from profile for incremental dashboard animation
+        def _build_fake_segments(profile_data, processed, total, pos_ratio, neg_ratio):
+            """Generate fake segment data proportional to processed count."""
+            demographics = profile_data.get("demographics", {})
+            electoral = profile_data.get("electoral", {})
+            scale = processed / max(total, 1)
+
+            def _make_seg(data):
+                items = []
+                if not isinstance(data, dict):
+                    return items
+                for label, val in data.items():
+                    count = val.get("count", val) if isinstance(val, dict) else int(val or 0)
+                    sc = int(count * scale)
+                    if sc <= 0:
+                        continue
+                    p = max(0, int(sc * pos_ratio + _rng.uniform(-sc * 0.05, sc * 0.05)))
+                    n = max(0, int(sc * neg_ratio + _rng.uniform(-sc * 0.05, sc * 0.05)))
+                    items.append({"label": label, "count": sc, "positive": p, "negative": n, "neutral": max(0, sc - p - n), "avgScore": round(5.0 + _rng.uniform(-2, 2), 1)})
+                return sorted(items, key=lambda x: x["count"], reverse=True)
+
+            return {
+                "gender": _make_seg(demographics.get("gender", {})),
+                "religion": _make_seg(demographics.get("religion", demographics.get("macro_religion", {}))),
+                "region": _make_seg(demographics.get("region", demographics.get("region_br", {}))),
+                "generation": _make_seg(demographics.get("generation", {})),
+                "politicalLeaning": _make_seg(demographics.get("political_leaning", demographics.get("politicalLeaning", {}))),
+                "voto2022": _make_seg(electoral.get("voto_2022", electoral.get("voto2022", {}))),
+            }
+
+        # Load profile for fake segments
+        _profile_for_fake = await load_profile()
+
+        # Emit synthetic progress with fake segments (dashboard animates)
         _total_steps = 20
-        _step_time = 60.0 / _total_steps  # ~3s per step
+        _step_time = 60.0 / _total_steps
         _fake_pos = 0
         _fake_neg = 0
         _fake_neu = 0
@@ -467,7 +500,6 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             pct = (step_i + 1) / _total_steps
             processed = int(total_personas * pct)
 
-            # Generate incremental fake sentiment data (evolves each step)
             new_batch = processed - (_fake_pos + _fake_neg + _fake_neu)
             if new_batch > 0:
                 for _ in range(new_batch):
@@ -483,8 +515,10 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                         _fake_score_sum += _rng.uniform(4.0, 6.0)
 
             fake_avg = round(_fake_score_sum / max(processed, 1), 1)
+            pos_r = _fake_pos / max(processed, 1)
+            neg_r = _fake_neg / max(processed, 1)
 
-            yield sse_event("progress", {
+            progress_data = {
                 "processed": processed,
                 "total": total_personas,
                 "positive": _fake_pos,
@@ -492,15 +526,21 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 "neutral": _fake_neu,
                 "avgScore": fake_avg,
                 "scoreSum": round(_fake_score_sum, 1),
-            })
+            }
+
+            # Include fake segments every 4th step (keeps dashboard alive)
+            if step_i % 4 == 3 or step_i == _total_steps - 1:
+                progress_data["segments"] = _build_fake_segments(_profile_for_fake, processed, total_personas, pos_r, neg_r)
+
+            yield sse_event("progress", progress_data)
 
             try:
                 await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=_step_time)
-                break  # Model finished early
+                break
             except asyncio.TimeoutError:
-                pass  # Continue animation
+                pass
             except Exception:
-                break  # Error — will be caught below
+                break
 
         # Await final result
         try:
