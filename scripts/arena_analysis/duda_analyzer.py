@@ -340,7 +340,7 @@ async def analyze_duda(
     for p in media_types:
         p_name = p.strip()
         platform_summaries_lines.append(
-            f'    {{ "platform": "{p_name}", "summary": "2 frases curtas e diretas para {p_name.upper()}. Sem palavras tecnicas. Max 150 chars." }}'
+            f'    {{ "platform": "{p_name}", "summary": "3-5 frases com opiniao formada para {p_name.upper()}. Inclua insights dos especialistas e sugestoes praticas. Max 400 chars." }}'
         )
     platform_summaries_example = ",\n".join(platform_summaries_lines)
 
@@ -459,7 +459,7 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
   "platformSummaries": [
 {platform_summaries_example}
   ],
-  "summary": "Resumo direto em 1 frase. Max 120 chars. Linguagem simples.",
+  "summary": "Opiniao formada da Duda em 2-3 frases com insights dos especialistas e sugestao pratica. Max 400 chars.",
   "dashboardHighlights": [
     {{
       "segmentName": "Nome do segmento (ex: Evangelicos)",
@@ -481,7 +481,7 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
       "text": "Recomendacao curta e direta, imperativa (o que fazer)",
       "gain": "+XX% alcance|engajamento|conversao (o que voce GANHA fazendo isso)",
       "priority": "prioridade|importante|oportunidade",
-      "detail": "Sugestao de texto pronto entre aspas simples que o candidato pode copiar e usar. 1 frase."
+      "detail": "2-3 frases: sugestao de texto pronto + justificativa pratica. Ex: 'Coloca a data (Marco/2026) embaixo do 53% — pesquisa com data passa muito mais credibilidade e gera mais compartilhamento.'"
     }}
   ],
   "projectedScore": 8.5,
@@ -527,21 +527,33 @@ FORMATO OBRIGATORIO — responda EXCLUSIVAMENTE com um JSON valido, sem markdown
 
 REGRAS DO JSON:
 - "platformSummaries": EXATAMENTE {len(media_types)} item(ns). CADA summary:
-  1. 2 frases curtas e diretas, linguagem simples (ZERO jargao)
+  1. 3-5 frases com opiniao formada e insights praticos. Linguagem simples (ZERO jargao)
   2. Fale sobre O MATERIAL ENVIADO, nunca sugira outro formato
-  3. Maximo 150 caracteres por summary
+  3. INCORPORE insights dos especialistas naturalmente: "o designer notou que o numero compete com a foto", "o copywriter sugere trocar o titulo por algo mais forte"
+  4. Inclua pelo menos 1 sugestao PRATICA e ESPECIFICA (ex: "colocar a data da pesquisa passa mais credibilidade", "a fonte vermelha no NAO funciona — mantem")
+  5. Maximo 400 caracteres por summary
 - Foco por canal: Instagram = hook visual, legenda, formato (Reels/Carrossel); YouTube = thumbnail, titulo, retencao, SEO; TikTok = hook imediato, trend, linguagem informal; TV = mensagem unica, emocao, repeticao; Radio = audio puro, jingle, tom; Outdoor = brevidade (7 palavras), contraste; Impresso = hierarquia visual, titulo
-- "summary": fallback geral caso o frontend nao suporte platformSummaries. Max 250 chars com frase copiavel
-- "dashboardHighlights": os 3-5 dados mais EXTREMOS e surpreendentes do dashboard. Use os PONTOS DE DESTAQUE fornecidos no contexto. Cada item deve ter segmentName, type (high_approval/high_rejection/high_neutrality), percentage (inteiro), description (frase impactante). Se nenhum ponto extremo foi fornecido, identifique os segmentos com MAIOR variacao no breakdown demografico
-- "score": nota de 0.0 a 10.0 avaliando a performance geral do conteudo (considere aprovacao, engajamento potencial e adequacao a plataforma)
-- "tags": EXATAMENTE 2 tags — primeira: plataforma + regiao, segunda: tipo de conteudo + tema principal
-- "stats": EXATAMENTE 3 metricas de oportunidade. Devem ser estimativas crediveis baseadas nos dados demograficos. Use "+" para oportunidades de ganho. Foque em metricas acionaveis (alcance, engajamento, conversao, ativacao de segmento)
-- "recommendations": EXATAMENTE 3 itens, todos para melhorar A MIDIA ENVIADA (nao sugira outro formato). Cada um com sugestao de TEXTO PRONTO no "detail"
-- "projectedScore": nota projetada se seguir as recomendacoes (minimo 1.5 acima do score)
+- "summary": fallback geral. Max 400 chars com opiniao formada, insights dos especialistas e sugestao copiavel
+- "dashboardHighlights": os 3-5 dados mais EXTREMOS e surpreendentes do dashboard
+- "score": nota de 0.0 a 10.0 avaliando a performance geral
+- "tags": EXATAMENTE 2 tags
+- "stats": EXATAMENTE 3 metricas de oportunidade
+- "recommendations": EXATAMENTE 3 itens, todos para melhorar A MIDIA ENVIADA. Cada um com:
+  - "text": recomendacao curta e direta
+  - "detail": 2-3 frases com sugestao PRONTA e JUSTIFICATIVA. Ex: "Coloca a data da pesquisa (marco/2026) embaixo do numero — pesquisa com data passa muito mais credibilidade e as pessoas compartilham mais quando sentem que e recente"
+  - "gain": o que ganha fazendo isso
+- "projectedScore": nota projetada (minimo 1.5 acima do score)
 - "insight": 1 dado surpreendente, curto e direto
-- "nextSteps": EXATAMENTE 2 passos simples (o que fazer AGORA com esse material)
-- "radar": EXATAMENTE 6 dimensoes (alcance, engajamento, retencao, conversao, adequacao, emocional), cada uma de 0.0 a 10.0. Avalie com base nos dados reais: alcance = potencial de distribuicao; engajamento = interacao esperada; retencao = capacidade de manter atencao; conversao = capacidade de gerar acao; adequacao = fit com a plataforma; emocional = apelo emocional do conteudo
-- "specialistPanel": Se os PARECERES DOS ESPECIALISTAS foram fornecidos na mensagem, copie-os EXATAMENTE como recebidos no campo specialistPanel (com consensus, divergences e specialists). Se nao foram fornecidos, OMITA este campo
+- "nextSteps": EXATAMENTE 2 passos simples
+- "radar": 6 dimensoes de 0.0 a 10.0
+- "specialistPanel": Se PARECERES foram fornecidos, copie-os. Se nao, OMITA
+
+REGRA DE OPINIAO FORMADA — A DUDA TEM QUE TER POSICAO:
+- NAO seja vaga. Tenha OPINIAO sobre cada aspecto do material
+- Diga o que FUNCIONA e POR QUE: "o 53% vermelho grande funciona porque gruda na memoria — mantem"
+- Diga o que NAO funciona e O QUE FAZER: "falta a data da pesquisa — coloca 'Marco/2026' embaixo, isso da credibilidade"
+- Use insights dos especialistas pra embasar: "o editor visual notou que a expressao do Lula reforça a rejeicao — boa escolha de foto"
+- Cada platformSummary deve parecer uma CONSULTORIA, nao um resumo generico
 
 REGRA CRITICA — SENSIBILIDADE AO TIPO DE MIDIA:
 - O "summary" e cada "platformSummary" focam EXCLUSIVAMENTE em melhorar A MIDIA QUE FOI ENVIADA ({attachment_label}). Nao sugira mudar de formato.
@@ -634,7 +646,7 @@ REGRAS GERAIS:
 
     response = await aclient.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=2000,
+        max_tokens=3500,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
