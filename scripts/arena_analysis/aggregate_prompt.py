@@ -74,112 +74,37 @@ REGRAS ABSOLUTAS:
 
 
 def build_output_schema(total_personas: int) -> str:
-    """Gera o schema JSON que o modelo deve retornar."""
-
-    # Build segment labels for schema hints
-    clusters_list = [f'"{cid}"' for cid in sorted(CLUSTER_MACROS.keys())]
-    quadrants_list = [f'"{q}"' for q in QUADRANT_LABELS.keys()]
-    archetypes_list = [f'"{a}"' for a in ARCHETYPE_IDS]
+    """Schema JSON MINIMO — Python expande os segmentos restantes."""
 
     return f"""
-OUTPUT JSON SCHEMA (responda EXATAMENTE neste formato):
+OUTPUT JSON — responda APENAS com este formato COMPACTO:
 
 {{
   "total": {total_personas},
   "positive": <int>,
   "negative": <int>,
   "neutral": <int>,
-  "avgScore": <float 0.0-10.0>,
-
+  "avgScore": <float 0-10>,
   "segments": {{
-    "gender": [{{"label": "Masculino", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
-    "religion": [mesma estrutura para cada religiao],
-    "race": [mesma estrutura para cada raca/etnia],
-    "region": [mesma estrutura para cada regiao: Norte, Nordeste, Centro-Oeste, Sudeste, Sul],
-    "generation": [mesma estrutura para cada geracao],
-    "socialClass": [mesma estrutura para cada classe: Classe A, Classe B, Classe C, Classe D, Classe E],
-    "education": [mesma estrutura para cada nivel de escolaridade],
-    "politicalLeaning": [mesma estrutura para cada posicao politica],
-    "archetype": [mesma estrutura para cada arquetipo: {", ".join(archetypes_list)}],
-    "voto2022": [mesma estrutura para: Lula, Bolsonaro, Nulo/Outro],
-    "aprovacaoLula": [mesma estrutura para cada valor de aprovacao],
-    "voto2026": [mesma estrutura para cada candidato],
-    "clusterMacro": [mesma estrutura para: Progressista, Moderado, Conservador, Transversal],
-    "scoreEco": [mesma estrutura para: Esquerda forte, Esquerda leve, Centro, Direita leve, Direita forte],
-    "scoreCost": [mesma estrutura para: Progressista forte, Progressista leve, Centro, Conservador leve, Conservador forte]
+    "gender": [{{"label": "Masculino", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, {{"label": "Feminino", ...}}],
+    "religion": [{{"label": "<religiao>", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
+    "region": [{{"label": "<regiao>", ...}}, ...],
+    "generation": [{{"label": "<geracao>", ...}}, ...],
+    "politicalLeaning": [{{"label": "<posicao>", ...}}, ...],
+    "voto2022": [{{"label": "Lula", ...}}, {{"label": "Bolsonaro", ...}}, {{"label": "Nulo/Outro", ...}}]
   }},
-
-  "clusterResults": [
-    {{"id": "P1", "name": "Base Social", "macro": "Progressista", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ... (todos os 24 clusters: {", ".join(clusters_list)})
-  ],
-
-  "quadrants": [
-    {{"quadrant": "esq_progressista", "label": "Esquerda + Progressista", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "dominantClusters": ["P1", "P3", "P5"]}},
-    ... (todos os 4 quadrantes: {", ".join(quadrants_list)})
-  ],
-
-  "archetypes": [
-    {{"id": "traditionalist", "name": "traditionalist", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ... (todos os 10 arquetipos)
-  ],
-
-  "regions": [
-    {{"region": "Sudeste", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ...
-  ],
-
-  "generations": [
-    {{"generation": "Gen Z", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgAge": <int>}},
-    ...
-  ],
-
-  "educationLevels": [
-    {{"level": "Fundamental incompleto", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgIntensity": <float>}},
-    ...
-  ],
-
-  "politicalFigures": [
-    {{"figure": "lula", "label": "Lula (PT)", "supportCount": <int>, "attackCount": <int>, "neutralCount": <int>, "supportClusters": ["P1","P2"], "attackClusters": ["C1","C3"]}},
-    ... (apenas se figuras politicas forem detectadas no conteudo)
-  ],
-
-  "intensityBands": [
-    {{"label": "Fraco (0-0.2)", "range": [0.0, 0.2], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Moderado (0.2-0.5)", "range": [0.2, 0.5], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Forte (0.5-0.7)", "range": [0.5, 0.7], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Extremo (0.7-1.0)", "range": [0.7, 1.0], "count": <int>, "avgSentimentScore": <float>}}
-  ],
-
   "comments": [
-    {{
-      "archetype": "traditionalist",
-      "sentiment": "negative",
-      "comment": "isso ai e uma vergonha mermao kkkk",
-      "personaName": "Jose Silva",
-      "age": 52,
-      "city": "Sao Paulo",
-      "state": "SP",
-      "location": "SP",
-      "region": "Sudeste",
-      "generation": "Gen X",
-      "lat": -23.55,
-      "lng": -46.63,
-      "gender": "Masculino",
-      "politicalLeaning": "Direita",
-      "score": 2.5
-    }},
-    ... (EXATAMENTE 9 comentarios: 3 positivos, 3 negativos, 3 neutros)
+    {{"sentiment": "positive|negative|neutral", "comment": "texto curto", "personaName": "Nome", "age": 30, "city": "Cidade", "state": "UF", "region": "Regiao", "generation": "Gen X", "gender": "Masculino", "politicalLeaning": "Direita", "score": 7.5}},
+    ... (9 comentarios: 3 positivos, 3 negativos, 3 neutros)
   ]
 }}
 
-NAO inclua stateBreakdown nem cityBreakdown no JSON — sao gerados separadamente.
-
-REGRAS DE VALIDACAO:
+REGRAS:
 - total = positive + negative + neutral = {total_personas}
-- Para CADA item em CADA segmento: positive + negative + neutral = count
-- Soma dos counts de todos os labels em cada segmento = {total_personas}
-- Comentarios: use as persona_samples como base (nome, cidade, estado, geracao)
+- Para cada segmento: positive + negative + neutral = count
+- Inclua APENAS os 6 segmentos acima (gender, religion, region, generation, politicalLeaning, voto2022)
+- Os demais segmentos sao gerados pelo sistema automaticamente
+- Comentarios CURTOS (3-10 palavras), com girias regionais
 """
 
 

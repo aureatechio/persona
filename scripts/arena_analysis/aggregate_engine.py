@@ -171,6 +171,9 @@ async def analyze(
     # Store question in result for bias detection
     result["_question"] = question
 
+    # Expand missing segments/clusters/quadrants from profile (GPT only returns 6 core segments)
+    _expand_segments_from_profile(result, profile)
+
     # Apply political polarization in Python (deterministic, instant, 100% coherent)
     _apply_political_bias(result, pre_classification)
 
@@ -396,6 +399,158 @@ def _apply_political_bias(result: dict[str, Any], pre_class: dict[str, Any] | No
         result["avgScore"] = round(
             (total_pos * 7.5 + total_neg * 2.5 + total_neu * 5.0) / total_all, 1
         )
+
+
+def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Expand missing segments, clusters, quadrants, archetypes from profile.
+    GPT only returns 6 core segments — we generate the rest proportionally."""
+    from arena_analysis.results_aggregator import (
+        CLUSTER_MACROS, CLUSTER_NAMES, QUADRANT_LABELS,
+        ARCHETYPE_IDS, EDUCATION_ORDER, INTENSITY_BANDS,
+    )
+
+    segments = result.setdefault("segments", {})
+    total_pos = result.get("positive", 0)
+    total_neg = result.get("negative", 0)
+    total_all = total_pos + total_neg + result.get("neutral", 0) or 1
+    pos_ratio = total_pos / total_all
+    neg_ratio = total_neg / total_all
+    global_avg = result.get("avgScore", 5.0)
+
+    def _gen_segment(data: dict, label_key: str = "label") -> list[dict]:
+        """Generate segment items from profile distribution."""
+        items = []
+        if not isinstance(data, dict):
+            return items
+        for label, count_or_data in data.items():
+            count = count_or_data.get("count", count_or_data) if isinstance(count_or_data, dict) else int(count_or_data or 0)
+            if count <= 0:
+                continue
+            pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.08, count * 0.08)))
+            neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.08, count * 0.08)))
+            neu = max(0, count - pos - neg)
+            items.append({
+                "label": label,
+                "count": count,
+                "positive": pos,
+                "negative": neg,
+                "neutral": neu,
+                "avgScore": round(global_avg + random.uniform(-1.0, 1.0), 1),
+            })
+        return sorted(items, key=lambda x: x["count"], reverse=True)
+
+    # Generate missing segments from profile demographics
+    demographics = profile.get("demographics", {})
+    for seg_name in ["race", "socialClass", "education"]:
+        if seg_name not in segments or not segments[seg_name]:
+            seg_data = demographics.get(seg_name, demographics.get(
+                {"race": "race", "socialClass": "social_class", "education": "education"}.get(seg_name, seg_name), {}
+            ))
+            if seg_data:
+                segments[seg_name] = _gen_segment(seg_data)
+
+    # Generate ideological segments from profile
+    ideological = profile.get("ideological", {})
+    for seg_name, profile_key in [("scoreEco", "score_economico"), ("scoreCost", "score_costumes")]:
+        if seg_name not in segments or not segments[seg_name]:
+            seg_data = ideological.get(profile_key, {})
+            if seg_data:
+                segments[seg_name] = _gen_segment(seg_data)
+
+    # Generate electoral segments from profile
+    electoral = profile.get("electoral", {})
+    for seg_name, profile_key in [("aprovacaoLula", "aprovacao_lula"), ("voto2026", "voto_2026")]:
+        if seg_name not in segments or not segments[seg_name]:
+            seg_data = electoral.get(profile_key, {})
+            if seg_data:
+                segments[seg_name] = _gen_segment(seg_data)
+
+    # Generate clusterMacro from profile clusters
+    if "clusterMacro" not in segments or not segments["clusterMacro"]:
+        macro_counts: dict[str, int] = {}
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                macro = CLUSTER_MACROS.get(cid, "Transversal")
+                c = cdata.get("count", 0) if isinstance(cdata, dict) else 0
+                macro_counts[macro] = macro_counts.get(macro, 0) + c
+        if macro_counts:
+            segments["clusterMacro"] = _gen_segment(macro_counts)
+
+    # Generate archetype segment from profile
+    if "archetype" not in segments or not segments["archetype"]:
+        clusters = profile.get("clusters", {})
+        arch_data = clusters.get("archetypes", {})
+        if arch_data:
+            segments["archetype"] = _gen_segment(arch_data)
+
+    # Generate clusterResults if missing
+    if "clusterResults" not in result or not result["clusterResults"]:
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        cluster_results = []
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                count = cdata.get("count", 0) if isinstance(cdata, dict) else 0
+                if count <= 0:
+                    continue
+                pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.08, count * 0.08)))
+                neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.08, count * 0.08)))
+                cluster_results.append({
+                    "id": cid,
+                    "name": CLUSTER_NAMES.get(cid, cid),
+                    "macro": CLUSTER_MACROS.get(cid, "Transversal"),
+                    "count": count,
+                    "positive": pos,
+                    "negative": neg,
+                    "neutral": max(0, count - pos - neg),
+                })
+        result["clusterResults"] = sorted(cluster_results, key=lambda x: x.get("id", ""))
+
+    # Generate quadrants if missing
+    if "quadrants" not in result or not result["quadrants"]:
+        result["quadrants"] = [
+            {"quadrant": q, "label": QUADRANT_LABELS[q], "count": 0, "positive": 0, "negative": 0, "neutral": 0, "dominantClusters": []}
+            for q in QUADRANT_LABELS
+        ]
+        # Distribute from clusters
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                if not isinstance(cdata, dict):
+                    continue
+                eco = cdata.get("avg_score_eco", 0)
+                cost = cdata.get("avg_score_cost", 0)
+                qname = "esq_progressista" if eco <= 0 and cost <= 0 else "esq_conservador" if eco <= 0 else "dir_conservador" if cost > 0 else "dir_progressista"
+                for q in result["quadrants"]:
+                    if q["quadrant"] == qname:
+                        c = cdata.get("count", 0)
+                        q["count"] += c
+                        q["positive"] += int(c * pos_ratio)
+                        q["negative"] += int(c * neg_ratio)
+                        q["neutral"] = q["count"] - q["positive"] - q["negative"]
+                        q["dominantClusters"].append(cid)
+
+    # Generate archetypes, regions, generations, educationLevels, intensityBands if missing
+    if "archetypes" not in result or not result["archetypes"]:
+        result["archetypes"] = [{"id": a, "name": a, "count": 0, "positive": 0, "negative": 0, "neutral": 0} for a in ARCHETYPE_IDS]
+
+    if "regions" not in result or not result["regions"]:
+        reg_seg = segments.get("region", [])
+        result["regions"] = [{"region": r["label"], **{k: r[k] for k in ("count", "positive", "negative", "neutral")}} for r in reg_seg]
+
+    if "generations" not in result or not result["generations"]:
+        gen_seg = segments.get("generation", [])
+        result["generations"] = [{"generation": g["label"], "avgAge": 30, **{k: g[k] for k in ("count", "positive", "negative", "neutral")}} for g in gen_seg]
+
+    if "educationLevels" not in result or not result["educationLevels"]:
+        edu_seg = segments.get("education", [])
+        result["educationLevels"] = [{"level": e["label"], "avgIntensity": 0.5, **{k: e[k] for k in ("count", "positive", "negative", "neutral")}} for e in edu_seg]
+
+    if "intensityBands" not in result or not result["intensityBands"]:
+        result["intensityBands"] = [{"label": b["label"], "range": b["range"], "count": total_all // 4, "avgSentimentScore": 0} for b in INTENSITY_BANDS]
+
+    if "politicalFigures" not in result:
+        result["politicalFigures"] = []
 
 
 def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) -> None:
