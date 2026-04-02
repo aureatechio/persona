@@ -645,8 +645,8 @@ REGRAS GERAIS:
     start = time.time()
 
     response = await aclient.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3500,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2000,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
     )
