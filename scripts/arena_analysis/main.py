@@ -1397,7 +1397,7 @@ async def transcribe_url(req: TranscribeRequest):
             try:
                 from arena_analysis.visual_analyzer import extract_and_analyze_frames
                 visual_frames_task = asyncio.create_task(
-                    extract_and_analyze_frames(tmp_input.name, num_frames=10)
+                    extract_and_analyze_frames(tmp_input.name)
                 )
                 print("[Transcribe] Frame extraction started in parallel")
             except Exception as vfe:

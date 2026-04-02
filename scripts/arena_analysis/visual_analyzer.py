@@ -196,38 +196,46 @@ async def analyze_image(
 
 
 # ── Video Frame Extraction & Analysis ───────────────────────────────────────
-async def extract_frames(video_path: str, num_frames: int = 4) -> list[str]:
+async def _get_video_duration(video_path: str) -> float:
+    """Get video duration in seconds via ffprobe."""
+    probe_cmd = [
+        "ffprobe", "-v", "quiet",
+        "-print_format", "json",
+        "-show_format",
+        video_path,
+    ]
+    probe_result = await asyncio.to_thread(
+        subprocess.run, probe_cmd,
+        capture_output=True, text=True, timeout=10,
+    )
+    if probe_result.returncode == 0:
+        probe_data = json.loads(probe_result.stdout)
+        return float(probe_data.get("format", {}).get("duration", 10))
+    return 10.0
+
+
+async def extract_frames(video_path: str, interval_seconds: float = 3.0) -> list[str]:
     """
-    Extrai N frames espaçados de um vídeo usando FFmpeg.
+    Extrai frames a cada N segundos de um vídeo usando FFmpeg.
     Retorna lista de base64-encoded JPEGs.
     """
     frames: list[str] = []
 
     try:
-        # Get video duration
-        probe_cmd = [
-            "ffprobe", "-v", "quiet",
-            "-print_format", "json",
-            "-show_format",
-            video_path,
-        ]
-        probe_result = await asyncio.to_thread(
-            subprocess.run, probe_cmd,
-            capture_output=True, text=True, timeout=10,
-        )
-        duration = 10.0  # fallback
-        if probe_result.returncode == 0:
-            probe_data = json.loads(probe_result.stdout)
-            duration = float(probe_data.get("format", {}).get("duration", 10))
+        duration = await _get_video_duration(video_path)
 
-        # Calculate timestamps (skip first/last 5%)
-        margin = duration * 0.05
-        usable = duration - (2 * margin)
-        if usable <= 0:
-            timestamps = [duration / 2]
-        else:
-            step = usable / (num_frames - 1) if num_frames > 1 else 0
-            timestamps = [margin + (step * i) for i in range(num_frames)]
+        # Generate timestamps every interval_seconds (skip first/last 2s)
+        margin = min(2.0, duration * 0.05)
+        timestamps = []
+        t = margin
+        while t < duration - margin:
+            timestamps.append(t)
+            t += interval_seconds
+
+        # Cap at 60 frames max (3 min video = 60 frames at 3s)
+        if len(timestamps) > 60:
+            step = len(timestamps) / 60
+            timestamps = [timestamps[int(i * step)] for i in range(60)]
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             for i, ts in enumerate(timestamps):
@@ -237,8 +245,8 @@ async def extract_frames(video_path: str, num_frames: int = 4) -> list[str]:
                     "-ss", f"{ts:.2f}",
                     "-i", video_path,
                     "-vframes", "1",
-                    "-q:v", "3",
-                    "-vf", "scale='min(1024,iw)':-2",
+                    "-q:v", "4",
+                    "-vf", "scale='min(800,iw)':-2",
                     out_path.as_posix(),
                 ]
                 result = await asyncio.to_thread(
@@ -249,7 +257,7 @@ async def extract_frames(video_path: str, num_frames: int = 4) -> list[str]:
                     raw = out_path.read_bytes()
                     frames.append(base64.b64encode(raw).decode())
 
-        print(f"[Visual] Extracted {len(frames)}/{num_frames} frames from video ({duration:.1f}s)")
+        print(f"[Visual] Extracted {len(frames)} frames from video ({duration:.1f}s, every {interval_seconds}s)")
 
     except Exception as e:
         print(f"[Visual] Frame extraction error: {e}")
@@ -257,15 +265,48 @@ async def extract_frames(video_path: str, num_frames: int = 4) -> list[str]:
     return frames
 
 
+async def _analyze_frame_batch(
+    client: Any,
+    frames: list[str],
+    batch_index: int,
+    total_batches: int,
+) -> str:
+    """Analyze a batch of frames and return text summary."""
+    content: list[dict] = [
+        {"type": "text", "text": f"Batch {batch_index + 1}/{total_batches}: Analise estes {len(frames)} frames de um video politico. Descreva TUDO: pessoas, textos, logos, cenarios, gestos, emocoes. Responda em 3-5 frases diretas."},
+    ]
+    for frame_b64 in frames:
+        content.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{frame_b64}",
+                "detail": "low",
+            },
+        })
+
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=settings.vision_model,
+            max_tokens=500,
+            messages=[
+                {"role": "system", "content": "Descreva o conteudo visual dos frames de video politico. Seja direto e objetivo. Mencione: pessoas (quem aparece), textos na tela, logos, cenario, emocoes, gestos, cores dominantes. 3-5 frases."},
+                {"role": "user", "content": content},
+            ],
+        ),
+        timeout=20,
+    )
+    return response.choices[0].message.content or ""
+
+
 async def extract_and_analyze_frames(
     video_path: str,
-    num_frames: int = 4,
+    num_frames: int = 10,  # ignored, uses interval-based extraction now
 ) -> dict[str, Any]:
     """
-    Extrai frames de um vídeo e analisa visualmente com GPT-4o.
-    Todos os frames são enviados numa única chamada.
+    Extrai frames a cada 3s de um video e analisa em batches de 8 com GPT-4o.
+    Junta os resultados num resumo geral para o Duda.
     """
-    frames = await extract_frames(video_path, num_frames)
+    frames = await extract_frames(video_path, interval_seconds=3.0)
     if not frames:
         print("[Visual] No frames extracted — skipping video visual analysis")
         return _empty_result()
@@ -273,37 +314,57 @@ async def extract_and_analyze_frames(
     try:
         client = _get_client()
 
-        content: list[dict] = [
-            {"type": "text", "text": f"Analise estes {len(frames)} frames de um video politico:"},
-        ]
-        for i, frame_b64 in enumerate(frames):
-            content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": f"data:image/jpeg;base64,{frame_b64}",
-                    "detail": "high",
-                },
-            })
+        # Split frames into batches of 8
+        BATCH_SIZE = 8
+        batches = [frames[i:i + BATCH_SIZE] for i in range(0, len(frames), BATCH_SIZE)]
+        total_batches = len(batches)
+        print(f"[Visual] Analyzing {len(frames)} frames in {total_batches} batches of {BATCH_SIZE}")
 
-        response = await asyncio.wait_for(
+        # Analyze all batches in parallel
+        batch_tasks = [
+            _analyze_frame_batch(client, batch, i, total_batches)
+            for i, batch in enumerate(batches)
+        ]
+        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
+
+        # Collect successful results
+        batch_summaries = []
+        for i, result in enumerate(batch_results):
+            if isinstance(result, str) and result.strip():
+                batch_summaries.append(f"[Segmento {i + 1}/{total_batches}] {result.strip()}")
+            elif isinstance(result, Exception):
+                print(f"[Visual] Batch {i + 1} failed: {result}")
+
+        if not batch_summaries:
+            print("[Visual] All batches failed")
+            return _empty_result()
+
+        # Consolidate: send batch summaries to GPT-4o for final synthesis
+        combined = "\n\n".join(batch_summaries)
+
+        consolidation_response = await asyncio.wait_for(
             client.chat.completions.create(
                 model=settings.vision_model,
                 max_tokens=settings.vision_max_tokens,
                 messages=[
                     {"role": "system", "content": VIDEO_FRAMES_SYSTEM_PROMPT},
-                    {"role": "user", "content": content},
+                    {"role": "user", "content": f"Analise consolidada de {len(frames)} frames (a cada 3 segundos) de um video politico:\n\n{combined}\n\nGere a analise final consolidada no formato JSON."},
                 ],
             ),
-            timeout=settings.vision_timeout * 2,  # more time for multiple frames
+            timeout=settings.vision_timeout * 2,
         )
 
-        raw = response.choices[0].message.content or ""
+        raw = consolidation_response.choices[0].message.content or ""
         result = _parse_response(raw)
-        tokens_in = response.usage.prompt_tokens if response.usage else 0
-        tokens_out = response.usage.completion_tokens if response.usage else 0
-        print(f"[Visual] Video frames analyzed: {len(frames)} frames, "
+        total_tokens_in = sum(
+            getattr(r, 'usage', None).prompt_tokens if hasattr(r, 'usage') and r.usage else 0
+            for r in batch_results if not isinstance(r, Exception)
+        ) if False else 0  # skip counting individual batch tokens
+        cons_in = consolidation_response.usage.prompt_tokens if consolidation_response.usage else 0
+        cons_out = consolidation_response.usage.completion_tokens if consolidation_response.usage else 0
+        print(f"[Visual] Video frames analyzed: {len(frames)} frames in {total_batches} batches, "
               f"content={len(result.get('content_analysis', ''))} chars, "
-              f"tokens={tokens_in}+{tokens_out}")
+              f"consolidation tokens={cons_in}+{cons_out}")
         return result
 
     except asyncio.TimeoutError:
@@ -311,4 +372,6 @@ async def extract_and_analyze_frames(
         return _empty_result()
     except Exception as e:
         print(f"[Visual] Video frame analysis error: {e}")
+        import traceback
+        traceback.print_exc()
         return _empty_result()
