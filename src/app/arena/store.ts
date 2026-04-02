@@ -326,14 +326,25 @@ export async function arenaSubmit(params: SubmitParams) {
             if (transcribeRes.ok) {
               const transcribeData = await transcribeRes.json();
               const transcript = transcribeData.transcript || '';
-              mediaData = transcript.length > 10 ? transcript : '__TRANSCRIPTION_FAILED__';
-              // Capture video visual analysis from frame extraction
+              const hasTranscript = transcript.length > 10;
+              mediaData = hasTranscript ? transcript : '';
+
+              // Capture video visual analysis from frame extraction (works even without audio)
               if (transcribeData.visual_analysis) {
                 const va = transcribeData.visual_analysis;
                 if (va.content_analysis) {
-                  mediaData += `\n\n--- ANALISE VISUAL DOS FRAMES DO VIDEO ---\n${va.content_analysis}`;
-                  mediaData += `\n\n--- ESTRUTURA VISUAL DO VIDEO ---\n${va.visual_structure || ''}`;
+                  const visualBlock = `\n\n--- ANALISE VISUAL DOS FRAMES DO VIDEO ---\n${va.content_analysis}\n\n--- ESTRUTURA VISUAL DO VIDEO ---\n${va.visual_structure || ''}`;
+                  mediaData = (mediaData || '') + visualBlock;
+                  // Use visual core_point as question if no transcript
+                  if (!hasTranscript && va.core_point) {
+                    corePoint = va.core_point;
+                  }
                 }
+              }
+
+              // Only mark as failed if NO visual analysis either
+              if (!mediaData || mediaData.length < 10) {
+                mediaData = '__TRANSCRIPTION_FAILED__';
               }
             } else {
               mediaData = '__TRANSCRIPTION_FAILED__';
@@ -363,7 +374,7 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = params.question || '';
+    const finalQuestion = corePoint || params.question || '';
     const { region, city } = params.contentMeta;
     const body: Record<string, unknown> = {
       question: finalQuestion,
