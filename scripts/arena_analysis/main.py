@@ -596,6 +596,21 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         if visual_result and visual_result.get("visual_structure"):
             final_results["visual_structure"] = visual_result["visual_structure"]
             final_results["content_analysis"] = visual_result.get("content_analysis", "")
+        elif request.context_text and "ANALISE VISUAL DOS FRAMES" in request.context_text:
+            # Video: extract visual analysis from context_text (frames analyzed in transcribe endpoint)
+            ctx = request.context_text
+            vis_start = ctx.find("--- ANALISE VISUAL DOS FRAMES DO VIDEO ---")
+            struct_start = ctx.find("--- ESTRUTURA VISUAL DO VIDEO ---")
+            if vis_start >= 0:
+                content_part = ctx[vis_start + 43:struct_start].strip() if struct_start > vis_start else ctx[vis_start + 43:].strip()
+                struct_part = ctx[struct_start + 33:].strip() if struct_start >= 0 else ""
+                visual_result = {
+                    "content_analysis": content_part,
+                    "visual_structure": struct_part,
+                }
+                final_results["visual_structure"] = struct_part
+                final_results["content_analysis"] = content_part
+                print(f"[Pipeline] Extracted video visual analysis for Duda: {len(content_part)} content + {len(struct_part)} structure")
 
         yield sse_event("results", final_results)
 
