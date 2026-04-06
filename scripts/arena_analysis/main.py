@@ -216,7 +216,10 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 "message": "Analisando estrutura visual da imagem...",
             })
             try:
-                visual_result = await analyze_image(request.image_url, "url")
+                visual_result = await analyze_image(
+                    request.image_url, "url",
+                    caption=request.question or "",
+                )
                 if visual_result and visual_result.get("content_analysis"):
                     # Visual analysis replaces frontend Haiku — provides context + question
                     request.context_text = (

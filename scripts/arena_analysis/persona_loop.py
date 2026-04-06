@@ -247,8 +247,18 @@ def _enforce_political_coherence(score: float, persona: dict[str, Any], question
                     "herói", "heroi", "salvador", "líder", "lider", "corajoso",
                     "preparado", "inteligente", "capaz", "inocente", "absolvido",
                     "livre", "correto"]
+    # Partisan positive tone — party-building, unity, strength (implicit praise)
+    partisan_positive_words = [
+        "fortalecer", "fortalecimento", "filiação", "filiacao", "filiou",
+        "unido", "unidos", "união", "uniao", "aliança", "alianca",
+        "apoio", "apoiar", "apoiamos", "compromisso", "valores",
+        "crescimento", "expandir", "time", "equipe", "junto", "juntos",
+        "parabéns", "parabens", "orgulho", "vitória", "vitoria",
+        "conquista", "avanço", "avanco", "luta", "lutamos", "defesa",
+        "defender", "defendemos", "ato", "manifestação", "manifestacao",
+    ]
     is_critical = any(w in q for w in critical_words)
-    is_praise = any(w in q for w in praise_words)
+    is_praise = any(w in q for w in praise_words) or any(w in q for w in partisan_positive_words)
 
     # ── Step 2b: Detect NEGATION — flips critical↔praise ──
     # "Bolsonaro NÃO deveria estar na cadeia" = DEFENSE (not criticism)

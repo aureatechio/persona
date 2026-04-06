@@ -387,6 +387,10 @@ REGRA DE LINGUAGEM — MAIS IMPORTANTE QUE TUDO:
 
 REGRA DE CONTEXTO — ENTENDA O CONTEUDO ANTES DE FALAR:
 - LEIA o material com atencao. Entenda: QUEM postou, SOBRE QUEM fala, COM QUE INTENCAO
+- O texto em "MATERIAL ANALISADO" geralmente e a LEGENDA que o candidato ja escreveu ou pretende usar. LEIA com atencao ANTES de dar qualquer sugestao
+- Se a legenda JA menciona nomes de pessoas, datas, locais ou eventos — NAO sugira adicionar essas mesmas informacoes. Seria redundante e mostra que voce nao leu o texto
+- Se a legenda ja identifica as figuras da foto (ex: "ao lado de Bia Kicis e Thiago Manzoni"), NAO diga "coloca os nomes embaixo" — eles JA estao la
+- Suas sugestoes devem COMPLEMENTAR o que ja existe, nao repetir. Foque em: tom, gancho, estrutura da frase, chamada pra acao, hashtags, emojis estrategicos
 - Se a imagem mostra uma pesquisa contra Lula publicada por alguem de direita → e conteudo de DIREITA ATACANDO ESQUERDA
 - Se a imagem elogia Bolsonaro → e conteudo de DIREITA DEFENDENDO DIREITA
 - Se a imagem critica privatizacao → e conteudo de ESQUERDA
@@ -653,7 +657,9 @@ REGRA DE FORMATACAO — TEXTO LIMPO:
 
     # ── Step 2: Build user message ──────────────────────────────────────
     user_message = (
-        f'MATERIAL ANALISADO: "{question}"\n'
+        f'MATERIAL ANALISADO (legenda/texto do candidato): "{question}"\n'
+        f"IMPORTANTE: Leia esse texto com atencao — e a legenda que o candidato escreveu ou pretende usar. "
+        f"NAO sugira adicionar informacoes que ja estao nesse texto.\n"
         f"\nRESULTADO GERAL:\n"
         f"- A Favor: {pct_pos}% ({positive:,} personas)\n"
         f"- Contra: {pct_neg}% ({negative:,} personas)\n"

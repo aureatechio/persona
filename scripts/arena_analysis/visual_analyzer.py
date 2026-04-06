@@ -1,101 +1,129 @@
 """
-Visual Analyzer — analisa imagens e frames de vídeo com GPT-4o vision.
-
-Duas funções principais:
-  - analyze_image(): análise profunda de 1 imagem (conteúdo + estrutura visual)
-  - extract_and_analyze_frames(): extrai frames de vídeo com FFmpeg e analisa visualmente
+Visual Analyzer — abordagem híbrida:
+  - analyze_image(): GPT-4o Vision (melhor reconhecimento facial e de detalhes)
+  - analyze_video(): Gemini 2.5 Pro nativo (áudio + visual + temporal em 1 chamada)
 """
 from __future__ import annotations
 
 import asyncio
 import base64
 import json
-import subprocess
-import tempfile
-from pathlib import Path
 from typing import Any
 
+import httpx
 import openai
+from google import genai
+from google.genai import types
 
 from arena_analysis.config import settings
 
-# ── Key rotation ────────────────────────────────────────────────────────────
-_key_idx = 0
+# ── OpenAI Client (image analysis — key rotation) ───────────────────────────
+_oai_key_idx = 0
 
 
-def _get_client() -> openai.AsyncOpenAI:
-    global _key_idx
+def _get_openai_client() -> openai.AsyncOpenAI:
+    global _oai_key_idx
     keys = settings.openai_api_keys or [settings.openai_api_key]
-    key = keys[_key_idx % len(keys)]
-    _key_idx += 1
+    key = keys[_oai_key_idx % len(keys)]
+    _oai_key_idx += 1
     return openai.AsyncOpenAI(api_key=key)
 
 
-# ── Prompt ──────────────────────────────────────────────────────────────────
-VISUAL_SYSTEM_PROMPT = """Voce e um analista especializado em comunicacao politica e design grafico brasileira.
-Analise a imagem fornecida em DUAS partes:
+# ── Gemini Client (video analysis — singleton) ──────────────────────────────
+_gemini_client: genai.Client | None = None
+
+
+def _get_gemini_client() -> genai.Client:
+    global _gemini_client
+    if _gemini_client is None:
+        if not settings.gemini_api_key:
+            raise RuntimeError("GEMINI_API_KEY não configurada")
+        _gemini_client = genai.Client(api_key=settings.gemini_api_key)
+    return _gemini_client
+
+
+# ── Prompts ──────────────────────────────────────────────────────────────────
+VISUAL_SYSTEM_PROMPT = """Voce e um diretor criativo e analista de comunicacao politica brasileira com 20 anos de experiencia.
+Analise a imagem fornecida com atencao MAXIMA a cada detalhe visual e textual.
+
+INSTRUCAO CRITICA: Leia e transcreva TODOS os textos visiveis na imagem — titulos, subtitulos, numeros, legendas, logos, marcas d'agua, creditos, hashtags. NUNCA diga que nao ha texto se houver qualquer caractere visivel.
+
+Analise em DUAS partes:
 
 PARTE A — CONTEUDO E INTENCAO:
-1. O que a imagem comunica (mensagem central, tese, posicionamento politico)
-2. Quem produziu (identifique fonte, branding, gabinete, partido — ex: "gabinete do senador Flavio Bolsonaro")
-3. Dados/numeros mostrados e como sao enfatizados visualmente (tamanho, cor, posicao)
-4. Tom e tecnicas de persuasao/manipulacao emocional usadas
-5. Publico-alvo inferido (quem essa imagem quer atingir)
-6. Transcricao COMPLETA de todo texto visivel na imagem (incluindo logos, marcas d'agua, creditos)
-7. Figuras politicas mencionadas ou mostradas, com alinhamento (esquerda/centro/direita) e posicao do autor (a favor/contra/neutro)
+1. Mensagem central: o que a imagem comunica (tese, posicionamento politico)
+2. Quem produziu: identifique fonte, branding, gabinete, partido (ex: "gabinete do senador Flavio Bolsonaro")
+3. Dados/numeros: como sao enfatizados visualmente (tamanho, cor, posicao)
+4. Tecnicas de persuasao: manipulacao emocional, enquadramento tendencioso, contraste, urgencia
+5. Publico-alvo: quem essa imagem quer atingir e por que
+6. Transcricao COMPLETA: TODO texto visivel na imagem (incluindo logos, marcas d'agua, creditos, numeros pequenos)
+7. Figuras politicas: mencionadas ou mostradas, com alinhamento e posicao do autor
 
-PARTE B — ESTRUTURA VISUAL (critica tecnica de design):
-1. HIERARQUIA DE LAYOUT: o que e o elemento dominante, o que e secundario, o que e terciario. Se algo compete por atencao, diga explicitamente
-2. TIPOGRAFIA: fontes usadas, tamanhos relativos (grande/medio/pequeno), cores de cada texto, enfases (negrito, italico, CAIXA ALTA, destaque colorido). Se algum texto esta pequeno demais ou grande demais, diga
-3. PALETA DE CORES: cores dominantes, cores de destaque, clima visual (escuro/claro, quente/frio, contrastante/harmonico). Se alguma cor enfraquece ou fortalece a mensagem, diga
-4. FOTO/IMAGEM: expressao facial da pessoa (se houver), angulo, iluminacao, recorte. A escolha de foto reforça ou enfraquece a mensagem?
-5. ELEMENTOS GRAFICOS: setas, badges, logos, marcas d'agua, molduras, gradientes, sobreposicoes. O que funciona e o que polui
-6. O QUE FUNCIONA BEM: liste 2-3 acertos visuais especificos (ex: "o numero em destaque gruda na memoria", "a cor vermelha no 'nao' reforça a negatividade")
-7. O QUE MELHORAR: liste 3-5 sugestoes CONCRETAS e ACIONAVEIS (ex: "diminuir o 53% — ta competindo com a foto", "o logo do Poder360 ta perdido no meio — destacar como badge ou tirar", "colocar o nome do instituto embaixo como fonte credivel")
+PARTE B — PRODUCAO TECNICA (critica de diretor criativo):
+1. HIERARQUIA DE LAYOUT: elemento dominante vs secundario vs terciario. Se algo compete por atencao, diga
+2. TIPOGRAFIA: fontes, tamanhos relativos, cores, enfases. Texto pequeno demais para celular? Grande demais?
+3. PALETA DE CORES: cores dominantes, clima visual, se fortalecem ou enfraquecem a mensagem
+4. FOTO/IMAGEM: expressao facial (se houver), angulo, iluminacao, recorte. Reforça ou enfraquece a mensagem?
+5. ELEMENTOS GRAFICOS: setas, badges, logos, molduras, gradientes. O que funciona e o que polui
+6. LEGIBILIDADE EM CELULAR: a imagem funciona em tela pequena? Textos legiveis? Elementos muito pequenos?
+7. O QUE FUNCIONA BEM: 3-5 acertos especificos com detalhe (ex: "o numero em destaque gruda na memoria", "a cor vermelha no 'nao' reforça a negatividade")
+8. O QUE MELHORAR: 3-5 sugestoes CONCRETAS e ACIONAVEIS (ex: "diminuir o 53% — ta competindo com a foto", "colocar o nome do instituto embaixo como fonte credivel")
+9. POTENCIAL DE ENGAJAMENTO: nota 0-10 da qualidade do material + veredicto em 1-2 frases (se esta bom, parabenize. Se esta ruim, diga o que mudar)
 
 FORMATO DE RESPOSTA (JSON):
 {
-  "content_analysis": "Texto completo da Parte A, detalhado e rico",
-  "visual_structure": "Texto completo da Parte B, com todas as sugestoes especificas",
-  "core_point": "Frase curta: a tese central do autor",
+  "content_analysis": "Texto completo da Parte A (detalhado, 200-500 palavras)",
+  "visual_structure": "Texto completo da Parte B (detalhado, 300-700 palavras)",
+  "core_point": "Frase curta: a tese central do autor (max 100 chars)",
   "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 
 Se nao houver figuras politicas, use "political_figures": [].
 Responda APENAS o JSON, sem markdown, sem code blocks."""
 
-VIDEO_FRAMES_SYSTEM_PROMPT = """Voce e um analista especializado em comunicacao politica e design grafico brasileira.
-Voce recebera FRAMES extraidos de um video politico (capturas de tela em momentos diferentes).
+VIDEO_SYSTEM_PROMPT = """Voce e um diretor criativo e analista de comunicacao politica brasileira com 20 anos de experiencia.
+Voce recebera um VIDEO politico completo. Assista o video INTEIRO com atencao maxima a TODOS os detalhes: imagem, audio, textos na tela, legendas, trilha sonora.
 
-Analise TODOS os frames juntos para entender o video como um todo:
+INSTRUCAO CRITICA: Preste atencao especial a:
+- LEGENDAS e TEXTOS SOBREPOSTOS: se houver QUALQUER texto na tela em QUALQUER momento (legendas, lower thirds, titulos, numeros, hashtags, watermarks), voce DEVE transcrever e mencionar. NUNCA diga que nao ha legendas se houver texto na tela.
+- AUDIO: ouca atentamente a narracao, musica de fundo, efeitos sonoros, tom de voz.
 
-PARTE A — CONTEUDO E INTENCAO DO VIDEO:
-1. O que o video comunica como um todo (mensagem central, narrativa, posicionamento)
-2. Quem produziu (identifique fonte, canal, partido, gabinete)
-3. Dados/numeros mostrados em qualquer frame
-4. Tom geral e tecnicas de persuasao (cortes, graficos, texto sobreposto)
-5. Publico-alvo inferido
-6. Transcricao de textos visiveis nos frames (titulos, legendas, graficos, lower thirds)
-7. Figuras politicas que aparecem ou sao mencionadas
+Analise o video completo em TRES partes:
 
-PARTE B — ESTRUTURA VISUAL DO VIDEO:
-1. IDENTIDADE VISUAL: paleta de cores do video, estilo grafico, consistencia visual entre frames
-2. TEXTOS E LEGENDAS: fontes, tamanhos, cores, legibilidade em tela de celular
-3. COMPOSICAO DOS FRAMES: enquadramento, uso de espaco, hierarquia visual em cada cena
-4. GRAFICOS E DADOS: se mostram numeros/graficos, como sao apresentados (claro ou confuso?)
-5. TRANSICOES: se da pra perceber pelos frames, como as cenas mudam (abrupto, suave)
-6. O QUE FUNCIONA BEM: 2-3 acertos visuais
-7. O QUE MELHORAR: 3-5 sugestoes concretas para a parte visual do video
+PARTE A — CONTEUDO E INTENCAO:
+1. Mensagem central: o que o video defende, ataca ou comunica (seja especifico)
+2. Quem produziu: identifique fonte, canal, partido, gabinete, influenciador
+3. Narracao e fala: QUEM fala, O QUE diz (resuma os pontos principais da fala), TOM DE VOZ (agressivo, calmo, didatico, emocional, ironico)
+4. Dados/numeros: qualquer estatistica ou numero mostrado (na tela OU falado)
+5. Textos na tela: transcricao COMPLETA de TODOS os textos que aparecem (legendas, titulos, lower thirds, hashtags, creditos, marcas d'agua). Se nenhum texto aparece, diga explicitamente "Nenhum texto sobreposto identificado"
+6. Tecnicas de persuasao: cortes emocionais, musica manipulativa, enquadramento tendencioso, repeticao, contraste antes/depois
+7. Publico-alvo: quem esse video quer atingir e por que
+8. Figuras politicas: quem aparece ou e mencionado, com alinhamento e posicao do autor
+
+PARTE B — PRODUCAO TECNICA (critica de diretor criativo):
+1. IDENTIDADE VISUAL: paleta de cores, estilo grafico, consistencia entre cenas
+2. LEGENDAS E TEXTOS: fontes, tamanhos, cores, posicionamento, legibilidade em tela de CELULAR (critico — maioria assiste no celular). Texto pequeno demais? Tempo de exibicao curto demais?
+3. COMPOSICAO E ENQUADRAMENTO: uso de espaco, hierarquia visual, angulos de camera
+4. TRILHA SONORA E AUDIO: musica de fundo (genero, energia, emocao que transmite), mixagem (voz clara sobre a musica ou abafada?), efeitos sonoros, silencio estrategico
+5. RITMO E EDICAO: velocidade dos cortes, transicoes, ritmo geral (dinamico ou arrastado?), hook nos primeiros 3 segundos
+6. GRAFICOS E DADOS: se usa graficos/numeros, sao claros ou confusos? Entram e saem rapido demais?
+7. O QUE FUNCIONA BEM: 3-5 acertos especificos (elogie com detalhe — ex: "o corte para a foto do idoso no segundo 15 gera empatia imediata", "a trilha tensa no momento certo amplifica a indignacao")
+8. O QUE MELHORAR: 3-5 sugestoes CONCRETAS e ACIONAVEIS (ex: "a legenda some em 1.5s — precisa de pelo menos 3s para leitura no celular", "a musica ta alta demais, abafa a voz no segundo 20-30", "falta hook nos primeiros 3s — comecar com o dado mais chocante")
+
+PARTE C — POTENCIAL DE ENGAJAMENTO:
+1. Nota geral de producao (0-10): avalie a qualidade tecnica do material como um todo
+2. Veredicto: em 2-3 frases, diga se esse material tem potencial de VIRALIZAR, ENGAJAR, ou se vai PASSAR DESPERCEBIDO. Seja direto e honesto — se o trabalho esta bom, parabenize. Se esta ruim, diga o que precisa mudar com urgencia.
 
 FORMATO DE RESPOSTA (JSON):
 {
-  "content_analysis": "Texto completo da Parte A",
-  "visual_structure": "Texto completo da Parte B",
-  "core_point": "Frase curta: a tese central do video",
-  "political_figures": [{"nome": "...", "alinhamento": "...", "posicao_autor": "..."}]
+  "content_analysis": "Texto completo da Parte A (detalhado, 300-800 palavras)",
+  "visual_structure": "Texto completo da Parte B + Parte C (detalhado, 400-1000 palavras)",
+  "core_point": "Frase curta: a tese central do video (max 100 chars)",
+  "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 
-Responda APENAS o JSON, sem markdown."""
+Se nao houver figuras politicas, use "political_figures": [].
+Responda APENAS o JSON, sem markdown, sem code blocks."""
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,7 +137,7 @@ def _empty_result() -> dict[str, Any]:
 
 
 def _parse_response(raw: str) -> dict[str, Any]:
-    """Parse JSON from GPT response, stripping code fences if present."""
+    """Parse JSON from Gemini response, stripping code fences if present."""
     clean = raw.strip()
     clean = clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
     start = clean.find("{")
@@ -122,256 +150,195 @@ def _parse_response(raw: str) -> dict[str, Any]:
         return _empty_result()
 
 
-# ── Image Analysis ──────────────────────────────────────────────────────────
+# ── Image Analysis (GPT-4o Vision) ──────────────────────────────────────────
 async def analyze_image(
     image_data: str,
     image_type: str = "base64",
     mime_type: str = "image/jpeg",
+    caption: str = "",
 ) -> dict[str, Any]:
     """
-    Analisa uma imagem com GPT-4o vision.
+    Analisa uma imagem com GPT-4o Vision.
+    GPT-4o tem melhor reconhecimento de figuras públicas e detalhes visuais.
 
     Args:
         image_data: base64 string (sem prefix data:) OU URL http(s)
         image_type: "base64" ou "url"
         mime_type: MIME type da imagem (ex: "image/jpeg")
-
-    Returns:
-        {
-            "content_analysis": str,
-            "visual_structure": str,
-            "core_point": str,
-            "political_figures": list[dict],
-        }
+        caption: texto/legenda que o usuario digitou junto com a imagem (contexto)
     """
     try:
-        client = _get_client()
-
+        # Build image content for GPT-4o
         if image_type == "url":
             image_content = {
                 "type": "image_url",
                 "image_url": {"url": image_data, "detail": "high"},
             }
         else:
-            # base64
             data_url = f"data:{mime_type};base64,{image_data}"
             image_content = {
                 "type": "image_url",
                 "image_url": {"url": data_url, "detail": "high"},
             }
 
-        response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=settings.vision_model,
-                max_tokens=settings.vision_max_tokens,
-                messages=[
-                    {"role": "system", "content": VISUAL_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": "Analise esta imagem em detalhes:"},
-                            image_content,
-                        ],
-                    },
+        # Build user prompt with caption context
+        if caption:
+            user_text = (
+                f"Analise esta imagem em detalhes.\n\n"
+                f"CONTEXTO/LEGENDA DO AUTOR: \"{caption}\"\n\n"
+                f"Use esse contexto como REFERENCIA, mas identifique as pessoas pela APARENCIA VISUAL, "
+                f"nao apenas pelo que a legenda diz. Se a legenda menciona alguem que NAO aparece na imagem, "
+                f"diga explicitamente. Se voce reconhece alguem que NAO esta na legenda, mencione tambem. "
+                f"NAO invente datas, nomes ou eventos que nao estejam na legenda ou na imagem."
+            )
+        else:
+            user_text = "Analise esta imagem em detalhes:"
+
+        messages = [
+            {"role": "system", "content": VISUAL_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": user_text},
+                    image_content,
                 ],
-            ),
-            timeout=settings.vision_timeout,
-        )
+            },
+        ]
 
-        raw = response.choices[0].message.content or ""
-        result = _parse_response(raw)
-        tokens_in = response.usage.prompt_tokens if response.usage else 0
-        tokens_out = response.usage.completion_tokens if response.usage else 0
-        print(f"[Visual] Image analyzed: content={len(result.get('content_analysis', ''))} chars, "
-              f"structure={len(result.get('visual_structure', ''))} chars, "
-              f"tokens={tokens_in}+{tokens_out}")
-        return result
+        # Try all available OpenAI keys
+        keys = settings.openai_api_keys or [settings.openai_api_key]
+        last_error = None
+        for key_idx, api_key in enumerate(keys):
+            try:
+                client = openai.AsyncOpenAI(api_key=api_key)
+                response = await asyncio.wait_for(
+                    client.chat.completions.create(
+                        model=settings.vision_model,
+                        max_tokens=settings.vision_max_tokens,
+                        messages=messages,
+                    ),
+                    timeout=settings.gemini_vision_timeout,
+                )
 
-    except asyncio.TimeoutError:
-        print(f"[Visual] Image analysis timed out ({settings.vision_timeout}s)")
+                raw = response.choices[0].message.content or ""
+                result = _parse_response(raw)
+                tokens_in = response.usage.prompt_tokens if response.usage else 0
+                tokens_out = response.usage.completion_tokens if response.usage else 0
+                print(f"[Visual] Image analyzed (GPT-4o, key {key_idx + 1}): "
+                      f"content={len(result.get('content_analysis', ''))} chars, "
+                      f"structure={len(result.get('visual_structure', ''))} chars, "
+                      f"tokens={tokens_in}+{tokens_out}")
+                return result
+
+            except asyncio.TimeoutError:
+                print(f"[Visual] Image analysis timed out on key {key_idx + 1}")
+                last_error = "timeout"
+                continue
+            except Exception as key_err:
+                print(f"[Visual] GPT-4o key {key_idx + 1}/{len(keys)} failed: {key_err}")
+                last_error = key_err
+                continue
+
+        print(f"[Visual] All {len(keys)} OpenAI keys failed. Last error: {last_error}")
         return _empty_result()
+
     except Exception as e:
         print(f"[Visual] Image analysis error: {e}")
         return _empty_result()
 
 
-# ── Video Frame Extraction & Analysis ───────────────────────────────────────
-async def _get_video_duration(video_path: str) -> float:
-    """Get video duration in seconds via ffprobe."""
-    probe_cmd = [
-        "ffprobe", "-v", "quiet",
-        "-print_format", "json",
-        "-show_format",
-        video_path,
-    ]
-    probe_result = await asyncio.to_thread(
-        subprocess.run, probe_cmd,
-        capture_output=True, text=True, timeout=10,
-    )
-    if probe_result.returncode == 0:
-        probe_data = json.loads(probe_result.stdout)
-        return float(probe_data.get("format", {}).get("duration", 10))
-    return 10.0
-
-
-async def extract_frames(video_path: str, interval_seconds: float = 3.0) -> list[str]:
+# ── Video Analysis (Gemini native) ──────────────────────────────────────────
+async def analyze_video(video_path: str) -> dict[str, Any]:
     """
-    Extrai frames a cada N segundos de um vídeo usando FFmpeg.
-    Retorna lista de base64-encoded JPEGs.
+    Analisa um vídeo completo com Gemini 2.5 Pro via File API.
+    Gemini processa vídeo nativamente: áudio + visual + temporal em 1 chamada.
     """
-    frames: list[str] = []
-
+    video_file = None
     try:
-        duration = await _get_video_duration(video_path)
+        client = _get_gemini_client()
 
-        # Generate timestamps every interval_seconds (skip first/last 2s)
-        margin = min(2.0, duration * 0.05)
-        timestamps = []
-        t = margin
-        while t < duration - margin:
-            timestamps.append(t)
-            t += interval_seconds
+        # 1. Upload video to Gemini File API
+        print(f"[Visual] Uploading video to Gemini File API: {video_path}")
+        video_file = await asyncio.wait_for(
+            client.aio.files.upload(file=video_path),
+            timeout=60,
+        )
+        print(f"[Visual] Video uploaded: {video_file.name} (state={video_file.state})")
 
-        # Cap at 60 frames max (3 min video = 60 frames at 3s)
-        if len(timestamps) > 60:
-            step = len(timestamps) / 60
-            timestamps = [timestamps[int(i * step)] for i in range(60)]
+        # 2. Wait for processing if needed
+        poll_count = 0
+        while video_file.state and "ACTIVE" not in str(video_file.state).upper():
+            state_str = str(video_file.state).upper()
+            if "FAILED" in state_str:
+                print(f"[Visual] Gemini video processing FAILED (state={video_file.state})")
+                return _empty_result()
+            if poll_count == 0:
+                print(f"[Visual] Waiting for Gemini to process video (state={video_file.state})...")
+            poll_count += 1
+            if poll_count > 60:  # 120s max wait
+                print("[Visual] Video processing timed out waiting for ACTIVE state")
+                return _empty_result()
+            await asyncio.sleep(2)
+            video_file = await client.aio.files.get(name=video_file.name)
 
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            for i, ts in enumerate(timestamps):
-                out_path = Path(tmp_dir) / f"frame_{i}.jpg"
-                cmd = [
-                    "ffmpeg", "-y",
-                    "-ss", f"{ts:.2f}",
-                    "-i", video_path,
-                    "-vframes", "1",
-                    "-q:v", "4",
-                    "-vf", "scale='min(800,iw)':-2",
-                    out_path.as_posix(),
-                ]
-                result = await asyncio.to_thread(
-                    subprocess.run, cmd,
-                    capture_output=True, timeout=10,
-                )
-                if result.returncode == 0 and out_path.exists():
-                    raw = out_path.read_bytes()
-                    frames.append(base64.b64encode(raw).decode())
+        if poll_count > 0:
+            print(f"[Visual] Video processing complete after {poll_count * 2}s (state={video_file.state})")
 
-        print(f"[Visual] Extracted {len(frames)} frames from video ({duration:.1f}s, every {interval_seconds}s)")
-
-    except Exception as e:
-        print(f"[Visual] Frame extraction error: {e}")
-
-    return frames
-
-
-async def _analyze_frame_batch(
-    client: Any,
-    frames: list[str],
-    batch_index: int,
-    total_batches: int,
-) -> str:
-    """Analyze a batch of frames and return text summary."""
-    content: list[dict] = [
-        {"type": "text", "text": f"Batch {batch_index + 1}/{total_batches}: Analise estes {len(frames)} frames de um video politico. Descreva TUDO: pessoas, textos, logos, cenarios, gestos, emocoes. Responda em 3-5 frases diretas."},
-    ]
-    for frame_b64 in frames:
-        content.append({
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{frame_b64}",
-                "detail": "low",
-            },
-        })
-
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=settings.vision_model,
-            max_tokens=500,
-            messages=[
-                {"role": "system", "content": "Descreva o conteudo visual dos frames de video politico. Seja direto e objetivo. Mencione: pessoas (quem aparece), textos na tela, logos, cenario, emocoes, gestos, cores dominantes. 3-5 frases."},
-                {"role": "user", "content": content},
-            ],
-        ),
-        timeout=20,
-    )
-    return response.choices[0].message.content or ""
-
-
-async def extract_and_analyze_frames(
-    video_path: str,
-    num_frames: int = 10,  # ignored, uses interval-based extraction now
-) -> dict[str, Any]:
-    """
-    Extrai frames a cada 3s de um video e analisa em batches de 8 com GPT-4o.
-    Junta os resultados num resumo geral para o Duda.
-    """
-    frames = await extract_frames(video_path, interval_seconds=3.0)
-    if not frames:
-        print("[Visual] No frames extracted — skipping video visual analysis")
-        return _empty_result()
-
-    try:
-        client = _get_client()
-
-        # Split frames into batches of 8
-        BATCH_SIZE = 8
-        batches = [frames[i:i + BATCH_SIZE] for i in range(0, len(frames), BATCH_SIZE)]
-        total_batches = len(batches)
-        print(f"[Visual] Analyzing {len(frames)} frames in {total_batches} batches of {BATCH_SIZE}")
-
-        # Analyze all batches in parallel
-        batch_tasks = [
-            _analyze_frame_batch(client, batch, i, total_batches)
-            for i, batch in enumerate(batches)
-        ]
-        batch_results = await asyncio.gather(*batch_tasks, return_exceptions=True)
-
-        # Collect successful results
-        batch_summaries = []
-        for i, result in enumerate(batch_results):
-            if isinstance(result, str) and result.strip():
-                batch_summaries.append(f"[Segmento {i + 1}/{total_batches}] {result.strip()}")
-            elif isinstance(result, Exception):
-                print(f"[Visual] Batch {i + 1} failed: {result}")
-
-        if not batch_summaries:
-            print("[Visual] All batches failed")
-            return _empty_result()
-
-        # Consolidate: send batch summaries to GPT-4o for final synthesis
-        combined = "\n\n".join(batch_summaries)
-
-        consolidation_response = await asyncio.wait_for(
-            client.chat.completions.create(
-                model=settings.vision_model,
-                max_tokens=settings.vision_max_tokens,
-                messages=[
-                    {"role": "system", "content": VIDEO_FRAMES_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Analise consolidada de {len(frames)} frames (a cada 3 segundos) de um video politico:\n\n{combined}\n\nGere a analise final consolidada no formato JSON."},
+        # 3. Analyze with Gemini 2.5 Pro
+        response = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.gemini_vision_model,
+                contents=[
+                    types.Content(
+                        parts=[
+                            types.Part.from_uri(file_uri=video_file.uri, mime_type=video_file.mime_type),
+                            types.Part.from_text(text="Assista o video INTEIRO com atencao maxima. Analise TODOS os detalhes: imagem, audio, textos na tela, legendas, trilha sonora, tom de voz."),
+                        ]
+                    ),
                 ],
+                config=types.GenerateContentConfig(
+                    max_output_tokens=6000,
+                    temperature=0.2,
+                    system_instruction=VIDEO_SYSTEM_PROMPT,
+                ),
             ),
-            timeout=settings.vision_timeout * 2,
+            timeout=settings.gemini_video_timeout,
         )
 
-        raw = consolidation_response.choices[0].message.content or ""
+        raw = response.text or ""
         result = _parse_response(raw)
-        total_tokens_in = sum(
-            getattr(r, 'usage', None).prompt_tokens if hasattr(r, 'usage') and r.usage else 0
-            for r in batch_results if not isinstance(r, Exception)
-        ) if False else 0  # skip counting individual batch tokens
-        cons_in = consolidation_response.usage.prompt_tokens if consolidation_response.usage else 0
-        cons_out = consolidation_response.usage.completion_tokens if consolidation_response.usage else 0
-        print(f"[Visual] Video frames analyzed: {len(frames)} frames in {total_batches} batches, "
+        usage = response.usage_metadata
+        tokens_in = usage.prompt_token_count if usage else 0
+        tokens_out = usage.candidates_token_count if usage else 0
+        print(f"[Visual] Video analyzed (Gemini native): "
               f"content={len(result.get('content_analysis', ''))} chars, "
-              f"consolidation tokens={cons_in}+{cons_out}")
+              f"structure={len(result.get('visual_structure', ''))} chars, "
+              f"tokens={tokens_in}+{tokens_out}")
         return result
 
     except asyncio.TimeoutError:
-        print(f"[Visual] Video frame analysis timed out")
+        print(f"[Visual] Video analysis timed out ({settings.gemini_video_timeout}s)")
         return _empty_result()
     except Exception as e:
-        print(f"[Visual] Video frame analysis error: {e}")
+        print(f"[Visual] Video analysis error: {e}")
         import traceback
         traceback.print_exc()
         return _empty_result()
+    finally:
+        # Cleanup: delete uploaded file from Gemini (fire-and-forget)
+        if video_file and hasattr(video_file, 'name') and video_file.name:
+            try:
+                client = _get_gemini_client()
+                await client.aio.files.delete(name=video_file.name)
+                print(f"[Visual] Cleaned up Gemini file: {video_file.name}")
+            except Exception:
+                pass  # Non-critical; Gemini auto-deletes after 48h
+
+
+# ── Backward-compatible alias (used by main.py) ────────────────────────────
+async def extract_and_analyze_frames(
+    video_path: str,
+    num_frames: int = 10,
+) -> dict[str, Any]:
+    """Backward-compatible wrapper. Now uses native Gemini video analysis."""
+    return await analyze_video(video_path)

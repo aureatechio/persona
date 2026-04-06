@@ -31,6 +31,10 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
+  // Skip cross-origin requests — let the browser handle them directly
+  // (Supabase Storage uploads, DigitalOcean API, etc.)
+  if (url.origin !== self.location.origin) return;
+
   // API calls: network-first
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

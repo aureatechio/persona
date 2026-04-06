@@ -210,6 +210,7 @@ export async function arenaSubmit(params: SubmitParams) {
   try {
     let enrichedContext = '';
     let imageSignedUrl: string | undefined;
+    let corePoint = '';
 
     const imageAtt = params.attachments.find((a) => a.type === 'image');
     const videoAtt = params.attachments.find((a) => a.type === 'video');

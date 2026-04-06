@@ -94,10 +94,18 @@ class Settings:
     aggregate_model: str = "gpt-4o"
     aggregate_max_tokens: int = 4000
 
-    # Visual Analyzer (GPT-4o vision)
+    # Visual Analyzer (GPT-4o vision — legacy, kept for reference)
     vision_model: str = "gpt-4o"
-    vision_max_tokens: int = 2500
+    vision_max_tokens: int = 8000
     vision_timeout: int = 15
+
+    # Gemini Vision (substituindo GPT-4o para análise visual)
+    gemini_api_key: str = field(
+        default_factory=lambda: os.environ.get("GEMINI_API_KEY", "")
+    )
+    gemini_vision_model: str = "gemini-2.5-pro"
+    gemini_vision_timeout: int = 60      # imagem (segundos)
+    gemini_video_timeout: int = 120      # vídeo upload + análise (segundos)
 
     # Retry
     max_retries: int = 2
