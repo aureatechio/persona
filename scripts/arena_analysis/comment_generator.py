@@ -93,7 +93,7 @@ async def generate_comments(
                 temperature=0.8,
                 response_format={"type": "json_object"},
             ),
-            timeout=15,
+            timeout=30,
         )
 
         raw = response.choices[0].message.content or ""
@@ -124,6 +124,11 @@ async def generate_comments(
         print(f"[CommentGen] Generated {len(valid)} comments (pos={sum(1 for c in valid if c['sentiment']=='positive')}, neg={sum(1 for c in valid if c['sentiment']=='negative')}, neu={sum(1 for c in valid if c['sentiment']=='neutral')})")
         return valid
 
+    except asyncio.TimeoutError:
+        print("[CommentGen] Timeout (30s) — returning empty comments")
+        return []
     except Exception as e:
-        print(f"[CommentGen] Error: {e} — returning empty comments")
+        print(f"[CommentGen] Error: {type(e).__name__}: {e} — returning empty comments")
+        import traceback
+        traceback.print_exc()
         return []
