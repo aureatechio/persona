@@ -336,9 +336,13 @@ export async function arenaSubmit(params: SubmitParams) {
                 if (va.content_analysis) {
                   const visualBlock = `\n\n--- ANALISE VISUAL DOS FRAMES DO VIDEO ---\n${va.content_analysis}\n\n--- ESTRUTURA VISUAL DO VIDEO ---\n${va.visual_structure || ''}`;
                   mediaData = (mediaData || '') + visualBlock;
-                  // Use visual core_point as question if no transcript
-                  if (!hasTranscript && va.core_point) {
+                  // Always use core_point from Gemini — it captures the political framing
+                  if (va.core_point) {
                     corePoint = va.core_point;
+                  }
+                  // Pass political_figures as structured data (not just text in context)
+                  if (va.political_figures?.length) {
+                    (videoAtt as any)._politicalFigures = va.political_figures;
                   }
                 }
               }
@@ -380,6 +384,9 @@ export async function arenaSubmit(params: SubmitParams) {
     const finalQuestion = corePoint || '';
     const userIntent = params.question || '';
     const { region, city } = params.contentMeta;
+    // Collect video political_figures if available
+    const videoPoliticalFigures = (videoAtt as any)?._politicalFigures || undefined;
+
     const body: Record<string, unknown> = {
       question: finalQuestion || userIntent,
       user_intent: userIntent,
@@ -387,6 +394,7 @@ export async function arenaSubmit(params: SubmitParams) {
       verbose: true,
       content_meta: params.contentMeta,
       image_url: imageSignedUrl || undefined,
+      video_political_figures: videoPoliticalFigures,
     };
     if (region !== 'brasil') {
       body.geo_filter = { state: region, city: city || null };

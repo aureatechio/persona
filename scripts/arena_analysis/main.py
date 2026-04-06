@@ -85,6 +85,7 @@ class AnalyzeRequest(BaseModel):
     geo_filter: Optional[GeoFilter] = None
     image_url: Optional[str] = None
     content_meta: Optional[dict] = None
+    video_political_figures: Optional[list] = None  # Gemini political_figures from video analysis
 
 
 class ElectoralRequest(BaseModel):
@@ -456,11 +457,27 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         _visual_figures = None
         if visual_result and visual_result.get("political_figures"):
             _visual_figures = visual_result["political_figures"]
+        elif request.video_political_figures:
+            _visual_figures = request.video_political_figures
+            print(f"[Pipeline] Video political figures from frontend: {_visual_figures}")
 
         # Inject user_intent into context (what the user wants to know about the media)
         if request.user_intent and context and context.contexto:
             context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."
             print(f"[Pipeline] User intent injected: '{request.user_intent[:80]}'")
+
+        # Re-run pre-classify for videos (original may have run with partial data)
+        if request.video_political_figures and request.context_text:
+            pre_class_task.cancel()
+            pre_class_task = asyncio.create_task(
+                pre_classify(request.question, request.context_text)
+            )
+            print("[Pipeline] Pre-classifier restarted with video transcript + visual data")
+            pre_class = await pre_class_task
+            disambiguation = build_disambiguation_block(pre_class)
+            if disambiguation and context:
+                context.contexto = disambiguation + "\n" + (context.contexto or "")
+            print(f"[Pipeline] Video pre-class: type={pre_class.get('type', '?')} | core={pre_class.get('core_position', '')[:80]}")
 
         # Launch scoring — Persona Scorer API (fast, deterministic) with GPT fallback
         _use_scorer = settings.use_persona_scorer
