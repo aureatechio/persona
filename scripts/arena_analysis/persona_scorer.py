@@ -65,6 +65,9 @@ async def analyze(
     if pre_classification:
         payload["pre_classification"] = pre_classification
 
+    if visual_figures:
+        payload["visual_figures"] = visual_figures
+
     try:
         async with httpx.AsyncClient(verify=False, timeout=settings.persona_scorer_timeout) as client:
             resp = await client.post(

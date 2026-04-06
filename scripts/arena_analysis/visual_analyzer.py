@@ -322,7 +322,7 @@ async def analyze_video(video_path: str) -> dict[str, Any]:
                     ),
                 ],
                 config=types.GenerateContentConfig(
-                    max_output_tokens=6000,
+                    max_output_tokens=12000,
                     temperature=0.2,
                     system_instruction=VIDEO_SYSTEM_PROMPT,
                 ),
