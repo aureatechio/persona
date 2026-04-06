@@ -116,15 +116,21 @@ def build_user_prompt(
 ) -> str:
     """Monta o prompt do usuario com conteudo + sentimento geral."""
 
+    # Use core_position as the primary content when available — it captures the
+    # actual political meaning from transcript/visual analysis. The user's question
+    # may be operational ("seria um bom video?") rather than the actual content.
+    core_position = ""
     pre_class_block = ""
     if pre_classification:
+        core_position = pre_classification.get("core_position", "") or ""
+        guide = pre_classification.get("classification_guide", {})
         pre_class_block = f"""
 PRE-CLASSIFICACAO DO CONTEUDO:
 - Tipo: {pre_classification.get('type', 'unknown')}
 - Figuras politicas: {pre_classification.get('figures', [])}
-- Posicao core: {pre_classification.get('core_position', 'N/A')}
-- Guia: positivo significa = {pre_classification.get('positive_means', 'aprova')}
-         negativo significa = {pre_classification.get('negative_means', 'rejeita')}
+- Posicao core: {core_position or 'N/A'}
+- Guia: positivo significa = {guide.get('positive_means', pre_classification.get('positive_means', 'aprova'))}
+         negativo significa = {guide.get('negative_means', pre_classification.get('negative_means', 'rejeita'))}
 """
 
     # ── Compact profile to reduce tokens (~56K → ~8K) ──
@@ -186,7 +192,14 @@ PRE-CLASSIFICACAO DO CONTEUDO:
 
     total = profile.get("total_personas", 20000)
 
-    return f"""CONTEUDO: "{question}"
+    # Primary content: core_position (political meaning) > question (user text)
+    primary_content = core_position or question
+    # If core_position differs from question, include original question as context
+    user_note = ""
+    if core_position and question and core_position.lower() != question.lower():
+        user_note = f'\nNOTA DO USUARIO: "{question}"'
+
+    return f"""CONTEUDO: "{primary_content}"{user_note}
 
 CONTEXTO: {context or "Sem contexto adicional."}
 {pre_class_block}

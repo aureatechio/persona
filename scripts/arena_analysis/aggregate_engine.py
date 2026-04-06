@@ -220,24 +220,30 @@ def _detect_ideological_lean(question: str, pre_class: dict[str, Any] | None) ->
     """Detect if content leans right, left, or is consensus. Returns 'right'|'left'|'consensus'|'neutral'."""
     q = (question or "").lower()
 
+    # Also consider core_position from pre-classifier (analyzed full transcript/visual)
+    core = (pre_class.get("core_position", "") or "").lower() if pre_class else ""
+    # Merge both texts for keyword matching — question may be "seria um bom video?"
+    # while core_position has the actual political content from the video
+    combined = f"{q} {core}"
+
     # Check consensus first
-    if any(kw in q for kw in _CONSENSUS_KEYWORDS):
+    if any(kw in combined for kw in _CONSENSUS_KEYWORDS):
         return "consensus"
 
-    # Check pre-classifier figures
+    # Check pre-classifier figures (most reliable signal)
     if pre_class:
         for fig in pre_class.get("figures", []):
             name = (fig.get("name", "") or "").lower()
             stance = fig.get("stance", "")
             # Content defending right-wing figure or attacking left-wing = right lean
-            if any(rk in name for rk in ["bolsonaro", "tarcisio", "zema", "marçal", "moro"]):
+            if any(rk in name for rk in ["bolsonaro", "tarcisio", "zema", "marçal", "moro", "nikolas", "nicolas", "flavio", "flávio"]):
                 return "right" if stance in ("defense", "neutral_mention") else "left"
-            if any(lk in name for lk in ["lula", "haddad", "boulos", "gleisi"]):
+            if any(lk in name for lk in ["lula", "haddad", "boulos", "gleisi", "dino", "janones"]):
                 return "left" if stance in ("defense", "neutral_mention") else "right"
 
-    # Keyword matching
-    right_score = sum(1 for kw in _RIGHT_KEYWORDS if kw in q)
-    left_score = sum(1 for kw in _LEFT_KEYWORDS if kw in q)
+    # Keyword matching on combined text (question + core_position)
+    right_score = sum(1 for kw in _RIGHT_KEYWORDS if kw in combined)
+    left_score = sum(1 for kw in _LEFT_KEYWORDS if kw in combined)
 
     if right_score > left_score + 1:
         return "right"
@@ -344,10 +350,15 @@ def _bias_cluster_results(clusters: list[dict], lean: str) -> None:
 def _apply_political_bias(result: dict[str, Any], pre_class: dict[str, Any] | None) -> None:
     """Apply political polarization to GPT results. Deterministic and instant."""
     question = result.get("_question", "") or result.get("question", "")
-    if not question and pre_class:
-        question = pre_class.get("core_position", "")
+    # Prefer core_position from pre-classifier — it analyzed the full content
+    # (transcript + visual analysis), not just the user's chat text which may be
+    # an operational question like "seria um bom video?"
+    core_position = pre_class.get("core_position", "") if pre_class else ""
+    political_text = core_position or question
 
-    lean = _detect_ideological_lean(question, pre_class)
+    lean = _detect_ideological_lean(political_text, pre_class)
+    if core_position and core_position != question:
+        print(f"[PoliticalBias] Using core_position instead of question: '{core_position[:100]}'")
     if lean == "neutral":
         print(f"[PoliticalBias] Content is neutral — no bias applied")
         return
