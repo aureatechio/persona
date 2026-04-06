@@ -159,8 +159,12 @@ def _empty_result() -> dict[str, Any]:
 
 def _parse_response(raw: str) -> dict[str, Any]:
     """Parse JSON from Gemini response, stripping code fences if present."""
+    import re
     clean = raw.strip()
-    clean = clean.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    # Remove markdown code fences (```json ... ``` or ``` ... ```)
+    clean = re.sub(r'^```(?:json)?\s*', '', clean)
+    clean = re.sub(r'\s*```\s*$', '', clean)
+    clean = clean.strip()
     start = clean.find("{")
     end = clean.rfind("}")
     if start == -1 or end <= start:
@@ -326,7 +330,19 @@ async def analyze_video(video_path: str) -> dict[str, Any]:
             timeout=settings.gemini_video_timeout,
         )
 
+        # Extract text from all parts (Gemini 2.5 Pro thinking mode puts
+        # the thinking in parts[0] and the actual response in parts[1])
         raw = response.text or ""
+        if not raw and response.candidates:
+            parts_text = []
+            for part in response.candidates[0].content.parts:
+                txt = getattr(part, "text", None)
+                thought = getattr(part, "thought", None)
+                if txt and not thought:  # skip thinking parts
+                    parts_text.append(txt)
+            if parts_text:
+                raw = "\n".join(parts_text)
+                print(f"[Visual] Extracted {len(raw)} chars from {len(parts_text)} non-thinking parts")
         result = _parse_response(raw)
         usage = response.usage_metadata
         tokens_in = usage.prompt_token_count if usage else 0
