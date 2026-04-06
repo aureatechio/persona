@@ -454,17 +454,51 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."
             print(f"[Pipeline] User intent injected: '{request.user_intent[:80]}'")
 
-        # Launch aggregate analysis in background
-        aggregate_task = asyncio.create_task(
-            aggregate_analyze(
-                question=request.question,
-                context=context,
-                pre_classification=pre_class,
-                geo_filter=_geo,
-                total_personas_override=total_personas,
-                visual_figures=_visual_figures,
+        # Launch scoring — Persona Scorer API (fast, deterministic) with GPT fallback
+        _use_scorer = settings.use_persona_scorer
+        scorer_result = None
+        aggregate_task = None
+
+        if _use_scorer:
+            try:
+                from arena_analysis.persona_scorer import analyze as scorer_analyze
+                scorer_result = await scorer_analyze(
+                    question=request.question,
+                    context=context,
+                    pre_classification=pre_class,
+                    geo_filter=_geo,
+                    total_personas_override=total_personas,
+                    visual_figures=_visual_figures,
+                )
+                if scorer_result:
+                    print(f"[Pipeline] Persona Scorer OK — generating comments...")
+                    # Generate comments coherent with scorer results
+                    from arena_analysis.comment_generator import generate_comments
+                    _core_pos = pre_class.get("core_position", "") if pre_class else ""
+                    comments = await generate_comments(
+                        question=request.question,
+                        core_position=_core_pos,
+                        result=scorer_result,
+                    )
+                    scorer_result["comments"] = comments
+                else:
+                    print("[Pipeline] Persona Scorer returned None — falling back to GPT")
+            except Exception as scorer_err:
+                print(f"[Pipeline] Persona Scorer failed: {scorer_err} — falling back to GPT")
+                scorer_result = None
+
+        # Fallback: GPT aggregate engine (if scorer disabled or failed)
+        if scorer_result is None:
+            aggregate_task = asyncio.create_task(
+                aggregate_analyze(
+                    question=request.question,
+                    context=context,
+                    pre_classification=pre_class,
+                    geo_filter=_geo,
+                    total_personas_override=total_personas,
+                    visual_figures=_visual_figures,
+                )
             )
-        )
 
         # Build fake segments from profile for incremental dashboard animation
         def _build_fake_segments(profile_data, processed, total, pos_ratio, neg_ratio):
@@ -500,6 +534,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         _profile_for_fake = await load_profile()
 
         # Emit synthetic progress with fake segments (dashboard animates)
+        # Skip animation if Persona Scorer already returned results
         _total_steps = 20
         _step_time = 60.0 / _total_steps
         _fake_pos = 0
@@ -508,8 +543,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         _fake_score_sum = 0.0
 
         for step_i in range(_total_steps):
+            if scorer_result is not None:
+                break  # Scorer already done — skip fake progress
             if cancelled.is_set():
-                aggregate_task.cancel()
+                if aggregate_task:
+                    aggregate_task.cancel()
                 return
 
             pct = (step_i + 1) / _total_steps
@@ -549,21 +587,34 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
 
             yield sse_event("progress", progress_data)
 
-            try:
-                await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=_step_time)
-                break
-            except asyncio.TimeoutError:
-                pass
-            except Exception:
-                break
+            if aggregate_task:
+                try:
+                    await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=_step_time)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+                except Exception:
+                    break
 
         # Await final result
-        try:
-            final_results = await aggregate_task
-        except Exception as e:
-            print(f"[Pipeline] Aggregate engine error: {e}")
-            import traceback
-            traceback.print_exc()
+        if scorer_result is not None:
+            final_results = scorer_result
+            print(f"[Pipeline] Using Persona Scorer results (mode={final_results.get('_scorer_mode', '?')})")
+        elif aggregate_task:
+            try:
+                final_results = await aggregate_task
+            except Exception as e:
+                print(f"[Pipeline] Aggregate engine error: {e}")
+                import traceback
+                traceback.print_exc()
+                final_results = {
+                    "total": total_personas, "positive": 0, "negative": 0, "neutral": 0,
+                    "avgScore": 5.0, "processingTime": 0, "archetypes": [], "clusterResults": [],
+                    "comments": [], "ideologicalPoints": [], "quadrants": [], "regions": [],
+                    "generations": [], "educationLevels": [], "politicalFigures": [],
+                    "intensityBands": [], "segments": {}, "stateBreakdown": {}, "cityBreakdown": {},
+                }
+        else:
             final_results = {
                 "total": total_personas, "positive": 0, "negative": 0, "neutral": 0,
                 "avgScore": 5.0, "processingTime": 0, "archetypes": [], "clusterResults": [],

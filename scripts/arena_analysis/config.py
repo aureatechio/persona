@@ -115,5 +115,12 @@ class Settings:
     # for ideological lean detection. Set to False to revert to pre-classifier only.
     use_visual_figures: bool = True
 
+    # Use Persona Scorer API (BERTimbau matrix scoring) instead of GPT aggregate engine.
+    # Set to False to revert to GPT-4o aggregate engine (aggregate_engine.py).
+    # If True and API fails, falls back to GPT automatically.
+    use_persona_scorer: bool = True
+    persona_scorer_url: str = "https://persona-scorer-production.up.railway.app"
+    persona_scorer_timeout: int = 15  # seconds
+
 
 settings = Settings()
