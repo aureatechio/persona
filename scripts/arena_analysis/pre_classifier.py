@@ -21,6 +21,17 @@ Sua tarefa: analisar a pergunta/afirmacao que sera enviada a 20.000 personas sin
 
 O PROBLEMA QUE VOCE RESOLVE: quando a pergunta menciona figuras politicas com framing complexo (negacoes, ironia, frases compostas), o classificador de personas pode INVERTER o sentimento. Sua analise garante que isso nao aconteca.
 
+CONTEXTO POLITICO BRASILEIRO ATUAL:
+- GOVERNO/ESQUERDA: Presidente Lula (PT). Aliados: Haddad, Gleisi, Janones, Dino, Boulos.
+- OPOSICAO/DIREITA: Jair Bolsonaro (PL), filhos Flavio/Eduardo/Carlos Bolsonaro. Aliados: Tarcisio, Zema, Nikolas Ferreira, Pablo Marcal.
+- "governo", "governo federal" = governo LULA. Critica ao governo = critica a LULA.
+- REGRA CRITICA PARA FIGURES:
+  1. Use SEMPRE nome completo: "Flavio Bolsonaro" (nunca so "Flavio"), "Lula" ou "Luiz Inacio Lula da Silva"
+  2. Inclua SEMPRE pelo menos 2 figuras quando o conteudo e politico: quem o autor DEFENDE e quem ATACA
+  3. Conteudo pro-Bolsonaro → inclua Bolsonaro (defense) + Lula (attack)
+  4. Conteudo pro-Lula → inclua Lula (defense) + Bolsonaro (attack)
+  5. NUNCA use termos genericos como "Governo Federal" — use o nome da pessoa
+
 INSTRUCOES:
 
 1. IDENTIFIQUE o TIPO do conteudo:

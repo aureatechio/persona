@@ -520,6 +520,59 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     },
                 }
                 print(f"[Pipeline] Pre-class built from visual figures: {_vf_figures}")
+        else:
+            # Text-only: normalize pre_class figures + inject missing opponent
+            if pre_class and pre_class.get("figures"):
+                _NAME_NORMALIZE = {
+                    "flavio": "Flavio Bolsonaro",
+                    "flávio": "Flavio Bolsonaro",
+                    "eduardo": "Eduardo Bolsonaro",
+                    "carlos": "Carlos Bolsonaro",
+                    "michelle": "Michelle Bolsonaro",
+                    "tarcisio": "Tarcisio de Freitas",
+                    "tarcísio": "Tarcisio de Freitas",
+                    "nikolas": "Nikolas Ferreira",
+                    "nicolas": "Nikolas Ferreira",
+                    "marcal": "Pablo Marcal",
+                    "marçal": "Pablo Marcal",
+                    "haddad": "Fernando Haddad",
+                    "boulos": "Guilherme Boulos",
+                    "gleisi": "Gleisi Hoffmann",
+                    "janones": "Andre Janones",
+                    "dino": "Flavio Dino",
+                    "governo federal": "Lula",
+                    "governo": "Lula",
+                    "pt": "Lula",
+                }
+                _RIGHT_NAMES = {"bolsonaro", "tarcisio", "tarcísio", "zema", "marçal", "marcal", "moro", "nikolas", "nicolas", "flavio bolsonaro", "flávio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro", "michelle bolsonaro", "pablo marcal"}
+                _LEFT_NAMES = {"lula", "haddad", "boulos", "gleisi", "janones", "dino", "dilma", "fernando haddad", "guilherme boulos"}
+
+                for fig in pre_class["figures"]:
+                    name = fig.get("name", "")
+                    normalized = _NAME_NORMALIZE.get(name.lower().strip())
+                    if normalized:
+                        print(f"[Pipeline] Normalized pre_class figure: '{name}' -> '{normalized}'")
+                        fig["name"] = normalized
+
+                # Inject missing opponent: if only right-wing figures, add Lula as attack target (and vice versa)
+                existing_names = {f.get("name", "").lower() for f in pre_class["figures"]}
+                has_right = any(n in _RIGHT_NAMES for n in existing_names)
+                has_left = any(n in _LEFT_NAMES for n in existing_names)
+                has_lula = any("lula" in n for n in existing_names)
+                has_bolsonaro = any("bolsonaro" in n for n in existing_names)
+
+                if has_right and not has_left:
+                    # Right-wing content without left target → add Lula as attack
+                    any_defense = any(f.get("stance") == "defense" for f in pre_class["figures"])
+                    if any_defense:
+                        pre_class["figures"].append({"name": "Lula", "stance": "attack", "confidence": 0.85})
+                        print("[Pipeline] Injected missing opponent: Lula (attack)")
+                elif has_left and not has_right:
+                    # Left-wing content without right target → add Bolsonaro as attack
+                    any_defense = any(f.get("stance") == "defense" for f in pre_class["figures"])
+                    if any_defense:
+                        pre_class["figures"].append({"name": "Bolsonaro", "stance": "attack", "confidence": 0.85})
+                        print("[Pipeline] Injected missing opponent: Bolsonaro (attack)")
 
         # Launch scoring — Persona Scorer API (fast, deterministic) with GPT fallback
         _use_scorer = settings.use_persona_scorer
