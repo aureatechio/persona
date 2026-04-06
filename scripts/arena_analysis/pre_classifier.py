@@ -140,14 +140,14 @@ async def pre_classify(question: str, context_text: str | None = None) -> dict:
         if "figures" not in result:
             result["figures"] = []
 
-        print(f"[PreClassify] type={result['type']} | core: {result['core_position'][:100]}")
+        print(f"[PreClassify] type={result['type']} | core: {result['core_position'][:100]}", flush=True)
         for fig in result.get("figures", []):
-            print(f"  figure: {fig.get('name', '?')} → {fig.get('stance', '?')} (conf={fig.get('confidence', '?')})")
+            print(f"  figure: {fig.get('name', '?')} -> {fig.get('stance', '?')} (conf={fig.get('confidence', '?')})", flush=True)
 
         return result
 
     except Exception as e:
-        print(f"[PreClassify] Error: {e} — falling back to passthrough")
+        print(f"[PreClassify] Error: {type(e).__name__}: {e} -- falling back to passthrough", flush=True)
         return {**_FALLBACK, "core_position": question}
 
 
