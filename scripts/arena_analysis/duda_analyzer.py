@@ -651,8 +651,13 @@ REGRA DE FORMATACAO — TEXTO LIMPO:
         visual_block = (
             "\n\nESTRUTURA VISUAL DO MATERIAL (analise computacional da imagem/video):\n"
             f"{visual_structure}\n\n"
-            "Use esses dados visuais para dar sugestoes ESPECIFICAS sobre o design do material.\n"
-            "REGRA CRITICA: NUNCA invente ou suponha quem aparece na imagem/video. "
+            "Use esses dados visuais para dar sugestoes ESPECIFICAS sobre o design do material. Exemplos do tipo de critica esperada:\n"
+            '- "Diminui o 53%, ta competindo com a foto do Lula — escolhe um ou outro como heroi visual"\n'
+            '- "O logo do Poder360 ta perdido no meio — ou destaca como badge no topo ou tira"\n'
+            '- "A fonte vermelha no \'nao\' ta boa, reforça a negatividade — mantem"\n'
+            '- "Coloca \'Parana Pesquisas\' embaixo como credito, nao como titulo"\n\n'
+            "REGRA CRITICA: Os exemplos acima sao APENAS para ilustrar o TOM e ESTILO de critica. "
+            "NUNCA invente ou suponha quem aparece na imagem/video. "
             "So mencione pessoas que a analise visual acima EXPLICITAMENTE identificou pelo nome. "
             "Se a analise diz 'Flavio Bolsonaro', voce pode falar dele. Se NAO menciona 'Lula', "
             "NUNCA diga 'expressao do Lula' ou 'foto do Lula'. Inventar quem esta na imagem "
