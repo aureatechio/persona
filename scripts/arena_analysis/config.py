@@ -110,5 +110,10 @@ class Settings:
     # Retry
     max_retries: int = 2
 
+    # Feature flags
+    # Use political_figures from visual analyzer (image/video) as primary signal
+    # for ideological lean detection. Set to False to revert to pre-classifier only.
+    use_visual_figures: bool = True
+
 
 settings = Settings()

@@ -74,7 +74,7 @@ FORMATO DE RESPOSTA (JSON):
 {
   "content_analysis": "Texto completo da Parte A (detalhado, 200-500 palavras)",
   "visual_structure": "Texto completo da Parte B (detalhado, 300-700 palavras)",
-  "core_point": "Frase curta: a tese central do autor (max 100 chars)",
+  "core_point": "Frase curta com FRAMING: quem publicou + posicao + tese (max 120 chars). Ex: 'Gabinete Bolsonaro ataca Lula usando pesquisa de rejeicao' ou 'Post pro-Lula celebra queda da inflacao'. NUNCA seja factual neutro — capture a INTENCAO do autor.",
   "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 
@@ -118,7 +118,7 @@ FORMATO DE RESPOSTA (JSON):
 {
   "content_analysis": "Texto completo da Parte A (detalhado, 300-800 palavras)",
   "visual_structure": "Texto completo da Parte B + Parte C (detalhado, 400-1000 palavras)",
-  "core_point": "Frase curta: a tese central do video (max 100 chars)",
+  "core_point": "Frase curta com FRAMING: quem publicou + posicao + tese (max 120 chars). Ex: 'Video pro-Bolsonaro ataca governo Lula com dados de desemprego' ou 'Militante de esquerda defende programa social'. NUNCA seja factual neutro — capture a INTENCAO do autor.",
   "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 

@@ -70,6 +70,7 @@ async def analyze(
     ideological_frame: str | None = None,
     geo_filter: dict[str, Any] | None = None,
     total_personas_override: int | None = None,
+    visual_figures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Analise agregada: 1 chamada a GPT-4o para derivar scores por segmento.
@@ -175,7 +176,7 @@ async def analyze(
     _expand_segments_from_profile(result, profile)
 
     # Apply political polarization in Python (deterministic, instant, 100% coherent)
-    _apply_political_bias(result, pre_classification)
+    _apply_political_bias(result, pre_classification, visual_figures)
 
     # Enrich stateBreakdown and cityBreakdown from pre-computed profile
     _enrich_geo_from_profile(result, profile)
@@ -207,6 +208,16 @@ _CONSENSUS_KEYWORDS = [
     "crianca", "infantil", "fome", "miseria",
 ]
 
+# Figure name substrings for ideological detection (shared by visual + pre-class)
+_RIGHT_FIGURE_NAMES = [
+    "bolsonaro", "tarcisio", "tarcísio", "zema", "marçal", "marcal", "moro",
+    "nikolas", "nicolas", "flavio", "flávio", "zambelli", "damares", "salles",
+]
+_LEFT_FIGURE_NAMES = [
+    "lula", "haddad", "boulos", "gleisi", "dino", "janones", "dilma",
+    "marielle", "randolfe", "mercadante",
+]
+
 # Segments that lean RIGHT
 _RIGHT_SEGMENTS = {"Bolsonaro", "Direita", "Extrema Direita", "Centro-Direita"}
 _LEFT_SEGMENTS = {"Lula", "Esquerda", "Extrema Esquerda", "Centro-Esquerda"}
@@ -216,8 +227,19 @@ _LEFT_CLUSTERS = {f"P{i}" for i in range(1, 7)}   # P1-P6
 _MODERATE_CLUSTERS = {f"M{i}" for i in range(1, 9)}  # M1-M8
 
 
-def _detect_ideological_lean(question: str, pre_class: dict[str, Any] | None) -> str:
-    """Detect if content leans right, left, or is consensus. Returns 'right'|'left'|'consensus'|'neutral'."""
+def _detect_ideological_lean(
+    question: str,
+    pre_class: dict[str, Any] | None,
+    visual_figures: list[dict[str, Any]] | None = None,
+) -> str:
+    """Detect if content leans right, left, or is consensus. Returns 'right'|'left'|'consensus'|'neutral'.
+
+    Priority chain:
+      1. visual_figures (from image/video analysis — SAW the content, most reliable for media)
+      2. pre_class figures (semantic analysis of text — reliable for text-only)
+      3. keyword matching on question + core_position (fallback)
+    Set settings.use_visual_figures = False to skip step 1.
+    """
     q = (question or "").lower()
 
     # Also consider core_position from pre-classifier (analyzed full transcript/visual)
@@ -230,18 +252,40 @@ def _detect_ideological_lean(question: str, pre_class: dict[str, Any] | None) ->
     if any(kw in combined for kw in _CONSENSUS_KEYWORDS):
         return "consensus"
 
-    # Check pre-classifier figures (most reliable signal)
+    # 1. Visual analyzer figures — highest priority for media (it SAW the image/video)
+    #    posicao_autor: "a favor" / "contra" / "neutro" (from visual_analyzer.py)
+    if visual_figures and settings.use_visual_figures:
+        for fig in visual_figures:
+            name = (fig.get("nome", "") or "").lower()
+            posicao = (fig.get("posicao_autor", "") or "").lower()
+            # Map posicao_autor → stance equivalent
+            if posicao == "contra":
+                stance = "attack"
+            elif posicao in ("a favor", "favor"):
+                stance = "defense"
+            else:
+                stance = "neutral_mention"
+
+            if any(rk in name for rk in _RIGHT_FIGURE_NAMES):
+                lean = "right" if stance in ("defense", "neutral_mention") else "left"
+                print(f"[PoliticalBias] Visual figure '{name}' posicao='{posicao}' → lean={lean}")
+                return lean
+            if any(lk in name for lk in _LEFT_FIGURE_NAMES):
+                lean = "left" if stance in ("defense", "neutral_mention") else "right"
+                print(f"[PoliticalBias] Visual figure '{name}' posicao='{posicao}' → lean={lean}")
+                return lean
+
+    # 2. Pre-classifier figures (fallback — semantic analysis, didn't see media directly)
     if pre_class:
         for fig in pre_class.get("figures", []):
             name = (fig.get("name", "") or "").lower()
             stance = fig.get("stance", "")
-            # Content defending right-wing figure or attacking left-wing = right lean
-            if any(rk in name for rk in ["bolsonaro", "tarcisio", "zema", "marçal", "moro", "nikolas", "nicolas", "flavio", "flávio"]):
+            if any(rk in name for rk in _RIGHT_FIGURE_NAMES):
                 return "right" if stance in ("defense", "neutral_mention") else "left"
-            if any(lk in name for lk in ["lula", "haddad", "boulos", "gleisi", "dino", "janones"]):
+            if any(lk in name for lk in _LEFT_FIGURE_NAMES):
                 return "left" if stance in ("defense", "neutral_mention") else "right"
 
-    # Keyword matching on combined text (question + core_position)
+    # 3. Keyword matching on combined text (question + core_position)
     right_score = sum(1 for kw in _RIGHT_KEYWORDS if kw in combined)
     left_score = sum(1 for kw in _LEFT_KEYWORDS if kw in combined)
 
@@ -347,7 +391,11 @@ def _bias_cluster_results(clusters: list[dict], lean: str) -> None:
             cluster["neutral"] = count - cluster["positive"] - cluster["negative"]
 
 
-def _apply_political_bias(result: dict[str, Any], pre_class: dict[str, Any] | None) -> None:
+def _apply_political_bias(
+    result: dict[str, Any],
+    pre_class: dict[str, Any] | None,
+    visual_figures: list[dict[str, Any]] | None = None,
+) -> None:
     """Apply political polarization to GPT results. Deterministic and instant."""
     question = result.get("_question", "") or result.get("question", "")
     # Prefer core_position from pre-classifier — it analyzed the full content
@@ -356,7 +404,7 @@ def _apply_political_bias(result: dict[str, Any], pre_class: dict[str, Any] | No
     core_position = pre_class.get("core_position", "") if pre_class else ""
     political_text = core_position or question
 
-    lean = _detect_ideological_lean(political_text, pre_class)
+    lean = _detect_ideological_lean(political_text, pre_class, visual_figures)
     if core_position and core_position != question:
         print(f"[PoliticalBias] Using core_position instead of question: '{core_position[:100]}'")
     if lean == "neutral":

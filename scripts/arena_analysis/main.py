@@ -443,6 +443,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         if request.geo_filter and request.geo_filter.state:
             _geo = {"state": request.geo_filter.state, "city": request.geo_filter.city}
 
+        # Collect visual figures (from image/video analysis) for political detection
+        _visual_figures = None
+        if visual_result and visual_result.get("political_figures"):
+            _visual_figures = visual_result["political_figures"]
+
         # Launch aggregate analysis in background
         aggregate_task = asyncio.create_task(
             aggregate_analyze(
@@ -451,6 +456,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 pre_classification=pre_class,
                 geo_filter=_geo,
                 total_personas_override=total_personas,
+                visual_figures=_visual_figures,
             )
         )
 
