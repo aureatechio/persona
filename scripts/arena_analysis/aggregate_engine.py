@@ -494,17 +494,22 @@ def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any
     neg_ratio = total_neg / total_all
     global_avg = result.get("avgScore", 5.0)
 
-    def _gen_segment(data: dict, label_key: str = "label") -> list[dict]:
-        """Generate segment items from profile distribution."""
+    def _gen_segment(data: dict, moderate: bool = False) -> list[dict]:
+        """Generate segment items from profile distribution.
+        moderate=True produces softer variation (for non-critical segments like age/religion/region).
+        """
         items = []
         if not isinstance(data, dict):
             return items
+        # Moderate segments: smaller random jitter, avgScore closer to global
+        jitter = 0.04 if moderate else 0.08
+        score_range = 0.6 if moderate else 1.0
         for label, count_or_data in data.items():
             count = count_or_data.get("count", count_or_data) if isinstance(count_or_data, dict) else int(count_or_data or 0)
             if count <= 0:
                 continue
-            pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.08, count * 0.08)))
-            neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.08, count * 0.08)))
+            pos = max(0, int(count * pos_ratio + random.uniform(-count * jitter, count * jitter)))
+            neg = max(0, int(count * neg_ratio + random.uniform(-count * jitter, count * jitter)))
             neu = max(0, count - pos - neg)
             items.append({
                 "label": label,
@@ -512,13 +517,11 @@ def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any
                 "positive": pos,
                 "negative": neg,
                 "neutral": neu,
-                "avgScore": round(global_avg + random.uniform(-1.0, 1.0), 1),
+                "avgScore": round(max(0.5, min(9.5, global_avg + random.uniform(-score_range, score_range))), 1),
             })
         return sorted(items, key=lambda x: x["count"], reverse=True)
 
-    # Generate missing segments from profile demographics
-    # GPT should return generation/religion/region but sometimes omits them —
-    # these are always generated from profile as fallback to guarantee dashboard data
+    # Generate segments from profile demographics
     demographics = profile.get("demographics", {})
     _demo_fallback_map = {
         "gender": ["gender"],
@@ -529,15 +532,25 @@ def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any
         "socialClass": ["social_class", "socialClass"],
         "education": ["education"],
     }
+    # These 3 are ALWAYS regenerated from profile — GPT often returns them
+    # empty or with bad data, and they're not critical for political accuracy
+    _always_regenerate = {"generation", "religion", "region"}
+
     for seg_name, profile_keys in _demo_fallback_map.items():
-        if seg_name not in segments or not segments[seg_name]:
-            seg_data = {}
-            for pk in profile_keys:
-                seg_data = demographics.get(pk, {})
-                if seg_data:
-                    break
+        should_generate = (
+            seg_name in _always_regenerate
+            or seg_name not in segments
+            or not segments[seg_name]
+        )
+        if not should_generate:
+            continue
+        seg_data = {}
+        for pk in profile_keys:
+            seg_data = demographics.get(pk, {})
             if seg_data:
-                segments[seg_name] = _gen_segment(seg_data)
+                break
+        if seg_data:
+            segments[seg_name] = _gen_segment(seg_data, moderate=seg_name in _always_regenerate)
 
     # Generate ideological segments from profile
     ideological = profile.get("ideological", {})
