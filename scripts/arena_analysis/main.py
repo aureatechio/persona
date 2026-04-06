@@ -230,8 +230,13 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                         "--- ESTRUTURA VISUAL (para critica do Duda) ---\n"
                         f"{visual_result['visual_structure']}"
                     )
-                    # Use core_point as question if user didn't type one
-                    if visual_result.get("core_point") and (not request.question or len(request.question) < 10):
+                    # Always use core_point as question for scoring (political content)
+                    # User's text goes as user_intent (only affects Duda recommendations)
+                    if visual_result.get("core_point"):
+                        if request.question and len(request.question) >= 10:
+                            # User typed something — preserve as user_intent if not already set
+                            if not request.user_intent:
+                                request.user_intent = request.question
                         request.question = visual_result["core_point"]
 
                     # Append political figures to context
