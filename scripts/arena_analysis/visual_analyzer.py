@@ -279,13 +279,48 @@ async def analyze_video(video_path: str) -> dict[str, Any]:
     Gemini processa vídeo nativamente: áudio + visual + temporal em 1 chamada.
     """
     video_file = None
+    compressed_path = None
     try:
         client = _get_gemini_client()
 
+        # 0. Compress video for Gemini (480p + low bitrate — reduces tokens and avoids 503)
+        import os
+        import subprocess
+        import tempfile
+        original_size = os.path.getsize(video_path) / (1024 * 1024)
+        if original_size > 2:  # only compress if > 2MB
+            compressed = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+            compressed.close()
+            compressed_path = compressed.name
+            print(f"[Visual] Compressing video ({original_size:.1f}MB) to 480p for Gemini...")
+            ffmpeg_result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    "ffmpeg", "-i", video_path,
+                    "-vf", "scale=-2:480",      # 480p, preserve aspect ratio
+                    "-crf", "30",               # lower quality = smaller file
+                    "-preset", "fast",
+                    "-c:a", "aac", "-b:a", "64k",  # compress audio too
+                    "-y", compressed_path,
+                ],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                timeout=60,
+            )
+            if ffmpeg_result.returncode == 0:
+                new_size = os.path.getsize(compressed_path) / (1024 * 1024)
+                print(f"[Visual] Compressed: {original_size:.1f}MB -> {new_size:.1f}MB")
+                upload_path = compressed_path
+            else:
+                print(f"[Visual] Compression failed, using original")
+                upload_path = video_path
+        else:
+            upload_path = video_path
+
         # 1. Upload video to Gemini File API
-        print(f"[Visual] Uploading video to Gemini File API: {video_path}")
+        print(f"[Visual] Uploading video to Gemini File API: {upload_path}")
         video_file = await asyncio.wait_for(
-            client.aio.files.upload(file=video_path),
+            client.aio.files.upload(file=upload_path),
             timeout=60,
         )
         print(f"[Visual] Video uploaded: {video_file.name} (state={video_file.state})")
@@ -370,6 +405,12 @@ async def analyze_video(video_path: str) -> dict[str, Any]:
                 print(f"[Visual] Cleaned up Gemini file: {video_file.name}")
             except Exception:
                 pass  # Non-critical; Gemini auto-deletes after 48h
+        # Cleanup: delete compressed temp file
+        if compressed_path:
+            try:
+                os.unlink(compressed_path)
+            except OSError:
+                pass
 
 
 # ── Backward-compatible alias (used by main.py) ────────────────────────────

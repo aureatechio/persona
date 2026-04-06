@@ -466,18 +466,37 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."
             print(f"[Pipeline] User intent injected: '{request.user_intent[:80]}'")
 
-        # Re-run pre-classify for videos (original may have run with partial data)
-        if request.video_political_figures and request.context_text:
-            pre_class_task.cancel()
-            pre_class_task = asyncio.create_task(
-                pre_classify(request.question, request.context_text)
-            )
-            print("[Pipeline] Pre-classifier restarted with video transcript + visual data")
-            pre_class = await pre_class_task
-            disambiguation = build_disambiguation_block(pre_class)
-            if disambiguation and context:
-                context.contexto = disambiguation + "\n" + (context.contexto or "")
-            print(f"[Pipeline] Video pre-class: type={pre_class.get('type', '?')} | core={pre_class.get('core_position', '')[:80]}")
+        # Build pre_class directly from visual_figures when available
+        # (bypasses pre_classifier which fails on video transcripts that quote the attacked figure)
+        if _visual_figures:
+            _vf_figures = []
+            _vf_pos_parts = []
+            _vf_neg_parts = []
+            for fig in _visual_figures:
+                nome = fig.get("nome", fig.get("name", ""))
+                posicao = fig.get("posicao_autor", fig.get("stance", "neutro")).lower()
+                if posicao in ("contra", "attack"):
+                    stance = "attack"
+                    _vf_neg_parts.append(nome)
+                elif posicao in ("a favor", "favor", "defense"):
+                    stance = "defense"
+                    _vf_pos_parts.append(nome)
+                else:
+                    stance = "neutral_mention"
+                _vf_figures.append({"name": nome, "stance": stance, "confidence": 0.95})
+
+            if _vf_figures:
+                pre_class = {
+                    "type": "political_figure",
+                    "figures": _vf_figures,
+                    "core_position": request.question or (pre_class.get("core_position", "") if pre_class else ""),
+                    "classification_guide": {
+                        "positive_means": f"Concordar com o conteudo — apoiar {', '.join(_vf_pos_parts) or 'a posicao do autor'}" + (f" e rejeitar {', '.join(_vf_neg_parts)}" if _vf_neg_parts else ""),
+                        "negative_means": f"Discordar do conteudo — rejeitar {', '.join(_vf_pos_parts) or 'a posicao do autor'}" + (f" e apoiar {', '.join(_vf_neg_parts)}" if _vf_neg_parts else ""),
+                        "neutral_means": "Sem opiniao formada",
+                    },
+                }
+                print(f"[Pipeline] Pre-class built from visual figures: {_vf_figures}")
 
         # Launch scoring — Persona Scorer API (fast, deterministic) with GPT fallback
         _use_scorer = settings.use_persona_scorer
