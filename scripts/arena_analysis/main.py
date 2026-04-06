@@ -461,6 +461,29 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             _visual_figures = request.video_political_figures
             print(f"[Pipeline] Video political figures from frontend: {_visual_figures}")
 
+        # Normalize generic political figure names to specific people
+        if _visual_figures:
+            _NORMALIZE_MAP = {
+                "governo federal": "Lula",
+                "governo lula": "Lula",
+                "governo atual": "Lula",
+                "governo": "Lula",
+                "planalto": "Lula",
+                "pt": "Lula",
+                "oposicao": "Bolsonaro",
+                "oposição": "Bolsonaro",
+                "campo bolsonarista": "Bolsonaro",
+            }
+            for fig in _visual_figures:
+                nome = fig.get("nome", fig.get("name", ""))
+                normalized = _NORMALIZE_MAP.get(nome.lower().strip())
+                if normalized:
+                    old_nome = nome
+                    fig["nome"] = normalized
+                    if "name" in fig:
+                        fig["name"] = normalized
+                    print(f"[Pipeline] Normalized figure: '{old_nome}' -> '{normalized}'")
+
         # Inject user_intent into context (what the user wants to know about the media)
         if request.user_intent and context and context.contexto:
             context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."

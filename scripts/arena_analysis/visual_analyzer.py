@@ -46,6 +46,13 @@ def _get_gemini_client() -> genai.Client:
 VISUAL_SYSTEM_PROMPT = """Voce e um diretor criativo e analista de comunicacao politica brasileira com 20 anos de experiencia.
 Analise a imagem fornecida com atencao MAXIMA a cada detalhe visual e textual.
 
+CONTEXTO POLITICO BRASILEIRO ATUAL (use para identificar figuras):
+- GOVERNO/ESQUERDA: Presidente Lula (PT), vice Geraldo Alckmin. Aliados: Haddad, Gleisi, Janones, Dino, Boulos.
+- OPOSICAO/DIREITA: Jair Bolsonaro (PL), filhos Flavio/Eduardo/Carlos Bolsonaro. Aliados: Tarcisio, Zema, Nikolas Ferreira, Pablo Marcal, Michelle Bolsonaro.
+- REGRA: "governo", "governo federal", "governo atual", "Planalto", "Brasilia" = referencia ao governo LULA.
+- REGRA: critica ao governo = critica a LULA. Defesa do governo = defesa de LULA.
+- NUNCA use termos genericos como "Governo Federal" nas political_figures. Use SEMPRE o nome da pessoa: "Lula", "Bolsonaro", etc.
+
 INSTRUCAO CRITICA: Leia e transcreva TODOS os textos visiveis na imagem — titulos, subtitulos, numeros, legendas, logos, marcas d'agua, creditos, hashtags. NUNCA diga que nao ha texto se houver qualquer caractere visivel.
 
 Analise em DUAS partes:
@@ -94,6 +101,13 @@ Responda APENAS o JSON, sem markdown, sem code blocks."""
 
 VIDEO_SYSTEM_PROMPT = """Voce e um diretor criativo e analista de comunicacao politica brasileira com 20 anos de experiencia.
 Voce recebera um VIDEO politico completo. Assista o video INTEIRO com atencao maxima a TODOS os detalhes: imagem, audio, textos na tela, legendas, trilha sonora.
+
+CONTEXTO POLITICO BRASILEIRO ATUAL (use para identificar figuras):
+- GOVERNO/ESQUERDA: Presidente Lula (PT), vice Geraldo Alckmin. Aliados: Haddad, Gleisi, Janones, Dino, Boulos.
+- OPOSICAO/DIREITA: Jair Bolsonaro (PL), filhos Flavio/Eduardo/Carlos Bolsonaro. Aliados: Tarcisio, Zema, Nikolas Ferreira, Pablo Marcal, Michelle Bolsonaro.
+- REGRA: "governo", "governo federal", "governo atual", "Planalto", "Brasilia" = referencia ao governo LULA.
+- REGRA: critica ao governo = critica a LULA. Defesa do governo = defesa de LULA.
+- NUNCA use termos genericos como "Governo Federal" nas political_figures. Use SEMPRE o nome da pessoa: "Lula", "Bolsonaro", etc.
 
 INSTRUCAO CRITICA: Preste atencao especial a:
 - LEGENDAS e TEXTOS SOBREPOSTOS: se houver QUALQUER texto na tela em QUALQUER momento (legendas, lower thirds, titulos, numeros, hashtags, watermarks), voce DEVE transcrever e mencionar. NUNCA diga que nao ha legendas se houver texto na tela.
