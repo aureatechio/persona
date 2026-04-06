@@ -248,6 +248,14 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                         "message": f"Analise visual completa: {len(visual_result.get('content_analysis', ''))} chars conteudo, {len(visual_result.get('visual_structure', ''))} chars estrutura",
                     })
                     print(f"[Pipeline] Visual analysis done — question='{request.question[:80]}', context={len(request.context_text)} chars")
+
+                    # Re-run pre-classify with actual visual content (original was started with empty strings)
+                    pre_class_task.cancel()
+                    pre_class_task = asyncio.create_task(
+                        pre_classify(request.question, request.context_text)
+                    )
+                    print("[Pipeline] Pre-classifier restarted with visual analysis data")
+
             except Exception as e:
                 print(f"[Pipeline] Visual analysis error (continuing): {e}")
 
