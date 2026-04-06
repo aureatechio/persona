@@ -21,6 +21,7 @@ import { AnalysisSummary } from './components/AnalysisSummary';
 import { AnalysisProgressLoader } from './components/AnalysisProgressLoader';
 import { AuthModal } from './components/AuthModal';
 import { ProfileSheet } from './components/ProfileSheet';
+import { IntentConfirmSheet } from './components/IntentConfirmSheet';
 
 // ── Header Avatar (exact match of mobile HeaderAvatar) ──
 function HeaderAvatar() {
@@ -100,6 +101,9 @@ export default function ArenaPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
+  const [showIntentConfirm, setShowIntentConfirm] = useState(false);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [intentText, setIntentText] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [pendingTextQuestion, setPendingTextQuestion] = useState('');
@@ -212,6 +216,7 @@ export default function ArenaPage() {
   let screenState: ScreenState = 'idle';
   if (isStreaming) screenState = 'processing';
   else if (isComplete) screenState = 'complete';
+  else if (showIntentConfirm) screenState = 'platformSelect';
   else if (showPlatformSelector) screenState = 'platformSelect';
   else if (attachments.length > 0) screenState = 'hasAttachment';
 
@@ -346,35 +351,40 @@ export default function ArenaPage() {
   const handlePlatformConfirm = (platforms: string[]) => {
     setShowPlatformSelector(false);
     if (!profile) return;
+    // Store platforms and open intent confirmation
+    setSelectedPlatforms(platforms);
+    setIntentText(pendingTextQuestion || '');
+    setShowIntentConfirm(true);
+  };
+
+  const handleIntentConfirm = (finalIntentText: string) => {
+    setShowIntentConfirm(false);
+    if (!profile) return;
     setAnaliseData(null);
     setShowFullAnalysis(false);
 
-    const isTextOnly = attachments.length === 0 && pendingTextQuestion;
+    const isTextOnly = attachments.length === 0 && finalIntentText;
 
-    // Detect attachment type (image / video / audio / text)
+    // Detect attachment type
     let attachmentType: 'image' | 'video' | 'audio' | 'text' = 'text';
     if (!isTextOnly && attachments.length > 0) {
       const att = attachments[0];
-      if (att.type === 'image') {
-        attachmentType = 'image';
-      } else if (att.mimeType?.startsWith('audio/')) {
-        attachmentType = 'audio';
-      } else {
-        attachmentType = 'video';
-      }
+      if (att.type === 'image') attachmentType = 'image';
+      else if (att.mimeType?.startsWith('audio/')) attachmentType = 'audio';
+      else attachmentType = 'video';
     }
 
-    // Save to store (persists across tab navigation)
+    // Save to store
     setUserMediaContext({
-      text: platforms.join(', '),
+      text: selectedPlatforms.join(', '),
       attachmentPreviews: isTextOnly ? [] : attachments.map(a => ({ id: a.id, type: a.type, uri: a.uri })),
     });
 
     arenaSubmit({
-      question: isTextOnly ? pendingTextQuestion : undefined,
+      question: finalIntentText || undefined,
       attachments: isTextOnly ? [] : attachments,
       contentMeta: {
-        mediaType: platforms,
+        mediaType: selectedPlatforms,
         candidateIdeology: profile.ideology === 'esquerda' ? 'esquerda' : 'direita',
         region: profile.state || 'brasil',
         city: profile.city || undefined,
@@ -383,6 +393,8 @@ export default function ArenaPage() {
     });
     setAttachments([]);
     setPendingTextQuestion('');
+    setSelectedPlatforms([]);
+    setIntentText('');
   };
 
   const handleStop = useCallback(() => { arenaCancel(); }, []);
@@ -674,6 +686,22 @@ export default function ArenaPage() {
                 : 'video'
             : 'text'
         }
+      />
+      <IntentConfirmSheet
+        visible={showIntentConfirm}
+        onClose={() => { setShowIntentConfirm(false); setShowPlatformSelector(true); }}
+        onConfirm={handleIntentConfirm}
+        initialText={intentText}
+        attachmentType={
+          attachments.length > 0
+            ? attachments[0].type === 'image'
+              ? 'image'
+              : attachments[0].mimeType?.startsWith('audio/')
+                ? 'audio'
+                : 'video'
+            : 'text'
+        }
+        platforms={selectedPlatforms}
       />
     </div>
   );
