@@ -57,7 +57,12 @@ PARTE A — CONTEUDO E INTENCAO:
 4. Tecnicas de persuasao: manipulacao emocional, enquadramento tendencioso, contraste, urgencia
 5. Publico-alvo: quem essa imagem quer atingir e por que
 6. Transcricao COMPLETA: TODO texto visivel na imagem (incluindo logos, marcas d'agua, creditos, numeros pequenos)
-7. Figuras politicas: mencionadas ou mostradas, com alinhamento e posicao do autor
+7. Figuras politicas: mencionadas, mostradas OU ALVOS IMPLICITOS, com alinhamento e posicao do autor.
+   REGRA CRITICA: Identifique TANTO o autor/fonte QUANTO o alvo do conteudo.
+   - Se o conteudo e do gabinete Bolsonaro criticando politicas do governo → inclua TANTO Bolsonaro (a favor) QUANTO Lula/PT (contra)
+   - Se o conteudo e de militante petista atacando Bolsonaro → inclua TANTO Lula/PT (a favor) QUANTO Bolsonaro (contra)
+   - O ALVO pode nao estar explicitamente nomeado — deduza pelo contexto politico brasileiro
+   - Exemplo: imagem do gabinete Bolsonaro sobre crime = autor pro-Bolsonaro, alvo = governo Lula (contra)
 
 PARTE B — PRODUCAO TECNICA (critica de diretor criativo):
 1. HIERARQUIA DE LAYOUT: elemento dominante vs secundario vs terciario. Se algo compete por atencao, diga
@@ -78,6 +83,12 @@ FORMATO DE RESPOSTA (JSON):
   "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 
+REGRA PARA political_figures:
+- Inclua SEMPRE pelo menos 2 figuras quando o conteudo e politico: o AUTOR/FONTE e o ALVO
+- posicao_autor="a favor" = o conteudo DEFENDE/APOIA esta figura
+- posicao_autor="contra" = o conteudo ATACA/CRITICA esta figura ou seu governo/partido
+- Se a imagem e do gabinete Bolsonaro criticando o governo, INCLUA: Bolsonaro (a favor) + Lula (contra)
+- Se a imagem e de petista elogiando Lula, INCLUA: Lula (a favor) + possivelmente Bolsonaro (contra)
 Se nao houver figuras politicas, use "political_figures": [].
 Responda APENAS o JSON, sem markdown, sem code blocks."""
 
@@ -98,7 +109,11 @@ PARTE A — CONTEUDO E INTENCAO:
 5. Textos na tela: transcricao COMPLETA de TODOS os textos que aparecem (legendas, titulos, lower thirds, hashtags, creditos, marcas d'agua). Se nenhum texto aparece, diga explicitamente "Nenhum texto sobreposto identificado"
 6. Tecnicas de persuasao: cortes emocionais, musica manipulativa, enquadramento tendencioso, repeticao, contraste antes/depois
 7. Publico-alvo: quem esse video quer atingir e por que
-8. Figuras politicas: quem aparece ou e mencionado, com alinhamento e posicao do autor
+8. Figuras politicas: quem aparece, e mencionado OU E ALVO IMPLICITO, com alinhamento e posicao do autor.
+   REGRA CRITICA: Identifique TANTO o autor/fonte QUANTO o alvo do conteudo.
+   - Se o video e do campo Bolsonaro criticando o governo → inclua TANTO Bolsonaro (a favor) QUANTO Lula/PT (contra)
+   - Se o video e de petista atacando Bolsonaro → inclua TANTO Lula/PT (a favor) QUANTO Bolsonaro (contra)
+   - O ALVO pode nao estar explicitamente nomeado — deduza pelo contexto politico brasileiro
 
 PARTE B — PRODUCAO TECNICA (critica de diretor criativo):
 1. IDENTIDADE VISUAL: paleta de cores, estilo grafico, consistencia entre cenas
@@ -122,6 +137,12 @@ FORMATO DE RESPOSTA (JSON):
   "political_figures": [{"nome": "Nome Completo", "alinhamento": "direita|centro-direita|centro|centro-esquerda|esquerda", "posicao_autor": "a favor|contra|neutro"}]
 }
 
+REGRA PARA political_figures:
+- Inclua SEMPRE pelo menos 2 figuras quando o conteudo e politico: o AUTOR/FONTE e o ALVO
+- posicao_autor="a favor" = o conteudo DEFENDE/APOIA esta figura
+- posicao_autor="contra" = o conteudo ATACA/CRITICA esta figura ou seu governo/partido
+- Se o video e do campo Bolsonaro criticando o governo, INCLUA: Bolsonaro (a favor) + Lula (contra)
+- Se o video e de petista elogiando Lula, INCLUA: Lula (a favor) + possivelmente Bolsonaro (contra)
 Se nao houver figuras politicas, use "political_figures": [].
 Responda APENAS o JSON, sem markdown, sem code blocks."""
 
