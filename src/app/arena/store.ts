@@ -375,10 +375,14 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = corePoint || params.question || '';
+    // question = conteúdo da mídia (core_point extraído pela IA)
+    // user_intent = o que o usuário quer saber sobre a mídia (digitou no IntentConfirmSheet)
+    const finalQuestion = corePoint || '';
+    const userIntent = params.question || '';
     const { region, city } = params.contentMeta;
     const body: Record<string, unknown> = {
-      question: finalQuestion,
+      question: finalQuestion || userIntent,
+      user_intent: userIntent,
       context_text: enrichedContext,
       verbose: true,
       content_meta: params.contentMeta,

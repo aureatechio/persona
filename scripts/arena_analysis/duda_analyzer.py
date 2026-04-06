@@ -265,6 +265,7 @@ async def analyze_duda(
     content_meta: dict,
     visual_structure: str = "",
     specialist_panel: dict | None = None,
+    user_intent: str = "",
 ) -> dict:
     """
     Run the DUDA strategic marketing advisor analysis.
@@ -387,7 +388,9 @@ REGRA DE LINGUAGEM — MAIS IMPORTANTE QUE TUDO:
 
 REGRA DE CONTEXTO — ENTENDA O CONTEUDO ANTES DE FALAR:
 - LEIA o material com atencao. Entenda: QUEM postou, SOBRE QUEM fala, COM QUE INTENCAO
-- O texto em "MATERIAL ANALISADO" geralmente e a LEGENDA que o candidato ja escreveu ou pretende usar. LEIA com atencao ANTES de dar qualquer sugestao
+- "CONTEUDO DA MIDIA" e o que a IA extraiu da imagem/video (nao e a legenda do candidato)
+- "PERGUNTA DO USUARIO" e o que o candidato quer saber — sua analise deve RESPONDER essa pergunta
+- Se o usuario perguntou "os bolsonaristas vao aprovar?" — foque nisso, nao em sugestoes genericas
 - Se a legenda JA menciona nomes de pessoas, datas, locais ou eventos — NAO sugira adicionar essas mesmas informacoes. Seria redundante e mostra que voce nao leu o texto
 - Se a legenda ja identifica as figuras da foto (ex: "ao lado de Bia Kicis e Thiago Manzoni"), NAO diga "coloca os nomes embaixo" — eles JA estao la
 - Suas sugestoes devem COMPLEMENTAR o que ja existe, nao repetir. Foque em: tom, gancho, estrutura da frase, chamada pra acao, hashtags, emojis estrategicos
@@ -656,10 +659,19 @@ REGRA DE FORMATACAO — TEXTO LIMPO:
         )
 
     # ── Step 2: Build user message ──────────────────────────────────────
+    intent_block = ""
+    if user_intent:
+        intent_block = (
+            f'\n\n═══ PERGUNTA DO USUARIO ═══\n'
+            f'O usuario quer saber: "{user_intent}"\n'
+            f'Sua analise DEVE responder a essa pergunta especifica. '
+            f'Foque sua headline, recomendacoes e insights em responder o que o usuario perguntou. '
+            f'O texto acima NAO e a legenda da imagem — e a pergunta que o usuario quer que voce responda.\n'
+        )
+
     user_message = (
-        f'MATERIAL ANALISADO (legenda/texto do candidato): "{question}"\n'
-        f"IMPORTANTE: Leia esse texto com atencao — e a legenda que o candidato escreveu ou pretende usar. "
-        f"NAO sugira adicionar informacoes que ja estao nesse texto.\n"
+        f'CONTEUDO DA MIDIA: "{question}"\n'
+        f"{intent_block}"
         f"\nRESULTADO GERAL:\n"
         f"- A Favor: {pct_pos}% ({positive:,} personas)\n"
         f"- Contra: {pct_neg}% ({negative:,} personas)\n"

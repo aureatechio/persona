@@ -78,6 +78,7 @@ class GeoFilter(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     question: str
+    user_intent: Optional[str] = None  # O que o usuario quer saber sobre a midia
     cluster_filter: Optional[str] = None
     context_text: Optional[str] = None
     verbose: bool = False
@@ -448,6 +449,11 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         if visual_result and visual_result.get("political_figures"):
             _visual_figures = visual_result["political_figures"]
 
+        # Inject user_intent into context (what the user wants to know about the media)
+        if request.user_intent and context and context.contexto:
+            context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."
+            print(f"[Pipeline] User intent injected: '{request.user_intent[:80]}'")
+
         # Launch aggregate analysis in background
         aggregate_task = asyncio.create_task(
             aggregate_analyze(
@@ -652,6 +658,7 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     segments=final_results.get("segments", {}),
                     content_meta=request.content_meta or {},
                     visual_structure=visual_result.get("visual_structure", "") if visual_result else "",
+                    user_intent=request.user_intent or "",
                 )
                 yield sse_event("duda", duda_result)
                 print(f"[Pipeline] Duda analysis complete: headline='{duda_result.get('headline', '')[:50]}'")
