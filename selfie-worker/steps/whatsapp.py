@@ -8,14 +8,23 @@ from config import UAZAPI_URL, UAZAPI_TOKEN
 logger = logging.getLogger("worker.whatsapp")
 
 
-def send_whatsapp(phone: str, name: str, video_url: str):
+DEFAULT_MESSAGE_TEMPLATE = "Olá, {name}! Obrigado pela sua mensagem!"
+
+
+def send_whatsapp(phone: str, name: str, video_url: str, message_template: str | None = None):
     """
     Send the final video via UAZAPI WhatsApp.
     Sends EXACTLY ONCE — no retries to prevent duplicate messages.
+
+    ``message_template`` comes from the base_model (per-politician). Supports
+    ``{name}`` substitution. Falls back to a neutral default when empty.
     """
     # Ensure country code
     if not phone.startswith("55"):
         phone = f"55{phone}"
+
+    template = message_template or DEFAULT_MESSAGE_TEMPLATE
+    text = template.replace("{name}", name)
 
     logger.info("Sending WhatsApp to %s...", phone)
 
@@ -30,7 +39,7 @@ def send_whatsapp(phone: str, name: str, video_url: str):
             "number": phone,
             "type": "video",
             "file": video_url,
-            "text": f"Olá, {name}! Estamos juntos nessa luta!",
+            "text": text,
         },
         timeout=60,
     )
@@ -38,5 +47,13 @@ def send_whatsapp(phone: str, name: str, video_url: str):
     if resp.ok:
         logger.info("WhatsApp sent successfully to %s (status: %d)", phone, resp.status_code)
     else:
-        # Log but do NOT retry — UAZAPI may have sent the message even on error
-        logger.error("UAZAPI returned %d: %s (message may have been sent anyway)", resp.status_code, resp.text[:300])
+        body = resp.text[:300]
+        logger.error("UAZAPI returned %d: %s", resp.status_code, body)
+        raise WhatsAppSendError(
+            f"UAZAPI returned {resp.status_code}: {body}"
+        )
+
+
+class WhatsAppSendError(RuntimeError):
+    """Raised when UAZAPI fails to send the message."""
+    pass

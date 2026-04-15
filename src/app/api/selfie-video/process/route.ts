@@ -12,9 +12,31 @@ export async function POST(request: NextRequest) {
     const name = (body.name as string) || '';
     const phone = (body.phone as string) || '';
     const ext = (body.ext as string) || 'webm';
+    const slug = (body.slug as string) || '';
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'name e phone são obrigatórios' }, { status: 400 });
+    }
+
+    if (!slug) {
+      return NextResponse.json({ error: 'slug do político é obrigatório' }, { status: 400 });
+    }
+
+    // Resolve slug → base_model_id. Requires the model to be is_active=true.
+    const { data: model, error: modelError } = await supabaseAdmin
+      .from('video_base_models')
+      .select('id')
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (modelError) {
+      console.error('Base model lookup error:', modelError);
+      return NextResponse.json({ error: 'Falha ao consultar político' }, { status: 500 });
+    }
+
+    if (!model) {
+      return NextResponse.json({ error: 'Político não encontrado ou indisponível' }, { status: 404 });
     }
 
     // 1. Create DB record
@@ -24,6 +46,7 @@ export async function POST(request: NextRequest) {
         name,
         phone: phone.replace(/\D/g, ''),
         status: 'uploading',
+        base_model_id: model.id,
       })
       .select()
       .single();

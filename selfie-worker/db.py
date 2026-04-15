@@ -97,6 +97,20 @@ def claim_whatsapp_send(selfie_id: str) -> bool:
         return False
 
 
+def reset_whatsapp_claim(selfie_id: str):
+    """Reset whatsapp_sent to false so the send can be retried."""
+    import logging
+    logger = logging.getLogger("worker.db")
+    try:
+        client.table("video_selfies").update({
+            "whatsapp_sent": False,
+            "whatsapp_sent_at": None,
+        }).eq("id", selfie_id).execute()
+        logger.info("Reset whatsapp_sent for %s", selfie_id)
+    except Exception as e:
+        logger.error("Failed to reset whatsapp_sent for %s: %s", selfie_id, e)
+
+
 def claim_kling_slot(selfie_id: str) -> str | None:
     """Atomically claim a Kling slot (least-loaded key).
     Returns kling_key_id (UUID string) or None if all keys are full."""
@@ -152,11 +166,33 @@ def count_tts_in_progress() -> int:
 
 
 def get_active_base_model():
-    """Get the active base model with voice_models joined."""
+    """DEPRECATED fallback — prefer get_base_model(id).
+
+    Kept temporarily so selfies without base_model_id (legacy rows) still
+    resolve to the single is_active model. Remove after F3 (base_model_id
+    NOT NULL) is applied and confirmed in production.
+    """
     res = (
         client.table("video_base_models")
         .select("*, voice_models(*)")
         .eq("is_active", True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def get_base_model(base_model_id: str):
+    """Get a specific base model by id, with voice_models joined.
+
+    This is the primary lookup after multi-politician rollout: the worker
+    uses selfie['base_model_id'] (set at upload time via the per-politician
+    URL) to pick the correct video/voice/prompt/closing.
+    """
+    res = (
+        client.table("video_base_models")
+        .select("*, voice_models(*)")
+        .eq("id", base_model_id)
         .limit(1)
         .execute()
     )

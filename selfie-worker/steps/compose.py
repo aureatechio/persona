@@ -15,17 +15,21 @@ logger = logging.getLogger("worker.compose")
 FFMPEG_TIMEOUT = 600  # seconds (10 min — large videos on small instances need time)
 
 # Closing video + music (downloaded from Supabase Storage)
-CLOSING_VIDEO_PATH = "assets/closing_video.mp4"
-CLOSING_MUSIC_PATH = "assets/closing_music.mp3"
+# These are DEFAULTS used when a base_model has closing_video_path = NULL.
+DEFAULT_CLOSING_VIDEO_PATH = "assets/closing_video.mp4"
+DEFAULT_CLOSING_MUSIC_PATH = "assets/closing_music.mp3"
 CLOSING_MUSIC_VOLUME = 0.5  # 50% volume for background music on closing
 
-# Cache
-_closing_video_cache: bytes | None = None
-_closing_music_cache: bytes | None = None
+# Cache of downloaded assets, keyed by storage path. Replaces the old
+# globals (_closing_video_cache / _closing_music_cache) so we can cache
+# multiple closing videos simultaneously (one per politician).
+_asset_cache: dict[str, bytes] = {}
 
 
 def _download_storage_asset(path: str) -> bytes | None:
-    """Download an asset from Supabase Storage."""
+    """Download an asset from Supabase Storage (cached by path)."""
+    if path in _asset_cache:
+        return _asset_cache[path]
     try:
         url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{path}"
         resp = requests.get(
@@ -35,26 +39,11 @@ def _download_storage_asset(path: str) -> bytes | None:
         )
         resp.raise_for_status()
         logger.info("Downloaded %s: %d bytes", path, len(resp.content))
+        _asset_cache[path] = resp.content
         return resp.content
     except Exception as e:
         logger.warning("Failed to download %s: %s", path, e)
         return None
-
-
-def _get_closing_video() -> bytes | None:
-    global _closing_video_cache
-    if _closing_video_cache is not None:
-        return _closing_video_cache
-    _closing_video_cache = _download_storage_asset(CLOSING_VIDEO_PATH)
-    return _closing_video_cache
-
-
-def _get_closing_music() -> bytes | None:
-    global _closing_music_cache
-    if _closing_music_cache is not None:
-        return _closing_music_cache
-    _closing_music_cache = _download_storage_asset(CLOSING_MUSIC_PATH)
-    return _closing_music_cache
 
 
 def _run_ffmpeg(args: list[str]):
@@ -135,14 +124,25 @@ def _normalize(input_path: str, output_path: str):
         os.replace(temp_out, output_path)
 
 
-def _prepare_closing_video(tmpdir: str) -> str | None:
+def _prepare_closing_video(
+    tmpdir: str,
+    video_storage_path: str,
+    music_storage_path: str,
+) -> str | None:
     """
     Prepare closing video with background music overlay.
+    Downloads the given closing video and music from Storage (cached by path),
+    mixes music at CLOSING_MUSIC_VOLUME with a short fade-in, and normalizes
+    to match the selfie/lipsync format.
+
+    The music is cut by ``-shortest`` when the video ends (no fade-out),
+    which works cleanly for closings of any duration (3s, 10s, etc).
+
     Returns path to normalized closing video, or None on failure.
     """
-    closing_bytes = _get_closing_video()
+    closing_bytes = _download_storage_asset(video_storage_path)
     if closing_bytes is None:
-        logger.warning("No closing video available, skipping")
+        logger.warning("No closing video available at %s, skipping", video_storage_path)
         return None
 
     closing_raw = os.path.join(tmpdir, "closing_raw.mp4")
@@ -152,7 +152,7 @@ def _prepare_closing_video(tmpdir: str) -> str | None:
         f.write(closing_bytes)
 
     # Mix background music into closing video
-    music_bytes = _get_closing_music()
+    music_bytes = _download_storage_asset(music_storage_path)
     if music_bytes is not None:
         music_path = os.path.join(tmpdir, "closing_music.mp3")
         closing_with_music = os.path.join(tmpdir, "closing_music_mixed.mp4")
@@ -161,11 +161,12 @@ def _prepare_closing_video(tmpdir: str) -> str | None:
             f.write(music_bytes)
 
         try:
-            # Replace closing video audio entirely with music track
+            # Replace closing video audio entirely with music track.
+            # Fade-in only; -shortest cuts the music when the video ends.
             _run_ffmpeg([
                 "-i", closing_raw, "-i", music_path,
                 "-filter_complex",
-                f"[1:a]volume={CLOSING_MUSIC_VOLUME},afade=t=in:d=0.5,afade=t=out:st=8:d=2[music]",
+                f"[1:a]volume={CLOSING_MUSIC_VOLUME},afade=t=in:d=0.5[music]",
                 "-map", "0:v", "-map", "[music]",
                 "-c:v", "copy", "-c:a", "aac", "-b:a", "256k",
                 "-shortest",
@@ -180,10 +181,21 @@ def _prepare_closing_video(tmpdir: str) -> str | None:
     return closing_norm
 
 
-def compose_videos(selfie_bytes: bytes, selfie_ext: str, lipsync_url: str) -> bytes:
+def compose_videos(
+    selfie_bytes: bytes,
+    selfie_ext: str,
+    lipsync_url: str,
+    closing_video_path: str | None = None,
+    closing_music_path: str | None = None,
+) -> bytes:
     """
     Download lipsync video, normalize all parts, concatenate:
     selfie + lipsync + closing video (with background music).
+
+    ``closing_video_path`` / ``closing_music_path`` override the defaults
+    when set on the active base_model (so each politician can have their
+    own closing). When None, falls back to the shared default assets.
+
     Returns final video bytes (MP4).
     """
     tmpdir = tempfile.mkdtemp(prefix="selfie_compose_")
@@ -211,8 +223,12 @@ def compose_videos(selfie_bytes: bytes, selfie_ext: str, lipsync_url: str) -> by
         _normalize(selfie_path, selfie_norm)
         _normalize(lipsync_path, lipsync_norm)
 
-        # 4. Prepare closing video (with background music)
-        closing_norm = _prepare_closing_video(tmpdir)
+        # 4. Prepare closing video (with background music) — per-politician
+        closing_norm = _prepare_closing_video(
+            tmpdir,
+            video_storage_path=closing_video_path or DEFAULT_CLOSING_VIDEO_PATH,
+            music_storage_path=closing_music_path or DEFAULT_CLOSING_MUSIC_PATH,
+        )
 
         # 5. Build concat list
         logger.info("Concatenating...")
