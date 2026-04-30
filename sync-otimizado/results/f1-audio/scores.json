@@ -1,0 +1,65 @@
+[
+  {
+    "case": "duda",
+    "baseline": {
+      "sync_d": 8.726,
+      "sync_c": 5.611
+    },
+    "f1": {
+      "sync_d": 8.754,
+      "sync_c": 5.538,
+      "av_offset": 0,
+      "track_count": 1
+    },
+    "delta": {
+      "sync_d": 0.028,
+      "sync_c": -0.073
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f1-audio\\duda.mp4",
+    "audio_preprocess_seconds": 3.1,
+    "latentsync_seconds": 664.9,
+    "syncnet_seconds": 74.2
+  },
+  {
+    "case": "flavio",
+    "baseline": {
+      "sync_d": 7.673,
+      "sync_c": 7.217
+    },
+    "f1": {
+      "sync_d": 7.482,
+      "sync_c": 7.453,
+      "av_offset": 0,
+      "track_count": 1
+    },
+    "delta": {
+      "sync_d": -0.191,
+      "sync_c": 0.236
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f1-audio\\flavio.mp4",
+    "audio_preprocess_seconds": 2.4,
+    "latentsync_seconds": 643.5,
+    "syncnet_seconds": 47.4
+  },
+  {
+    "case": "principal-flavio",
+    "baseline": {
+      "sync_d": 7.352,
+      "sync_c": 7.711
+    },
+    "f1": {
+      "sync_d": 6.838,
+      "sync_c": 8.147,
+      "av_offset": 0,
+      "track_count": 3
+    },
+    "delta": {
+      "sync_d": -0.514,
+      "sync_c": 0.436
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f1-audio\\principal-flavio.mp4",
+    "audio_preprocess_seconds": 3.1,
+    "latentsync_seconds": 632.4,
+    "syncnet_seconds": 51.4
+  }
+]

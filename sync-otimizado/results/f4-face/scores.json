@@ -1,0 +1,51 @@
+[
+  {
+    "id": "duda",
+    "f1File": "sync-otimizado/results/f1-audio/duda.mp4",
+    "f1": {
+      "sync_d": 8.754,
+      "sync_c": 5.538
+    },
+    "error": "CodeFormer failed (rc=1)"
+  },
+  {
+    "case": "flavio",
+    "f1": {
+      "sync_d": 7.482,
+      "sync_c": 7.453
+    },
+    "f4": {
+      "sync_d": 7.495,
+      "sync_c": 7.349,
+      "av_offset": 0,
+      "track_count": 1
+    },
+    "delta": {
+      "sync_d": 0.013,
+      "sync_c": -0.104
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f4-face\\flavio.mp4",
+    "face_refine_seconds": 286.2,
+    "syncnet_seconds": 48.9
+  },
+  {
+    "case": "principal-flavio",
+    "f1": {
+      "sync_d": 6.838,
+      "sync_c": 8.147
+    },
+    "f4": {
+      "sync_d": 6.675,
+      "sync_c": 8.183,
+      "av_offset": 0,
+      "track_count": 3
+    },
+    "delta": {
+      "sync_d": -0.163,
+      "sync_c": 0.036
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f4-face\\principal-flavio.mp4",
+    "face_refine_seconds": 284.2,
+    "syncnet_seconds": 51.5
+  }
+]

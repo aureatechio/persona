@@ -1,0 +1,56 @@
+[
+  {
+    "case": "duda",
+    "f1": {
+      "sync_d": 8.754,
+      "sync_c": 5.538
+    },
+    "f2": {
+      "sync_d": 8.829,
+      "sync_c": 5.499,
+      "av_offset": 0
+    },
+    "delta": {
+      "sync_d": 0.075,
+      "sync_c": -0.039
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f2-video\\duda.mp4",
+    "latentsync_seconds": 653.2
+  },
+  {
+    "case": "flavio",
+    "f1": {
+      "sync_d": 7.482,
+      "sync_c": 7.453
+    },
+    "f2": {
+      "sync_d": 7.464,
+      "sync_c": 7.438,
+      "av_offset": 0
+    },
+    "delta": {
+      "sync_d": -0.018,
+      "sync_c": -0.015
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f2-video\\flavio.mp4",
+    "latentsync_seconds": 651.8
+  },
+  {
+    "case": "principal-flavio",
+    "f1": {
+      "sync_d": 6.838,
+      "sync_c": 8.147
+    },
+    "f2": {
+      "sync_d": 6.909,
+      "sync_c": 8.089,
+      "av_offset": 0
+    },
+    "delta": {
+      "sync_d": 0.071,
+      "sync_c": -0.058
+    },
+    "output": "C:\\Users\\victo\\persona\\sync-otimizado\\results\\f2-video\\principal-flavio.mp4",
+    "latentsync_seconds": 673.8
+  }
+]

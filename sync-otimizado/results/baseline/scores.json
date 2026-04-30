@@ -1,0 +1,140 @@
+[
+  {
+    "case": "duda",
+    "variant": "A",
+    "config": "g=1.5 steps=50 dc=off",
+    "file": "latentsync_A_25fps.mp4",
+    "sync_d": 8.729,
+    "sync_c": 5.305,
+    "av_offset": 0,
+    "all_dists": [
+      8.729
+    ],
+    "all_confs": [
+      5.305
+    ],
+    "all_offsets": [
+      0
+    ],
+    "track_count": 1,
+    "best_track": 0,
+    "elapsed_seconds": 50.1,
+    "scoringElapsed": "50.6"
+  },
+  {
+    "case": "duda",
+    "variant": "B",
+    "config": "g=2.0 steps=30 dc=on",
+    "file": "latentsync_B_25fps.mp4",
+    "sync_d": 8.726,
+    "sync_c": 5.611,
+    "av_offset": 0,
+    "all_dists": [
+      8.726
+    ],
+    "all_confs": [
+      5.611
+    ],
+    "all_offsets": [
+      0
+    ],
+    "track_count": 1,
+    "best_track": 0,
+    "elapsed_seconds": 50.7,
+    "scoringElapsed": "51.0"
+  },
+  {
+    "case": "duda",
+    "variant": "C",
+    "config": "g=2.5 steps=40 dc=off",
+    "file": "latentsync_C_25fps.mp4",
+    "sync_d": 9.122,
+    "sync_c": 5.557,
+    "av_offset": 0,
+    "all_dists": [
+      9.122
+    ],
+    "all_confs": [
+      5.557
+    ],
+    "all_offsets": [
+      0
+    ],
+    "track_count": 1,
+    "best_track": 0,
+    "elapsed_seconds": 48.6,
+    "scoringElapsed": "48.9"
+  },
+  {
+    "case": "flavio",
+    "variant": "A",
+    "config": "g=1.5 steps=50 dc=off",
+    "file": "latentsync_A_25fps_flavio.mp4",
+    "sync_d": 7.617,
+    "sync_c": 6.755,
+    "av_offset": 0,
+    "all_dists": [
+      7.617
+    ],
+    "all_confs": [
+      6.755
+    ],
+    "all_offsets": [
+      0
+    ],
+    "track_count": 1,
+    "best_track": 0,
+    "elapsed_seconds": 47.2,
+    "scoringElapsed": "47.8"
+  },
+  {
+    "case": "flavio",
+    "variant": "B",
+    "config": "g=2.0 steps=30 dc=on",
+    "file": "latentsync_B_25fps_flavio.mp4",
+    "sync_d": 7.673,
+    "sync_c": 7.217,
+    "av_offset": 0,
+    "all_dists": [
+      7.673
+    ],
+    "all_confs": [
+      7.217
+    ],
+    "all_offsets": [
+      0
+    ],
+    "track_count": 1,
+    "best_track": 0,
+    "elapsed_seconds": 47.4,
+    "scoringElapsed": "47.6"
+  },
+  {
+    "case": "principal-flavio",
+    "variant": "B",
+    "config": "g=2.0 steps=30 dc=on",
+    "file": "latentsync_B_25fps_principal_flavio.mp4",
+    "sync_d": 7.352,
+    "sync_c": 7.711,
+    "av_offset": 0,
+    "all_dists": [
+      8.707,
+      7.352,
+      8.105
+    ],
+    "all_confs": [
+      6.24,
+      7.711,
+      6.572
+    ],
+    "all_offsets": [
+      0,
+      0,
+      0
+    ],
+    "track_count": 3,
+    "best_track": 1,
+    "elapsed_seconds": 44.1,
+    "scoringElapsed": "44.4"
+  }
+]

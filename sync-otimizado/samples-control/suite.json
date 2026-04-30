@@ -1,0 +1,26 @@
+{
+  "description": "Suite de teste fixa pra benchmark de cada fase. Combinações vídeo×áudio para A/B reprodutível.",
+  "cases": [
+    {
+      "id": "duda",
+      "label": "Duda (modelo + voz duda)",
+      "video": "video_modelo_duda.mp4",
+      "audio": "duda_arthur.mp3",
+      "notes": "20s vídeo, 21.5s áudio. Vídeo 31.58fps. Caso base do projeto."
+    },
+    {
+      "id": "flavio",
+      "label": "Flavio v2 (modelo + voz flavio v2)",
+      "video": "flavioBolsonaro-modelo-v2.mp4",
+      "audio": "flavio-audio-v2.mp3",
+      "notes": "22.23s vídeo, 21s áudio. Vídeo 30fps. Sample com material político real."
+    },
+    {
+      "id": "principal-flavio",
+      "label": "Modelo Principal + voz flavio",
+      "video": "1774132135537_Modelo_Principal.mp4",
+      "audio": "flavio-audio-v2.mp3",
+      "notes": "20.3s vídeo, 21s áudio. Vídeo 30fps. Cross-modelo: vídeo de um, voz de outro."
+    }
+  ]
+}
