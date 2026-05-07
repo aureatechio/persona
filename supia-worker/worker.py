@@ -65,7 +65,8 @@ def process_supia(item: dict):
     status = item["status"]
     logger.info("═══ Processing supia %s (status=%s, name=%s) ═══", sid, status, name)
 
-    phrase = PHRASE_TEMPLATE.format(name=name)
+    custom_phrase = (item.get("custom_phrase") or "").strip()
+    phrase = custom_phrase if custom_phrase else PHRASE_TEMPLATE.format(name=name)
     tts_path = item.get("tts_audio_path") or f"supia/tts/{sid}.mp3"
 
     # Step 1: TTS

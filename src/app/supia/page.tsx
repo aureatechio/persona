@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Download, Loader2, Sparkles, Store, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Download,
+  Film,
+  Loader2,
+  Pencil,
+  Sparkles,
+  Store,
+  Upload,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type StatusResponse = {
@@ -18,6 +28,8 @@ type GalleryItem = {
   videoUrl: string;
   createdAt: string;
 };
+
+const MAX_CUSTOM_CHARS = 150;
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Na fila…',
@@ -51,12 +63,24 @@ async function downloadBlob(url: string, filename: string) {
 }
 
 export default function SupiaPage() {
+  const [mode, setMode] = useState<'standard' | 'custom'>('standard');
   const [name, setName] = useState('');
+  const [customPhrase, setCustomPhrase] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [currentJob, setCurrentJob] = useState<StatusResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [currentJob, setCurrentJob] = useState<StatusResponse | null>(null);
   const [gallery, setGallery] = useState<GalleryItem[]>([]);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Base swap state
+  const [showBaseSwap, setShowBaseSwap] = useState(false);
+  const [autoTrim, setAutoTrim] = useState(true);
+  const [baseFile, setBaseFile] = useState<File | null>(null);
+  const [baseUploadStage, setBaseUploadStage] = useState<
+    'idle' | 'uploading' | 'processing' | 'done' | 'error'
+  >('idle');
+  const [baseUploadError, setBaseUploadError] = useState<string | null>(null);
+  const [baseTrimmedSec, setBaseTrimmedSec] = useState<number | null>(null);
 
   const loadGallery = useCallback(async () => {
     try {
@@ -64,7 +88,7 @@ export default function SupiaPage() {
       const d = await r.json();
       if (Array.isArray(d.items)) setGallery(d.items);
     } catch {
-      // silent — gallery is best-effort
+      // best-effort
     }
   }, []);
 
@@ -72,21 +96,23 @@ export default function SupiaPage() {
     loadGallery();
   }, [loadGallery]);
 
-  const pollStatus = useCallback(async (id: string) => {
-    try {
-      const r = await fetch(`/api/supia/status?id=${id}`, { cache: 'no-store' });
-      const d: StatusResponse = await r.json();
-      setCurrentJob(d);
-
-      if (d.status === 'completed' || d.status === 'failed') {
-        if (d.status === 'completed') loadGallery();
-        return;
+  const pollStatus = useCallback(
+    async (id: string) => {
+      try {
+        const r = await fetch(`/api/supia/status?id=${id}`, { cache: 'no-store' });
+        const d: StatusResponse = await r.json();
+        setCurrentJob(d);
+        if (d.status === 'completed' || d.status === 'failed') {
+          if (d.status === 'completed') loadGallery();
+          return;
+        }
+        pollTimer.current = setTimeout(() => pollStatus(id), 3000);
+      } catch {
+        pollTimer.current = setTimeout(() => pollStatus(id), 5000);
       }
-      pollTimer.current = setTimeout(() => pollStatus(id), 3000);
-    } catch {
-      pollTimer.current = setTimeout(() => pollStatus(id), 5000);
-    }
-  }, [loadGallery]);
+    },
+    [loadGallery],
+  );
 
   useEffect(() => {
     return () => {
@@ -94,29 +120,39 @@ export default function SupiaPage() {
     };
   }, []);
 
-  const handleGenerate = async () => {
-    const trimmed = name.trim();
-    if (!trimmed || submitting) return;
+  const customLen = customPhrase.length;
+  const customOver = customLen > MAX_CUSTOM_CHARS;
 
+  const canGenerate =
+    !submitting &&
+    !currentJob?.status?.match(/queued|generating|finalizing/) &&
+    (mode === 'standard' ? name.trim().length > 0 : customPhrase.trim().length > 0 && !customOver);
+
+  const handleGenerate = async () => {
+    if (!canGenerate) return;
     setSubmitting(true);
     setSubmitError(null);
     setCurrentJob(null);
 
     try {
+      const payload =
+        mode === 'standard'
+          ? { mode: 'standard', supermarketName: name.trim() }
+          : { mode: 'custom', supermarketName: name.trim() || 'Custom', customPhrase: customPhrase.trim() };
+
       const r = await fetch('/api/supia/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ supermarketName: trimmed }),
+        body: JSON.stringify(payload),
       });
       const d = await r.json();
       if (!r.ok) {
         setSubmitError(d.error || 'Falha ao enfileirar');
-        setSubmitting(false);
         return;
       }
       setCurrentJob({
         id: d.id,
-        supermarketName: trimmed,
+        supermarketName: payload.supermarketName,
         status: 'queued',
         error: null,
         videoUrl: null,
@@ -129,72 +165,314 @@ export default function SupiaPage() {
     }
   };
 
+  const handleSwapBase = async () => {
+    if (!baseFile) return;
+    setBaseUploadStage('uploading');
+    setBaseUploadError(null);
+    setBaseTrimmedSec(null);
+
+    try {
+      const r1 = await fetch('/api/supia/upload-base-url', { method: 'POST' });
+      const d1 = await r1.json();
+      if (!r1.ok) throw new Error(d1.error || 'Falha ao gerar URL');
+
+      const putRes = await fetch(d1.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'video/mp4' },
+        body: baseFile,
+      });
+      if (!putRes.ok) throw new Error(`Upload falhou (${putRes.status})`);
+
+      setBaseUploadStage('processing');
+
+      const r2 = await fetch('/api/supia/swap-base', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempPath: d1.tempPath, autoTrim }),
+      });
+      const d2 = await r2.json();
+      if (!r2.ok) throw new Error(d2.error || 'Falha no processamento');
+
+      setBaseTrimmedSec(typeof d2.trimmedSeconds === 'number' ? d2.trimmedSeconds : 0);
+      setBaseUploadStage('done');
+      setBaseFile(null);
+    } catch (e) {
+      setBaseUploadStage('error');
+      setBaseUploadError(e instanceof Error ? e.message : 'Erro');
+    }
+  };
+
   const isProcessing =
-    currentJob &&
-    currentJob.status !== 'completed' &&
-    currentJob.status !== 'failed';
+    currentJob && currentJob.status !== 'completed' && currentJob.status !== 'failed';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-zinc-950 via-black to-zinc-950 text-white">
-      {/* Decorative orbs */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
 
       <main className="relative max-w-5xl mx-auto px-6 md:px-8 py-10 md:py-14 space-y-10">
         {/* Header */}
-        <header className="space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-xs font-medium">
-            <Sparkles size={12} />
-            Supia · Vídeo de supermercado
+        <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-xs font-medium">
+              <Sparkles size={12} />
+              Supia · Vídeo de supermercado
+            </div>
+            <h1 className="text-3xl md:text-5xl font-bold tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
+              Gere seu vídeo personalizado
+            </h1>
           </div>
-          <h1 className="text-3xl md:text-5xl font-bold tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-400 bg-clip-text text-transparent">
-            Gere seu vídeo personalizado
-          </h1>
-          <p className="text-zinc-400 max-w-2xl leading-relaxed">
-            Digite o nome do supermercado. A locução é fixa: <span className="text-zinc-300">&ldquo;Aqui no [nome], você encontra as melhores ofertas… venha conferir.&rdquo;</span>
-          </p>
+          <button
+            onClick={() => setShowBaseSwap((v) => !v)}
+            className={cn(
+              'inline-flex items-center gap-2 px-4 py-2.5',
+              'bg-white/[0.05] hover:bg-white/[0.1]',
+              'text-zinc-300 hover:text-white',
+              'border border-white/[0.08] hover:border-white/[0.15]',
+              'rounded-xl text-sm font-medium',
+              'active:scale-[0.97] transition-all duration-200',
+            )}
+          >
+            <Film size={14} />
+            {showBaseSwap ? 'Fechar' : 'Trocar vídeo base'}
+          </button>
         </header>
 
-        {/* Form card */}
-        <section className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 md:p-8 shadow-xl shadow-black/20 backdrop-blur-2xl">
-          <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-3 block">
-            Nome do supermercado
-          </label>
-          <div className="flex flex-col md:flex-row gap-3">
-            <div className="relative flex-1">
-              <Store size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleGenerate();
-                }}
-                disabled={submitting || !!isProcessing}
-                placeholder="Hipermix"
-                maxLength={60}
+        {/* Base swap */}
+        {showBaseSwap && (
+          <section className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 md:p-7 shadow-xl shadow-black/20 backdrop-blur-2xl space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                <Film size={18} className="text-violet-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">Substituir vídeo base</h2>
+                <p className="text-zinc-400 text-sm mt-1 leading-relaxed">
+                  O vídeo enviado vira a base de todas as próximas gerações. Recomenda-se 15s,
+                  formato MP4. O corte automático remove o silêncio inicial para alinhar o lip-sync.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <label
                 className={cn(
-                  'w-full pl-11 pr-4 py-3.5',
+                  'flex-1 cursor-pointer',
+                  'flex items-center gap-3 px-4 py-3.5',
                   'bg-white/[0.04] hover:bg-white/[0.06]',
-                  'border border-white/[0.08] focus:border-emerald-500/50',
-                  'rounded-xl text-base text-white placeholder:text-zinc-600',
-                  'outline-none focus:ring-2 focus:ring-emerald-500/20',
-                  'transition-all duration-200',
+                  'border border-dashed border-white/[0.12] hover:border-emerald-500/30',
+                  'rounded-xl text-sm transition-all duration-200',
+                )}
+              >
+                <Upload size={16} className="text-zinc-500" />
+                <span className="text-zinc-300 truncate">
+                  {baseFile ? baseFile.name : 'Selecionar arquivo .mp4'}
+                </span>
+                <input
+                  type="file"
+                  accept="video/mp4,video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    setBaseFile(f);
+                    setBaseUploadStage('idle');
+                    setBaseUploadError(null);
+                    setBaseTrimmedSec(null);
+                  }}
+                />
+              </label>
+
+              <label className="flex items-center gap-2 text-sm text-zinc-300 select-none cursor-pointer px-3">
+                <input
+                  type="checkbox"
+                  checked={autoTrim}
+                  onChange={(e) => setAutoTrim(e.target.checked)}
+                  className="accent-emerald-500"
+                />
+                Cortar silêncio inicial
+              </label>
+
+              <button
+                onClick={handleSwapBase}
+                disabled={!baseFile || baseUploadStage === 'uploading' || baseUploadStage === 'processing'}
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 px-5 py-3',
+                  'bg-violet-500 hover:bg-violet-400',
+                  'text-white font-semibold text-sm',
+                  'rounded-xl shadow-lg shadow-violet-500/25',
+                  'active:scale-[0.97] transition-all duration-200',
+                  'disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
+                )}
+              >
+                {(baseUploadStage === 'uploading' || baseUploadStage === 'processing') ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Upload size={14} />
+                )}
+                {baseUploadStage === 'uploading'
+                  ? 'Enviando...'
+                  : baseUploadStage === 'processing'
+                  ? 'Processando...'
+                  : 'Publicar como base'}
+              </button>
+            </div>
+
+            {baseUploadStage === 'done' && (
+              <div className="flex items-start gap-2 px-4 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-400 text-sm">
+                <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  Novo vídeo base publicado.
+                  {baseTrimmedSec && baseTrimmedSec > 0.15
+                    ? ` Cortado ${baseTrimmedSec.toFixed(2)}s de silêncio inicial.`
+                    : ' Sem silêncio detectado no início.'}
+                </span>
+              </div>
+            )}
+            {baseUploadStage === 'error' && baseUploadError && (
+              <div className="flex items-start gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span className="break-all">{baseUploadError}</span>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Form card */}
+        <section className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 md:p-8 shadow-xl shadow-black/20 backdrop-blur-2xl space-y-5">
+          {/* Tabs */}
+          <div className="flex gap-2 p-1 bg-white/[0.03] border border-white/[0.06] rounded-xl w-fit">
+            <button
+              onClick={() => setMode('standard')}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                mode === 'standard'
+                  ? 'bg-emerald-500/15 text-emerald-300 shadow-inner shadow-emerald-500/10'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              )}
+            >
+              <Sparkles size={14} />
+              Padrão
+            </button>
+            <button
+              onClick={() => setMode('custom')}
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200',
+                mode === 'custom'
+                  ? 'bg-emerald-500/15 text-emerald-300 shadow-inner shadow-emerald-500/10'
+                  : 'text-zinc-400 hover:text-zinc-200',
+              )}
+            >
+              <Pencil size={14} />
+              Customizado
+            </button>
+          </div>
+
+          {/* Standard mode */}
+          {mode === 'standard' && (
+            <div className="space-y-3">
+              <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block">
+                Nome do supermercado
+              </label>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Frase fixa: <span className="text-zinc-300">&ldquo;Aqui no [nome], você encontra as melhores ofertas… venha conferir.&rdquo;</span>
+              </p>
+              <div className="relative">
+                <Store size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleGenerate();
+                  }}
+                  disabled={submitting || !!isProcessing}
+                  placeholder="Hipermix"
+                  maxLength={60}
+                  className={cn(
+                    'w-full pl-11 pr-4 py-3.5',
+                    'bg-white/[0.04] hover:bg-white/[0.06]',
+                    'border border-white/[0.08] focus:border-emerald-500/50',
+                    'rounded-xl text-base text-white placeholder:text-zinc-600',
+                    'outline-none focus:ring-2 focus:ring-emerald-500/20',
+                    'transition-all duration-200',
+                    'disabled:opacity-60 disabled:cursor-not-allowed',
+                  )}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Custom mode */}
+          {mode === 'custom' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Frase completa
+                </label>
+                <span
+                  className={cn(
+                    'text-xs tabular-nums',
+                    customOver ? 'text-red-400 font-medium' : customLen > MAX_CUSTOM_CHARS * 0.85 ? 'text-amber-400' : 'text-zinc-500',
+                  )}
+                >
+                  {customLen}/{MAX_CUSTOM_CHARS}
+                </span>
+              </div>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                A locução é falada exatamente como você escrever. O vídeo base tem 15s, então mantenha a frase
+                curta — recomendamos até {MAX_CUSTOM_CHARS} caracteres para evitar corte de áudio.
+              </p>
+              <textarea
+                value={customPhrase}
+                onChange={(e) => setCustomPhrase(e.target.value)}
+                disabled={submitting || !!isProcessing}
+                placeholder="Aqui no Hipermix, hoje é dia de oferta especial em hortifruti..."
+                rows={3}
+                className={cn(
+                  'w-full px-4 py-3.5',
+                  'bg-white/[0.04] hover:bg-white/[0.06]',
+                  'border focus:ring-2 rounded-xl text-base text-white placeholder:text-zinc-600',
+                  'outline-none transition-all duration-200 resize-none leading-relaxed',
+                  customOver
+                    ? 'border-red-500/50 focus:border-red-500/70 focus:ring-red-500/20'
+                    : 'border-white/[0.08] focus:border-emerald-500/50 focus:ring-emerald-500/20',
                   'disabled:opacity-60 disabled:cursor-not-allowed',
                 )}
               />
+              <div>
+                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block mb-2">
+                  Rótulo (galeria) — opcional
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={submitting || !!isProcessing}
+                  placeholder="Ex: Hipermix oferta hortifruti"
+                  maxLength={60}
+                  className={cn(
+                    'w-full px-4 py-2.5',
+                    'bg-white/[0.04] hover:bg-white/[0.06]',
+                    'border border-white/[0.08] focus:border-emerald-500/50',
+                    'rounded-xl text-sm text-white placeholder:text-zinc-600',
+                    'outline-none focus:ring-2 focus:ring-emerald-500/20',
+                    'transition-all duration-200',
+                  )}
+                />
+              </div>
             </div>
+          )}
+
+          <div className="flex justify-end pt-2">
             <button
               onClick={handleGenerate}
-              disabled={!name.trim() || submitting || !!isProcessing}
+              disabled={!canGenerate}
               className={cn(
                 'inline-flex items-center justify-center gap-2 px-6 py-3.5',
                 'bg-emerald-500 hover:bg-emerald-400',
                 'text-black font-semibold text-sm',
-                'rounded-xl',
-                'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
-                'active:scale-[0.97]',
-                'transition-all duration-200',
+                'rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
+                'active:scale-[0.97] transition-all duration-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
               )}
             >
@@ -204,7 +482,7 @@ export default function SupiaPage() {
           </div>
 
           {submitError && (
-            <div className="mt-4 flex items-start gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
+            <div className="flex items-start gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
               <AlertCircle size={16} className="shrink-0 mt-0.5" />
               <span>{submitError}</span>
             </div>
@@ -212,8 +490,8 @@ export default function SupiaPage() {
 
           {/* Live job */}
           {currentJob && (
-            <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between">
+            <div className="space-y-4 pt-2 border-t border-white/[0.06]">
+              <div className="flex items-center justify-between pt-4">
                 <div className="flex items-center gap-2 text-sm">
                   {currentJob.status === 'completed' ? (
                     <CheckCircle2 size={16} className="text-emerald-400" />
@@ -232,7 +510,6 @@ export default function SupiaPage() {
                   {STATUS_PROGRESS[currentJob.status] ?? 0}%
                 </span>
               </div>
-
               <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
                 <div
                   className={cn(
@@ -244,14 +521,12 @@ export default function SupiaPage() {
                   style={{ width: `${STATUS_PROGRESS[currentJob.status] ?? 0}%` }}
                 />
               </div>
-
               {currentJob.status === 'failed' && currentJob.error && (
                 <div className="flex items-start gap-2 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
                   <AlertCircle size={16} className="shrink-0 mt-0.5" />
                   <span className="break-all">{currentJob.error}</span>
                 </div>
               )}
-
               {currentJob.status === 'completed' && currentJob.videoUrl && (
                 <div className="space-y-3">
                   <video
@@ -285,7 +560,9 @@ export default function SupiaPage() {
         <section className="space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="text-xl md:text-2xl font-semibold tracking-tight">Galeria</h2>
-            <span className="text-xs text-zinc-500">{gallery.length} vídeo{gallery.length === 1 ? '' : 's'}</span>
+            <span className="text-xs text-zinc-500">
+              {gallery.length} vídeo{gallery.length === 1 ? '' : 's'}
+            </span>
           </div>
 
           {gallery.length === 0 ? (
@@ -310,9 +587,7 @@ export default function SupiaPage() {
                   />
                   <div className="p-4 flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-white truncate">
-                        {item.supermarketName}
-                      </div>
+                      <div className="text-sm font-medium text-white truncate">{item.supermarketName}</div>
                       <div className="text-xs text-zinc-500">
                         {new Date(item.createdAt).toLocaleString('pt-BR', {
                           day: '2-digit',
