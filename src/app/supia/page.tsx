@@ -29,7 +29,7 @@ type GalleryItem = {
   createdAt: string;
 };
 
-const MAX_CUSTOM_CHARS = 150;
+const MAX_CUSTOM_CHARS = 250;
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Na fila…',

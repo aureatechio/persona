@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 
-const MAX_CUSTOM_CHARS = 150;
+const MAX_CUSTOM_CHARS = 250;
 const MAX_NAME_CHARS = 60;
 
 export async function POST(request: NextRequest) {
