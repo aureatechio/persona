@@ -1,0 +1,49 @@
+name: supia-worker
+region: nyc
+workers:
+  - name: supia-pipeline
+    github:
+      repo: aureatechio/persona
+      branch: main
+      deploy_on_push: false
+    dockerfile_path: supia-worker/Dockerfile
+    source_dir: supia-worker
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: SUPABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: "https://sobfplitrzgggzqsycew.supabase.co"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNvYmZwbGl0cnpnZ2d6cXN5Y2V3Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2ODMxNjg1OCwiZXhwIjoyMDgzODkyODU4fQ.MLZa1crIU7Uid70GFsRPPkoWZ1TgzDDSej99eYD3ctg"
+      - key: ELEVENLABS_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "sk_686c8e247b36de9e7a777ec29c2e597883acca5439ab2fe2"
+      - key: SYNC_API_KEY
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: "sk-U-q0LrwvTKKVfxUozajU-w.M0qeSFEKkbAuFi72hnkk3gjRmCMTDL8c"
+      - key: TTS_VOICE_ID
+        scope: RUN_AND_BUILD_TIME
+        value: "5EtawPduB139avoMLQgH"
+      - key: TTS_MODEL_ID
+        scope: RUN_AND_BUILD_TIME
+        value: "eleven_v3"
+      - key: TTS_STABILITY
+        scope: RUN_AND_BUILD_TIME
+        value: "0.7"
+      - key: BASE_VIDEO_PATH
+        scope: RUN_AND_BUILD_TIME
+        value: "supia/base.mp4"
+      - key: PHRASE_TEMPLATE
+        scope: RUN_AND_BUILD_TIME
+        value: "Aqui no {name}, você encontra as melhores ofertas... venha conferir."
+      - key: WORKER_POLL_INTERVAL
+        scope: RUN_AND_BUILD_TIME
+        value: "3"
+      - key: WORKER_MAX_RETRIES
+        scope: RUN_AND_BUILD_TIME
+        value: "3"
