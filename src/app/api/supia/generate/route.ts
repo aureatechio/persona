@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 const MAX_CUSTOM_CHARS = 250;
 const MAX_NAME_CHARS = 60;
+const DEFAULT_MODEL = 'lipsync-2-pro';
+const DEFAULT_TEMPERATURE = 0.5;
+const ALLOWED_MODELS = ['sync-3', 'lipsync-2-pro', 'lipsync-2'] as const;
+const MODELS_WITH_TEMPERATURE: Set<string> = new Set(['lipsync-2-pro', 'lipsync-2']);
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,6 +15,35 @@ export async function POST(request: NextRequest) {
 
     let supermarketName = ((body.supermarketName as string) || '').trim();
     let customPhrase: string | null = null;
+
+    // Model selection
+    const rawModel = (body.model as string) || DEFAULT_MODEL;
+    if (!ALLOWED_MODELS.includes(rawModel as (typeof ALLOWED_MODELS)[number])) {
+      return NextResponse.json(
+        { error: `Modelo inválido. Use: ${ALLOWED_MODELS.join(', ')}` },
+        { status: 400 },
+      );
+    }
+    const model = rawModel;
+
+    // Temperature: persisted only when model supports it; null otherwise so the
+    // worker won't accidentally send it to sync-3.
+    let temperature: number | null = null;
+    if (MODELS_WITH_TEMPERATURE.has(model)) {
+      const rawTemp = body.temperature;
+      let t = DEFAULT_TEMPERATURE;
+      if (rawTemp !== undefined && rawTemp !== null && rawTemp !== '') {
+        const parsed = Number(rawTemp);
+        if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) {
+          return NextResponse.json(
+            { error: 'Temperatura deve ser um número entre 0 e 1' },
+            { status: 400 },
+          );
+        }
+        t = parsed;
+      }
+      temperature = Math.round(t * 100) / 100;
+    }
 
     if (mode === 'custom') {
       customPhrase = ((body.customPhrase as string) || '').trim();
@@ -42,6 +75,8 @@ export async function POST(request: NextRequest) {
       .insert({
         supermarket_name: supermarketName,
         custom_phrase: customPhrase,
+        lipsync_model: model,
+        lipsync_temperature: temperature,
         status: 'queued',
       })
       .select('id')

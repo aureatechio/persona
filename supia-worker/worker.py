@@ -90,11 +90,29 @@ def process_supia(item: dict):
             video_signed = db.create_signed_url(BASE_VIDEO_PATH)
             audio_signed = db.create_signed_url(tts_path)
 
+            model = (item.get("lipsync_model") or "lipsync-2-pro").strip()
+            raw_temp = item.get("lipsync_temperature")
+            if raw_temp is None:
+                temperature: float | None = None
+            else:
+                try:
+                    temperature = max(0.0, min(1.0, float(raw_temp)))
+                except (TypeError, ValueError):
+                    temperature = 0.5
+
+            logger.info(
+                "Step 2/3 params → model=%s, temperature=%s",
+                model,
+                f"{temperature:.2f}" if temperature is not None else "n/a (auto)",
+            )
+
             try:
                 job_id, lipsync_url = run_lipsync(
                     video_signed,
                     audio_signed,
                     heartbeat_fn=lambda: db.heartbeat(sid),
+                    model=model,
+                    temperature=temperature,
                 )
                 db.update_status(
                     sid,

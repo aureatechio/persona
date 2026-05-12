@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
+  Cpu,
   Download,
   Film,
   Loader2,
   Pencil,
   Sparkles,
   Store,
+  Thermometer,
   Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,6 +32,43 @@ type GalleryItem = {
 };
 
 const MAX_CUSTOM_CHARS = 250;
+const DEFAULT_TEMPERATURE = 0.5;
+
+type LipsyncModelId = 'sync-3' | 'lipsync-2-pro' | 'lipsync-2';
+
+type LipsyncModelMeta = {
+  id: LipsyncModelId;
+  label: string;
+  blurb: string;
+  badge: string;
+  acceptsTemperature: boolean;
+};
+
+const LIPSYNC_MODELS: LipsyncModelMeta[] = [
+  {
+    id: 'sync-3',
+    label: 'sync-3',
+    blurb: 'Topo de linha — 4K nativo, lida com perfil e obstrução. Temperatura é automática.',
+    badge: 'Premium',
+    acceptsTemperature: false,
+  },
+  {
+    id: 'lipsync-2-pro',
+    label: 'lipsync-2-pro',
+    blurb: 'Studio-grade com super-resolução por difusão. Permite ajuste de temperatura.',
+    badge: 'Recomendado',
+    acceptsTemperature: true,
+  },
+  {
+    id: 'lipsync-2',
+    label: 'lipsync-2',
+    blurb: 'Mais rápido e barato. Ótimo para rascunhos. Permite ajuste de temperatura.',
+    badge: 'Rápido',
+    acceptsTemperature: true,
+  },
+];
+
+const DEFAULT_MODEL: LipsyncModelId = 'lipsync-2-pro';
 
 const STATUS_LABEL: Record<string, string> = {
   queued: 'Na fila…',
@@ -66,6 +105,10 @@ export default function SupiaPage() {
   const [mode, setMode] = useState<'standard' | 'custom'>('standard');
   const [name, setName] = useState('');
   const [customPhrase, setCustomPhrase] = useState('');
+  const [model, setModel] = useState<LipsyncModelId>(DEFAULT_MODEL);
+  const [temperature, setTemperature] = useState<number>(DEFAULT_TEMPERATURE);
+  const modelMeta = LIPSYNC_MODELS.find((m) => m.id === model) ?? LIPSYNC_MODELS[1];
+  const acceptsTemperature = modelMeta.acceptsTemperature;
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [currentJob, setCurrentJob] = useState<StatusResponse | null>(null);
@@ -135,10 +178,18 @@ export default function SupiaPage() {
     setCurrentJob(null);
 
     try {
+      const basePayload: Record<string, unknown> = { model };
+      if (acceptsTemperature) basePayload.temperature = temperature;
+
       const payload =
         mode === 'standard'
-          ? { mode: 'standard', supermarketName: name.trim() }
-          : { mode: 'custom', supermarketName: name.trim() || 'Custom', customPhrase: customPhrase.trim() };
+          ? { ...basePayload, mode: 'standard', supermarketName: name.trim() }
+          : {
+              ...basePayload,
+              mode: 'custom',
+              supermarketName: name.trim() || 'Custom',
+              customPhrase: customPhrase.trim(),
+            };
 
       const r = await fetch('/api/supia/generate', {
         method: 'POST',
@@ -462,6 +513,135 @@ export default function SupiaPage() {
               </div>
             </div>
           )}
+
+          {/* Lip-sync model + temperature */}
+          <div className="space-y-5 pt-2 border-t border-white/[0.06]">
+            <div className="space-y-3 pt-4">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-violet-500/10 border border-violet-500/20">
+                  <Cpu size={14} className="text-violet-400" />
+                </div>
+                <label className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+                  Modelo de lip-sync
+                </label>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                {LIPSYNC_MODELS.map((m) => {
+                  const selected = m.id === model;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setModel(m.id)}
+                      disabled={submitting || !!isProcessing}
+                      className={cn(
+                        'group relative text-left p-3.5 rounded-xl border transition-all duration-200',
+                        'disabled:opacity-60 disabled:cursor-not-allowed',
+                        selected
+                          ? 'bg-emerald-500/10 border-emerald-500/40 shadow-inner shadow-emerald-500/10'
+                          : 'bg-white/[0.03] border-white/[0.08] hover:bg-white/[0.05] hover:border-white/[0.15]',
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span
+                          className={cn(
+                            'text-sm font-semibold tracking-tight',
+                            selected ? 'text-emerald-300' : 'text-white',
+                          )}
+                        >
+                          {m.label}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border',
+                            selected
+                              ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                              : 'bg-white/[0.04] text-zinc-500 border-white/[0.08]',
+                          )}
+                        >
+                          {m.badge}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400 leading-relaxed">{m.blurb}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {acceptsTemperature ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <Thermometer size={14} className="text-emerald-400" />
+                    </div>
+                    <label
+                      htmlFor="lipsync-temperature"
+                      className="text-xs font-medium uppercase tracking-wider text-zinc-400"
+                    >
+                      Temperatura do lip-sync
+                    </label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-semibold tabular-nums text-emerald-300">
+                      {temperature.toFixed(2)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setTemperature(DEFAULT_TEMPERATURE)}
+                      disabled={submitting || !!isProcessing}
+                      className="text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-300 transition-colors disabled:opacity-40"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <input
+                  id="lipsync-temperature"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={temperature}
+                  onChange={(e) => setTemperature(Number(e.target.value))}
+                  disabled={submitting || !!isProcessing}
+                  className={cn(
+                    'w-full h-1.5 rounded-full appearance-none cursor-pointer',
+                    'bg-white/[0.06] accent-emerald-500',
+                    'disabled:opacity-60 disabled:cursor-not-allowed',
+                    '[&::-webkit-slider-thumb]:appearance-none',
+                    '[&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4',
+                    '[&::-webkit-slider-thumb]:rounded-full',
+                    '[&::-webkit-slider-thumb]:bg-emerald-400',
+                    '[&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-emerald-500/40',
+                    '[&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-black',
+                    '[&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4',
+                    '[&::-moz-range-thumb]:rounded-full',
+                    '[&::-moz-range-thumb]:bg-emerald-400',
+                    '[&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-black',
+                  )}
+                />
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-zinc-600">
+                  <span>0.00 · Mais fiel</span>
+                  <span>0.50 · Padrão</span>
+                  <span>1.00 · Mais expressivo</span>
+                </div>
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Valores baixos preservam o estilo do vídeo base com mais precisão; valores altos liberam
+                  expressão facial e movimento de boca, podendo gerar resultados menos previsíveis.
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2.5 px-4 py-3 bg-violet-500/[0.06] border border-violet-500/20 rounded-xl">
+                <Sparkles size={14} className="text-violet-300 shrink-0 mt-0.5" />
+                <p className="text-xs text-violet-200/80 leading-relaxed">
+                  O <span className="font-semibold text-violet-200">sync-3</span> gerencia a temperatura
+                  internamente — o parâmetro não é configurável neste modelo.
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className="flex justify-end pt-2">
             <button
