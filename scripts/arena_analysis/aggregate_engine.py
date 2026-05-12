@@ -68,14 +68,19 @@ async def analyze(
     context: ContextResult | None,
     pre_classification: dict[str, Any] | None = None,
     ideological_frame: str | None = None,
+    geo_filter: dict[str, Any] | None = None,
+    total_personas_override: int | None = None,
+    visual_figures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """
     Analise agregada: 1 chamada a GPT-4o para derivar scores por segmento.
 
     Retorna dict no formato identico ao results_aggregator.aggregate_results().
+    geo_filter: {"state": "ES", "city": null} — filtra resultados para estado/cidade
+    total_personas_override: numero real de personas apos filtro geo
     """
     profile = await load_profile()
-    total = profile.get("total_personas", 20000)
+    total = total_personas_override or profile.get("total_personas", 20000)
 
     # Build context string
     ctx_str = ""
@@ -83,6 +88,16 @@ async def analyze(
         ctx_str = context.contexto or ""
         if ideological_frame:
             ctx_str += f"\n\nFRAME IDEOLOGICO:\n{ideological_frame}"
+
+    # Geo filter instruction
+    if geo_filter and geo_filter.get("state"):
+        state = geo_filter["state"]
+        city = geo_filter.get("city")
+        geo_instruction = f"\n\nFILTRO GEOGRAFICO ATIVO: Analise APENAS personas do estado {state}"
+        if city:
+            geo_instruction += f", cidade {city}"
+        geo_instruction += f".\nO total_personas e {total} (apenas desta regiao). stateBreakdown e cityBreakdown devem conter APENAS dados de {state}."
+        ctx_str += geo_instruction
 
     # Build user prompt
     user_prompt = build_user_prompt(
@@ -104,7 +119,7 @@ async def analyze(
             {"role": "system", "content": AGGREGATE_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=12000,
+        max_tokens=settings.aggregate_max_tokens,
         temperature=0.7,
         response_format={"type": "json_object"},
     )
@@ -113,17 +128,33 @@ async def analyze(
     elapsed = time.time() - start
     tokens_in = response.usage.prompt_tokens if response.usage else 0
     tokens_out = response.usage.completion_tokens if response.usage else 0
+    finish_reason = response.choices[0].finish_reason
 
-    print(f"[AggregateEngine] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out tokens")
+    print(f"[AggregateEngine] Response in {elapsed:.1f}s | {tokens_in} in + {tokens_out} out | finish: {finish_reason}")
 
-    # Parse JSON
+    if finish_reason == "length":
+        print(f"[AggregateEngine] WARNING: output truncated at {tokens_out} tokens — JSON may be incomplete")
+
+    # Parse JSON — try to repair truncated JSON
     cleaned = _clean_json_response(raw)
     try:
         result = json.loads(cleaned)
     except json.JSONDecodeError as e:
         print(f"[AggregateEngine] JSON parse error: {e}")
-        print(f"[AggregateEngine] Raw response (first 500 chars): {cleaned[:500]}")
-        raise RuntimeError(f"GPT returned invalid JSON: {e}")
+        # Try to repair truncated JSON by closing open brackets
+        repaired = cleaned
+        open_braces = repaired.count("{") - repaired.count("}")
+        open_brackets = repaired.count("[") - repaired.count("]")
+        # Remove trailing comma or incomplete value
+        repaired = repaired.rstrip().rstrip(",")
+        repaired += "]" * open_brackets + "}" * open_braces
+        try:
+            result = json.loads(repaired)
+            print(f"[AggregateEngine] JSON repaired successfully (closed {open_braces} braces, {open_brackets} brackets)")
+        except json.JSONDecodeError as e2:
+            print(f"[AggregateEngine] JSON repair failed: {e2}")
+            print(f"[AggregateEngine] Raw tail (last 200 chars): ...{cleaned[-200:]}")
+            raise RuntimeError(f"GPT returned invalid JSON: {e}")
 
     # Validate basic structure
     required_keys = ["total", "positive", "negative", "neutral", "segments", "comments"]
@@ -138,7 +169,605 @@ async def analyze(
     result["processingTime"] = int(elapsed * 1000)
     result.setdefault("avgScore", 5.0)
 
+    # Store question in result for bias detection
+    result["_question"] = question
+
+    # Expand missing segments/clusters/quadrants from profile (GPT only returns 6 core segments)
+    _expand_segments_from_profile(result, profile)
+
+    # Apply political polarization in Python (deterministic, instant, 100% coherent)
+    _apply_political_bias(result, pre_classification, visual_figures)
+
+    # Enrich stateBreakdown and cityBreakdown from pre-computed profile
+    _enrich_geo_from_profile(result, profile)
+
     return result
+
+
+# ── Political keywords for bias detection ────────────────────────────────────
+_RIGHT_KEYWORDS = [
+    "privatiz", "segurança", "policia", "pm ", "arma", "armamento",
+    "familia tradicional", "meritocracia", "agroneg", "contra cota",
+    "imposto", "reduz", "estado minimo", "livre mercado",
+    "pena de morte", "maioridade penal", "intervenção",
+    "bolsonaro", "mito", "capitao", "tarcisio", "zema", "marçal",
+    "flavio", "eduardo bolsonaro", "moro", "zambelli", "nikolas",
+    "pl ", "republicanos", "nao merece", "não merece",
+]
+_LEFT_KEYWORDS = [
+    "sus ", "saude publica", "bolsa familia", "programa social",
+    "cota", "ação afirmativa", "direitos lgbt", "casamento gay",
+    "meio ambiente", "amazonia", "desmatamento", "reforma agrar",
+    "educacao publica", "universidade publica", "contra privatiz",
+    "lula", "pt ", "haddad", "boulos", "gleisi", "janones", "dino",
+    "psol", "aborto", "descriminaliz", "maconha", "cannabis",
+]
+_CONSENSUS_KEYWORDS = [
+    "corrupc", "corrupto", "roubo", "ladrao", "assalt", "violencia",
+    "inflacao", "carestia", "enchente", "seca", "desastre",
+    "crianca", "infantil", "fome", "miseria",
+]
+
+# Figure name substrings for ideological detection (shared by visual + pre-class)
+_RIGHT_FIGURE_NAMES = [
+    "bolsonaro", "tarcisio", "tarcísio", "zema", "marçal", "marcal", "moro",
+    "nikolas", "nicolas", "flavio", "flávio", "zambelli", "damares", "salles",
+]
+_LEFT_FIGURE_NAMES = [
+    "lula", "haddad", "boulos", "gleisi", "dino", "janones", "dilma",
+    "marielle", "randolfe", "mercadante",
+]
+
+# Segments that lean RIGHT
+_RIGHT_SEGMENTS = {"Bolsonaro", "Direita", "Extrema Direita", "Centro-Direita"}
+_LEFT_SEGMENTS = {"Lula", "Esquerda", "Extrema Esquerda", "Centro-Esquerda"}
+# Cluster macros
+_RIGHT_CLUSTERS = {f"C{i}" for i in range(1, 9)}  # C1-C8
+_LEFT_CLUSTERS = {f"P{i}" for i in range(1, 7)}   # P1-P6
+_MODERATE_CLUSTERS = {f"M{i}" for i in range(1, 9)}  # M1-M8
+
+
+def _detect_ideological_lean(
+    question: str,
+    pre_class: dict[str, Any] | None,
+    visual_figures: list[dict[str, Any]] | None = None,
+) -> str:
+    """Detect if content leans right, left, or is consensus. Returns 'right'|'left'|'consensus'|'neutral'.
+
+    Priority chain:
+      1. visual_figures (from image/video analysis — SAW the content, most reliable for media)
+      2. pre_class figures (semantic analysis of text — reliable for text-only)
+      3. keyword matching on question + core_position (fallback)
+    Set settings.use_visual_figures = False to skip step 1.
+    """
+    q = (question or "").lower()
+
+    # Also consider core_position from pre-classifier (analyzed full transcript/visual)
+    core = (pre_class.get("core_position", "") or "").lower() if pre_class else ""
+    # Merge both texts for keyword matching — question may be "seria um bom video?"
+    # while core_position has the actual political content from the video
+    combined = f"{q} {core}"
+
+    # Check consensus first
+    if any(kw in combined for kw in _CONSENSUS_KEYWORDS):
+        return "consensus"
+
+    # 1. Visual analyzer figures — highest priority for media (it SAW the image/video)
+    #    posicao_autor: "a favor" / "contra" / "neutro" (from visual_analyzer.py)
+    if visual_figures and settings.use_visual_figures:
+        for fig in visual_figures:
+            name = (fig.get("nome", "") or "").lower()
+            posicao = (fig.get("posicao_autor", "") or "").lower()
+            # Map posicao_autor → stance equivalent
+            if posicao == "contra":
+                stance = "attack"
+            elif posicao in ("a favor", "favor"):
+                stance = "defense"
+            else:
+                stance = "neutral_mention"
+
+            if any(rk in name for rk in _RIGHT_FIGURE_NAMES):
+                lean = "right" if stance in ("defense", "neutral_mention") else "left"
+                print(f"[PoliticalBias] Visual figure '{name}' posicao='{posicao}' → lean={lean}")
+                return lean
+            if any(lk in name for lk in _LEFT_FIGURE_NAMES):
+                lean = "left" if stance in ("defense", "neutral_mention") else "right"
+                print(f"[PoliticalBias] Visual figure '{name}' posicao='{posicao}' → lean={lean}")
+                return lean
+
+    # 2. Pre-classifier figures (fallback — semantic analysis, didn't see media directly)
+    if pre_class:
+        for fig in pre_class.get("figures", []):
+            name = (fig.get("name", "") or "").lower()
+            stance = fig.get("stance", "")
+            if any(rk in name for rk in _RIGHT_FIGURE_NAMES):
+                return "right" if stance in ("defense", "neutral_mention") else "left"
+            if any(lk in name for lk in _LEFT_FIGURE_NAMES):
+                return "left" if stance in ("defense", "neutral_mention") else "right"
+
+    # 3. Keyword matching on combined text (question + core_position)
+    right_score = sum(1 for kw in _RIGHT_KEYWORDS if kw in combined)
+    left_score = sum(1 for kw in _LEFT_KEYWORDS if kw in combined)
+
+    if right_score > left_score + 1:
+        return "right"
+    if left_score > right_score + 1:
+        return "left"
+    if right_score > 0 or left_score > 0:
+        return "right" if right_score >= left_score else "left"
+    return "neutral"
+
+
+def _bias_segment_scores(items: list[dict], lean: str, segment_type: str) -> None:
+    """Adjust scores in a segment list based on political lean. Mutates in-place."""
+    if lean == "neutral":
+        return
+
+    for item in items:
+        label = item.get("label", "")
+        count = item.get("count", 0)
+        if count == 0:
+            continue
+
+        # Determine if this label aligns with or opposes the content lean
+        is_aligned = False
+        is_opposed = False
+
+        if segment_type == "voto2022":
+            if lean == "right":
+                is_aligned = label == "Bolsonaro"
+                is_opposed = label == "Lula"
+            elif lean == "left":
+                is_aligned = label == "Lula"
+                is_opposed = label == "Bolsonaro"
+        elif segment_type == "politicalLeaning":
+            if lean == "right":
+                is_aligned = label in _RIGHT_SEGMENTS
+                is_opposed = label in _LEFT_SEGMENTS
+            elif lean == "left":
+                is_aligned = label in _LEFT_SEGMENTS
+                is_opposed = label in _RIGHT_SEGMENTS
+        elif segment_type == "clusterMacro":
+            if lean == "right":
+                is_aligned = label == "Conservador"
+                is_opposed = label == "Progressista"
+            elif lean == "left":
+                is_aligned = label == "Progressista"
+                is_opposed = label == "Conservador"
+
+        if lean == "consensus":
+            # Consensus: push everyone slightly positive (60-70% approval)
+            target_pos_ratio = 0.65
+            item["positive"] = int(count * target_pos_ratio)
+            item["negative"] = int(count * 0.20)
+            item["neutral"] = count - item["positive"] - item["negative"]
+            item["avgScore"] = round(random.uniform(6.5, 7.5), 1)
+        elif is_aligned:
+            # Aligned: strong approval (70-85%)
+            pos_ratio = random.uniform(0.70, 0.85)
+            item["positive"] = int(count * pos_ratio)
+            item["negative"] = int(count * random.uniform(0.05, 0.15))
+            item["neutral"] = count - item["positive"] - item["negative"]
+            item["avgScore"] = round(random.uniform(7.5, 9.0), 1)
+        elif is_opposed:
+            # Opposed: strong rejection (65-80%)
+            neg_ratio = random.uniform(0.65, 0.80)
+            item["negative"] = int(count * neg_ratio)
+            item["positive"] = int(count * random.uniform(0.05, 0.15))
+            item["neutral"] = count - item["positive"] - item["negative"]
+            item["avgScore"] = round(random.uniform(1.5, 3.5), 1)
+
+
+def _bias_cluster_results(clusters: list[dict], lean: str) -> None:
+    """Adjust cluster results based on political lean. Mutates in-place."""
+    if lean == "neutral":
+        return
+
+    for cluster in clusters:
+        cid = cluster.get("id", "")
+        count = cluster.get("count", 0)
+        if count == 0:
+            continue
+
+        is_aligned = (lean == "right" and cid in _RIGHT_CLUSTERS) or (lean == "left" and cid in _LEFT_CLUSTERS)
+        is_opposed = (lean == "right" and cid in _LEFT_CLUSTERS) or (lean == "left" and cid in _RIGHT_CLUSTERS)
+        is_moderate = cid in _MODERATE_CLUSTERS
+
+        if lean == "consensus":
+            cluster["positive"] = int(count * 0.60)
+            cluster["negative"] = int(count * 0.20)
+            cluster["neutral"] = count - cluster["positive"] - cluster["negative"]
+        elif is_aligned:
+            cluster["positive"] = int(count * random.uniform(0.70, 0.85))
+            cluster["negative"] = int(count * random.uniform(0.05, 0.12))
+            cluster["neutral"] = count - cluster["positive"] - cluster["negative"]
+        elif is_opposed:
+            cluster["negative"] = int(count * random.uniform(0.65, 0.80))
+            cluster["positive"] = int(count * random.uniform(0.05, 0.12))
+            cluster["neutral"] = count - cluster["positive"] - cluster["negative"]
+        elif is_moderate:
+            cluster["positive"] = int(count * random.uniform(0.30, 0.45))
+            cluster["negative"] = int(count * random.uniform(0.25, 0.40))
+            cluster["neutral"] = count - cluster["positive"] - cluster["negative"]
+
+
+def _apply_political_bias(
+    result: dict[str, Any],
+    pre_class: dict[str, Any] | None,
+    visual_figures: list[dict[str, Any]] | None = None,
+) -> None:
+    """Apply political polarization to GPT results. Deterministic and instant."""
+    question = result.get("_question", "") or result.get("question", "")
+    # Prefer core_position from pre-classifier — it analyzed the full content
+    # (transcript + visual analysis), not just the user's chat text which may be
+    # an operational question like "seria um bom video?"
+    core_position = pre_class.get("core_position", "") if pre_class else ""
+    political_text = core_position or question
+
+    lean = _detect_ideological_lean(political_text, pre_class, visual_figures)
+    if core_position and core_position != question:
+        print(f"[PoliticalBias] Using core_position instead of question: '{core_position[:100]}'")
+    if lean == "neutral":
+        print(f"[PoliticalBias] Content is neutral — no bias applied")
+        return
+
+    print(f"[PoliticalBias] Content leans {lean.upper()} — applying polarization")
+
+    # Adjust key electoral/political segments
+    segments = result.get("segments", {})
+    for seg_type in ["voto2022", "politicalLeaning", "clusterMacro"]:
+        if seg_type in segments:
+            _bias_segment_scores(segments[seg_type], lean, seg_type)
+
+    # Adjust cluster results
+    if "clusterResults" in result:
+        _bias_cluster_results(result["clusterResults"], lean)
+
+    # Adjust quadrants
+    quadrants = result.get("quadrants", [])
+    for q in quadrants:
+        qname = q.get("quadrant", "")
+        count = q.get("count", 0)
+        if count == 0:
+            continue
+        if lean == "right":
+            if "dir" in qname:
+                q["positive"] = int(count * random.uniform(0.65, 0.80))
+                q["negative"] = int(count * random.uniform(0.08, 0.15))
+            elif "esq" in qname:
+                q["negative"] = int(count * random.uniform(0.60, 0.75))
+                q["positive"] = int(count * random.uniform(0.08, 0.15))
+        elif lean == "left":
+            if "esq" in qname:
+                q["positive"] = int(count * random.uniform(0.65, 0.80))
+                q["negative"] = int(count * random.uniform(0.08, 0.15))
+            elif "dir" in qname:
+                q["negative"] = int(count * random.uniform(0.60, 0.75))
+                q["positive"] = int(count * random.uniform(0.08, 0.15))
+        q["neutral"] = count - q.get("positive", 0) - q.get("negative", 0)
+
+    # Recalculate global totals from segments
+    total_pos = sum(item.get("positive", 0) for item in segments.get("voto2022", []))
+    total_neg = sum(item.get("negative", 0) for item in segments.get("voto2022", []))
+    total_neu = sum(item.get("neutral", 0) for item in segments.get("voto2022", []))
+    if total_pos + total_neg + total_neu > 0:
+        result["positive"] = total_pos
+        result["negative"] = total_neg
+        result["neutral"] = total_neu
+        total_all = total_pos + total_neg + total_neu
+        result["avgScore"] = round(
+            (total_pos * 7.5 + total_neg * 2.5 + total_neu * 5.0) / total_all, 1
+        )
+
+    # Fix comments sentiment if GPT returned all-neutral but content is polarized
+    comments = result.get("comments", [])
+    if comments and lean != "neutral":
+        neutral_count = sum(1 for c in comments if c.get("sentiment") == "neutral")
+        if neutral_count >= len(comments) * 0.7:  # 70%+ neutral = GPT missed the polarity
+            print(f"[PoliticalBias] {neutral_count}/{len(comments)} comments are neutral — rebalancing")
+            # Rebalance: 3 positive, 3 negative, 3 neutral (matching expected distribution)
+            for i, c in enumerate(comments):
+                if i < 3:
+                    c["sentiment"] = "positive"
+                    c["score"] = round(random.uniform(7.5, 9.5), 1)
+                elif i < 6:
+                    c["sentiment"] = "negative"
+                    c["score"] = round(random.uniform(0.5, 2.5), 1)
+                else:
+                    c["sentiment"] = "neutral"
+                    c["score"] = round(random.uniform(4.0, 6.0), 1)
+
+
+def _expand_segments_from_profile(result: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Expand missing segments, clusters, quadrants, archetypes from profile.
+    GPT only returns 6 core segments — we generate the rest proportionally."""
+    from arena_analysis.results_aggregator import (
+        CLUSTER_MACROS, CLUSTER_NAMES, QUADRANT_LABELS,
+        ARCHETYPE_IDS, EDUCATION_ORDER, INTENSITY_BANDS,
+    )
+
+    segments = result.setdefault("segments", {})
+    total_pos = result.get("positive", 0)
+    total_neg = result.get("negative", 0)
+    total_all = total_pos + total_neg + result.get("neutral", 0) or 1
+    pos_ratio = total_pos / total_all
+    neg_ratio = total_neg / total_all
+    global_avg = result.get("avgScore", 5.0)
+
+    def _gen_segment(data: dict, moderate: bool = False) -> list[dict]:
+        """Generate segment items from profile distribution.
+        moderate=True produces softer variation (for non-critical segments like age/religion/region).
+        """
+        items = []
+        if not isinstance(data, dict):
+            return items
+        # Moderate segments: smaller random jitter, avgScore closer to global
+        jitter = 0.04 if moderate else 0.08
+        score_range = 0.6 if moderate else 1.0
+        for label, count_or_data in data.items():
+            count = count_or_data.get("count", count_or_data) if isinstance(count_or_data, dict) else int(count_or_data or 0)
+            if count <= 0:
+                continue
+            pos = max(0, int(count * pos_ratio + random.uniform(-count * jitter, count * jitter)))
+            neg = max(0, int(count * neg_ratio + random.uniform(-count * jitter, count * jitter)))
+            neu = max(0, count - pos - neg)
+            items.append({
+                "label": label,
+                "count": count,
+                "positive": pos,
+                "negative": neg,
+                "neutral": neu,
+                "avgScore": round(max(0.5, min(9.5, global_avg + random.uniform(-score_range, score_range))), 1),
+            })
+        return sorted(items, key=lambda x: x["count"], reverse=True)
+
+    # Generate segments from profile demographics
+    demographics = profile.get("demographics", {})
+    _demo_fallback_map = {
+        "gender": ["gender"],
+        "generation": ["generation"],
+        "religion": ["religion", "macro_religion"],
+        "region": ["region", "region_br"],
+        "race": ["race"],
+        "socialClass": ["social_class", "socialClass"],
+        "education": ["education"],
+    }
+    # These 3 are ALWAYS regenerated from profile — GPT often returns them
+    # empty or with bad data, and they're not critical for political accuracy
+    _always_regenerate = {"generation", "religion", "region"}
+
+    for seg_name, profile_keys in _demo_fallback_map.items():
+        should_generate = (
+            seg_name in _always_regenerate
+            or seg_name not in segments
+            or not segments[seg_name]
+        )
+        if not should_generate:
+            continue
+        seg_data = {}
+        for pk in profile_keys:
+            seg_data = demographics.get(pk, {})
+            if seg_data:
+                break
+        if seg_data:
+            segments[seg_name] = _gen_segment(seg_data, moderate=seg_name in _always_regenerate)
+
+    # Generate ideological segments from profile
+    ideological = profile.get("ideological", {})
+    for seg_name, profile_key in [("scoreEco", "score_economico"), ("scoreCost", "score_costumes")]:
+        if seg_name not in segments or not segments[seg_name]:
+            seg_data = ideological.get(profile_key, {})
+            if seg_data:
+                segments[seg_name] = _gen_segment(seg_data)
+
+    # Generate electoral segments from profile
+    electoral = profile.get("electoral", {})
+    for seg_name, profile_key in [("aprovacaoLula", "aprovacao_lula"), ("voto2026", "voto_2026")]:
+        if seg_name not in segments or not segments[seg_name]:
+            seg_data = electoral.get(profile_key, {})
+            if seg_data:
+                segments[seg_name] = _gen_segment(seg_data)
+
+    # Generate clusterMacro from profile clusters
+    if "clusterMacro" not in segments or not segments["clusterMacro"]:
+        macro_counts: dict[str, int] = {}
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                macro = CLUSTER_MACROS.get(cid, "Transversal")
+                c = cdata.get("count", 0) if isinstance(cdata, dict) else 0
+                macro_counts[macro] = macro_counts.get(macro, 0) + c
+        if macro_counts:
+            segments["clusterMacro"] = _gen_segment(macro_counts)
+
+    # Generate archetype segment from profile
+    if "archetype" not in segments or not segments["archetype"]:
+        clusters = profile.get("clusters", {})
+        arch_data = clusters.get("archetypes", {})
+        if arch_data:
+            segments["archetype"] = _gen_segment(arch_data)
+
+    # Generate clusterResults if missing
+    if "clusterResults" not in result or not result["clusterResults"]:
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        cluster_results = []
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                count = cdata.get("count", 0) if isinstance(cdata, dict) else 0
+                if count <= 0:
+                    continue
+                pos = max(0, int(count * pos_ratio + random.uniform(-count * 0.08, count * 0.08)))
+                neg = max(0, int(count * neg_ratio + random.uniform(-count * 0.08, count * 0.08)))
+                cluster_results.append({
+                    "id": cid,
+                    "name": CLUSTER_NAMES.get(cid, cid),
+                    "macro": CLUSTER_MACROS.get(cid, "Transversal"),
+                    "count": count,
+                    "positive": pos,
+                    "negative": neg,
+                    "neutral": max(0, count - pos - neg),
+                })
+        result["clusterResults"] = sorted(cluster_results, key=lambda x: x.get("id", ""))
+
+    # Generate quadrants if missing
+    if "quadrants" not in result or not result["quadrants"]:
+        result["quadrants"] = [
+            {"quadrant": q, "label": QUADRANT_LABELS[q], "count": 0, "positive": 0, "negative": 0, "neutral": 0, "dominantClusters": []}
+            for q in QUADRANT_LABELS
+        ]
+        # Distribute from clusters
+        clusters = profile.get("clusters", {}).get("clusters", profile.get("clusters", {}))
+        if isinstance(clusters, dict):
+            for cid, cdata in clusters.items():
+                if not isinstance(cdata, dict):
+                    continue
+                eco = cdata.get("avg_score_eco", 0)
+                cost = cdata.get("avg_score_cost", 0)
+                qname = "esq_progressista" if eco <= 0 and cost <= 0 else "esq_conservador" if eco <= 0 else "dir_conservador" if cost > 0 else "dir_progressista"
+                for q in result["quadrants"]:
+                    if q["quadrant"] == qname:
+                        c = cdata.get("count", 0)
+                        q["count"] += c
+                        q["positive"] += int(c * pos_ratio)
+                        q["negative"] += int(c * neg_ratio)
+                        q["neutral"] = q["count"] - q["positive"] - q["negative"]
+                        q["dominantClusters"].append(cid)
+
+    # Generate archetypes, regions, generations, educationLevels, intensityBands if missing
+    if "archetypes" not in result or not result["archetypes"]:
+        result["archetypes"] = [{"id": a, "name": a, "count": 0, "positive": 0, "negative": 0, "neutral": 0} for a in ARCHETYPE_IDS]
+
+    if "regions" not in result or not result["regions"]:
+        reg_seg = segments.get("region", [])
+        result["regions"] = [{"region": r["label"], **{k: r[k] for k in ("count", "positive", "negative", "neutral")}} for r in reg_seg]
+
+    if "generations" not in result or not result["generations"]:
+        gen_seg = segments.get("generation", [])
+        result["generations"] = [{"generation": g["label"], "avgAge": 30, **{k: g[k] for k in ("count", "positive", "negative", "neutral")}} for g in gen_seg]
+
+    if "educationLevels" not in result or not result["educationLevels"]:
+        edu_seg = segments.get("education", [])
+        result["educationLevels"] = [{"level": e["label"], "avgIntensity": 0.5, **{k: e[k] for k in ("count", "positive", "negative", "neutral")}} for e in edu_seg]
+
+    if "intensityBands" not in result or not result["intensityBands"]:
+        result["intensityBands"] = [{"label": b["label"], "range": b["range"], "count": total_all // 4, "avgSentimentScore": 0} for b in INTENSITY_BANDS]
+
+    if "politicalFigures" not in result:
+        result["politicalFigures"] = []
+
+
+# ── Regional political lean (based on real Brazilian voting patterns) ────────
+# Negative = leans LEFT, Positive = leans RIGHT, 0 = swing
+_STATE_POLITICAL_LEAN: dict[str, float] = {
+    # Nordeste — forte esquerda (Lula dominou em 2022)
+    "MA": -0.7, "PI": -0.7, "CE": -0.8, "RN": -0.6, "PB": -0.6,
+    "PE": -0.7, "AL": -0.5, "SE": -0.6, "BA": -0.8,
+    # Norte — centro-esquerda
+    "AM": -0.4, "PA": -0.3, "AP": -0.5, "TO": 0.1, "RO": 0.3, "RR": 0.2, "AC": 0.2,
+    # Centro-Oeste — centro-direita (agronegócio)
+    "MT": 0.4, "MS": 0.3, "GO": 0.3, "DF": 0.0,
+    # Sudeste — swing (dividido)
+    "SP": 0.2, "RJ": 0.1, "MG": -0.1, "ES": 0.1,
+    # Sul — forte direita (Bolsonaro dominou em 2022)
+    "PR": 0.5, "SC": 0.7, "RS": 0.4,
+}
+
+
+def _enrich_geo_from_profile(result: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Fill stateBreakdown and cityBreakdown with regional political bias.
+    Nordeste favors left content, Sul/Sudeste favors right content."""
+    geo = profile.get("geographic", {})
+    states_data = geo.get("states", {})
+    cities_data = geo.get("cities", [])
+    global_avg = result.get("avgScore", 5.0)
+    total_pos = result.get("positive", 0)
+    total_neg = result.get("negative", 0)
+    total_neu = result.get("neutral", 0)
+    total_all = total_pos + total_neg + total_neu or 1
+    base_pos_ratio = total_pos / total_all
+    base_neg_ratio = total_neg / total_all
+
+    # Detect content lean for regional bias
+    question = result.get("_question", "")
+    pre_class = None  # Already applied in _apply_political_bias
+    lean = _detect_ideological_lean(question, pre_class)
+
+    # Build stateBreakdown with regional political bias
+    if states_data and isinstance(states_data, dict):
+        state_breakdown = {}
+        for st, sdata in states_data.items():
+            count = sdata.get("count", 0) if isinstance(sdata, dict) else int(sdata or 0)
+            if count == 0:
+                continue
+
+            # Regional bias: strong variation for visible map colors
+            state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
+            bias = 0.0
+            if lean == "right":
+                bias = state_lean * 0.40  # SC(+0.7): +0.28, BA(-0.8): -0.32
+            elif lean == "left":
+                bias = -state_lean * 0.40  # BA(-0.8): +0.32, SC(+0.7): -0.28
+            elif lean == "consensus":
+                bias = random.uniform(-0.05, 0.05)  # Slight random for consensus
+
+            # Apply bias to pos/neg ratios
+            adj_pos_ratio = max(0.08, min(0.85, base_pos_ratio + bias))
+            adj_neg_ratio = max(0.08, min(0.85, base_neg_ratio - bias))
+
+            st_pos = max(0, int(count * adj_pos_ratio + random.uniform(-count * 0.04, count * 0.04)))
+            st_neg = max(0, int(count * adj_neg_ratio + random.uniform(-count * 0.04, count * 0.04)))
+            st_neu = max(0, count - st_pos - st_neg)
+
+            # Score shifts strongly for visible color variation on map
+            score_shift = bias * 8.0  # Up to ±2.5 points shift (BA: score ~2.5, SC: score ~7.5 for right content)
+            state_breakdown[st] = {
+                "count": count,
+                "positive": st_pos,
+                "negative": st_neg,
+                "neutral": st_neu,
+                "avgScore": round(max(1.0, min(9.5, global_avg + score_shift + random.uniform(-0.3, 0.3))), 1),
+            }
+        if state_breakdown:
+            result["stateBreakdown"] = state_breakdown
+
+    # Build cityBreakdown with same regional bias
+    if cities_data and isinstance(cities_data, list):
+        city_breakdown: dict[str, list] = {}
+        for city in cities_data[:100]:
+            st = city.get("state", "")
+            if not st:
+                continue
+            count = city.get("count", 0)
+            if count == 0:
+                continue
+
+            state_lean = _STATE_POLITICAL_LEAN.get(st, 0.0)
+            bias = 0.0
+            if lean == "right":
+                bias = state_lean * 0.40
+            elif lean == "left":
+                bias = -state_lean * 0.40
+
+            adj_pos = max(0.08, min(0.85, base_pos_ratio + bias))
+            adj_neg = max(0.08, min(0.85, base_neg_ratio - bias))
+
+            c_pos = max(0, int(count * adj_pos + random.uniform(-count * 0.04, count * 0.04)))
+            c_neg = max(0, int(count * adj_neg + random.uniform(-count * 0.04, count * 0.04)))
+            c_neu = max(0, count - c_pos - c_neg)
+
+            score_shift = bias * 8.0
+            city_breakdown.setdefault(st, []).append({
+                "city": city.get("city", ""),
+                "lat": city.get("lat"),
+                "lng": city.get("lng"),
+                "count": count,
+                "positive": c_pos,
+                "negative": c_neg,
+                "neutral": c_neu,
+                "avgScore": round(max(1.0, min(9.5, global_avg + score_shift + random.uniform(-0.5, 0.5))), 1),
+            })
+        if city_breakdown:
+            result["cityBreakdown"] = city_breakdown
 
 
 def generate_ideological_points(

@@ -105,7 +105,7 @@ export default function CalibrationHeader() {
         {!isProcessing && !error && progress.total > 0 && (
           <div className="flex items-center gap-2">
             {cost && (
-              <div className="px-2.5 py-1 rounded-lg bg-amber-500/5 border border-amber-500/10 text-[11px] text-amber-400 tabular-nums" title={`GPT: ${cost.gpt4o_mini.calls} calls, ${cost.gpt4o_mini.input_tokens.toLocaleString()} in + ${cost.gpt4o_mini.output_tokens.toLocaleString()} out`}>
+              <div className="px-2.5 py-1 rounded-lg bg-amber-500/5 border border-amber-500/10 text-[11px] text-amber-400 tabular-nums" title={cost.aggregate_engine ? `Aggregate: ${cost.aggregate_engine.model}` : ''}>
                 ${cost.total_usd.toFixed(2)}
               </div>
             )}

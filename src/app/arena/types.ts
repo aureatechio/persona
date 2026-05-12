@@ -126,6 +126,37 @@ export interface DashboardHighlight {
   description: string;
 }
 
+// Specialist panel types
+export type SpecialistId =
+  | 'comunicacao_politica'
+  | 'assuntos_religiosos'
+  | 'marketing_digital'
+  | 'psicologia_social'
+  | 'compliance_legal';
+
+export interface SpecialistRecommendation {
+  text: string;
+  priority: 'urgente' | 'importante' | 'oportunidade';
+  segment?: string;
+}
+
+export interface SpecialistInsight {
+  id: SpecialistId;
+  name: string;
+  emoji: string;
+  verdict: string;
+  riskLevel: 'baixo' | 'medio' | 'alto' | 'critico';
+  keyPoints: string[];
+  recommendations: SpecialistRecommendation[];
+  dataHighlight?: string;
+}
+
+export interface SpecialistPanel {
+  consensus: string;
+  divergences?: string;
+  specialists: SpecialistInsight[];
+}
+
 export interface AnaliseData {
   headline: string;
   summary?: string;
@@ -139,6 +170,7 @@ export interface AnaliseData {
   nextSteps: { title: string; benefit: string; deadline: string }[];
   projectedScore: number;
   radar: RadarData;
+  specialistPanel?: SpecialistPanel;
 }
 
 export interface EnhancedSimulationResult {
@@ -151,6 +183,8 @@ export interface EnhancedSimulationResult {
   comments: CommentResult[];
   processingTime: number;
   ideologicalPoints: any[];
+  visual_structure?: string;
+  content_analysis?: string;
 }
 
 export interface GeoCity {

@@ -90,8 +90,37 @@ class Settings:
     individual_max_parallel: int = 60  # 3 keys × 20 concurrent
     individual_max_tokens: int = 300  # 1 persona output
 
+    # Aggregate Engine
+    aggregate_model: str = "gpt-4o"
+    aggregate_max_tokens: int = 4000
+
+    # Visual Analyzer (GPT-4o vision — legacy, kept for reference)
+    vision_model: str = "gpt-4o"
+    vision_max_tokens: int = 8000
+    vision_timeout: int = 15
+
+    # Gemini Vision (substituindo GPT-4o para análise visual)
+    gemini_api_key: str = field(
+        default_factory=lambda: os.environ.get("GEMINI_API_KEY", "")
+    )
+    gemini_vision_model: str = "gemini-2.5-pro"
+    gemini_vision_timeout: int = 60      # imagem (segundos)
+    gemini_video_timeout: int = 120      # vídeo upload + análise (segundos)
+
     # Retry
-    max_retries: int = 2  # mais retries — cada persona individual importa
+    max_retries: int = 2
+
+    # Feature flags
+    # Use political_figures from visual analyzer (image/video) as primary signal
+    # for ideological lean detection. Set to False to revert to pre-classifier only.
+    use_visual_figures: bool = True
+
+    # Use Persona Scorer API (BERTimbau matrix scoring) instead of GPT aggregate engine.
+    # Set to False to revert to GPT-4o aggregate engine (aggregate_engine.py).
+    # If True and API fails, falls back to GPT automatically.
+    use_persona_scorer: bool = True
+    persona_scorer_url: str = "https://persona-scorer-production.up.railway.app"
+    persona_scorer_timeout: int = 15  # seconds
 
 
 settings = Settings()

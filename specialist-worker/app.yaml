@@ -1,0 +1,19 @@
+name: specialist-worker
+services:
+  - name: specialist-api
+    source_dir: specialist-worker
+    dockerfile_path: specialist-worker/Dockerfile
+    http_port: 3011
+    instance_count: 1
+    instance_size_slug: professional-xs
+    deploy_on_push: false
+    envs:
+      - key: ANTHROPIC_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        scope: RUN_TIME
+        type: SECRET

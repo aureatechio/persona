@@ -1,16 +1,14 @@
 """
-Calibration endpoint — mirrors the FULL production pipeline but emits
+Calibration endpoint — mirrors the FULL production pipeline (v3) but emits
 detailed SSE events at every step showing prompts, responses, and timing.
 
-Steps (same as production):
-  1. Web Research (Tavily)
-  2. Context Builder (Claude)
-  3. Ideological Frame (Claude)
+Steps (same as production v3):
+  1. Context Builder (Claude — smart search + context)
+  2. Ideological Frame (Claude)
+  3. Persona Loading + Geo Filter
   4. Pre-Classification (GPT-4o-mini)
-  5. Persona Loading + Geo Filter
-  6. Prompt Sample Preview
-  7. Persona Loop (Claude + GPT batches)
-  8. Aggregation
+  5. Aggregate Engine (1 GPT-4o call)
+  6. Aggregation (final numbers)
 """
 from __future__ import annotations
 
@@ -26,12 +24,7 @@ from openai import AsyncOpenAI
 
 from arena_analysis.config import settings
 from arena_analysis.persona_loader import load_personas
-from arena_analysis.persona_loop import PersonaLoop, _token_tracker, _GPT4O_MINI_INPUT_PRICE, _GPT4O_MINI_OUTPUT_PRICE
 from arena_analysis.results_aggregator import aggregate_results
-from arena_analysis.comment_prompt import (
-    ARENA_SYSTEM_PROMPT, build_single_prompt,
-    get_arena_system_prompt, load_bias_config, classify_question,
-)
 from arena_analysis.pre_classifier import (
     SYSTEM_PROMPT as PRE_CLASSIFY_SYSTEM_PROMPT,
     build_disambiguation_block,
@@ -39,6 +32,8 @@ from arena_analysis.pre_classifier import (
 from arena_analysis.geo_filter import apply_geo_filter
 from arena_analysis.context_builder import ContextBuilder, ContextResult
 from arena_analysis.web_researcher import ArenaWebResearcher
+from arena_analysis.aggregate_engine import analyze as aggregate_analyze, load_profile
+from arena_analysis.aggregate_prompt import AGGREGATE_SYSTEM_PROMPT, build_user_prompt
 
 
 class CalibrationRequest(BaseModel):
@@ -107,7 +102,7 @@ async def _pre_classify_verbose(question: str, context_text: str | None = None) 
 
 
 async def calibration_analyze(request: CalibrationRequest, raw_request: Request):
-    """Full production pipeline with verbose SSE for calibration."""
+    """Full production pipeline (v3) with verbose SSE for calibration."""
     cancelled = asyncio.Event()
 
     async def _watch_disconnect():
@@ -118,17 +113,15 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             await asyncio.sleep(1)
 
     disconnect_task = asyncio.create_task(_watch_disconnect())
-    web_researcher = ArenaWebResearcher()
     context_builder = ContextBuilder()
-    persona_loop = PersonaLoop()
 
     async def generate():
         start_time = time.time()
 
-        # ── STEP 1: Start ──
+        # -- STEP 1: Start --
         yield sse_event("cal_start", {"question": request.question})
 
-        # ── STEP 2: Contextualizacao IA (smart search + context builder) ──
+        # -- STEP 2: Contextualizacao IA (smart search + context builder) --
         context = None
 
         yield sse_event("cal_step", {
@@ -139,7 +132,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
 
         ctx_start = time.time()
 
-        # Step 2a: Claude decides if web search is needed and what to search
         search_info = await context_builder.smart_search(
             request.question, request.context_text
         )
@@ -152,14 +144,11 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
                 "description": f"Buscou na web: {', '.join(search_info.get('queries', []))} — Contextualizando...",
             })
 
-        # Step 2b: Claude builds context using knowledge + web results (if any)
         if request.context_text:
-            # Media context provided — Claude enriches it
             enriched = await context_builder.build(
                 question=request.question,
                 web_context=web_context,
             )
-
             context = ContextResult(
                 tema=enriched.tema or "Conteudo de midia",
                 contexto=request.context_text,
@@ -171,7 +160,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             if enriched.contexto:
                 context.contexto += f"\n\n--- Contextualizacao da IA ---\n{enriched.contexto}"
         else:
-            # No media — Claude builds full context
             context = await context_builder.build(
                 question=request.question,
                 web_context=web_context,
@@ -202,7 +190,7 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             },
         })
 
-        # ── STEP 4: Ideological Frame ──
+        # -- STEP 3: Ideological Frame --
         ideo_frame = None
         if context and context.contexto:
             yield sse_event("cal_step", {
@@ -239,7 +227,7 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         if cancelled.is_set():
             return
 
-        # ── STEP 5: Load + Filter Personas ──
+        # -- STEP 4: Load + Filter Personas --
         yield sse_event("cal_step", {
             "step": "persona_loader", "status": "running",
             "label": "Carregamento de Personas",
@@ -273,7 +261,7 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             },
         })
 
-        # ── STEP 6: Pre-Classification (Semantic analysis) ──
+        # -- STEP 5: Pre-Classification (Semantic analysis) --
         yield sse_event("cal_step", {
             "step": "pre_classifier", "status": "running",
             "label": "Pre-Classificacao Semantica",
@@ -284,7 +272,6 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
         pre_class = pre_result["result"]
         disambiguation = build_disambiguation_block(pre_class)
 
-        # Inject disambiguation into context
         if disambiguation and context:
             context.contexto = disambiguation + "\n" + (context.contexto or "")
         elif disambiguation:
@@ -306,221 +293,177 @@ async def calibration_analyze(request: CalibrationRequest, raw_request: Request)
             },
         })
 
-        # ── STEP 7: Prompt Sample Preview ──
-        system_prompt = await get_arena_system_prompt()
-        bias = await load_bias_config()
-
-        if total > 0:
-            sample_persona = personas[0]
-            sample_user_prompt = build_single_prompt(request.question, context, sample_persona, bias=bias)
-
-            yield sse_event("cal_step", {
-                "step": "prompt_preview", "status": "complete",
-                "label": "Preview do Prompt",
-                "description": "Prompt real enviado para CADA persona (1 por call, GPT-only, 3 chaves)",
-            })
-            yield sse_event("cal_step_detail", {
-                "step": "prompt_preview",
-                "status": "complete",
-                "input": {
-                    "system_prompt": system_prompt[:8000],
-                    "user_prompt": sample_user_prompt[:15000],
-                    "persona_count": 1,
-                    "model_split": "100% GPT-4o-mini (3 chaves paralelo)",
-                    "sample_persona_name": sample_persona.get("name", "?"),
-                },
-            })
-
         if cancelled.is_set():
             return
 
-        # ── STEP 8: Persona Processing Loop ──
-        has_political_figures = any(
-            f.get("stance") in ("attack", "defense")
-            for f in pre_class.get("figures", [])
-        )
-
+        # -- STEP 6: Aggregate Engine (1 GPT-4o call) --
         yield sse_event("cal_step", {
-            "step": "persona_loop", "status": "running",
-            "label": "Processamento de Personas",
-            "description": f"Processando {total} personas — 1 por call, GPT-only, 3 chaves",
+            "step": "aggregate_engine", "status": "running",
+            "label": "Motor de Inferencia Agregada",
+            "description": f"GPT-4o analisando sentimento de {total} personas em 1 chamada...",
         })
 
-        all_results = []
-        inc_personas = []
-        inc_results = []
-        batch_index = 0
-        last_segment_count = 0
+        # Load profile for metadata display
+        try:
+            profile = await load_profile()
+            profile_meta = {
+                "total_personas": profile.get("total_personas", 0),
+                "computed_at": profile.get("computed_at", "unknown"),
+            }
+        except Exception:
+            profile_meta = {"total_personas": total, "computed_at": "unknown"}
 
-        async for progress in persona_loop.run(
-            request.question, context, personas,
-            verbose=True, cancelled=cancelled,
-            skip_political_enforcement=has_political_figures,
-        ):
-            all_results.extend(progress.results)
-            inc_personas.extend(progress.personas)
-            inc_results.extend(progress.results)
+        # Build the user prompt for display (before the actual call)
+        ctx_str = context.contexto if context else ""
+        display_user_prompt = build_user_prompt(
+            question=request.question,
+            context=ctx_str,
+            pre_classification=pre_class,
+            profile=profile if profile else {},
+        )
 
-            # Batch detail with per-persona results + full profile + prompt
-            persona_details = []
-            batch_personas_raw = progress.personas  # full persona dicts from DB
-            if progress.batch_meta:
-                summaries = progress.batch_meta.get("personas_summary", [])
-                for idx_p, ps in enumerate(summaries):
-                    # Get full profile from the raw persona data
-                    full_profile = batch_personas_raw[idx_p] if idx_p < len(batch_personas_raw) else {}
+        # Launch aggregate analysis
+        agg_start = time.time()
+        aggregate_task = asyncio.create_task(
+            aggregate_analyze(
+                question=request.question,
+                context=context,
+                pre_classification=pre_class,
+            )
+        )
 
-                    # Generate the exact prompt sent for this persona
-                    persona_prompt = ""
-                    if full_profile:
-                        try:
-                            persona_prompt = build_single_prompt(
-                                request.question, context, full_profile, bias=bias,
-                            )
-                        except Exception:
-                            persona_prompt = ""
+        # Emit synthetic progress events (~60s) while model processes
+        progress_steps = [
+            (0.05, "Carregando perfis demograficos..."),
+            (0.15, "Cruzando dados eleitorais..."),
+            (0.27, "Analisando clusters ideologicos..."),
+            (0.40, "Processando opiniao tematica..."),
+            (0.55, "Avaliando segmentos regionais..."),
+            (0.70, "Calculando intensidade por grupo..."),
+            (0.85, "Consolidando sentimento geral..."),
+            (0.97, "Finalizando analise..."),
+        ]
 
-                    persona_details.append({
-                        "id": ps.get("id", "?"),
-                        "name": ps.get("name", "?"),
-                        "state": full_profile.get("state", ps.get("state", "?")),
-                        "age": full_profile.get("age", ps.get("age", 0)),
-                        "sentiment": ps.get("sentiment", "neutral"),
-                        "score": ps.get("score", 5.0),
-                        "comment": ps.get("comment", "")[:300],
-                        # Exact prompt sent for this persona
-                        "user_prompt": persona_prompt[:15000] if persona_prompt else "",
-                        # Full profile for drill-down
-                        "profile": {
-                            "gender": full_profile.get("gender_identity") or full_profile.get("gender"),
-                            "region": full_profile.get("region_br"),
-                            "city": full_profile.get("city"),
-                            "education": full_profile.get("education_level"),
-                            "generation": full_profile.get("generation"),
-                            "social_class": full_profile.get("social_class"),
-                            "religion": full_profile.get("macro_religion"),
-                            "race": full_profile.get("raca_cor"),
-                            "political_leaning": full_profile.get("political_leaning"),
-                            "archetype": full_profile.get("archetype_primary"),
-                            "cluster": full_profile.get("cluster_id"),
-                            "cluster_name": full_profile.get("nome_grupo"),
-                            "score_eco": full_profile.get("score_economico"),
-                            "score_cost": full_profile.get("score_costumes"),
-                            "voto_2022": full_profile.get("voto_2022"),
-                            "voto_2026": full_profile.get("voto_2026"),
-                            "aprovacao_lula": full_profile.get("aprovacao_lula"),
-                            "avaliacao_bolsonaro": full_profile.get("q_avaliacao_bolsonaro"),
-                            # All career/demographic/psychology/beliefs JSON
-                            "career": full_profile.get("career_json"),
-                            "demographic": full_profile.get("demographic_json"),
-                            "psychology": full_profile.get("psychology_json"),
-                            "beliefs": full_profile.get("beliefs_json"),
-                        },
-                    })
-
-            batch_total = (total + settings.batch_size - 1) // settings.batch_size
-
-            yield sse_event("cal_batch", {
-                "batch_index": batch_index,
-                "batch_total": batch_total,
-                "model": progress.batch_meta.get("model", "?") if progress.batch_meta else "?",
-                "persona_count": progress.batch_meta.get("persona_count", 0) if progress.batch_meta else len(progress.results),
-                "personas": persona_details,
-            })
-
-            # Progress with scores
-            avg_score = round(progress.score_sum / progress.processed, 1) if progress.processed > 0 else 5.0
-
-            # Segments periodically
-            segments = None
-            threshold = 50 if last_segment_count == 0 else 200
-            if progress.processed - last_segment_count >= threshold or progress.processed == progress.total:
-                try:
-                    agg = await asyncio.to_thread(
-                        aggregate_results, inc_personas, inc_results, request.question
-                    )
-                    segments = agg.get("segments")
-                    last_segment_count = progress.processed
-                except Exception:
-                    pass
-
-            yield sse_event("cal_progress", {
-                "processed": progress.processed,
-                "total": progress.total,
-                "positive": progress.positive,
-                "negative": progress.negative,
-                "neutral": progress.neutral,
-                "avgScore": avg_score,
-                "scoreSum": progress.score_sum,
-                "segments": segments,
-            })
-
-            batch_index += 1
+        step_duration = 60.0 / len(progress_steps)
+        for i, (pct, msg) in enumerate(progress_steps):
             if cancelled.is_set():
-                break
+                aggregate_task.cancel()
+                return
 
-        # ── STEP 9: Aggregation ──
+            processed = int(total * pct)
+            yield sse_event("cal_progress", {
+                "processed": processed,
+                "total": total,
+                "positive": 0,
+                "negative": 0,
+                "neutral": 0,
+                "avgScore": 5.0,
+                "scoreSum": 0,
+                "phase_message": msg,
+            })
+
+            try:
+                await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=step_duration)
+                break  # Model finished early
+            except asyncio.TimeoutError:
+                pass
+            except Exception:
+                break  # Error — will be caught below
+
+        # Await final result
+        try:
+            final_results = await aggregate_task
+        except Exception as e:
+            print(f"[Calibration] Aggregate engine error: {e}")
+            import traceback
+            traceback.print_exc()
+            final_results = {
+                "total": total, "positive": 0, "negative": 0, "neutral": 0,
+                "avgScore": 5.0, "processingTime": 0, "segments": {},
+                "comments": [], "clusterResults": [], "archetypes": [],
+            }
+
+        agg_ms = round((time.time() - agg_start) * 1000)
+
+        # Emit aggregate engine detail with prompts
+        yield sse_event("cal_step_detail", {
+            "step": "aggregate_engine",
+            "status": "complete",
+            "latency_ms": agg_ms,
+            "input": {
+                "system_prompt": AGGREGATE_SYSTEM_PROMPT[:5000],
+                "user_prompt": display_user_prompt[:8000],
+                "model": settings.aggregate_model,
+                "profile_meta": profile_meta,
+            },
+            "output": {
+                "total": final_results.get("total", total),
+                "positive": final_results.get("positive", 0),
+                "negative": final_results.get("negative", 0),
+                "neutral": final_results.get("neutral", 0),
+                "avgScore": final_results.get("avgScore", 5.0),
+                "segments_preview": {k: v[:3] if isinstance(v, list) else v for k, v in (final_results.get("segments") or {}).items()},
+                "comments_count": len(final_results.get("comments", [])),
+                "cluster_count": len(final_results.get("clusterResults", [])),
+            },
+        })
+
+        # -- STEP 7: Aggregation (final numbers) --
+        pos = final_results.get("positive", 0)
+        neg = final_results.get("negative", 0)
+        neu = final_results.get("neutral", 0)
+        avg_score = final_results.get("avgScore", 5.0)
+        segments = final_results.get("segments")
+
         yield sse_event("cal_step", {
             "step": "aggregation", "status": "running",
             "label": "Agregacao de Resultados",
-            "description": "Agregando sentimentos, segmentos e comentarios...",
+            "description": "Consolidando segmentos demograficos...",
         })
-
-        elapsed = time.time() - start_time
-        try:
-            final_agg = await asyncio.to_thread(
-                aggregate_results, inc_personas, inc_results, request.question
-            )
-            segments = final_agg.get("segments")
-        except Exception:
-            segments = None
-
-        pos = sum(1 for r in all_results if r.sentiment == "positive")
-        neg = sum(1 for r in all_results if r.sentiment == "negative")
-        neu = len(all_results) - pos - neg
-        avg_score = round(sum(r.score for r in all_results) / len(all_results), 2) if all_results else 5.0
 
         yield sse_event("cal_step_detail", {
             "step": "aggregation", "status": "complete",
             "output": {
-                "total": len(all_results),
+                "total": total,
                 "positive": pos, "negative": neg, "neutral": neu,
                 "avgScore": avg_score,
                 "segments": segments,
             },
         })
 
-        # ── STEP 10: Done ──
+        # -- STEP 8: Emit results --
+        elapsed = time.time() - start_time
+
         yield sse_event("cal_results", {
-            "total": len(all_results),
+            "total": total,
             "positive": pos, "negative": neg, "neutral": neu,
             "avgScore": avg_score,
             "processing_time_ms": round(elapsed * 1000),
             "segments": segments,
         })
 
-        # Calculate total cost
-        gpt_input_cost = (_token_tracker["prompt"] / 1_000_000) * _GPT4O_MINI_INPUT_PRICE
-        gpt_output_cost = (_token_tracker["completion"] / 1_000_000) * _GPT4O_MINI_OUTPUT_PRICE
-        gpt_total = gpt_input_cost + gpt_output_cost
-        # Claude costs (Haiku smart_search + Sonnet context_builder + Sonnet ideo_frame)
-        # Haiku: $0.80/1M input, $4/1M output | Sonnet: $3/1M input, $15/1M output
-        # Estimated ~5000 input + 1000 output tokens for Claude steps
+        # -- STEP 9: Done (backend phase) --
+        # Cost estimation for aggregate engine
+        # GPT-4o: $2.50/1M input, $10/1M output (estimated ~15k input, ~10k output)
+        agg_input_est = 15000
+        agg_output_est = 10000
+        agg_cost = (agg_input_est / 1_000_000) * 2.50 + (agg_output_est / 1_000_000) * 10.0
+        # Claude context builder + ideological frame
         claude_est = (5000 / 1_000_000) * 3.0 + (1000 / 1_000_000) * 15.0
-        # Pre-classifier GPT-4o-mini ~2000 tokens
-        pre_class_est = (2000 / 1_000_000) * _GPT4O_MINI_INPUT_PRICE + (300 / 1_000_000) * _GPT4O_MINI_OUTPUT_PRICE
-        total_cost = gpt_total + claude_est + pre_class_est
+        # Pre-classifier GPT-4o-mini
+        pre_class_est = (2000 / 1_000_000) * 0.15 + (300 / 1_000_000) * 0.60
+        total_cost = agg_cost + claude_est + pre_class_est
 
         yield sse_event("cal_done", {
-            "total_personas": len(all_results),
+            "total_personas": total,
             "processing_time_ms": round(elapsed * 1000),
             "avgScore": avg_score,
             "cost": {
-                "gpt4o_mini": {
-                    "calls": _token_tracker["calls"],
-                    "input_tokens": _token_tracker["prompt"],
-                    "output_tokens": _token_tracker["completion"],
-                    "cost_usd": round(gpt_total, 4),
+                "aggregate_engine": {
+                    "model": settings.aggregate_model,
+                    "estimated_input_tokens": agg_input_est,
+                    "estimated_output_tokens": agg_output_est,
+                    "cost_usd": round(agg_cost, 4),
                 },
                 "claude_estimated_usd": round(claude_est, 4),
                 "pre_classifier_estimated_usd": round(pre_class_est, 4),

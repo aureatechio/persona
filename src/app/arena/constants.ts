@@ -38,6 +38,7 @@ export const PLATFORMS = [
   { id: 'instagram', label: 'Instagram', color: '#e879f9' },
   { id: 'youtube', label: 'YouTube', color: '#f87171' },
   { id: 'tiktok', label: 'TikTok', color: '#22d3ee' },
+  { id: 'x', label: 'X (Twitter)', color: '#a3a3a3' },
   { id: 'tv', label: 'TV', color: '#38bdf8' },
   { id: 'radio', label: 'Rádio', color: '#fbbf24' },
   { id: 'outdoor', label: 'Outdoor', color: '#34d399' },
@@ -81,9 +82,19 @@ export function scoreToLabel(score: number): string {
 }
 
 export function scoreToHex(score: number): string {
-  if (score <= 2) return '#fb7185';
-  if (score <= 4) return '#fb923c';
-  if (score <= 6) return '#fbbf24';
-  if (score <= 8) return '#34d399';
-  return '#6ee7b7';
+  const s = Math.max(0, Math.min(10, score));
+  if (s <= 3) {
+    const t = s / 3;
+    return `rgb(${Math.round(251)},${Math.round(113 + 33 * t)},${Math.round(133 - 73 * t)})`;
+  }
+  if (s <= 5) {
+    const t = (s - 3) / 2;
+    return `rgb(251,${Math.round(146 + 45 * t)},${Math.round(60 - 24 * t)})`;
+  }
+  if (s <= 7) {
+    const t = (s - 5) / 2;
+    return `rgb(${Math.round(251 - 199 * t)},${Math.round(191 + 20 * t)},${Math.round(36 + 117 * t)})`;
+  }
+  const t = (s - 7) / 3;
+  return `rgb(${Math.round(52 + 58 * t)},${Math.round(211 + 20 * t)},${Math.round(153 + 30 * t)})`;
 }

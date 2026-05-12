@@ -25,7 +25,8 @@ LEFT_CAMP = {
         "luciana santos", "randolfe", "randolfe rodrigues",
     ],
     "keywords": ["petista", "petralha", "lulista"],
-    # "pt " handled separately to avoid substring issues
+    # "pt " handled separately below to avoid substring issues
+    "parties": ["pt", "psol", "psb", "pcdob", "pc do b", "rede", "pv"],
 }
 
 RIGHT_CAMP = {
@@ -41,19 +42,36 @@ RIGHT_CAMP = {
         "ricardo salles", "salles", "sergio moro", "moro",
         "carla zambelli", "zambelli", "roberto jefferson",
         "gustavo gayer", "mario frias", "hélio lopes", "helio lopes",
+        "bia kicis", "kicis",
+        "valdemar costa neto", "valdemar",
     ],
     "keywords": ["bolsonarista", "bolsominion", "capitão", "capitao"],
+    "parties": ["pl", "republicanos", "união brasil", "uniao brasil", "novo", "pp"],
 }
+
+
+def _match_party(q: str, parties: list[str]) -> bool:
+    """Check if any party name appears as a standalone word in the question."""
+    padded = f" {q} "
+    for party in parties:
+        # Match "pl" as standalone: " pl ", " pl.", " pl,", " pl-", etc.
+        # Avoid false positives like "exemplo", "plano", "aplicar"
+        if f" {party} " in padded or f" {party}." in padded or f" {party}," in padded or f" {party}-" in padded:
+            return True
+        # Also match "do PL", "no PL", "pelo PL" (common in Portuguese)
+        if f" do {party}" in padded or f" no {party}" in padded or f" pelo {party}" in padded or f" ao {party}" in padded:
+            return True
+    return False
 
 
 def classify_question(question: str, context: ContextResult | None = None) -> dict:
     """
-    Classify whether a question is about political figures or general topics.
+    Classify whether a question is about political figures, parties or general topics.
 
     Returns:
         {"is_political": bool, "camp": "left"|"right"|None}
 
-    - "political" → question is about a political figure (Lula/Bolsonaro camp or ally)
+    - "political" → question is about a political figure/party (Lula/Bolsonaro camp or ally)
     - "thematic"  → question is about a topic, law, video, general opinion
     """
     q = question.lower()
@@ -68,6 +86,9 @@ def classify_question(question: str, context: ContextResult | None = None) -> di
     # "pt " with space to avoid matching "ptsd", "prato", etc.
     if " pt " in f" {q} " or q.startswith("pt ") or q.endswith(" pt"):
         return {"is_political": True, "camp": "left"}
+    # Check left parties
+    if _match_party(q, LEFT_CAMP["parties"]):
+        return {"is_political": True, "camp": "left"}
 
     # Check right camp figures
     for fig in RIGHT_CAMP["figures"]:
@@ -78,6 +99,9 @@ def classify_question(question: str, context: ContextResult | None = None) -> di
             return {"is_political": True, "camp": "right"}
     # "mito" only when it looks political (not "o mito de X")
     if "mito" in q and ("é mito" in q or "mito!" in q or "mito " == q[:5]):
+        return {"is_political": True, "camp": "right"}
+    # Check right parties
+    if _match_party(q, RIGHT_CAMP["parties"]):
         return {"is_political": True, "camp": "right"}
 
     # Check context figuras (if context identified political figures)

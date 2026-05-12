@@ -25,7 +25,7 @@ from steps.generate import generate_text
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed
 from steps.compose import compose_videos
-from steps.whatsapp import send_whatsapp
+from steps.whatsapp import send_whatsapp, WhatsAppSendError
 
 # ─── Logging ───────────────────────────────────────────────
 logging.basicConfig(
@@ -79,12 +79,24 @@ def process_selfie(selfie: dict):
     status = selfie["status"]
     logger.info("═══ Processing selfie %s (status: %s, name: %s) ═══", sid, status, selfie["name"])
 
-    # Fetch active base model
-    base_model = db.get_active_base_model()
-    if not base_model:
-        db.update_status(sid, "failed", error_message="Nenhum modelo base ativo")
-        logger.error("No active base model found")
-        return
+    # Resolve base_model for this selfie.
+    # Primary: selfie['base_model_id'] (set at upload time via per-politician URL).
+    # Fallback: legacy rows without base_model_id → first is_active=true model.
+    # Fallback will be removed after F3 (base_model_id NOT NULL) is deployed.
+    base_model_id = selfie.get("base_model_id")
+    if base_model_id:
+        base_model = db.get_base_model(base_model_id)
+        if not base_model:
+            db.update_status(sid, "failed", error_message=f"base_model_id {base_model_id} not found")
+            logger.error("base_model_id %s not found", base_model_id)
+            return
+    else:
+        logger.warning("Selfie %s has no base_model_id, falling back to active model", sid)
+        base_model = db.get_active_base_model()
+        if not base_model:
+            db.update_status(sid, "failed", error_message="Nenhum modelo base ativo")
+            logger.error("No active base model found (legacy fallback)")
+            return
 
     voice_model = base_model.get("voice_models")
     if not voice_model or not voice_model.get("elevenlabs_voice_id"):
@@ -228,7 +240,10 @@ def process_selfie(selfie: dict):
         selfie_bytes = db.download_file(selfie["selfie_video_path"])
         ext = "webm" if selfie["selfie_video_path"].endswith(".webm") else "mp4"
 
-        final_bytes = compose_videos(selfie_bytes, ext, lipsync_url)
+        final_bytes = compose_videos(
+            selfie_bytes, ext, lipsync_url,
+            closing_video_path=base_model.get("closing_video_path"),
+        )
 
         final_path = f"final/{sid}.mp4"
         db.upload_file(final_path, final_bytes, "video/mp4")
@@ -252,7 +267,15 @@ def process_selfie(selfie: dict):
         logger.info("Step 6/6: Sending via WhatsApp...")
 
         video_signed = db.create_signed_url(final_path)
-        send_whatsapp(selfie["phone"], selfie["name"], video_signed)
+        try:
+            send_whatsapp(
+                selfie["phone"], selfie["name"], video_signed,
+                message_template=base_model.get("whatsapp_message_template"),
+            )
+        except WhatsAppSendError:
+            # Reset claim so retry can attempt again
+            db.reset_whatsapp_claim(sid)
+            raise
 
         db.update_status(sid, "completed")
 

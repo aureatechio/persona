@@ -45,40 +45,44 @@ function PulsingDots({ color }: { color: string }) {
 export function ProcessingSteps({ phase, processedCount, totalCount, collectingStatus, onCancel, region, analiseLoading }: ProcessingStepsProps) {
   const personaProgress = totalCount > 0 ? processedCount / totalCount : 0;
   const personasDone = phase === 'complete' || phase === 'aggregating' || personaProgress >= 0.99;
+  // Analysis is truly finished only when we HAVE the analise data
+  const analysisTrulyDone = personasDone && !analiseLoading && analiseLoading !== undefined;
 
-  // Smooth progress that only goes forward, never backward
-  // Personas = 0-80%, analysis generation = 80-97% (animated), done = 100%
+  // Smooth progress: personas = 0-70%, Duda analysis = 70-99%, done = 100%
+  // NEVER hits 100% until analiseData is received by parent (component unmounts)
   const [displayProgress, setDisplayProgress] = useState(0);
   const analysisTicker = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    // Phase 1: personas processing (0-80%)
+    // Phase 1: personas processing (0→70%)
     if (!personasDone) {
-      const target = personaProgress * 0.8;
+      const target = personaProgress * 0.7;
       setDisplayProgress((prev) => Math.max(prev, target));
       return;
     }
 
-    // Phase 2: personas done, analysis generating (80% → slowly to 97%)
-    if (personasDone && analiseLoading) {
-      setDisplayProgress((prev) => Math.max(prev, 0.8));
-      // Tick up slowly from current to 97%
-      if (analysisTicker.current) clearInterval(analysisTicker.current);
-      analysisTicker.current = setInterval(() => {
-        setDisplayProgress((prev) => {
-          if (prev >= 0.97) { clearInterval(analysisTicker.current!); return 0.97; }
-          return prev + 0.003; // ~0.3% per tick (every 200ms = ~30s to reach 97%)
-        });
-      }, 200);
-      return () => { if (analysisTicker.current) clearInterval(analysisTicker.current); };
+    // Phase 2: personas done → specialists + Duda running (70→99% over ~60s)
+    // Smooth deceleration: moves steadily, slows near end, NEVER stops
+    if (personasDone) {
+      if (!analysisTicker.current) {
+        setDisplayProgress((prev) => Math.max(prev, 0.7));
+        const startTime = Date.now();
+        analysisTicker.current = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000; // seconds since phase 2 started
+          setDisplayProgress((prev) => {
+            if (prev < 0.70) return 0.70;
+            // Logarithmic curve: fast start, smooth deceleration
+            // At 10s: ~82%, 20s: ~88%, 30s: ~92%, 40s: ~95%, 60s: ~97%, 120s: ~99%
+            const target = 0.70 + 0.29 * (1 - 1 / (1 + elapsed / 15));
+            return Math.max(prev, Math.min(target, 0.99));
+          });
+        }, 200);
+      }
+      return () => {
+        if (analysisTicker.current) { clearInterval(analysisTicker.current); analysisTicker.current = null; }
+      };
     }
-
-    // Phase 3: analysis done → jump to 100%
-    if (personasDone && !analiseLoading) {
-      if (analysisTicker.current) clearInterval(analysisTicker.current);
-      setDisplayProgress(1.0);
-    }
-  }, [personasDone, analiseLoading, personaProgress]);
+  }, [personasDone, personaProgress]);
 
   // Reset on new analysis
   useEffect(() => {
@@ -222,16 +226,14 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
           <div className="w-[7px] h-[7px] rounded-full bg-emerald-400" />
         </div>
         <span className="text-[11px] font-black text-emerald-400 tracking-[2px]">
-          {personasDone && analiseLoading ? 'GERANDO ANÁLISE' : phase === 'aggregating' ? 'FINALIZANDO' : 'ANALISANDO'}
+          {personasDone ? 'GERANDO ANÁLISE' : 'ANALISANDO'}
         </span>
       </motion.div>
 
       <p className="text-[11px] text-zinc-500 text-center">
-        {personasDone && analiseLoading
-          ? 'Gerando recomendações e insights...'
-          : phase === 'aggregating'
-            ? 'Finalizando resultados da análise...'
-            : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
+        {personasDone
+          ? 'Consultores analisando e montando recomendações...'
+          : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
       </p>
 
       {/* Progress bar */}
@@ -240,7 +242,7 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
           className="h-full rounded bg-emerald-400"
           initial={{ width: 0 }}
           animate={{ width: `${Math.round(progress * 100)}%` }}
-          transition={{ duration: 2, ease: [0.33, 1, 0.68, 1] }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
 

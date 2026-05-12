@@ -20,7 +20,7 @@ PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 # Background music config
 BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35  # 35% volume
-VOICE_DELAY_MS = 300  # 300ms delay at start to avoid glitch
+VOICE_DELAY_MS = 0  # delay removido — causava atraso na boca no lip-sync
 TAIL_SILENCE_S = 0.05  # 50ms silence after speech ends
 VOICE_VOLUME = 2.0  # 2x volume boost on voice
 
@@ -74,7 +74,7 @@ def _mix_background_music(voice_audio: bytes) -> bytes:
             f.write(bg_music)
 
         filter_complex = (
-            f"[0:a]volume={VOICE_VOLUME},adelay={VOICE_DELAY_MS}|{VOICE_DELAY_MS}[voice];"
+            f"[0:a]volume={VOICE_VOLUME}[voice];"
             f"[1:a]volume={BG_MUSIC_VOLUME},afade=t=in:d=0.3,afade=t=out:st=18:d=2[bg];"
             "[voice][bg]amix=inputs=2:duration=first:weights=1 1[out]"
         )
@@ -199,6 +199,19 @@ def _fix_pronunciation(text: str) -> str:
         text,
     )
 
+    # REGRA 6: "TH" em nomes próprios → "T" (pronúncia brasileira)
+    # Ex: "Arthur" → "Artur", "Thaís" → "Taís", "Matheus" → "Mateus"
+    text = re.sub(
+        r'\b([A-ZÀ-Ú][a-zà-ú]*?)th([aeiouáéíóúãõ])',
+        lambda m: m.group(1) + "t" + m.group(2),
+        text,
+    )
+    text = re.sub(r'\bArthur\b', 'Artur', text)
+
+    # REGRA 7: DEDUP — remover frases/trechos repetidos pelo GPT
+    # Ex: "no plano de governo no plano de governo" → "no plano de governo"
+    text = re.sub(r'\b(\w+(?:\s+\w+){2,6})\s+\1\b', r'\1', text)
+
     return text
 
 
@@ -245,7 +258,7 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     # Tail silence (skip if 0)
     padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S) if TAIL_SILENCE_S > 0 else raw_audio
 
-    # Mixar trilha de fundo + 300ms delay no início
+    # Mixar trilha de fundo
     final_audio = _mix_background_music(padded_audio)
 
     return final_audio, processed_text

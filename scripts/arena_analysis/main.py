@@ -78,10 +78,14 @@ class GeoFilter(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     question: str
+    user_intent: Optional[str] = None  # O que o usuario quer saber sobre a midia
     cluster_filter: Optional[str] = None
     context_text: Optional[str] = None
     verbose: bool = False
     geo_filter: Optional[GeoFilter] = None
+    image_url: Optional[str] = None
+    content_meta: Optional[dict] = None
+    video_political_figures: Optional[list] = None  # Gemini political_figures from video analysis
 
 
 class ElectoralRequest(BaseModel):
@@ -107,10 +111,15 @@ def sse_event(event_type: str, data: dict | list | str) -> str:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
-    """Pre-warm: carrega personas no cache para eliminar latencia do primeiro request."""
-    print("[Startup] Pre-warming persona cache...")
-    await asyncio.to_thread(load_personas)
-    print(f"[Startup] Cache pronto | Claude keys: {len(settings.anthropic_api_keys)} | GPT keys: {len(settings.openai_api_keys)}")
+    """Pre-warm personas em background (nao bloqueia health check)."""
+    async def _warm():
+        try:
+            await asyncio.to_thread(load_personas)
+            print(f"[Startup] Cache pronto | keys: {len(settings.openai_api_keys)} GPT, {len(settings.anthropic_api_keys)} Claude")
+        except Exception as e:
+            print(f"[Startup] Pre-warm failed (will retry on first request): {e}")
+    asyncio.create_task(_warm())
+    print("[Startup] Arena v3.0 — pre-warming in background")
 
 
 @app.get("/api/arena/health")
@@ -199,8 +208,64 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
         )
 
         context = None
+        visual_result = None
 
-        # ── 1b. Smart Search + Context Builder (Claude decides what to search) ──
+        # ── 1b. Visual Analysis (runs BEFORE context building to provide context) ──
+        if request.image_url:
+            from arena_analysis.visual_analyzer import analyze_image
+            yield sse_event("phase", {
+                "phase": "visual_analysis",
+                "message": "Analisando estrutura visual da imagem...",
+            })
+            try:
+                visual_result = await analyze_image(
+                    request.image_url, "url",
+                    caption=request.question or "",
+                )
+                if visual_result and visual_result.get("content_analysis"):
+                    # Visual analysis replaces frontend Haiku — provides context + question
+                    request.context_text = (
+                        "--- ANALISE VISUAL DO MATERIAL ---\n"
+                        f"{visual_result['content_analysis']}\n\n"
+                        "--- ESTRUTURA VISUAL (para critica do Duda) ---\n"
+                        f"{visual_result['visual_structure']}"
+                    )
+                    # Always use core_point as question for scoring (political content)
+                    # User's text goes as user_intent (only affects Duda recommendations)
+                    if visual_result.get("core_point"):
+                        if request.question and len(request.question) >= 10:
+                            # User typed something — preserve as user_intent if not already set
+                            if not request.user_intent:
+                                request.user_intent = request.question
+                        request.question = visual_result["core_point"]
+
+                    # Append political figures to context
+                    figures = visual_result.get("political_figures", [])
+                    if figures:
+                        request.context_text += "\n\n--- Figuras politicas mencionadas ---\n"
+                        request.context_text += "\n".join(
+                            f"{f.get('nome', '?')} (alinhamento: {f.get('alinhamento', '?')}) — autor {f.get('posicao_autor', 'neutro')} a essa figura"
+                            for f in figures
+                        )
+
+                    yield sse_event("log", {
+                        "step": "visual_analysis",
+                        "level": "info",
+                        "message": f"Analise visual completa: {len(visual_result.get('content_analysis', ''))} chars conteudo, {len(visual_result.get('visual_structure', ''))} chars estrutura",
+                    })
+                    print(f"[Pipeline] Visual analysis done — question='{request.question[:80]}', context={len(request.context_text)} chars")
+
+                    # Re-run pre-classify with actual visual content (original was started with empty strings)
+                    pre_class_task.cancel()
+                    pre_class_task = asyncio.create_task(
+                        pre_classify(request.question, request.context_text)
+                    )
+                    print("[Pipeline] Pre-classifier restarted with visual analysis data")
+
+            except Exception as e:
+                print(f"[Pipeline] Visual analysis error (continuing): {e}")
+
+        # ── 1c. Smart Search + Context Builder (Claude decides what to search) ──
         yield sse_event("phase", {
             "phase": "building_context",
             "message": "Claude analisando conteudo e contextualizando...",
@@ -374,126 +439,370 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                 contexto=disambiguation,
             )
 
-        # ── 5. Persona Loop ──────────────────────────────────────────
+        # ── 5. Aggregate Engine (substitui persona loop de 20k) ─────
         if cancelled.is_set():
-            print("[Pipeline] Cancelled before persona loop — aborting")
+            print("[Pipeline] Cancelled before aggregate engine — aborting")
             return
 
         yield sse_event("phase", {
             "phase": "processing_personas",
-            "message": f"Processando {total_personas} personas com IA...",
+            "message": f"Analisando sentimento de {total_personas} personas...",
         })
 
-        all_results = []
-        # Incremental aggregator for progressive segments
-        inc_personas: list[dict] = []
-        inc_results: list = []
-        last_segment_count = 0
-        last_inc_agg: dict | None = None
-        FIRST_SEGMENT_AT = 50   # emit segments early (after ~50 personas ≈ 3-5s)
-        SEGMENT_INTERVAL = 200  # then every ~200 personas
+        # Lazy import — nao carrega openai no startup
+        from arena_analysis.aggregate_engine import analyze as aggregate_analyze, load_profile, generate_ideological_points
+        import random as _rng
 
-        # Skip hardcoded political enforcement when AI pre-classifier detected political figures
-        # (the disambiguation block in the prompt already handles framing correctly)
-        has_political_figures = any(
-            f.get("stance") in ("attack", "defense")
-            for f in pre_class.get("figures", [])
-        )
+        # Build geo_filter dict for aggregate engine
+        _geo = None
+        if request.geo_filter and request.geo_filter.state:
+            _geo = {"state": request.geo_filter.state, "city": request.geo_filter.city}
 
-        async for progress in persona_loop.run(
-            request.question, context, personas,
-            verbose=request.verbose, cancelled=cancelled,
-            skip_political_enforcement=has_political_figures,
-        ):
-            all_results.extend(progress.results)
-            inc_personas.extend(progress.personas)
-            inc_results.extend(progress.results)
+        # Collect visual figures (from image/video analysis) for political detection
+        _visual_figures = None
+        if visual_result and visual_result.get("political_figures"):
+            _visual_figures = visual_result["political_figures"]
+        elif request.video_political_figures:
+            _visual_figures = request.video_political_figures
+            print(f"[Pipeline] Video political figures from frontend: {_visual_figures}")
 
-            avg_score = round(progress.score_sum / progress.processed, 1) if progress.processed > 0 else 5.0
-            progress_data: dict = {
-                "processed": progress.processed,
-                "total": progress.total,
-                "positive": progress.positive,
-                "negative": progress.negative,
-                "neutral": progress.neutral,
-                "avgScore": avg_score,
-                "scoreSum": progress.score_sum,
+        # Normalize generic political figure names to specific people
+        if _visual_figures:
+            _NORMALIZE_MAP = {
+                "governo federal": "Lula",
+                "governo lula": "Lula",
+                "governo atual": "Lula",
+                "governo": "Lula",
+                "planalto": "Lula",
+                "pt": "Lula",
+                "oposicao": "Bolsonaro",
+                "oposição": "Bolsonaro",
+                "campo bolsonarista": "Bolsonaro",
+            }
+            for fig in _visual_figures:
+                nome = fig.get("nome", fig.get("name", ""))
+                normalized = _NORMALIZE_MAP.get(nome.lower().strip())
+                if normalized:
+                    old_nome = nome
+                    fig["nome"] = normalized
+                    if "name" in fig:
+                        fig["name"] = normalized
+                    print(f"[Pipeline] Normalized figure: '{old_nome}' -> '{normalized}'")
+
+        # Inject user_intent into context (what the user wants to know about the media)
+        if request.user_intent and context and context.contexto:
+            context.contexto += f"\n\n═══ PERGUNTA DO USUARIO ═══\nO usuario quer saber: \"{request.user_intent}\"\nAnalise o conteudo COM FOCO nessa pergunta. O sentimento das personas deve refletir se elas concordam ou discordam em relacao a essa pergunta especifica."
+            print(f"[Pipeline] User intent injected: '{request.user_intent[:80]}'")
+
+        # Build pre_class directly from visual_figures when available
+        # (bypasses pre_classifier which fails on video transcripts that quote the attacked figure)
+        if _visual_figures:
+            _vf_figures = []
+            _vf_pos_parts = []
+            _vf_neg_parts = []
+            for fig in _visual_figures:
+                nome = fig.get("nome", fig.get("name", ""))
+                posicao = fig.get("posicao_autor", fig.get("stance", "neutro")).lower()
+                if posicao in ("contra", "attack"):
+                    stance = "attack"
+                    _vf_neg_parts.append(nome)
+                elif posicao in ("a favor", "favor", "defense"):
+                    stance = "defense"
+                    _vf_pos_parts.append(nome)
+                else:
+                    stance = "neutral_mention"
+                _vf_figures.append({"name": nome, "stance": stance, "confidence": 0.95})
+
+            if _vf_figures:
+                pre_class = {
+                    "type": "political_figure",
+                    "figures": _vf_figures,
+                    "core_position": request.question or (pre_class.get("core_position", "") if pre_class else ""),
+                    "classification_guide": {
+                        "positive_means": f"Concordar com o conteudo — apoiar {', '.join(_vf_pos_parts) or 'a posicao do autor'}" + (f" e rejeitar {', '.join(_vf_neg_parts)}" if _vf_neg_parts else ""),
+                        "negative_means": f"Discordar do conteudo — rejeitar {', '.join(_vf_pos_parts) or 'a posicao do autor'}" + (f" e apoiar {', '.join(_vf_neg_parts)}" if _vf_neg_parts else ""),
+                        "neutral_means": "Sem opiniao formada",
+                    },
+                }
+                print(f"[Pipeline] Pre-class built from visual figures: {_vf_figures}")
+        else:
+            # Text-only: normalize pre_class figures + inject missing opponent
+            if pre_class and pre_class.get("figures"):
+                _NAME_NORMALIZE = {
+                    "flavio": "Flavio Bolsonaro",
+                    "flávio": "Flavio Bolsonaro",
+                    "eduardo": "Eduardo Bolsonaro",
+                    "carlos": "Carlos Bolsonaro",
+                    "michelle": "Michelle Bolsonaro",
+                    "tarcisio": "Tarcisio de Freitas",
+                    "tarcísio": "Tarcisio de Freitas",
+                    "nikolas": "Nikolas Ferreira",
+                    "nicolas": "Nikolas Ferreira",
+                    "marcal": "Pablo Marcal",
+                    "marçal": "Pablo Marcal",
+                    "haddad": "Fernando Haddad",
+                    "boulos": "Guilherme Boulos",
+                    "gleisi": "Gleisi Hoffmann",
+                    "janones": "Andre Janones",
+                    "dino": "Flavio Dino",
+                    "governo federal": "Lula",
+                    "governo": "Lula",
+                    "pt": "Lula",
+                }
+                _RIGHT_NAMES = {"bolsonaro", "tarcisio", "tarcísio", "zema", "marçal", "marcal", "moro", "nikolas", "nicolas", "flavio bolsonaro", "flávio bolsonaro", "eduardo bolsonaro", "carlos bolsonaro", "michelle bolsonaro", "pablo marcal"}
+                _LEFT_NAMES = {"lula", "haddad", "boulos", "gleisi", "janones", "dino", "dilma", "fernando haddad", "guilherme boulos"}
+
+                for fig in pre_class["figures"]:
+                    name = fig.get("name", "")
+                    normalized = _NAME_NORMALIZE.get(name.lower().strip())
+                    if normalized:
+                        print(f"[Pipeline] Normalized pre_class figure: '{name}' -> '{normalized}'")
+                        fig["name"] = normalized
+
+                # Inject missing opponent: if only right-wing figures, add Lula as attack target (and vice versa)
+                existing_names = {f.get("name", "").lower() for f in pre_class["figures"]}
+                has_right = any(n in _RIGHT_NAMES for n in existing_names)
+                has_left = any(n in _LEFT_NAMES for n in existing_names)
+                has_lula = any("lula" in n for n in existing_names)
+                has_bolsonaro = any("bolsonaro" in n for n in existing_names)
+
+                if has_right and not has_left:
+                    # Right-wing content without left target → add Lula as attack
+                    any_defense = any(f.get("stance") == "defense" for f in pre_class["figures"])
+                    if any_defense:
+                        pre_class["figures"].append({"name": "Lula", "stance": "attack", "confidence": 0.85})
+                        print("[Pipeline] Injected missing opponent: Lula (attack)")
+                elif has_left and not has_right:
+                    # Left-wing content without right target → add Bolsonaro as attack
+                    any_defense = any(f.get("stance") == "defense" for f in pre_class["figures"])
+                    if any_defense:
+                        pre_class["figures"].append({"name": "Bolsonaro", "stance": "attack", "confidence": 0.85})
+                        print("[Pipeline] Injected missing opponent: Bolsonaro (attack)")
+
+        # Launch scoring — Persona Scorer API (fast, deterministic) with GPT fallback
+        _use_scorer = settings.use_persona_scorer
+        scorer_result = None
+        aggregate_task = None
+
+        if _use_scorer:
+            try:
+                from arena_analysis.persona_scorer import analyze as scorer_analyze
+                scorer_result = await scorer_analyze(
+                    question=request.question,
+                    context=context,
+                    pre_classification=pre_class,
+                    geo_filter=_geo,
+                    total_personas_override=total_personas,
+                    visual_figures=_visual_figures,
+                )
+                if scorer_result:
+                    print(f"[Pipeline] Persona Scorer OK — generating comments...")
+                    # Generate comments coherent with scorer results
+                    from arena_analysis.comment_generator import generate_comments
+                    _core_pos = pre_class.get("core_position", "") if pre_class else ""
+                    comments = await generate_comments(
+                        question=request.question,
+                        core_position=_core_pos,
+                        result=scorer_result,
+                    )
+                    scorer_result["comments"] = comments
+                else:
+                    print("[Pipeline] Persona Scorer returned None — falling back to GPT")
+            except Exception as scorer_err:
+                print(f"[Pipeline] Persona Scorer failed: {scorer_err} — falling back to GPT")
+                scorer_result = None
+
+        # Fallback: GPT aggregate engine (if scorer disabled or failed)
+        if scorer_result is None:
+            aggregate_task = asyncio.create_task(
+                aggregate_analyze(
+                    question=request.question,
+                    context=context,
+                    pre_classification=pre_class,
+                    geo_filter=_geo,
+                    total_personas_override=total_personas,
+                    visual_figures=_visual_figures,
+                )
+            )
+
+        # Build fake segments from profile for incremental dashboard animation
+        def _build_fake_segments(profile_data, processed, total, pos_ratio, neg_ratio):
+            """Generate fake segment data proportional to processed count."""
+            demographics = profile_data.get("demographics", {})
+            electoral = profile_data.get("electoral", {})
+            scale = processed / max(total, 1)
+
+            def _make_seg(data):
+                items = []
+                if not isinstance(data, dict):
+                    return items
+                for label, val in data.items():
+                    count = val.get("count", val) if isinstance(val, dict) else int(val or 0)
+                    sc = int(count * scale)
+                    if sc <= 0:
+                        continue
+                    p = max(0, int(sc * pos_ratio + _rng.uniform(-sc * 0.05, sc * 0.05)))
+                    n = max(0, int(sc * neg_ratio + _rng.uniform(-sc * 0.05, sc * 0.05)))
+                    items.append({"label": label, "count": sc, "positive": p, "negative": n, "neutral": max(0, sc - p - n), "avgScore": round(5.0 + _rng.uniform(-2, 2), 1)})
+                return sorted(items, key=lambda x: x["count"], reverse=True)
+
+            return {
+                "gender": _make_seg(demographics.get("gender", {})),
+                "religion": _make_seg(demographics.get("religion", demographics.get("macro_religion", {}))),
+                "region": _make_seg(demographics.get("region", demographics.get("region_br", {}))),
+                "generation": _make_seg(demographics.get("generation", {})),
+                "politicalLeaning": _make_seg(demographics.get("political_leaning", demographics.get("politicalLeaning", {}))),
+                "voto2022": _make_seg(electoral.get("voto_2022", electoral.get("voto2022", {}))),
             }
 
-            # Emit segments periodically
-            threshold = FIRST_SEGMENT_AT if last_segment_count == 0 else SEGMENT_INTERVAL
-            if progress.processed - last_segment_count >= threshold or progress.processed == progress.total:
-                try:
-                    inc_agg = await asyncio.to_thread(
-                        aggregate_results, inc_personas, inc_results, request.question
-                    )
-                    last_inc_agg = inc_agg
-                    progress_data["segments"] = inc_agg.get("segments")
-                    progress_data["stateBreakdown"] = inc_agg.get("stateBreakdown")
-                    progress_data["cityBreakdown"] = inc_agg.get("cityBreakdown")
-                    progress_data["politicalFigures"] = inc_agg.get("politicalFigures", [])
-                    progress_data["quadrants"] = inc_agg.get("quadrants", [])
-                    progress_data["clusterResults"] = inc_agg.get("clusterResults", [])
-                    last_segment_count = progress.processed
-                except Exception as seg_err:
-                    print(f"[Pipeline] Incremental segment error: {seg_err}")
+        # Load profile for fake segments
+        _profile_for_fake = await load_profile()
+
+        # Emit synthetic progress with fake segments (dashboard animates)
+        # Skip animation if Persona Scorer already returned results
+        _total_steps = 20
+        _step_time = 60.0 / _total_steps
+        _fake_pos = 0
+        _fake_neg = 0
+        _fake_neu = 0
+        _fake_score_sum = 0.0
+
+        for step_i in range(_total_steps):
+            if scorer_result is not None:
+                break  # Scorer already done — skip fake progress
+            if cancelled.is_set():
+                if aggregate_task:
+                    aggregate_task.cancel()
+                return
+
+            pct = (step_i + 1) / _total_steps
+            processed = int(total_personas * pct)
+
+            new_batch = processed - (_fake_pos + _fake_neg + _fake_neu)
+            if new_batch > 0:
+                for _ in range(new_batch):
+                    r = _rng.random()
+                    if r < 0.45:
+                        _fake_pos += 1
+                        _fake_score_sum += _rng.uniform(6.5, 9.5)
+                    elif r < 0.85:
+                        _fake_neg += 1
+                        _fake_score_sum += _rng.uniform(1.0, 3.5)
+                    else:
+                        _fake_neu += 1
+                        _fake_score_sum += _rng.uniform(4.0, 6.0)
+
+            fake_avg = round(_fake_score_sum / max(processed, 1), 1)
+            pos_r = _fake_pos / max(processed, 1)
+            neg_r = _fake_neg / max(processed, 1)
+
+            progress_data = {
+                "processed": processed,
+                "total": total_personas,
+                "positive": _fake_pos,
+                "negative": _fake_neg,
+                "neutral": _fake_neu,
+                "avgScore": fake_avg,
+                "scoreSum": round(_fake_score_sum, 1),
+            }
+
+            # Include fake segments every 4th step (keeps dashboard alive)
+            if step_i % 4 == 3 or step_i == _total_steps - 1:
+                progress_data["segments"] = _build_fake_segments(_profile_for_fake, processed, total_personas, pos_r, neg_r)
 
             yield sse_event("progress", progress_data)
 
-            if request.verbose and progress.batch_meta:
-                yield sse_event("batch_detail", progress.batch_meta)
+            if aggregate_task:
+                try:
+                    await asyncio.wait_for(asyncio.shield(aggregate_task), timeout=_step_time)
+                    break
+                except asyncio.TimeoutError:
+                    pass
+                except Exception:
+                    break
 
-            # Check cancellation after each batch
-            if cancelled.is_set():
-                print(f"[Pipeline] Cancelled during persona loop at {progress.processed}/{progress.total}")
-                return
+        # Await final result
+        if scorer_result is not None:
+            final_results = scorer_result
+            print(f"[Pipeline] Using Persona Scorer results (mode={final_results.get('_scorer_mode', '?')})")
+        elif aggregate_task:
+            try:
+                final_results = await aggregate_task
+            except Exception as e:
+                print(f"[Pipeline] Aggregate engine error: {e}")
+                import traceback
+                traceback.print_exc()
+                final_results = {
+                    "total": total_personas, "positive": 0, "negative": 0, "neutral": 0,
+                    "avgScore": 5.0, "processingTime": 0, "archetypes": [], "clusterResults": [],
+                    "comments": [], "ideologicalPoints": [], "quadrants": [], "regions": [],
+                    "generations": [], "educationLevels": [], "politicalFigures": [],
+                    "intensityBands": [], "segments": {}, "stateBreakdown": {}, "cityBreakdown": {},
+                }
+        else:
+            final_results = {
+                "total": total_personas, "positive": 0, "negative": 0, "neutral": 0,
+                "avgScore": 5.0, "processingTime": 0, "archetypes": [], "clusterResults": [],
+                "comments": [], "ideologicalPoints": [], "quadrants": [], "regions": [],
+                "generations": [], "educationLevels": [], "politicalFigures": [],
+                "intensityBands": [], "segments": {}, "stateBreakdown": {}, "cityBreakdown": {},
+            }
 
-        # ── 6. Aggregate Results ──────────────────────────────────────
+        # ── 6. Emit final progress (100%) with real data ──────────────
         yield sse_event("phase", {
             "phase": "aggregating",
             "message": f"Agregando resultados de {total_personas} personas...",
         })
 
         processing_time = (time.time() - start_time) * 1000
+        final_results["processingTime"] = processing_time
 
+        yield sse_event("progress", {
+            "processed": total_personas,
+            "total": total_personas,
+            "positive": final_results.get("positive", 0),
+            "negative": final_results.get("negative", 0),
+            "neutral": final_results.get("neutral", 0),
+            "avgScore": final_results.get("avgScore", 5.0),
+            "scoreSum": final_results.get("avgScore", 5.0) * total_personas,
+            "segments": final_results.get("segments"),
+            "stateBreakdown": final_results.get("stateBreakdown"),
+            "cityBreakdown": final_results.get("cityBreakdown"),
+            "politicalFigures": final_results.get("politicalFigures", []),
+            "quadrants": final_results.get("quadrants", []),
+            "clusterResults": final_results.get("clusterResults", []),
+        })
+
+        # Generate synthetic ideological points from profile + analysis results
         try:
-            # Reuse last incremental aggregation (already has all data) — skip redundant re-aggregation
-            if last_inc_agg is not None:
-                final_results = last_inc_agg
-                print(f"[Pipeline] Reusing last incremental aggregation (skipped re-aggregation of {total_personas} personas)")
-            else:
-                final_results = await asyncio.to_thread(
-                    aggregate_results, personas, all_results, request.question
-                )
-            final_results["processingTime"] = processing_time
-        except Exception as e:
-            print(f"[Pipeline] Aggregator error: {e}")
-            import traceback
-            traceback.print_exc()
-            # Fallback: retorna dados mínimos do progress
-            pos = sum(1 for r in all_results if r.sentiment == "positive")
-            neg = sum(1 for r in all_results if r.sentiment == "negative")
-            neu = sum(1 for r in all_results if r.sentiment == "neutral")
-            final_results = {
-                "total": len(all_results),
-                "positive": pos,
-                "negative": neg,
-                "neutral": neu,
-                "processingTime": processing_time,
-                "archetypes": [],
-                "clusterResults": [],
-                "comments": [{"personaName": r.persona_id, "sentiment": r.sentiment, "comment": r.comment, "archetype": "", "age": 0, "location": "", "state": "", "region": "", "generation": ""} for r in all_results],
-                "ideologicalPoints": [],
-                "quadrants": [],
-                "regions": [],
-                "generations": [],
-                "educationLevels": [],
-                "politicalFigures": [],
-                "intensityBands": [],
-            }
+            profile = await load_profile()
+            ideological_points = generate_ideological_points(profile, final_results)
+        except Exception as pts_err:
+            print(f"[Pipeline] Ideological points generation error: {pts_err}")
+            ideological_points = []
 
-        # Extract ideologicalPoints to stream in chunks (avoids 5-10MB single SSE event)
-        ideological_points = final_results.pop("ideologicalPoints", [])
+        final_results.pop("ideologicalPoints", None)
+
+        # Inject visual structure into results for Duda
+        if visual_result and visual_result.get("visual_structure"):
+            final_results["visual_structure"] = visual_result["visual_structure"]
+            final_results["content_analysis"] = visual_result.get("content_analysis", "")
+        elif request.context_text and "ANALISE VISUAL DOS FRAMES" in request.context_text:
+            # Video: extract visual analysis from context_text (frames analyzed in transcribe endpoint)
+            ctx = request.context_text
+            vis_start = ctx.find("--- ANALISE VISUAL DOS FRAMES DO VIDEO ---")
+            struct_start = ctx.find("--- ESTRUTURA VISUAL DO VIDEO ---")
+            if vis_start >= 0:
+                content_part = ctx[vis_start + 43:struct_start].strip() if struct_start > vis_start else ctx[vis_start + 43:].strip()
+                struct_part = ctx[struct_start + 33:].strip() if struct_start >= 0 else ""
+                visual_result = {
+                    "content_analysis": content_part,
+                    "visual_structure": struct_part,
+                }
+                final_results["visual_structure"] = struct_part
+                final_results["content_analysis"] = content_part
+                print(f"[Pipeline] Extracted video visual analysis for Duda: {len(content_part)} content + {len(struct_part)} structure")
+
         yield sse_event("results", final_results)
 
         # Stream ideological points in small chunks to keep connection alive
@@ -508,7 +817,34 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
                     print(f"[Pipeline] Cancelled during points streaming at {i + len(chunk)}/{total_points}")
                     break
 
-        # ── 7. Done ──────────────────────────────────────────────────
+        # ── 7. Duda Analysis (strategic recommendations) ──────────
+        if not cancelled.is_set():
+            yield sse_event("phase", {
+                "phase": "duda_analysis",
+                "message": "Duda analisando resultados...",
+            })
+            try:
+                from arena_analysis.duda_analyzer import analyze_duda
+                duda_result = await analyze_duda(
+                    question=request.question,
+                    positive=final_results.get("positive", 0),
+                    negative=final_results.get("negative", 0),
+                    neutral=final_results.get("neutral", 0),
+                    total_personas=total_personas,
+                    segments=final_results.get("segments", {}),
+                    content_meta=request.content_meta or {},
+                    visual_structure=visual_result.get("visual_structure", "") if visual_result else "",
+                    user_intent=request.user_intent or "",
+                )
+                yield sse_event("duda", duda_result)
+                print(f"[Pipeline] Duda analysis complete: headline='{duda_result.get('headline', '')[:50]}'")
+            except Exception as duda_err:
+                print(f"[Pipeline] Duda analysis error: {duda_err}")
+                import traceback
+                traceback.print_exc()
+                yield sse_event("duda", {"error": f"Falha na analise da Duda: {str(duda_err)[:200]}"})
+
+        # ── 8. Done ──────────────────────────────────────────────────
         yield sse_event("done", {
             "processing_time_ms": processing_time,
             "total_personas": total_personas,
@@ -536,6 +872,57 @@ async def analyze(request: AnalyzeRequest, raw_request: Request):
             "Transfer-Encoding": "chunked",
         },
     )
+
+
+# ── Duda Standalone Endpoint (backward-compat for calibracao/apresentacao) ────
+
+class DudaRequest(BaseModel):
+    question: str = ""
+    positive: int = 0
+    negative: int = 0
+    neutral: int = 0
+    totalPersonas: int = 0
+    segments: dict = {}
+    contentMeta: dict = {}
+    visualStructure: str = ""
+    specialistPanel: Optional[dict] = None
+
+
+@app.post("/api/duda/analyze")
+async def duda_standalone(req: DudaRequest):
+    """Endpoint standalone da Duda para chamadas diretas (calibracao, apresentacao)."""
+    try:
+        from arena_analysis.duda_analyzer import analyze_duda
+        result = await analyze_duda(
+            question=req.question,
+            positive=req.positive,
+            negative=req.negative,
+            neutral=req.neutral,
+            total_personas=req.totalPersonas,
+            segments=req.segments,
+            content_meta=req.contentMeta,
+            visual_structure=req.visualStructure,
+            specialist_panel=req.specialistPanel,
+        )
+        return result
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse({"error": f"Falha na analise: {str(e)[:200]}"}, status_code=500)
+
+
+# ── Recompute Aggregate Profile ──────────────────────────────────────────────
+
+@app.post("/api/arena/recompute-profile")
+async def recompute_profile():
+    """Recomputa o perfil estatistico agregado das personas."""
+    from arena_analysis.aggregate_builder import build_aggregate_profile, save_profile
+    try:
+        profile = await build_aggregate_profile()
+        await save_profile(profile)
+        return {"status": "ok", "total_personas": profile["total_personas"]}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 # ── Calibration Endpoint ──────────────────────────────────────────────────────
@@ -1197,11 +1584,21 @@ async def transcribe_url(req: TranscribeRequest):
 
             print(f"[Transcribe] Downloaded {total_size / (1024*1024):.1f}MB")
 
-            # 2. Extract audio via FFmpeg
+            # 2a. Extract video frames for visual analysis (runs in parallel with FFmpeg + Whisper)
+            visual_frames_task = None
+            try:
+                from arena_analysis.visual_analyzer import extract_and_analyze_frames
+                visual_frames_task = asyncio.create_task(
+                    extract_and_analyze_frames(tmp_input.name)
+                )
+                print("[Transcribe] Frame extraction started in parallel")
+            except Exception as vfe:
+                print(f"[Transcribe] Frame extraction setup failed (continuing): {vfe}")
+
+            # 2b. Extract audio via FFmpeg
             tmp_audio = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
             tmp_audio.close()
 
-            # Delete input video ASAP after FFmpeg reads it (pipe approach)
             print("[Transcribe] Extracting audio via FFmpeg...")
             ffmpeg_result = await asyncio.to_thread(
                 subprocess.run,
@@ -1220,7 +1617,14 @@ async def transcribe_url(req: TranscribeRequest):
                 timeout=120,
             )
 
-            # Free disk space immediately — input video no longer needed
+            # Wait for frame extraction before deleting video file
+            if visual_frames_task:
+                try:
+                    await visual_frames_task
+                except Exception:
+                    pass  # errors handled inside task
+
+            # Free disk space — input video no longer needed
             if tmp_input and os.path.exists(tmp_input.name):
                 os.unlink(tmp_input.name)
                 tmp_input = None
@@ -1284,7 +1688,21 @@ async def transcribe_url(req: TranscribeRequest):
                 return JSONResponse({"error": "Falha na transcricao", "detail": error_msg}, status_code=500)
 
             print(f"[Transcribe] OK — {total_size / (1024*1024):.1f}MB → {len(transcript)} chars")
-            return JSONResponse({"transcript": transcript})
+
+            # Collect visual frame analysis if available
+            video_visual = None
+            if visual_frames_task:
+                try:
+                    video_visual = visual_frames_task.result()
+                except Exception as ve:
+                    print(f"[Transcribe] Frame analysis failed (continuing): {ve}")
+
+            response_data: dict[str, Any] = {"transcript": transcript}
+            if video_visual and video_visual.get("content_analysis"):
+                response_data["visual_analysis"] = video_visual
+                print(f"[Transcribe] Visual analysis included: {len(video_visual.get('content_analysis', ''))} chars")
+
+            return JSONResponse(response_data)
 
         except subprocess.TimeoutExpired:
             print("[Transcribe] FFmpeg timed out (120s)")

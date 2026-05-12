@@ -44,6 +44,7 @@ def _validate_response(
                     "- Se o eleitor mencionou cidade, ela está presente\n"
                     "- Pronome de gênero correto (minha querida/meu querido)\n"
                     "- Não contém alucinações ou informações inventadas\n"
+                    "- NÃO contém palavras ou trechos repetidos (ex: 'plano de governo plano de governo')\n"
                     "- Respeita o limite de palavras do prompt\n\n"
                     "Responda APENAS com JSON válido, sem markdown:\n"
                     '{"approved": true}\n'

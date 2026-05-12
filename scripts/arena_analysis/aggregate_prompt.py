@@ -57,149 +57,54 @@ REGRAS ABSOLUTAS:
    - q_pena_morte, q_bolsa_familia_bom, q_sus_funciona, q_vacinas_confiar: idem
    A opiniao DECLARADA da persona tem PRIORIDADE sobre o score ideologico geral.
 
-6. COERENCIA ELEITORAL
-   Se o conteudo menciona figura politica:
-   - Eleitores de Lula (voto_2022=Lula, aprovacao_lula alta): defendem Lula e aliados, criticam Bolsonaro e aliados
-   - Eleitores de Bolsonaro: o oposto
-   - Conteudo critico a Lula → score baixo para eleitores de Lula, alto para eleitores de Bolsonaro
-   - Conteudo elogiando Bolsonaro → score alto para eleitores de Bolsonaro, baixo para de Lula
-
-7. COERENCIA CLUSTER ↔ SEGMENTO
+6. COERENCIA CLUSTER ↔ SEGMENTO
    - Cluster C2 (Conservador Religioso) deve alinhar com: evangelico, mais velho, direita, conservador nos costumes
    - Cluster P3 (Progressista Urbano) deve alinhar com: jovem, universitario, esquerda, progressista
    - Cross-tabulations mostram a relacao exata — USE-AS
 
-8. FORMATO DE OUTPUT
+7. FORMATO DE OUTPUT
    Responda EXCLUSIVAMENTE com JSON valido seguindo o schema fornecido.
    Sem markdown, sem texto antes ou depois, APENAS o JSON.
 
-9. COMENTARIOS (30 no total)
-   - 10 comentarios positivos, 10 negativos, 10 neutros
-   - Cada comentario deve parecer um post REAL de redes sociais brasileiras
-   - Varie por: regiao (oxe, bah, mano, mermao, uai), escolaridade (erros gramaticais para fundamental, correto para superior), geracao (Gen Z=abreviacoes+emoji, Boomer=MAIUSCULA), classe (D/E=visceral, A/B=articulado)
-   - Comentarios CURTOS: 3-15 palavras tipico, 15% com apenas 1-5 palavras
-   - Inclua humor (~40%), palavroes (caralho, porra, pqp), risadas (kkkk, kkkkkkk, rsrs)
-   - Score do comentario deve ser coerente com o sentimento (positive >= 6, negative <= 4)
+8. COMENTARIOS (9 no total)
+   - 3 positivos, 3 negativos, 3 neutros
+   - Posts CURTOS de redes sociais (3-10 palavras)
+   - Varie regiao e geracao. Score: positive >= 6, negative <= 4
 """
 
 
 def build_output_schema(total_personas: int) -> str:
-    """Gera o schema JSON que o modelo deve retornar."""
-
-    # Build segment labels for schema hints
-    clusters_list = [f'"{cid}"' for cid in sorted(CLUSTER_MACROS.keys())]
-    quadrants_list = [f'"{q}"' for q in QUADRANT_LABELS.keys()]
-    archetypes_list = [f'"{a}"' for a in ARCHETYPE_IDS]
+    """Schema JSON MINIMO — Python expande os segmentos restantes."""
 
     return f"""
-OUTPUT JSON SCHEMA (responda EXATAMENTE neste formato):
+OUTPUT JSON — responda APENAS com este formato COMPACTO:
 
 {{
   "total": {total_personas},
   "positive": <int>,
   "negative": <int>,
   "neutral": <int>,
-  "avgScore": <float 0.0-10.0>,
-
+  "avgScore": <float 0-10>,
   "segments": {{
-    "gender": [{{"label": "Masculino", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
-    "religion": [mesma estrutura para cada religiao],
-    "race": [mesma estrutura para cada raca/etnia],
-    "region": [mesma estrutura para cada regiao: Norte, Nordeste, Centro-Oeste, Sudeste, Sul],
-    "generation": [mesma estrutura para cada geracao],
-    "socialClass": [mesma estrutura para cada classe: Classe A, Classe B, Classe C, Classe D, Classe E],
-    "education": [mesma estrutura para cada nivel de escolaridade],
-    "politicalLeaning": [mesma estrutura para cada posicao politica],
-    "archetype": [mesma estrutura para cada arquetipo: {", ".join(archetypes_list)}],
-    "voto2022": [mesma estrutura para: Lula, Bolsonaro, Nulo/Outro],
-    "aprovacaoLula": [mesma estrutura para cada valor de aprovacao],
-    "voto2026": [mesma estrutura para cada candidato],
-    "clusterMacro": [mesma estrutura para: Progressista, Moderado, Conservador, Transversal],
-    "scoreEco": [mesma estrutura para: Esquerda forte, Esquerda leve, Centro, Direita leve, Direita forte],
-    "scoreCost": [mesma estrutura para: Progressista forte, Progressista leve, Centro, Conservador leve, Conservador forte]
+    "gender": [{{"label": "Masculino", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, {{"label": "Feminino", ...}}],
+    "religion": [{{"label": "<religiao>", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}, ...],
+    "region": [{{"label": "<regiao>", ...}}, ...],
+    "generation": [{{"label": "<geracao>", ...}}, ...],
+    "politicalLeaning": [{{"label": "<posicao>", ...}}, ...],
+    "voto2022": [{{"label": "Lula", ...}}, {{"label": "Bolsonaro", ...}}, {{"label": "Nulo/Outro", ...}}]
   }},
-
-  "clusterResults": [
-    {{"id": "P1", "name": "Base Social", "macro": "Progressista", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ... (todos os 24 clusters: {", ".join(clusters_list)})
-  ],
-
-  "quadrants": [
-    {{"quadrant": "esq_progressista", "label": "Esquerda + Progressista", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "dominantClusters": ["P1", "P3", "P5"]}},
-    ... (todos os 4 quadrantes: {", ".join(quadrants_list)})
-  ],
-
-  "archetypes": [
-    {{"id": "traditionalist", "name": "traditionalist", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ... (todos os 10 arquetipos)
-  ],
-
-  "regions": [
-    {{"region": "Sudeste", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>}},
-    ...
-  ],
-
-  "generations": [
-    {{"generation": "Gen Z", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgAge": <int>}},
-    ...
-  ],
-
-  "educationLevels": [
-    {{"level": "Fundamental incompleto", "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgIntensity": <float>}},
-    ...
-  ],
-
-  "politicalFigures": [
-    {{"figure": "lula", "label": "Lula (PT)", "supportCount": <int>, "attackCount": <int>, "neutralCount": <int>, "supportClusters": ["P1","P2"], "attackClusters": ["C1","C3"]}},
-    ... (apenas se figuras politicas forem detectadas no conteudo)
-  ],
-
-  "intensityBands": [
-    {{"label": "Fraco (0-0.2)", "range": [0.0, 0.2], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Moderado (0.2-0.5)", "range": [0.2, 0.5], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Forte (0.5-0.7)", "range": [0.5, 0.7], "count": <int>, "avgSentimentScore": <float>}},
-    {{"label": "Extremo (0.7-1.0)", "range": [0.7, 1.0], "count": <int>, "avgSentimentScore": <float>}}
-  ],
-
   "comments": [
-    {{
-      "archetype": "traditionalist",
-      "sentiment": "negative",
-      "comment": "isso ai e uma vergonha mermao kkkk",
-      "personaName": "Jose Silva",
-      "age": 52,
-      "city": "Sao Paulo",
-      "state": "SP",
-      "location": "SP",
-      "region": "Sudeste",
-      "generation": "Gen X",
-      "lat": -23.55,
-      "lng": -46.63,
-      "gender": "Masculino",
-      "politicalLeaning": "Direita",
-      "score": 2.5
-    }},
-    ... (EXATAMENTE 30 comentarios: 10 positivos, 10 negativos, 10 neutros)
-  ],
-
-  "stateBreakdown": {{
-    "SP": {{"count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}},
-    ...
-  }},
-
-  "cityBreakdown": {{
-    "SP": [{{"city": "Sao Paulo", "lat": -23.55, "lng": -46.63, "count": <int>, "positive": <int>, "negative": <int>, "neutral": <int>, "avgScore": <float>}}],
-    ...
-  }}
+    {{"sentiment": "positive|negative|neutral", "comment": "texto curto", "personaName": "Nome", "age": 30, "city": "Cidade", "state": "UF", "region": "Regiao", "generation": "Gen X", "gender": "Masculino", "politicalLeaning": "Direita", "score": 7.5}},
+    ... (9 comentarios: 3 positivos, 3 negativos, 3 neutros)
+  ]
 }}
 
-REGRAS DE VALIDACAO:
+REGRAS:
 - total = positive + negative + neutral = {total_personas}
-- Para CADA item em CADA segmento: positive + negative + neutral = count
-- Soma dos counts de todos os labels em cada segmento = {total_personas}
-- avgScore = media ponderada dos scores (0-10) de todas as personas no segmento
-- Comentarios: use as persona_samples fornecidas como base (nome, cidade, estado, geracao, etc.)
-- stateBreakdown e cityBreakdown devem refletir a distribuicao geografica do perfil
+- Para cada segmento: positive + negative + neutral = count
+- Inclua APENAS os 6 segmentos acima (gender, religion, region, generation, politicalLeaning, voto2022)
+- Os demais segmentos sao gerados pelo sistema automaticamente
+- Comentarios CURTOS (3-10 palavras), com girias regionais
 """
 
 
@@ -211,40 +116,95 @@ def build_user_prompt(
 ) -> str:
     """Monta o prompt do usuario com conteudo + sentimento geral."""
 
+    # Use core_position as the primary content when available — it captures the
+    # actual political meaning from transcript/visual analysis. The user's question
+    # may be operational ("seria um bom video?") rather than the actual content.
+    core_position = ""
     pre_class_block = ""
     if pre_classification:
+        core_position = pre_classification.get("core_position", "") or ""
+        guide = pre_classification.get("classification_guide", {})
         pre_class_block = f"""
 PRE-CLASSIFICACAO DO CONTEUDO:
 - Tipo: {pre_classification.get('type', 'unknown')}
 - Figuras politicas: {pre_classification.get('figures', [])}
-- Posicao core: {pre_classification.get('core_position', 'N/A')}
-- Guia: positivo significa = {pre_classification.get('positive_means', 'aprova')}
-         negativo significa = {pre_classification.get('negative_means', 'rejeita')}
+- Posicao core: {core_position or 'N/A'}
+- Guia: positivo significa = {guide.get('positive_means', pre_classification.get('positive_means', 'aprova'))}
+         negativo significa = {guide.get('negative_means', pre_classification.get('negative_means', 'rejeita'))}
 """
 
-    # Format profile sections compactly
-    demographics_str = json.dumps(profile.get("demographics", {}), ensure_ascii=False, indent=None)
-    electoral_str = json.dumps(profile.get("electoral", {}), ensure_ascii=False, indent=None)
-    ideological_str = json.dumps(profile.get("ideological", {}), ensure_ascii=False, indent=None)
-    clusters_str = json.dumps(profile.get("clusters", {}), ensure_ascii=False, indent=None)
-    thematic_str = json.dumps(profile.get("thematic_opinions", {}), ensure_ascii=False, indent=None)
-    geographic_str = json.dumps(profile.get("geographic", {}), ensure_ascii=False, indent=None)
-    cross_tabs_str = json.dumps(profile.get("cross_tabulations", {}), ensure_ascii=False, indent=None)
+    # ── Compact profile to reduce tokens (~56K → ~8K) ──
 
-    # Persona samples for comment generation
+    # Demographics: just label→count
+    def _compact_demo(data: dict) -> str:
+        lines = []
+        for category, items in data.items():
+            if isinstance(items, dict):
+                parts = [f"{k}:{v}" for k, v in items.items() if v]
+                lines.append(f"  {category}: {', '.join(parts)}")
+        return "\n".join(lines) if lines else json.dumps(data, ensure_ascii=False)
+
+    demographics_str = _compact_demo(profile.get("demographics", {}))
+    electoral_str = _compact_demo(profile.get("electoral", {}))
+    ideological_str = _compact_demo(profile.get("ideological", {}))
+
+    # Thematic: compact
+    thematic_str = _compact_demo(profile.get("thematic_opinions", {}))
+
+    # Clusters: 1 line per cluster (id, name, count, avg_eco, avg_cost)
+    clusters_data = profile.get("clusters", {})
+    cluster_items = clusters_data.get("clusters", clusters_data)
+    cluster_lines = []
+    if isinstance(cluster_items, dict):
+        for cid, cdata in cluster_items.items():
+            if isinstance(cdata, dict):
+                cluster_lines.append(
+                    f"  {cid} ({cdata.get('name', cid)}): n={cdata.get('count', 0)}, eco={cdata.get('avg_score_eco', 0):.2f}, cost={cdata.get('avg_score_cost', 0):.2f}, regiao={cdata.get('dominant_region', '?')}"
+                )
+    clusters_str = "\n".join(cluster_lines) if cluster_lines else json.dumps(clusters_data, ensure_ascii=False)
+
+    # Geographic: just state→count (1 line)
+    geo_data = profile.get("geographic", {})
+    states = geo_data.get("states", geo_data)
+    if isinstance(states, dict):
+        geo_parts = [f"{st}:{d.get('count', d) if isinstance(d, dict) else d}" for st, d in states.items()]
+        geographic_str = "  " + ", ".join(geo_parts)
+    else:
+        geographic_str = json.dumps(geo_data, ensure_ascii=False)
+
+    # Persona samples: only 30 (for comment generation), compact fields
     samples = profile.get("persona_samples", [])
-    samples_str = json.dumps(samples[:200], ensure_ascii=False, indent=None)
+    compact_samples = []
+    for s in samples[:30]:
+        compact_samples.append({
+            "name": s.get("name", ""),
+            "age": s.get("age", 0),
+            "city": s.get("city", ""),
+            "state": s.get("state", ""),
+            "gender": s.get("gender", ""),
+            "education": s.get("education_level", ""),
+            "generation": s.get("generation", ""),
+            "political": s.get("political_leaning", ""),
+            "cluster": s.get("cluster_id", ""),
+            "religion": s.get("macro_religion", ""),
+        })
+    samples_str = json.dumps(compact_samples, ensure_ascii=False, indent=None)
 
     total = profile.get("total_personas", 20000)
 
-    return f"""CONTEUDO A SER ANALISADO:
-"{question}"
+    # Primary content: core_position (political meaning) > question (user text)
+    primary_content = core_position or question
+    # If core_position differs from question, include original question as context
+    user_note = ""
+    if core_position and question and core_position.lower() != question.lower():
+        user_note = f'\nNOTA DO USUARIO: "{question}"'
 
-CONTEXTO FACTUAL:
-{context or "Sem contexto adicional."}
+    return f"""CONTEUDO: "{primary_content}"{user_note}
+
+CONTEXTO: {context or "Sem contexto adicional."}
 {pre_class_block}
 
-===== SENTIMENTO GERAL DAS {total:,} PERSONAS =====
+=== PERFIL DAS {total:,} PERSONAS ===
 
 DEMOGRAFICO:
 {demographics_str}
@@ -255,21 +215,18 @@ ELEITORAL:
 IDEOLOGICO:
 {ideological_str}
 
-CLUSTERS (24 grupos ideologicos):
+CLUSTERS:
 {clusters_str}
 
-OPINIOES TEMATICAS DECLARADAS:
+OPINIOES TEMATICAS:
 {thematic_str}
 
-GEOGRAFICO:
+ESTADOS (count por UF):
 {geographic_str}
 
-CROSS-TABULATIONS:
-{cross_tabs_str}
-
-===== PERSONAS REPRESENTATIVAS (para gerar comentarios) =====
+=== PERSONAS PARA COMENTARIOS (30) ===
 {samples_str}
 
 {build_output_schema(total)}
 
-Analise o conteudo e DERIVE os scores por segmento. Responda APENAS com o JSON."""
+DERIVE os scores e responda APENAS com JSON."""
