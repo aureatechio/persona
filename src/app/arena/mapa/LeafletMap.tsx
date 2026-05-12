@@ -53,6 +53,7 @@ interface LeafletMapProps {
   cityBreakdown: Record<string, CityData[]>;
   liveComments: CommentResult[];
   onStatePress: (sigla: string) => void;
+  focusState?: string | null;
 }
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson';
@@ -67,16 +68,35 @@ const nameToSigla: Record<string, string> = {
   'Tocantins': 'TO',
 };
 
-export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments, onStatePress }: LeafletMapProps) {
+export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments, onStatePress, focusState }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const geoLayerRef = useRef<L.GeoJSON | null>(null);
   const pinLayerRef = useRef<L.LayerGroup | null>(null);
   const breakdownRef = useRef(stateBreakdown);
   breakdownRef.current = stateBreakdown;
+  const focusStateRef = useRef(focusState);
+  focusStateRef.current = focusState;
+
+  function fitToState(sigla: string) {
+    const map = mapInstanceRef.current;
+    const geoLayer = geoLayerRef.current;
+    if (!map || !geoLayer) return;
+    geoLayer.eachLayer((layer: any) => {
+      const name = layer.feature?.properties?.name || '';
+      const s = layer.feature?.properties?.sigla || nameToSigla[name] || '';
+      if (s === sigla && typeof layer.getBounds === 'function') {
+        map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+      }
+    });
+  }
 
   function getStateStyle(sigla: string) {
     const sd = breakdownRef.current[sigla];
+    const focus = focusStateRef.current;
+    const isFocused = focus && sigla === focus;
+    const isDimmed = !!focus && !isFocused;
+
     let color = '#27272a';
     let fillOpacity = 0.15;
     if (sd && sd.count > 0) {
@@ -84,6 +104,27 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
       color = scoreToHex(score);
       fillOpacity = 0.6;
     }
+
+    if (isDimmed) {
+      // Outros estados ficam quase invisíveis pra destacar o foco
+      return {
+        fillColor: '#18181b',
+        fillOpacity: 0.35,
+        color: 'rgba(255,255,255,0.04)',
+        weight: 0.5,
+      };
+    }
+
+    if (isFocused) {
+      // Estado em foco: cor do score + borda emerald + maior opacidade
+      return {
+        fillColor: color,
+        fillOpacity: 0.85,
+        color: '#34d399',
+        weight: 2.5,
+      };
+    }
+
     return { fillColor: color, fillOpacity, color: 'rgba(255,255,255,0.12)', weight: 1 };
   }
 
@@ -111,9 +152,11 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
     pinLayerRef.current = L.layerGroup().addTo(map);
 
     // Load GeoJSON
+    let cancelled = false;
     fetch(GEOJSON_URL)
       .then((r) => r.json())
       .then((geojson) => {
+        if (cancelled || mapInstanceRef.current !== map) return;
         const geoLayer = L.geoJSON(geojson, {
           style: (feature) => {
             const name = feature?.properties?.name || '';
@@ -134,11 +177,23 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
           },
         }).addTo(map);
         geoLayerRef.current = geoLayer;
+        if (focusStateRef.current) fitToState(focusStateRef.current);
       })
       .catch((err) => console.warn('[Map] GeoJSON error:', err));
 
-    return () => { map.remove(); mapInstanceRef.current = null; geoLayerRef.current = null; pinLayerRef.current = null; };
+    return () => {
+      cancelled = true;
+      map.remove();
+      mapInstanceRef.current = null;
+      geoLayerRef.current = null;
+      pinLayerRef.current = null;
+    };
   }, []);
+
+  // Fit to focus state when it changes after init
+  useEffect(() => {
+    if (focusState) fitToState(focusState);
+  }, [focusState]);
 
   // Recolor states
   useEffect(() => {
@@ -151,7 +206,7 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
         layer.setStyle(getStateStyle(sigla));
       }
     });
-  }, [stateBreakdown]);
+  }, [stateBreakdown, focusState]);
 
   // Update persona/city pins
   useEffect(() => {

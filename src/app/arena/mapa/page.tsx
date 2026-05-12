@@ -121,16 +121,21 @@ export default function MapaPage() {
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
 
   const initAuth = useAuthStore((s) => s.initialize);
+  const profile = useAuthStore((s) => s.profile);
   useEffect(() => { initAuth(); }, [initAuth]);
+
+  const focusState = profile?.state || null;
 
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
 
   const stateEntries = useMemo(() => {
-    return Object.entries(stateBreakdown)
+    const all = Object.entries(stateBreakdown)
       .map(([sigla, d]) => ({ sigla, ...d }))
       .sort((a, b) => b.count - a.count);
-  }, [stateBreakdown]);
+    if (focusState) return all.filter((e) => e.sigla === focusState);
+    return all;
+  }, [stateBreakdown, focusState]);
 
   const handleStatePress = useCallback((sigla: string) => {
     setSelectedCity(null);
@@ -243,7 +248,13 @@ export default function MapaPage() {
       <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.04] shrink-0">
         <MapPin size={14} className="text-emerald-400" />
         <span className="text-[11px] font-black text-emerald-400 tracking-[1.5px] flex-1">MAPA DE PERSONAS</span>
-        <span className="text-[11px] text-zinc-600">{stateEntries.length} estados</span>
+        {focusState ? (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-400 tracking-wider">
+            {focusState}
+          </span>
+        ) : (
+          <span className="text-[11px] text-zinc-600">{stateEntries.length} estados</span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto pb-20 overscroll-contain">
@@ -254,6 +265,7 @@ export default function MapaPage() {
             cityBreakdown={cityBreakdown}
             liveComments={liveComments}
             onStatePress={handleStatePress}
+            focusState={focusState}
           />
         </div>
 
@@ -272,7 +284,9 @@ export default function MapaPage() {
           </p>
         ) : (
           <div className="px-4 pt-3 space-y-1.5">
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[1.5px]">Estados ({stateEntries.length})</span>
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-[1.5px]">
+              {focusState ? `Seu estado · ${STATE_NAMES[focusState] || focusState}` : `Estados (${stateEntries.length})`}
+            </span>
             {stateEntries.map(({ sigla }) => (
               <StateMiniRow
                 key={sigla}

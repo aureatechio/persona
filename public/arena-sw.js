@@ -35,6 +35,9 @@ self.addEventListener('fetch', (event) => {
   // (Supabase Storage uploads, DigitalOcean API, etc.)
   if (url.origin !== self.location.origin) return;
 
+  // Skip auth endpoints — they redirect and set cookies; SW interception breaks the flow
+  if (url.pathname.startsWith('/api/auth/')) return;
+
   // API calls: network-first
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(

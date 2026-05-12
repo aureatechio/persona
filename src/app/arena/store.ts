@@ -151,6 +151,10 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   loadFromHistory: (record: any) => {
     const ad = record.analise_data || {};
     const ar = record.arena_data || {};
+    const total = ar.totalPersonas || 0;
+    // Para análises antigas sem processedCount salvo, usa totalPersonas
+    // (a análise foi concluída → processedCount === totalPersonas).
+    const processed = ar.processedCount ?? total;
     set({
       analiseData: ad,
       chatMessages: record.chat_messages || [],
@@ -167,14 +171,18 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
       data: {
         ...makeZeroedData(ar.question || record.question || ''),
         phase: 'complete' as const,
+        processedCount: processed,
+        totalCount: total,
         positive: ar.positive || 0,
         negative: ar.negative || 0,
         neutral: ar.neutral || 0,
         avgScore: ar.avgScore || 0,
-        totalPersonas: ar.totalPersonas || 0,
+        totalPersonas: total,
         segments: ar.segments || {},
         contentMeta: ar.contentMeta || undefined,
         stateBreakdown: ar.stateBreakdown || {},
+        cityBreakdown: ar.cityBreakdown || {},
+        liveComments: ar.liveComments || [],
         simulation: ar.simulation || null,
       },
     });

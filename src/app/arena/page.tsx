@@ -79,6 +79,7 @@ export default function ArenaPage() {
   const contentMeta = useArenaStore((s) => s.data.contentMeta);
   const avgScore = useArenaStore((s) => s.data.avgScore);
   const stateBreakdown = useArenaStore((s) => s.data.stateBreakdown);
+  const cityBreakdown = useArenaStore((s) => s.data.cityBreakdown);
   const reset = useArenaStore((s) => s.reset);
   const analiseData = useArenaStore((s) => s.analiseData);
   const setAnaliseData = useArenaStore((s) => s.setAnaliseData);
@@ -245,7 +246,7 @@ export default function ArenaPage() {
         question: question || '',
         content_meta: contentMeta || {},
         analise_data: analiseData,
-        arena_data: { positive, negative, neutral, avgScore, totalPersonas, segments, question, contentMeta, stateBreakdown },
+        arena_data: { positive, negative, neutral, avgScore, totalPersonas, processedCount, segments, question, contentMeta, stateBreakdown, cityBreakdown },
         chat_messages: chatMessages,
       }),
     })
