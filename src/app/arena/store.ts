@@ -151,6 +151,10 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
   loadFromHistory: (record: any) => {
     const ad = record.analise_data || {};
     const ar = record.arena_data || {};
+    const total = ar.totalPersonas || 0;
+    // Para análises antigas sem processedCount salvo, usa totalPersonas
+    // (a análise foi concluída → processedCount === totalPersonas).
+    const processed = ar.processedCount ?? total;
     set({
       analiseData: ad,
       chatMessages: record.chat_messages || [],
@@ -167,14 +171,18 @@ export const useArenaStore = create<ArenaStore>((set, get) => ({
       data: {
         ...makeZeroedData(ar.question || record.question || ''),
         phase: 'complete' as const,
+        processedCount: processed,
+        totalCount: total,
         positive: ar.positive || 0,
         negative: ar.negative || 0,
         neutral: ar.neutral || 0,
         avgScore: ar.avgScore || 0,
-        totalPersonas: ar.totalPersonas || 0,
+        totalPersonas: total,
         segments: ar.segments || {},
         contentMeta: ar.contentMeta || undefined,
         stateBreakdown: ar.stateBreakdown || {},
+        cityBreakdown: ar.cityBreakdown || {},
+        liveComments: ar.liveComments || [],
         simulation: ar.simulation || null,
       },
     });
@@ -205,10 +213,12 @@ export async function arenaSubmit(params: SubmitParams) {
   store.setSubmitting(true);
   store.setCollectingStatus('analyzing');
 
+  let imageStoragePath: string | undefined;
+
   try {
     let enrichedContext = '';
+    let imageSignedUrl: string | undefined;
     let corePoint = '';
-    let politicalFigures: { nome: string; alinhamento: string; posicao_autor?: string }[] = [];
 
     const imageAtt = params.attachments.find((a) => a.type === 'image');
     const videoAtt = params.attachments.find((a) => a.type === 'video');
@@ -227,12 +237,42 @@ export async function arenaSubmit(params: SubmitParams) {
           mediaName = imageAtt.name || 'photo.jpg';
           store.updateData({ ...store.data, question: 'Preparando imagem...' } as any, 'analyzing');
 
-          if (imageAtt.base64) {
-            mediaData = `data:${imageAtt.mimeType || 'image/jpeg'};base64,${imageAtt.base64}`;
-          } else if (imageAtt.file) {
-            // Convert File to base64
-            const base64 = await fileToBase64(imageAtt.file);
-            mediaData = `data:${imageAtt.file.type || 'image/jpeg'};base64,${base64}`;
+          // Upload image to Supabase → Python visual analyzer handles all analysis via URL
+          try {
+            const imgFile = imageAtt.file || (() => {
+              const bin = atob(imageAtt.base64!);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              return new Blob([bytes], { type: imageAtt.mimeType || 'image/jpeg' });
+            })();
+            const ext = mediaName.split('.').pop() || 'jpg';
+            const urlRes = await fetch('/api/transcribe-video/upload-url', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ filename: `image.${ext}` }),
+            });
+            if (urlRes.ok) {
+              const { signedUrl: uploadUrl, path } = await urlRes.json();
+              imageStoragePath = path;
+              const putRes = await fetch(uploadUrl, {
+                method: 'PUT',
+                headers: { 'Content-Type': imageAtt.mimeType || imageAtt.file?.type || 'image/jpeg' },
+                body: imgFile,
+              });
+              if (putRes.ok) {
+                const dlRes = await fetch('/api/transcribe-video/download-url', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path }),
+                });
+                if (dlRes.ok) {
+                  const { signedUrl } = await dlRes.json();
+                  imageSignedUrl = signedUrl;
+                }
+              }
+            }
+          } catch (uploadErr: any) {
+            console.warn('[Arena] Image upload for visual analysis failed (continuing):', uploadErr.message);
           }
         }
 
@@ -295,7 +335,30 @@ export async function arenaSubmit(params: SubmitParams) {
             if (transcribeRes.ok) {
               const transcribeData = await transcribeRes.json();
               const transcript = transcribeData.transcript || '';
-              mediaData = transcript.length > 10 ? transcript : '__TRANSCRIPTION_FAILED__';
+              const hasTranscript = transcript.length > 10;
+              mediaData = hasTranscript ? transcript : '';
+
+              // Capture video visual analysis from frame extraction (works even without audio)
+              if (transcribeData.visual_analysis) {
+                const va = transcribeData.visual_analysis;
+                if (va.content_analysis) {
+                  const visualBlock = `\n\n--- ANALISE VISUAL DOS FRAMES DO VIDEO ---\n${va.content_analysis}\n\n--- ESTRUTURA VISUAL DO VIDEO ---\n${va.visual_structure || ''}`;
+                  mediaData = (mediaData || '') + visualBlock;
+                  // Always use core_point from Gemini — it captures the political framing
+                  if (va.core_point) {
+                    corePoint = va.core_point;
+                  }
+                  // Pass political_figures as structured data (not just text in context)
+                  if (va.political_figures?.length) {
+                    (videoAtt as any)._politicalFigures = va.political_figures;
+                  }
+                }
+              }
+
+              // Only mark as failed if NO visual analysis either
+              if (!mediaData || mediaData.length < 10) {
+                mediaData = '__TRANSCRIPTION_FAILED__';
+              }
             } else {
               mediaData = '__TRANSCRIPTION_FAILED__';
             }
@@ -312,37 +375,11 @@ export async function arenaSubmit(params: SubmitParams) {
           }
         }
 
-        // ── Step 2: Analyze media via Claude ──
-        if (mediaData) {
-          store.updateData({ ...store.data, question: 'Analisando conteúdo...' } as any, 'analyzing');
-
-          const mediaRes = await fetch('/api/analyze-media', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              attachments: [{ type: mediaType, data: mediaData, name: mediaName }],
-            }),
-          });
-
-          if (mediaRes.ok) {
-            const result = await mediaRes.json();
-            const context = result.context || '';
-            corePoint = result.core_point || '';
-            politicalFigures = result.political_figures || [];
-
-            if (mediaType === 'video' && mediaData && mediaData !== '__TRANSCRIPTION_FAILED__') {
-              enrichedContext = `--- Transcrição completa da mídia ---\n${mediaData}`;
-            } else {
-              enrichedContext = `--- Contexto extraído da mídia ---\n${context}`;
-            }
-
-            if (politicalFigures.length > 0) {
-              enrichedContext += '\n\n--- Figuras políticas mencionadas ---\n';
-              enrichedContext += politicalFigures.map((f) =>
-                `${f.nome} (alinhamento: ${f.alinhamento}) — autor ${f.posicao_autor || 'neutro'} a essa figura`
-              ).join('\n');
-            }
-          }
+        // ── Step 2: Build context from media ──
+        // Images: Python visual analyzer handles everything via image_url (no frontend analysis needed)
+        // Videos: transcript + frame analysis go as context_text for Python to enrich
+        if (mediaType === 'video' && mediaData && mediaData !== '__TRANSCRIPTION_FAILED__') {
+          enrichedContext = `--- Transcrição completa da mídia ---\n${mediaData}`;
         }
       } catch (err: any) {
         console.warn('[Arena] Media pipeline error:', err.message);
@@ -350,13 +387,22 @@ export async function arenaSubmit(params: SubmitParams) {
     }
 
     // ── Step 3: Build request body ──
-    const finalQuestion = corePoint || params.question || '';
+    // question = conteúdo da mídia (core_point extraído pela IA)
+    // user_intent = o que o usuário quer saber sobre a mídia (digitou no IntentConfirmSheet)
+    const finalQuestion = corePoint || '';
+    const userIntent = params.question || '';
     const { region, city } = params.contentMeta;
+    // Collect video political_figures if available
+    const videoPoliticalFigures = (videoAtt as any)?._politicalFigures || undefined;
+
     const body: Record<string, unknown> = {
-      question: finalQuestion,
+      question: finalQuestion || userIntent,
+      user_intent: userIntent,
       context_text: enrichedContext,
       verbose: true,
       content_meta: params.contentMeta,
+      image_url: imageSignedUrl || undefined,
+      video_political_figures: videoPoliticalFigures,
     };
     if (region !== 'brasil') {
       body.geo_filter = { state: region, city: city || null };
@@ -481,6 +527,14 @@ export async function arenaSubmit(params: SubmitParams) {
   } finally {
     useArenaStore.getState().setSubmitting(false);
     activeXhr = null;
+    // Cleanup uploaded image from Supabase Storage
+    if (imageStoragePath) {
+      fetch('/api/transcribe-video/download-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: imageStoragePath, action: 'delete' }),
+      }).catch(() => {});
+    }
   }
 }
 
@@ -510,7 +564,8 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
     case 'phase': {
       immediate = true;
       const pythonPhase = payload.data?.phase;
-      if (pythonPhase === 'aggregating') {
+      if (pythonPhase === 'aggregating' || pythonPhase === 'duda_analysis') {
+        // Duda runs after aggregate — keep the progress bar running (70→99%)
         data.phase = 'aggregating';
         collectingStatus = null;
       } else if (pythonPhase === 'processing_personas') {
@@ -522,6 +577,7 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           web_research: 'researching',
           building_context: 'context',
           loading_personas: 'loading',
+          visual_analysis: 'analyzing',
         };
         data.phase = 'collecting';
         collectingStatus = statusMap[pythonPhase] || 'analyzing';
@@ -582,6 +638,17 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
           ...data.simulation,
           ideologicalPoints: [...(data.simulation.ideologicalPoints || []), ...payload.data],
         };
+      }
+      break;
+    }
+    case 'duda': {
+      // Duda analysis arrived from Python pipeline — set directly in store
+      immediate = true;
+      const dudaResult = payload.data;
+      if (dudaResult && !dudaResult.error) {
+        useArenaStore.getState().setAnaliseData(dudaResult);
+      } else if (dudaResult?.error) {
+        useArenaStore.getState().setAnaliseError(dudaResult.error);
       }
       break;
     }

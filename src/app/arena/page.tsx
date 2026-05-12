@@ -21,6 +21,7 @@ import { AnalysisSummary } from './components/AnalysisSummary';
 import { AnalysisProgressLoader } from './components/AnalysisProgressLoader';
 import { AuthModal } from './components/AuthModal';
 import { ProfileSheet } from './components/ProfileSheet';
+import { IntentConfirmSheet } from './components/IntentConfirmSheet';
 
 // ── Header Avatar (exact match of mobile HeaderAvatar) ──
 function HeaderAvatar() {
@@ -78,6 +79,7 @@ export default function ArenaPage() {
   const contentMeta = useArenaStore((s) => s.data.contentMeta);
   const avgScore = useArenaStore((s) => s.data.avgScore);
   const stateBreakdown = useArenaStore((s) => s.data.stateBreakdown);
+  const cityBreakdown = useArenaStore((s) => s.data.cityBreakdown);
   const reset = useArenaStore((s) => s.reset);
   const analiseData = useArenaStore((s) => s.analiseData);
   const setAnaliseData = useArenaStore((s) => s.setAnaliseData);
@@ -100,6 +102,9 @@ export default function ArenaPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showPlatformSelector, setShowPlatformSelector] = useState(false);
+  const [showIntentConfirm, setShowIntentConfirm] = useState(false);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [intentText, setIntentText] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [pendingTextQuestion, setPendingTextQuestion] = useState('');
@@ -212,6 +217,7 @@ export default function ArenaPage() {
   let screenState: ScreenState = 'idle';
   if (isStreaming) screenState = 'processing';
   else if (isComplete) screenState = 'complete';
+  else if (showIntentConfirm) screenState = 'platformSelect';
   else if (showPlatformSelector) screenState = 'platformSelect';
   else if (attachments.length > 0) screenState = 'hasAttachment';
 
@@ -220,45 +226,13 @@ export default function ArenaPage() {
     setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }), 300);
   }, [phase, analiseLoading, analiseData, chatMessages.length]);
 
-  // Auto-call analise on complete (uses store state — persists across navigation)
+  // Duda analysis now arrives via SSE event 'duda' from Python pipeline — no separate fetch needed
+  // Set loading state when streaming starts so UI shows loading indicator
   useEffect(() => {
-    if (!isComplete || !simulation || analiseLoading || analiseData) return;
-    setAnaliseLoading(true);
-
-    const payload = JSON.stringify({
-      question: question || '',
-      positive, negative, neutral,
-      totalPersonas: totalPersonas || 0,
-      segments: segments || {},
-      phase: 'complete',
-      contentMeta: contentMeta ? {
-        ...contentMeta,
-        mediaType: contentMeta.mediaType,
-      } : {},
-      avgScore: avgScore || 0,
-      stateBreakdown: stateBreakdown || {},
-    });
-
-    const tryFetch = (attempt: number) => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 90000);
-
-      fetch('/api/arena/analise', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        signal: controller.signal,
-      })
-        .then((r) => { clearTimeout(timeout); if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-        .then((json) => { if (json.error) throw new Error(json.error); setAnaliseData(json); })
-        .catch((err) => {
-          clearTimeout(timeout);
-          if (attempt < 2) setTimeout(() => tryFetch(attempt + 1), 2000);
-          else setAnaliseError('Falha ao gerar análise. Toque para tentar novamente.');
-        });
-    };
-    tryFetch(1);
-  }, [isComplete, simulation, analiseData, analiseLoading]);
+    if (isStreaming && !analiseLoading && !analiseData) {
+      setAnaliseLoading(true);
+    }
+  }, [isStreaming, analiseLoading, analiseData]);
 
   // Auto-save analysis to history when analiseData is set
   useEffect(() => {
@@ -272,7 +246,7 @@ export default function ArenaPage() {
         question: question || '',
         content_meta: contentMeta || {},
         analise_data: analiseData,
-        arena_data: { positive, negative, neutral, avgScore, totalPersonas, segments, question, contentMeta, stateBreakdown },
+        arena_data: { positive, negative, neutral, avgScore, totalPersonas, processedCount, segments, question, contentMeta, stateBreakdown, cityBreakdown },
         chat_messages: chatMessages,
       }),
     })
@@ -378,35 +352,40 @@ export default function ArenaPage() {
   const handlePlatformConfirm = (platforms: string[]) => {
     setShowPlatformSelector(false);
     if (!profile) return;
+    // Store platforms and open intent confirmation
+    setSelectedPlatforms(platforms);
+    setIntentText(pendingTextQuestion || '');
+    setShowIntentConfirm(true);
+  };
+
+  const handleIntentConfirm = (finalIntentText: string) => {
+    setShowIntentConfirm(false);
+    if (!profile) return;
     setAnaliseData(null);
     setShowFullAnalysis(false);
 
-    const isTextOnly = attachments.length === 0 && pendingTextQuestion;
+    const isTextOnly = attachments.length === 0 && finalIntentText;
 
-    // Detect attachment type (image / video / audio / text)
+    // Detect attachment type
     let attachmentType: 'image' | 'video' | 'audio' | 'text' = 'text';
     if (!isTextOnly && attachments.length > 0) {
       const att = attachments[0];
-      if (att.type === 'image') {
-        attachmentType = 'image';
-      } else if (att.mimeType?.startsWith('audio/')) {
-        attachmentType = 'audio';
-      } else {
-        attachmentType = 'video';
-      }
+      if (att.type === 'image') attachmentType = 'image';
+      else if (att.mimeType?.startsWith('audio/')) attachmentType = 'audio';
+      else attachmentType = 'video';
     }
 
-    // Save to store (persists across tab navigation)
+    // Save to store
     setUserMediaContext({
-      text: platforms.join(', '),
+      text: selectedPlatforms.join(', '),
       attachmentPreviews: isTextOnly ? [] : attachments.map(a => ({ id: a.id, type: a.type, uri: a.uri })),
     });
 
     arenaSubmit({
-      question: isTextOnly ? pendingTextQuestion : undefined,
+      question: finalIntentText || undefined,
       attachments: isTextOnly ? [] : attachments,
       contentMeta: {
-        mediaType: platforms,
+        mediaType: selectedPlatforms,
         candidateIdeology: profile.ideology === 'esquerda' ? 'esquerda' : 'direita',
         region: profile.state || 'brasil',
         city: profile.city || undefined,
@@ -415,6 +394,8 @@ export default function ArenaPage() {
     });
     setAttachments([]);
     setPendingTextQuestion('');
+    setSelectedPlatforms([]);
+    setIntentText('');
   };
 
   const handleStop = useCallback(() => { arenaCancel(); }, []);
@@ -693,7 +674,36 @@ export default function ArenaPage() {
       {/* ═══ MODALS ═══ */}
       <AuthModal visible={showAuthModal} onClose={() => setShowAuthModal(false)} onSuccess={() => { setShowAuthModal(false); setShowPlatformSelector(true); }} />
       <AttachmentMenu visible={showAttachMenu} onClose={() => setShowAttachMenu(false)} onFileSelected={handleFileFromMenu} onRecordVideo={handleRecordVideo} />
-      <PlatformSelector visible={showPlatformSelector} onClose={() => setShowPlatformSelector(false)} onConfirm={handlePlatformConfirm} />
+      <PlatformSelector
+        visible={showPlatformSelector}
+        onClose={() => setShowPlatformSelector(false)}
+        onConfirm={handlePlatformConfirm}
+        attachmentType={
+          attachments.length > 0
+            ? attachments[0].type === 'image'
+              ? 'image'
+              : attachments[0].mimeType?.startsWith('audio/')
+                ? 'audio'
+                : 'video'
+            : 'text'
+        }
+      />
+      <IntentConfirmSheet
+        visible={showIntentConfirm}
+        onClose={() => { setShowIntentConfirm(false); setShowPlatformSelector(true); }}
+        onConfirm={handleIntentConfirm}
+        initialText={intentText}
+        attachmentType={
+          attachments.length > 0
+            ? attachments[0].type === 'image'
+              ? 'image'
+              : attachments[0].mimeType?.startsWith('audio/')
+                ? 'audio'
+                : 'video'
+            : 'text'
+        }
+        platforms={selectedPlatforms}
+      />
     </div>
   );
 }
