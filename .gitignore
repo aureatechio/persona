@@ -51,3 +51,16 @@ supabase/.temp/
 
 # cursor IDE
 .cursor/
+
+# Python virtualenvs and caches (selfie-worker, redistribuicao-worker, etc.)
+**/.venv/
+**/__pycache__/
+**/*.pyc
+
+# Claude Code local artifacts
+.agents/
+.claude/scheduled_tasks.lock
+.claude/skills/
+
+# Random screenshots accidentally saved into source
+src/lib/Captura de tela*.png
