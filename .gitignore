@@ -64,3 +64,6 @@ supabase/.temp/
 
 # Random screenshots accidentally saved into source
 src/lib/Captura de tela*.png
+
+# Seed scripts that contain API secrets (never commit)
+scripts/seed-sync-keys-*.ts
