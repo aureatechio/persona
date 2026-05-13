@@ -404,7 +404,8 @@ export async function arenaSubmit(params: SubmitParams) {
       image_url: imageSignedUrl || undefined,
       video_political_figures: videoPoliticalFigures,
     };
-    if (region !== 'brasil') {
+    const hasGeoFilter = region !== 'brasil';
+    if (hasGeoFilter) {
       body.geo_filter = { state: region, city: city || null };
     }
 
@@ -473,7 +474,7 @@ export async function arenaSubmit(params: SubmitParams) {
           const jsonStr = line.slice(6);
           try {
             const payload = JSON.parse(jsonStr);
-            const result = processSSEEvent(payload, liveData);
+            const result = processSSEEvent(payload, liveData, hasGeoFilter);
             liveData = result.data;
             if (result.collectingStatus !== undefined) {
               pendingCollectingStatus = result.collectingStatus;
@@ -502,7 +503,7 @@ export async function arenaSubmit(params: SubmitParams) {
           if (line.startsWith('data: ')) {
             try {
               const payload = JSON.parse(line.slice(6));
-              const result = processSSEEvent(payload, liveData);
+              const result = processSSEEvent(payload, liveData, hasGeoFilter);
               liveData = result.data;
               if (result.collectingStatus !== undefined) {
                 pendingCollectingStatus = result.collectingStatus;
@@ -554,7 +555,7 @@ interface SSEResult {
   immediate: boolean;
 }
 
-function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
+function processSSEEvent(payload: any, current: ArenaLiveData, hasGeoFilter = false): SSEResult {
   const data = { ...current };
   const eventType = payload.type;
   let collectingStatus: string | null | undefined = undefined;
@@ -586,8 +587,12 @@ function processSSEEvent(payload: any, current: ArenaLiveData): SSEResult {
     }
     case 'personas_loaded': {
       const count = payload.data?.count || payload.data?.total || 0;
-      data.totalCount = count;
-      data.totalPersonas = count;
+      // Quando há geo_filter, ignora o total bruto pré-filtro (20k);
+      // espera o geo_resolved com o total filtrado.
+      if (!hasGeoFilter) {
+        data.totalCount = count;
+        data.totalPersonas = count;
+      }
       collectingStatus = 'loading';
       break;
     }

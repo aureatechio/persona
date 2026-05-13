@@ -5,13 +5,30 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, Search, Globe, Users, Zap, Check, Square } from 'lucide-react';
+import { STATE_NAMES } from '../constants';
 
-const STEPS = [
-  { id: 'analyzing', icon: Brain, label: 'Interpretando seu conteúdo', sublabel: 'Identificando narrativa, tom e intenção', color: '#8b5cf6' },
-  { id: 'researching', icon: Search, label: 'Cruzando com comportamento eleitoral', sublabel: 'Comparando com padrões reais de voto', color: '#38bdf8' },
-  { id: 'context', icon: Globe, label: 'Projetando reação do público', sublabel: 'Simulando aceitação por perfil ideológico', color: '#34d399' },
-  { id: 'loading', icon: Users, label: 'Ativando base de eleitores', sublabel: 'Rodando análise nas 20.000 personas', color: '#fbbf24' },
-] as const;
+function buildSteps(region?: string, totalCount?: number) {
+  const isFiltered = region && region !== 'brasil';
+  const stateLabel = isFiltered ? (STATE_NAMES[region!] || region) : null;
+
+  let loadingSublabel: string;
+  if (isFiltered) {
+    loadingSublabel = totalCount && totalCount > 0
+      ? `Rodando análise nas ${totalCount.toLocaleString('pt-BR')} personas de ${stateLabel}`
+      : `Filtrando personas de ${stateLabel}...`;
+  } else {
+    loadingSublabel = totalCount && totalCount > 0
+      ? `Rodando análise nas ${totalCount.toLocaleString('pt-BR')} personas`
+      : 'Rodando análise nas personas';
+  }
+
+  return [
+    { id: 'analyzing', icon: Brain, label: 'Interpretando seu conteúdo', sublabel: 'Identificando narrativa, tom e intenção', color: '#8b5cf6' },
+    { id: 'researching', icon: Search, label: 'Cruzando com comportamento eleitoral', sublabel: 'Comparando com padrões reais de voto', color: '#38bdf8' },
+    { id: 'context', icon: Globe, label: 'Projetando reação do público', sublabel: 'Simulando aceitação por perfil ideológico', color: '#34d399' },
+    { id: 'loading', icon: Users, label: 'Ativando base de eleitores', sublabel: loadingSublabel, color: '#fbbf24' },
+  ] as const;
+}
 
 type CollectingStatus = 'analyzing' | 'researching' | 'context' | 'loading';
 const STATUS_ORDER: CollectingStatus[] = ['analyzing', 'researching', 'context', 'loading'];
@@ -97,6 +114,7 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
   // Collecting phase: show pipeline steps
   if (phase === 'collecting') {
     const currentIdx = STATUS_ORDER.indexOf((collectingStatus || 'analyzing') as CollectingStatus);
+    const STEPS = buildSteps(region, totalCount);
 
     return (
       <div className="w-full py-2">
@@ -233,7 +251,9 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
       <p className="text-[11px] text-zinc-500 text-center">
         {personasDone
           ? 'Consultores analisando e montando recomendações...'
-          : region === 'brasil' ? 'Analisando todas as pessoas do Brasil...' : 'Analisando todas as pessoas da sua região...'}
+          : !region || region === 'brasil'
+            ? 'Analisando todas as pessoas do Brasil...'
+            : `Analisando ${totalCount > 0 ? totalCount.toLocaleString('pt-BR') + ' ' : ''}pessoas de ${STATE_NAMES[region] || region}...`}
       </p>
 
       {/* Progress bar */}
