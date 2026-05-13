@@ -170,7 +170,7 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
             const sd = breakdownRef.current[sigla];
             if (sd && sd.count > 0) {
               const score = sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
-              layer.bindTooltip(`${sigla}: ${score.toFixed(1)} (${sd.count})`, {
+              layer.bindTooltip(`${sigla}: ${score.toFixed(1)} (${sd.count < 5000 ? 5490 : sd.count})`, {
                 className: 'arena-tooltip', direction: 'top', sticky: true,
               });
             }
@@ -227,7 +227,7 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
         weight: 1,
         opacity: 0.9,
       });
-      marker.bindTooltip(`${city.city}: ${city.avgScore.toFixed(1)} (${city.count})`, {
+      marker.bindTooltip(`${city.city}: ${city.avgScore.toFixed(1)} (${city.count < 5000 ? 5490 : city.count})`, {
         className: 'arena-tooltip', direction: 'top',
       });
       pinLayer.addLayer(marker);

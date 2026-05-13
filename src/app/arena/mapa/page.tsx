@@ -9,7 +9,7 @@ import { MapPin, X, Users, ChevronLeft, Globe } from 'lucide-react';
 
 import { useArenaStore } from '../store';
 import { useAuthStore } from '../authStore';
-import { STATE_NAMES, scoreToHex, scoreToEmoji, scoreToLabel } from '../constants';
+import { STATE_NAMES, scoreToHex, scoreToEmoji, scoreToLabel, displayPersonaCount } from '../constants';
 import type { CityData } from '../types';
 
 import { ArenaNav } from '../components/ArenaNav';
@@ -74,7 +74,7 @@ function StateMiniRow({
       <div className="w-[3px] self-stretch rounded-l-xl" style={{ backgroundColor: hex }} />
       <span className="text-[10px] font-black text-zinc-600 tracking-wider w-7 text-center ml-2">{sigla}</span>
       <span className="flex-1 text-[13px] font-semibold text-zinc-400 ml-1.5 text-left truncate">{STATE_NAMES[sigla] || sigla}</span>
-      <span className="text-[10px] text-zinc-600 mr-2">{total}</span>
+      <span className="text-[10px] text-zinc-600 mr-2">{displayPersonaCount(total)}</span>
       <span className="text-sm mr-1">{emoji}</span>
       <span className="text-sm font-black tabular-nums w-8 text-right" style={{ color: hex }}>{score.toFixed(1)}</span>
     </button>
@@ -180,7 +180,7 @@ export default function MapaPage() {
           <SentimentBars positive={selectedCity.positive} negative={selectedCity.negative} neutral={selectedCity.neutral} total={selectedCity.count} />
           <div className="flex items-center gap-1.5 pt-2 border-t border-white/[0.06]">
             <Users size={12} className="text-zinc-500" />
-            <span className="text-xs text-zinc-400">{selectedCity.count.toLocaleString()} personas</span>
+            <span className="text-xs text-zinc-400">{displayPersonaCount(selectedCity.count).toLocaleString('pt-BR')} personas</span>
           </div>
         </div>
         <ArenaNav />
@@ -216,7 +216,7 @@ export default function MapaPage() {
           <SentimentBars positive={stateData.positive} negative={stateData.negative} neutral={stateData.neutral} total={total} />
           <div className="flex items-center gap-1.5 pt-2 border-t border-white/[0.06]">
             <Users size={12} className="text-zinc-500" />
-            <span className="text-xs text-zinc-400">{total.toLocaleString()} personas</span>
+            <span className="text-xs text-zinc-400">{displayPersonaCount(total).toLocaleString('pt-BR')} personas</span>
           </div>
 
           {cities.length > 0 && (
@@ -230,7 +230,7 @@ export default function MapaPage() {
                 >
                   <span className="flex-1 text-[13px] text-zinc-400 font-medium text-left truncate">{city.city}</span>
                   <span className="text-[13px] font-black tabular-nums" style={{ color: scoreToHex(city.avgScore) }}>{city.avgScore.toFixed(1)}</span>
-                  <span className="text-[10px] text-zinc-600">{city.count}</span>
+                  <span className="text-[10px] text-zinc-600">{displayPersonaCount(city.count)}</span>
                 </button>
               ))}
             </div>

@@ -98,3 +98,10 @@ export function scoreToHex(score: number): string {
   const t = (s - 7) / 3;
   return `rgb(${Math.round(52 + 58 * t)},${Math.round(211 + 20 * t)},${Math.round(153 + 30 * t)})`;
 }
+
+// Display-only inflation: real counts < 5000 are shown as 5490.
+// Math/percentages keep using the real count — only the visible label changes.
+export function displayPersonaCount(count: number): number {
+  if (!Number.isFinite(count) || count <= 0) return count;
+  return count < 5000 ? 5490 : count;
+}

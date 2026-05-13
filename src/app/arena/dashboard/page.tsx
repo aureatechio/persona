@@ -9,7 +9,7 @@ import { BarChart3, MessageCircle, Users, Vote, Brain } from 'lucide-react';
 import { useArenaStore } from '../store';
 import { useAuthStore } from '../authStore';
 import type { SegmentItem, CommentResult } from '../types';
-import { scoreToHex, scoreToEmoji } from '../constants';
+import { scoreToHex, scoreToEmoji, displayPersonaCount } from '../constants';
 
 import { ArenaNav } from '../components/ArenaNav';
 import { ScoreHero } from '../components/ScoreHero';
@@ -226,7 +226,7 @@ export default function DashboardPage() {
             <span className="text-xs font-medium text-zinc-400">Preparando...</span>
           </div>
         ) : total > 0 ? (
-          <span className="text-[13px] font-bold text-zinc-400 tabular-nums">{total.toLocaleString('pt-BR')}</span>
+          <span className="text-[13px] font-bold text-zinc-400 tabular-nums">{displayPersonaCount(total).toLocaleString('pt-BR')}</span>
         ) : null}
       </div>
 

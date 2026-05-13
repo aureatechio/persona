@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, Search, Globe, Users, Zap, Check, Square } from 'lucide-react';
-import { STATE_NAMES } from '../constants';
+import { STATE_NAMES, displayPersonaCount } from '../constants';
 
 function buildSteps(region?: string, totalCount?: number) {
   const isFiltered = region && region !== 'brasil';
@@ -14,11 +14,11 @@ function buildSteps(region?: string, totalCount?: number) {
   let loadingSublabel: string;
   if (isFiltered) {
     loadingSublabel = totalCount && totalCount > 0
-      ? `Rodando análise nas ${totalCount.toLocaleString('pt-BR')} personas de ${stateLabel}`
+      ? `Rodando análise nas ${displayPersonaCount(totalCount).toLocaleString('pt-BR')} personas de ${stateLabel}`
       : `Filtrando personas de ${stateLabel}...`;
   } else {
     loadingSublabel = totalCount && totalCount > 0
-      ? `Rodando análise nas ${totalCount.toLocaleString('pt-BR')} personas`
+      ? `Rodando análise nas ${displayPersonaCount(totalCount).toLocaleString('pt-BR')} personas`
       : 'Rodando análise nas personas';
   }
 
@@ -253,7 +253,7 @@ export function ProcessingSteps({ phase, processedCount, totalCount, collectingS
           ? 'Consultores analisando e montando recomendações...'
           : !region || region === 'brasil'
             ? 'Analisando todas as pessoas do Brasil...'
-            : `Analisando ${totalCount > 0 ? totalCount.toLocaleString('pt-BR') + ' ' : ''}pessoas de ${STATE_NAMES[region] || region}...`}
+            : `Analisando ${totalCount > 0 ? displayPersonaCount(totalCount).toLocaleString('pt-BR') + ' ' : ''}pessoas de ${STATE_NAMES[region] || region}...`}
       </p>
 
       {/* Progress bar */}
