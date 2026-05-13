@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: ensured.error }, { status: 500 });
   }
 
-  const redirectTo = request.nextUrl.searchParams.get('next') || '/';
+  const redirectTo = request.nextUrl.searchParams.get('next') || '/arena';
   const response = NextResponse.redirect(new URL(redirectTo, request.url));
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
