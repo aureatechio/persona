@@ -147,6 +147,18 @@ def get_kling_key(key_id: str) -> dict | None:
         return None
 
 
+def block_kling_key(key_id: str, minutes: int = 15) -> None:
+    """Temporarily remove a key from the pool after a 401/402 from Sync Labs.
+    The next claim_kling_slot won't see this key until blocked_until elapses."""
+    import logging
+    logger = logging.getLogger("worker.db")
+    try:
+        client.rpc("block_kling_key", {"p_key_id": key_id, "p_minutes": minutes}).execute()
+        logger.warning("Sync Labs key %s blocked for %d min", str(key_id)[:8], minutes)
+    except Exception as e:
+        logger.error("block_kling_key failed for %s: %s", key_id, e)
+
+
 def count_tts_in_progress() -> int:
     """Count how many selfies are currently in 'generating_tts' status.
     Used to limit concurrent ElevenLabs API calls."""
