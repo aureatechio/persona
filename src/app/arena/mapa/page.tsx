@@ -123,20 +123,27 @@ export default function MapaPage() {
   const overallAvgScore = useArenaStore((s) => s.data.avgScore);
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
 
-  // When only one state has data (filter case), its score must equal the dashboard's overall avgScore.
-  const singleStateOverride = useMemo(() => {
-    const withData = Object.entries(stateBreakdown).filter(([, d]) => d.count > 0);
-    if (withData.length === 1 && overallAvgScore > 0) {
-      return { sigla: withData[0][0], score: overallAvgScore };
-    }
-    return null;
-  }, [stateBreakdown, overallAvgScore]);
-
   const initAuth = useAuthStore((s) => s.initialize);
   const profile = useAuthStore((s) => s.profile);
   useEffect(() => { initAuth(); }, [initAuth]);
 
   const focusState = profile?.state || null;
+
+  // Quando o filtro está ativo (perfil OU um estado concentra ≥90% das personas),
+  // a nota daquele estado deve ser idêntica à nota geral do painel.
+  const singleStateOverride = useMemo(() => {
+    if (overallAvgScore <= 0) return null;
+    if (focusState && stateBreakdown[focusState]?.count > 0) {
+      return { sigla: focusState, score: overallAvgScore };
+    }
+    const entries = Object.entries(stateBreakdown);
+    const total = entries.reduce((acc, [, d]) => acc + (d.count || 0), 0);
+    if (total === 0) return null;
+    for (const [sigla, d] of entries) {
+      if ((d.count || 0) / total >= 0.9) return { sigla, score: overallAvgScore };
+    }
+    return null;
+  }, [stateBreakdown, overallAvgScore, focusState]);
 
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
