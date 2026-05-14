@@ -5,6 +5,7 @@ const MAX_CUSTOM_CHARS = 250;
 const MAX_NAME_CHARS = 60;
 const MAX_USER_ID_CHARS = 200;
 const MAX_WEBHOOK_URL_CHARS = 500;
+const MAX_METADATA_BYTES = 4000;
 
 function isValidHttpsUrl(value: string): boolean {
   try {
@@ -42,6 +43,28 @@ export async function POST(request: NextRequest) {
   const customPhraseRaw = (body.customPhrase as string | undefined) ?? null;
   const customPhrase =
     typeof customPhraseRaw === 'string' && customPhraseRaw.trim() ? customPhraseRaw.trim() : null;
+
+  // Generic passthrough bag — whatever the caller wants echoed back in the
+  // webhook callback (logo_url, banner_url, theme colors, etc.). The worker
+  // never reads from this; it's just stored and returned.
+  let metadata: Record<string, unknown> | null = null;
+  const metadataRaw = body.metadata;
+  if (metadataRaw !== undefined && metadataRaw !== null) {
+    if (typeof metadataRaw !== 'object' || Array.isArray(metadataRaw)) {
+      return NextResponse.json(
+        { error: 'metadata deve ser um objeto JSON' },
+        { status: 400 },
+      );
+    }
+    const serialized = JSON.stringify(metadataRaw);
+    if (serialized.length > MAX_METADATA_BYTES) {
+      return NextResponse.json(
+        { error: `metadata muito grande (máx ${MAX_METADATA_BYTES} bytes serializados)` },
+        { status: 400 },
+      );
+    }
+    metadata = metadataRaw as Record<string, unknown>;
+  }
 
   if (!supermarketName) {
     return NextResponse.json({ error: 'supermarketName é obrigatório' }, { status: 400 });
@@ -81,6 +104,7 @@ export async function POST(request: NextRequest) {
       custom_phrase: customPhrase,
       user_id: userId,
       webhook_url: webhookUrl,
+      metadata,
       status: 'queued',
     })
     .select('id')

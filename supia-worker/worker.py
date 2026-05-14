@@ -83,6 +83,7 @@ def _fire_webhook(item: dict, status: str, error_message: str | None = None):
         "status": status,
         "video_url": video_url,
         "error": error_message,
+        "metadata": item.get("metadata"),
     }
 
     if deliver_webhook(webhook_url, payload):
