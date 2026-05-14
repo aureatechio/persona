@@ -49,16 +49,18 @@ function ScoreGauge({ score }: { score: number }) {
 function StateMiniRow({
   sigla,
   stateData,
+  scoreOverride,
   isSelected,
   onPress,
 }: {
   sigla: string;
   stateData: { count: number; positive: number; negative: number; neutral: number; avgScore?: number };
+  scoreOverride?: number;
   isSelected: boolean;
   onPress: () => void;
 }) {
   const total = stateData.count;
-  const score = stateData.avgScore ?? (total > 0
+  const score = scoreOverride ?? stateData.avgScore ?? (total > 0
     ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
     : 5.0);
   const hex = scoreToHex(score);
@@ -118,7 +120,17 @@ export default function MapaPage() {
   const stateBreakdown = useArenaStore((s) => s.data.stateBreakdown) || {};
   const cityBreakdown = useArenaStore((s) => s.data.cityBreakdown) || {};
   const liveComments = useArenaStore((s) => s.data.liveComments) || [];
+  const overallAvgScore = useArenaStore((s) => s.data.avgScore);
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
+
+  // When only one state has data (filter case), its score must equal the dashboard's overall avgScore.
+  const singleStateOverride = useMemo(() => {
+    const withData = Object.entries(stateBreakdown).filter(([, d]) => d.count > 0);
+    if (withData.length === 1 && overallAvgScore > 0) {
+      return { sigla: withData[0][0], score: overallAvgScore };
+    }
+    return null;
+  }, [stateBreakdown, overallAvgScore]);
 
   const initAuth = useAuthStore((s) => s.initialize);
   const profile = useAuthStore((s) => s.profile);
@@ -192,9 +204,11 @@ export default function MapaPage() {
   if (selectedState && stateBreakdown[selectedState]) {
     const stateData = stateBreakdown[selectedState];
     const total = stateData.count;
-    const score = stateData.avgScore ?? (total > 0
-      ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
-      : 5.0);
+    const score = singleStateOverride?.sigla === selectedState
+      ? singleStateOverride.score
+      : stateData.avgScore ?? (total > 0
+        ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
+        : 5.0);
     const cities = (cityBreakdown[selectedState] || []) as CityData[];
 
     return (
@@ -266,6 +280,8 @@ export default function MapaPage() {
             liveComments={liveComments}
             onStatePress={handleStatePress}
             focusState={focusState}
+            scoreOverrideSigla={singleStateOverride?.sigla ?? null}
+            scoreOverrideValue={singleStateOverride?.score}
           />
         </div>
 
@@ -292,6 +308,7 @@ export default function MapaPage() {
                 key={sigla}
                 sigla={sigla}
                 stateData={stateBreakdown[sigla]}
+                scoreOverride={singleStateOverride?.sigla === sigla ? singleStateOverride.score : undefined}
                 isSelected={selectedState === sigla}
                 onPress={() => handleStatePress(sigla)}
               />

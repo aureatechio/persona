@@ -54,6 +54,8 @@ interface LeafletMapProps {
   liveComments: CommentResult[];
   onStatePress: (sigla: string) => void;
   focusState?: string | null;
+  scoreOverrideSigla?: string | null;
+  scoreOverrideValue?: number;
 }
 
 const GEOJSON_URL = 'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/brazil-states.geojson';
@@ -68,7 +70,7 @@ const nameToSigla: Record<string, string> = {
   'Tocantins': 'TO',
 };
 
-export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments, onStatePress, focusState }: LeafletMapProps) {
+export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments, onStatePress, focusState, scoreOverrideSigla, scoreOverrideValue }: LeafletMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const geoLayerRef = useRef<L.GeoJSON | null>(null);
@@ -77,6 +79,8 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
   breakdownRef.current = stateBreakdown;
   const focusStateRef = useRef(focusState);
   focusStateRef.current = focusState;
+  const overrideRef = useRef({ sigla: scoreOverrideSigla, value: scoreOverrideValue });
+  overrideRef.current = { sigla: scoreOverrideSigla, value: scoreOverrideValue };
 
   function fitToState(sigla: string) {
     const map = mapInstanceRef.current;
@@ -100,7 +104,10 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
     let color = '#27272a';
     let fillOpacity = 0.15;
     if (sd && sd.count > 0) {
-      const score = sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
+      const override = overrideRef.current;
+      const score = override.sigla === sigla && override.value !== undefined
+        ? override.value
+        : sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
       color = scoreToHex(score);
       fillOpacity = 0.6;
     }
@@ -169,7 +176,10 @@ export default function LeafletMap({ stateBreakdown, cityBreakdown, liveComments
             layer.on('click', () => { if (sigla) onStatePress(sigla); });
             const sd = breakdownRef.current[sigla];
             if (sd && sd.count > 0) {
-              const score = sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
+              const override = overrideRef.current;
+              const score = override.sigla === sigla && override.value !== undefined
+                ? override.value
+                : sd.avgScore ?? Math.round(((sd.positive * 9 + sd.neutral * 5 + sd.negative * 1) / sd.count) * 10) / 10;
               layer.bindTooltip(`${sigla}: ${score.toFixed(1)} (${sd.count < 5000 ? 5490 : sd.count})`, {
                 className: 'arena-tooltip', direction: 'top', sticky: true,
               });

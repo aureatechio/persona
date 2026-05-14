@@ -173,6 +173,9 @@ export default function DashboardPage() {
   const isLive = phase !== 'complete';
   const total = positive + negative + neutral;
   const progress = totalCount > 0 ? Math.round((processedCount / totalCount) * 100) : 0;
+  // Score jitter must freeze when persona processing reaches 100%, even if backend
+  // hasn't fired the 'done' event yet (which flips phase to 'complete').
+  const animateLive = isLive && progress < 100;
 
   const comments = useMemo(() => {
     const sim = simulation?.comments;
@@ -242,23 +245,23 @@ export default function DashboardPage() {
         <div className="px-4 py-4 space-y-4">
 
           {/* ScoreHero + ScoreBar (exact match) */}
-          <ScoreHero avgScore={avgScore ?? 0} processedCount={processedCount} isLive={isLive} />
-          <ScoreBar avgScore={avgScore ?? 0} totalCount={total} isLive={isLive} />
+          <ScoreHero avgScore={avgScore ?? 0} processedCount={processedCount} isLive={animateLive} />
+          <ScoreBar avgScore={avgScore ?? 0} totalCount={total} isLive={animateLive} />
 
           {/* SentimentBars */}
-          {total > 0 && <SentimentBars positive={positive} negative={negative} neutral={neutral} total={total} isLive={isLive} />}
+          {total > 0 && <SentimentBars positive={positive} negative={negative} neutral={neutral} total={total} isLive={animateLive} />}
 
           {/* Voter Gauges (exact match) */}
           <div className="flex gap-2.5">
             {lulaVoters ? (
-              <VoterGauge item={lulaVoters} partyLabel="PT" isLive={isLive} />
+              <VoterGauge item={lulaVoters} partyLabel="PT" isLive={animateLive} />
             ) : (
               <div className="flex-1 rounded-[14px] flex items-center justify-center py-6" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <span className="text-[10px] text-zinc-600">Eleitores de Lula</span>
               </div>
             )}
             {bolsonaroVoters ? (
-              <VoterGauge item={bolsonaroVoters} partyLabel="PL" isLive={isLive} />
+              <VoterGauge item={bolsonaroVoters} partyLabel="PL" isLive={animateLive} />
             ) : (
               <div className="flex-1 rounded-[14px] flex items-center justify-center py-6" style={{ backgroundColor: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)' }}>
                 <span className="text-[10px] text-zinc-600">Eleitores de Bolsonaro</span>
@@ -284,17 +287,17 @@ export default function DashboardPage() {
           {/* Tab content */}
           {activeTab === 'demo' && (
             <div className="space-y-3">
-              {SEGMENTS_DEMO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
+              {SEGMENTS_DEMO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={animateLive} />)}
             </div>
           )}
           {activeTab === 'eleitoral' && (
             <div className="space-y-3">
-              {SEGMENTS_ELEITORAL.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
+              {SEGMENTS_ELEITORAL.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={animateLive} />)}
             </div>
           )}
           {activeTab === 'ideologico' && (
             <div className="space-y-3">
-              {SEGMENTS_IDEOLOGICO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={isLive} />)}
+              {SEGMENTS_IDEOLOGICO.map((seg) => <SegmentCard key={seg.key} items={(segments as any)?.[seg.key]} title={seg.title} accentColor={seg.accent} maxItems={10} isLive={animateLive} />)}
             </div>
           )}
           {activeTab === 'reacoes' && (
