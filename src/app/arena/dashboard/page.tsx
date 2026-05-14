@@ -215,7 +215,7 @@ export default function DashboardPage() {
             <div className="w-20 h-1 rounded overflow-hidden" style={{ backgroundColor: 'rgba(255,255,255,0.06)' }}>
               <div className="h-full rounded bg-emerald-400 transition-all duration-500" style={{ width: `${progress}%` }} />
             </div>
-            <span className="text-xs font-bold text-zinc-400 tabular-nums">{displayPersonaCount(processedCount)}/{displayPersonaCount(totalCount)}</span>
+            <span className="text-xs font-bold text-zinc-400 tabular-nums">{Math.round(displayPersonaCount(totalCount) * (processedCount / totalCount))}/{displayPersonaCount(totalCount)}</span>
             <span className="text-[13px] font-black text-emerald-400 tabular-nums">{progress}%</span>
           </div>
         ) : isLive && processedCount === 0 ? (
