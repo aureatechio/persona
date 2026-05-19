@@ -72,6 +72,14 @@ def heartbeat(supia_id: str):
         pass
 
 
+def mark_webhook_delivered(supia_id: str):
+    """Stamp webhook_delivered_at after a successful callback POST."""
+    now = datetime.now(timezone.utc).isoformat()
+    client.table("supia_videos").update(
+        {"webhook_delivered_at": now}
+    ).eq("id", supia_id).execute()
+
+
 def download_file(path: str) -> bytes:
     return client.storage.from_(STORAGE_BUCKET).download(path)
 

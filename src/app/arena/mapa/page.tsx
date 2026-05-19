@@ -9,7 +9,7 @@ import { MapPin, X, Users, ChevronLeft, Globe } from 'lucide-react';
 
 import { useArenaStore } from '../store';
 import { useAuthStore } from '../authStore';
-import { STATE_NAMES, scoreToHex, scoreToEmoji, scoreToLabel } from '../constants';
+import { STATE_NAMES, scoreToHex, scoreToEmoji, scoreToLabel, displayPersonaCount } from '../constants';
 import type { CityData } from '../types';
 
 import { ArenaNav } from '../components/ArenaNav';
@@ -49,16 +49,18 @@ function ScoreGauge({ score }: { score: number }) {
 function StateMiniRow({
   sigla,
   stateData,
+  scoreOverride,
   isSelected,
   onPress,
 }: {
   sigla: string;
   stateData: { count: number; positive: number; negative: number; neutral: number; avgScore?: number };
+  scoreOverride?: number;
   isSelected: boolean;
   onPress: () => void;
 }) {
   const total = stateData.count;
-  const score = stateData.avgScore ?? (total > 0
+  const score = scoreOverride ?? stateData.avgScore ?? (total > 0
     ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
     : 5.0);
   const hex = scoreToHex(score);
@@ -74,7 +76,7 @@ function StateMiniRow({
       <div className="w-[3px] self-stretch rounded-l-xl" style={{ backgroundColor: hex }} />
       <span className="text-[10px] font-black text-zinc-600 tracking-wider w-7 text-center ml-2">{sigla}</span>
       <span className="flex-1 text-[13px] font-semibold text-zinc-400 ml-1.5 text-left truncate">{STATE_NAMES[sigla] || sigla}</span>
-      <span className="text-[10px] text-zinc-600 mr-2">{total}</span>
+      <span className="text-[10px] text-zinc-600 mr-2">{displayPersonaCount(total)}</span>
       <span className="text-sm mr-1">{emoji}</span>
       <span className="text-sm font-black tabular-nums w-8 text-right" style={{ color: hex }}>{score.toFixed(1)}</span>
     </button>
@@ -118,6 +120,7 @@ export default function MapaPage() {
   const stateBreakdown = useArenaStore((s) => s.data.stateBreakdown) || {};
   const cityBreakdown = useArenaStore((s) => s.data.cityBreakdown) || {};
   const liveComments = useArenaStore((s) => s.data.liveComments) || [];
+  const overallAvgScore = useArenaStore((s) => s.data.avgScore);
   const hasEverReceived = useArenaStore((s) => s.hasEverReceived);
 
   const initAuth = useAuthStore((s) => s.initialize);
@@ -125,6 +128,22 @@ export default function MapaPage() {
   useEffect(() => { initAuth(); }, [initAuth]);
 
   const focusState = profile?.state || null;
+
+  // Quando o filtro está ativo (perfil OU um estado concentra ≥90% das personas),
+  // a nota daquele estado deve ser idêntica à nota geral do painel.
+  const singleStateOverride = useMemo(() => {
+    if (overallAvgScore <= 0) return null;
+    if (focusState && stateBreakdown[focusState]?.count > 0) {
+      return { sigla: focusState, score: overallAvgScore };
+    }
+    const entries = Object.entries(stateBreakdown);
+    const total = entries.reduce((acc, [, d]) => acc + (d.count || 0), 0);
+    if (total === 0) return null;
+    for (const [sigla, d] of entries) {
+      if ((d.count || 0) / total >= 0.9) return { sigla, score: overallAvgScore };
+    }
+    return null;
+  }, [stateBreakdown, overallAvgScore, focusState]);
 
   const [selectedState, setSelectedState] = useState<string | null>(null);
   const [selectedCity, setSelectedCity] = useState<CityData | null>(null);
@@ -180,7 +199,7 @@ export default function MapaPage() {
           <SentimentBars positive={selectedCity.positive} negative={selectedCity.negative} neutral={selectedCity.neutral} total={selectedCity.count} />
           <div className="flex items-center gap-1.5 pt-2 border-t border-white/[0.06]">
             <Users size={12} className="text-zinc-500" />
-            <span className="text-xs text-zinc-400">{selectedCity.count.toLocaleString()} personas</span>
+            <span className="text-xs text-zinc-400">{displayPersonaCount(selectedCity.count).toLocaleString('pt-BR')} personas</span>
           </div>
         </div>
         <ArenaNav />
@@ -192,9 +211,11 @@ export default function MapaPage() {
   if (selectedState && stateBreakdown[selectedState]) {
     const stateData = stateBreakdown[selectedState];
     const total = stateData.count;
-    const score = stateData.avgScore ?? (total > 0
-      ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
-      : 5.0);
+    const score = singleStateOverride?.sigla === selectedState
+      ? singleStateOverride.score
+      : stateData.avgScore ?? (total > 0
+        ? Math.round(((stateData.positive * 9 + stateData.neutral * 5 + stateData.negative * 1) / total) * 10) / 10
+        : 5.0);
     const cities = (cityBreakdown[selectedState] || []) as CityData[];
 
     return (
@@ -216,7 +237,7 @@ export default function MapaPage() {
           <SentimentBars positive={stateData.positive} negative={stateData.negative} neutral={stateData.neutral} total={total} />
           <div className="flex items-center gap-1.5 pt-2 border-t border-white/[0.06]">
             <Users size={12} className="text-zinc-500" />
-            <span className="text-xs text-zinc-400">{total.toLocaleString()} personas</span>
+            <span className="text-xs text-zinc-400">{displayPersonaCount(total).toLocaleString('pt-BR')} personas</span>
           </div>
 
           {cities.length > 0 && (
@@ -230,7 +251,7 @@ export default function MapaPage() {
                 >
                   <span className="flex-1 text-[13px] text-zinc-400 font-medium text-left truncate">{city.city}</span>
                   <span className="text-[13px] font-black tabular-nums" style={{ color: scoreToHex(city.avgScore) }}>{city.avgScore.toFixed(1)}</span>
-                  <span className="text-[10px] text-zinc-600">{city.count}</span>
+                  <span className="text-[10px] text-zinc-600">{displayPersonaCount(city.count)}</span>
                 </button>
               ))}
             </div>
@@ -266,6 +287,8 @@ export default function MapaPage() {
             liveComments={liveComments}
             onStatePress={handleStatePress}
             focusState={focusState}
+            scoreOverrideSigla={singleStateOverride?.sigla ?? null}
+            scoreOverrideValue={singleStateOverride?.score}
           />
         </div>
 
@@ -292,6 +315,7 @@ export default function MapaPage() {
                 key={sigla}
                 sigla={sigla}
                 stateData={stateBreakdown[sigla]}
+                scoreOverride={singleStateOverride?.sigla === sigla ? singleStateOverride.score : undefined}
                 isSelected={selectedState === sigla}
                 onPress={() => handleStatePress(sigla)}
               />

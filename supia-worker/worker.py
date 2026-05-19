@@ -26,6 +26,7 @@ from config import (
 )
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed
+from steps.webhook import deliver as deliver_webhook
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +58,39 @@ def _should_run(current_status: str, step_status: str) -> bool:
         return STEP_ORDER.index(current_status) <= STEP_ORDER.index(step_status)
     except ValueError:
         return False
+
+
+def _fire_webhook(item: dict, status: str, error_message: str | None = None):
+    """Notify the caller's webhook on terminal status. No-op if not registered."""
+    webhook_url = (item.get("webhook_url") or "").strip()
+    if not webhook_url:
+        return
+
+    sid = item["id"]
+    video_url: str | None = None
+    if status == "completed":
+        path = item.get("final_video_path")
+        if path:
+            try:
+                video_url = db.create_signed_url(path)
+            except Exception as e:
+                logger.error("Failed to create signed URL for webhook %s: %s", sid, e)
+
+    payload = {
+        "request_id": sid,
+        "user_id": item.get("user_id"),
+        "supermarket_name": item.get("supermarket_name"),
+        "status": status,
+        "video_url": video_url,
+        "error": error_message,
+        "metadata": item.get("metadata"),
+    }
+
+    if deliver_webhook(webhook_url, payload):
+        try:
+            db.mark_webhook_delivered(sid)
+        except Exception as e:
+            logger.warning("Could not stamp webhook_delivered_at for %s: %s", sid, e)
 
 
 def process_supia(item: dict):
@@ -145,6 +179,7 @@ def process_supia(item: dict):
             item["final_video_path"] = final_path
 
     logger.info("═══ Supia %s completed ═══", sid)
+    _fire_webhook(item, "completed")
 
 
 def main():
@@ -188,7 +223,9 @@ def main():
 
             if retry_count >= MAX_RETRIES:
                 logger.warning("Supia %s already at retry %d — failing", sid, retry_count)
-                db.update_status(sid, "failed", error_message=f"Max retries ({MAX_RETRIES}) exceeded")
+                err = f"Max retries ({MAX_RETRIES}) exceeded"
+                db.update_status(sid, "failed", error_message=err)
+                _fire_webhook(item, "failed", error_message=err)
                 continue
 
             try:
@@ -211,13 +248,15 @@ def main():
                     )
                     logger.info("Retry %s from '%s' (attempt %d/%d)", sid, current_status, new_retry + 1, MAX_RETRIES)
                 else:
+                    final_err = f"Max retries exceeded: {error_msg}"
                     db.update_status(
                         sid,
                         "failed",
-                        error_message=f"Max retries exceeded: {error_msg}",
+                        error_message=final_err,
                         retry_count=new_retry,
                     )
                     logger.error("Supia %s failed permanently after %d retries", sid, MAX_RETRIES)
+                    _fire_webhook(item, "failed", error_message=final_err)
 
         except Exception as e:
             consecutive_errors += 1

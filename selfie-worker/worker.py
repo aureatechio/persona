@@ -23,7 +23,7 @@ import db
 from steps.transcribe import transcribe
 from steps.generate import generate_text
 from steps.tts import generate_tts
-from steps.lipsync import run_lipsync, SyncLabsJobFailed
+from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
 from steps.compose import compose_videos
 from steps.whatsapp import send_whatsapp, WhatsAppSendError
 
@@ -221,6 +221,12 @@ def process_selfie(selfie: dict):
                 )
                 db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
                 selfie["lipsync_video_url"] = lipsync_url
+            except SyncLabsKeyRejected:
+                # 401/402 — esta chave foi revogada/sem cota.
+                # Bloqueia ela no pool por 15min para que o retry pegue outra.
+                db.block_kling_key(slot_key_id, minutes=15)
+                db.update_status(sid, "generating_lipsync", lipsync_video_url=None)
+                raise
             except SyncLabsJobFailed:
                 # Sync Labs returned FAILED/REJECTED for this key.
                 # Clear lipsync state so retry can try a different key.

@@ -58,12 +58,12 @@ def _submit(
             time.sleep(wait)
             continue
 
-        # 401/402 = auth/payment issue with THIS key — raise SyncLabsJobFailed
-        # so the worker retries with a DIFFERENT key from the pool
+        # 401/402 = auth/payment issue with THIS key — raise SyncLabsKeyRejected
+        # so the worker can block this key in the pool and retry with another
         if response.status_code in (401, 402):
             body = response.text
             logger.warning("Sync Labs %d for this key: %s", response.status_code, body[:200])
-            raise SyncLabsJobFailed(
+            raise SyncLabsKeyRejected(
                 f"Sync Labs key rejected ({response.status_code}): {body[:200]}"
             )
 
@@ -165,6 +165,13 @@ def _poll(job_id: str, api_key: str = "", heartbeat_fn=None) -> str:
 class SyncLabsJobFailed(RuntimeError):
     """Raised when a Sync Labs job fails/rejects — distinct from transient errors.
     Used by the worker to know it should try a different key on retry."""
+    pass
+
+
+class SyncLabsKeyRejected(SyncLabsJobFailed):
+    """Subclass of SyncLabsJobFailed for 401/402 errors specifically — the key
+    itself was rejected (revoked, no credit). The worker should temporarily
+    block this key in the pool so the retry picks a different one."""
     pass
 
 

@@ -4,7 +4,7 @@
 'use client';
 
 import { useEffect, useState, memo } from 'react';
-import { scoreToEmoji, scoreToHex } from '../constants';
+import { scoreToEmoji, scoreToHex, displayPersonaCount } from '../constants';
 
 interface ScoreHeroProps {
   avgScore: number;
@@ -54,7 +54,7 @@ export const ScoreHero = memo(function ScoreHero({ avgScore, processedCount, isL
       </div>
 
       <span className="text-xs text-zinc-600 tabular-nums mt-1 relative">
-        {hasData ? processedCount.toLocaleString('pt-BR') : '0'} personas
+        {hasData ? displayPersonaCount(processedCount).toLocaleString('pt-BR') : '0'} personas
       </span>
     </div>
   );
