@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, UserProfile } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { createUserAction, deleteUserAction } from '@/app/actions/userActions';
+import { createUserAction, deleteUserAction, updateUserAction } from '@/app/actions/userActions';
 import Link from 'next/link';
 import {
   UserPlus,
@@ -13,7 +13,8 @@ import {
   Search,
   X,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Pencil,
 } from 'lucide-react';
 
 export default function UsersPage() {
@@ -31,6 +32,15 @@ export default function UsersPage() {
   });
   const [formLoading, setFormLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  // Edit modal state
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editData, setEditData] = useState({
+    name: '',
+    user_type: 'normal' as 'normal' | 'admin',
+    password: '',
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -68,6 +78,38 @@ export default function UsersPage() {
     setFormLoading(false);
   };
 
+  const openEditModal = (u: UserProfile) => {
+    setEditingUser(u);
+    setEditData({
+      name: u.name || '',
+      user_type: u.user_type,
+      password: '',
+    });
+    setEditError(null);
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditLoading(true);
+    setEditError(null);
+
+    const result = await updateUserAction({
+      id: editingUser.id,
+      name: editData.name,
+      user_type: editData.user_type,
+      password: editData.password || undefined,
+    });
+
+    if (result.error) {
+      setEditError(result.error);
+    } else {
+      setEditingUser(null);
+      fetchUsers();
+    }
+    setEditLoading(false);
+  };
+
   const handleDeleteUser = async (userId: string) => {
     if (!confirm('Tem certeza que deseja excluir este usuário?')) return;
 
@@ -93,8 +135,9 @@ export default function UsersPage() {
         <header className="h-16 border-b border-white/[0.04] flex items-center justify-between px-6 md:px-8 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-30">
           <div className="flex items-center gap-4">
             <Link
-              href="/"
+              href="/admin"
               className="p-2 text-zinc-400 hover:text-white hover:bg-white/[0.06] rounded-xl transition-all duration-200"
+              title="Voltar ao admin"
             >
               <ArrowLeft size={20} />
             </Link>
@@ -171,14 +214,24 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {u.id !== profile?.id && (
+                        <div className="flex items-center justify-end gap-1">
                           <button
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                            onClick={() => openEditModal(u)}
+                            className="p-2 text-zinc-500 hover:text-white hover:bg-white/[0.08] rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                            title="Editar"
                           >
-                            <Trash2 size={18} />
+                            <Pencil size={18} />
                           </button>
-                        )}
+                          {u.id !== profile?.id && (
+                            <button
+                              onClick={() => handleDeleteUser(u.id)}
+                              className="p-2 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                              title="Excluir"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -271,6 +324,91 @@ export default function UsersPage() {
                   className="flex-1 bg-white text-black px-4 py-3 rounded-2xl font-bold hover:bg-zinc-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {formLoading ? <Loader2 className="animate-spin" size={20} /> : 'Criar Usuário'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => !editLoading && setEditingUser(null)}
+          />
+          <div className="relative w-full max-w-lg bg-zinc-950 border border-zinc-900 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-zinc-900 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Editar Usuário</h2>
+                <p className="text-xs text-zinc-500 mt-1">{editingUser.email}</p>
+              </div>
+              <button
+                onClick={() => setEditingUser(null)}
+                className="p-2 text-zinc-500 hover:text-white transition-colors"
+                disabled={editLoading}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateUser} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Nome Completo</label>
+                  <input
+                    type="text"
+                    required
+                    value={editData.name}
+                    onChange={(e) => setEditData({ ...editData, name: e.target.value })}
+                    className="w-full bg-zinc-900 border border-zinc-800 text-white px-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-white/10 transition-all"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Tipo de Usuário</label>
+                  <select
+                    value={editData.user_type}
+                    onChange={(e) => setEditData({ ...editData, user_type: e.target.value as 'normal' | 'admin' })}
+                    className="w-full bg-zinc-900 border border-zinc-800 text-white px-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-white/10 transition-all appearance-none"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-xs font-bold text-zinc-500 uppercase tracking-widest mb-2">Nova senha (opcional)</label>
+                  <input
+                    type="password"
+                    value={editData.password}
+                    onChange={(e) => setEditData({ ...editData, password: e.target.value })}
+                    placeholder="Deixe em branco"
+                    className="w-full bg-zinc-900 border border-zinc-800 text-white px-4 py-3 rounded-2xl focus:outline-none focus:ring-2 focus:ring-white/10 transition-all"
+                  />
+                </div>
+              </div>
+
+              {editError && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm p-4 rounded-2xl">
+                  {editError}
+                </div>
+              )}
+
+              <div className="pt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  disabled={editLoading}
+                  className="flex-1 px-4 py-3 rounded-2xl border border-zinc-800 font-bold hover:bg-zinc-900 transition-all disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={editLoading}
+                  className="flex-1 bg-white text-black px-4 py-3 rounded-2xl font-bold hover:bg-zinc-200 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {editLoading ? <Loader2 className="animate-spin" size={20} /> : 'Salvar alterações'}
                 </button>
               </div>
             </form>

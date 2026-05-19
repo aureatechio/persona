@@ -64,6 +64,51 @@ export async function createUserAction(formData: {
   }
 }
 
+export async function updateUserAction(payload: {
+  id: string;
+  name?: string;
+  user_type?: UserType;
+  password?: string;
+}) {
+  try {
+    const { id, name, user_type, password } = payload;
+    if (!id) return { error: 'id é obrigatório' };
+
+    // Update auth password and metadata if provided
+    if (password || name) {
+      const authUpdate: { password?: string; user_metadata?: Record<string, unknown> } = {};
+      if (password) authUpdate.password = password;
+      if (name) authUpdate.user_metadata = { name };
+
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, authUpdate);
+      if (authError) {
+        return { error: authError.message };
+      }
+    }
+
+    // Update profile row
+    const updates: Record<string, unknown> = {};
+    if (name !== undefined) updates.name = name;
+    if (user_type !== undefined) updates.user_type = user_type;
+
+    if (Object.keys(updates).length > 0) {
+      const { error: profileError } = await supabaseAdmin
+        .from('users')
+        .update(updates)
+        .eq('id', id);
+
+      if (profileError) {
+        return { error: profileError.message };
+      }
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error('Error in updateUserAction:', err);
+    return { error: 'Erro interno ao atualizar usuário.' };
+  }
+}
+
 export async function deleteUserAction(userId: string) {
   try {
     // 1. Deletar do Auth (isso deve disparar delete na tabela users se houver FK com cascade, 

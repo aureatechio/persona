@@ -1,6 +1,6 @@
 'use client';
 
-import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard, Sparkles } from 'lucide-react';
+import { List, Map as MapIcon, Settings, LogOut, Users, Activity, Swords, Brain, Send, Video, Clapperboard, Sparkles, Sliders } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -92,6 +92,17 @@ export function Sidebar({ view, setView, isOpen, onClose }: SidebarProps) {
 
             {profile?.user_type === 'admin' && (
               <>
+                <button
+                  onClick={() => handleNavigation({ id: 'admin', href: '/admin' })}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
+                    pathname === '/admin'
+                      ? 'bg-white text-black font-semibold shadow-lg shadow-white/5'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
+                  }`}
+                >
+                  <Sliders size={20} />
+                  <span className="text-sm">Admin</span>
+                </button>
                 <button
                   onClick={() => handleNavigation({ id: 'users', href: '/users' })}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-200 ${
