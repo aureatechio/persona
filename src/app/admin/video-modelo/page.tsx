@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoModeloModal, { BaseModel } from './VideoModeloModal';
+import { AdminBackLink } from '@/components/AdminBackLink';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
 
@@ -202,6 +203,7 @@ export default function VideoModeloPage() {
   return (
     <div className="min-h-screen bg-black">
       <div className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
+        <AdminBackLink />
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

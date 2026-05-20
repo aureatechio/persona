@@ -17,6 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AdminBackLink } from '@/components/AdminBackLink';
 import {
   fetchDistribution,
   previewRebalance,
@@ -661,6 +662,7 @@ export default function PotenciometroPage() {
       <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative max-w-5xl mx-auto p-6 md:p-8 lg:p-10 space-y-8">
+        <AdminBackLink />
         {/* ── Header ─────────────────────────────────────────────────── */}
         <div className="space-y-2">
           <div className="flex items-center gap-3">

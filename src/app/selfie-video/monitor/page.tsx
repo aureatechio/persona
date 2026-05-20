@@ -20,6 +20,7 @@ import {
   Hourglass,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AdminBackLink } from '@/components/AdminBackLink';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -343,6 +344,7 @@ export default function SelfieMonitorPage() {
       <div className="fixed -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
 
       <div className="relative max-w-7xl mx-auto p-6 md:p-8 space-y-8">
+        <AdminBackLink />
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

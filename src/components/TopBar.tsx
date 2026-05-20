@@ -1,6 +1,8 @@
 'use client';
 
-import { Plus } from 'lucide-react';
+import { Plus, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import { useAuth } from '@/contexts/AuthContext';
 import { AvatarMenu } from './AvatarMenu';
 
 interface TopBarProps {
@@ -10,6 +12,9 @@ interface TopBarProps {
 }
 
 export function TopBar({ personaCount, hasBlocks, onNewChat }: TopBarProps) {
+  const { profile } = useAuth();
+  const isAdmin = profile?.user_type === 'admin';
+
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between px-4 md:px-8 py-3 bg-zinc-950/80 backdrop-blur-xl border-b border-white/[0.04]">
       {/* Logo */}
@@ -22,6 +27,16 @@ export function TopBar({ personaCount, hasBlocks, onNewChat }: TopBarProps) {
 
       {/* Right */}
       <div className="flex items-center gap-3">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-xs font-semibold active:scale-[0.97] transition-all duration-200"
+            title="Painel administrativo"
+          >
+            <ShieldCheck size={14} />
+            <span className="hidden sm:inline">Admin</span>
+          </Link>
+        )}
         {hasBlocks && onNewChat && (
           <button
             onClick={onNewChat}

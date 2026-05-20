@@ -674,11 +674,11 @@ export default function PromptArenaPage() {
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="space-y-2">
           <Link
-            href="/"
+            href="/admin"
             className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors duration-200 mb-4"
           >
             <ArrowLeft size={14} />
-            Voltar
+            Voltar ao Admin
           </Link>
 
           <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Settings, LogOut, Users, ChevronDown } from 'lucide-react';
+import { Settings, LogOut, Users, ChevronDown, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -51,6 +51,17 @@ export function AvatarMenu() {
           </div>
 
           <div className="py-1.5">
+            {profile?.user_type === 'admin' && (
+              <Link
+                href="/admin"
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/[0.06] transition-colors duration-200"
+              >
+                <ShieldCheck size={16} />
+                Painel Admin
+              </Link>
+            )}
+
             <Link
               href="/settings"
               onClick={() => setOpen(false)}
