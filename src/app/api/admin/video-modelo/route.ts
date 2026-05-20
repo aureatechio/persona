@@ -220,6 +220,8 @@ export async function POST(request: NextRequest) {
       whatsapp_message_template,
       thank_you_message,
       closing_video_path,
+      proposta_pdf_path,
+      proposta_message_template,
       is_active,
     } = body;
 
@@ -264,6 +266,8 @@ export async function POST(request: NextRequest) {
     if (whatsapp_message_template) insertData.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) insertData.thank_you_message = thank_you_message;
     if (closing_video_path !== undefined) insertData.closing_video_path = closing_video_path;
+    if (proposta_pdf_path !== undefined) insertData.proposta_pdf_path = proposta_pdf_path;
+    if (proposta_message_template !== undefined) insertData.proposta_message_template = proposta_message_template;
 
     const { data: model, error: dbError } = await supabaseAdmin
       .from('video_base_models')
@@ -301,6 +305,8 @@ export async function PATCH(request: NextRequest) {
       whatsapp_message_template,
       thank_you_message,
       closing_video_path,
+      proposta_pdf_path,
+      proposta_message_template,
       is_active,
     } = body;
 
@@ -335,6 +341,8 @@ export async function PATCH(request: NextRequest) {
     if (whatsapp_message_template !== undefined) updates.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) updates.thank_you_message = thank_you_message;
     if (closing_video_path !== undefined) updates.closing_video_path = closing_video_path;
+    if (proposta_pdf_path !== undefined) updates.proposta_pdf_path = proposta_pdf_path;
+    if (proposta_message_template !== undefined) updates.proposta_message_template = proposta_message_template;
     if (is_active !== undefined) updates.is_active = Boolean(is_active);
 
     // Troca de vídeo base → re-clonar voz

@@ -25,7 +25,7 @@ from steps.generate import generate_text
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
 from steps.compose import compose_videos
-from steps.whatsapp import send_whatsapp, WhatsAppSendError
+from steps.whatsapp import send_whatsapp, send_whatsapp_document, WhatsAppSendError
 
 # ─── Logging ───────────────────────────────────────────────
 logging.basicConfig(
@@ -282,6 +282,30 @@ def process_selfie(selfie: dict):
             # Reset claim so retry can attempt again
             db.reset_whatsapp_claim(sid)
             raise
+
+        # Proposta de governo (opcional): se configurada, envia o PDF logo
+        # após o vídeo. Falha aqui NÃO faz retry — o vídeo já saiu e o
+        # claim não pode ser resetado sem causar duplicata. Apenas registra
+        # error_message para o monitor sinalizar a falha parcial.
+        proposta_pdf_path = base_model.get("proposta_pdf_path")
+        if proposta_pdf_path:
+            try:
+                logger.info("Step 6/6 (extra): Sending proposta PDF...")
+                proposta_signed = db.create_signed_url(proposta_pdf_path)
+                send_whatsapp_document(
+                    selfie["phone"], selfie["name"], proposta_signed,
+                    message_template=base_model.get("proposta_message_template"),
+                )
+            except Exception as e:
+                # Não levanta: o vídeo principal já foi entregue com sucesso.
+                logger.error("Proposta send failed for %s (vídeo OK): %s", sid, e)
+                try:
+                    db.update_status(
+                        sid, "sending",
+                        error_message=f"proposta_send_failed: {str(e)[:240]}",
+                    )
+                except Exception:
+                    pass
 
         db.update_status(sid, "completed")
 

@@ -14,6 +14,7 @@ import {
   Settings2,
   Film,
   Sparkles,
+  FileType2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoModeloModal, { BaseModel } from './VideoModeloModal';
@@ -530,6 +531,7 @@ function ModelCard({
   const videoUrl = getVideoPublicUrl(model.video_storage_path);
   const lipsync = model.lipsync_config || { model: '—', sync_mode: '—', temperature: 0 };
   const hasClosing = !!model.closing_video_path;
+  const hasProposta = !!model.proposta_pdf_path;
 
   return (
     <div className="group bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] rounded-2xl overflow-hidden shadow-xl shadow-black/20 transition-all duration-300 ease-out">
@@ -586,6 +588,7 @@ function ModelCard({
             <Tag icon={<Settings2 size={11} />}>{lipsync.model}</Tag>
             <Tag>temp {Number(lipsync.temperature).toFixed(1)}</Tag>
             {hasClosing && <Tag icon={<Film size={11} />}>Encerramento</Tag>}
+            {hasProposta && <Tag icon={<FileType2 size={11} />}>Proposta PDF</Tag>}
           </div>
 
           {/* Actions */}

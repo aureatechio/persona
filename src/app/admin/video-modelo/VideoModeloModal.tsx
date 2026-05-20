@@ -14,6 +14,7 @@ import {
   Check,
   AlertCircle,
   Power,
+  FileType2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -42,6 +43,8 @@ export interface BaseModel {
   whatsapp_message_template: string | null;
   thank_you_message: string | null;
   closing_video_path: string | null;
+  proposta_pdf_path: string | null;
+  proposta_message_template: string | null;
   is_active: boolean;
   created_at: string;
   updated_at?: string;
@@ -77,6 +80,7 @@ Sem emojis. Apenas gere o texto da resposta.`;
 
 const DEFAULT_WHATSAPP_TEMPLATE = 'Olá, {name}! Obrigado pela sua mensagem!';
 const DEFAULT_THANK_YOU = '{name}, vamos te enviar um vídeo no seu WhatsApp em até 10 minutos.';
+const DEFAULT_PROPOSTA_MESSAGE = '{name}, segue minha proposta de governo completa para você conhecer melhor. Conto com seu apoio e compartilhamento!';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
 
@@ -104,9 +108,16 @@ async function readApiError(res: Response, fallback: string): Promise<string> {
   return text || fallback;
 }
 
-async function uploadToStorage(file: File, name: string, kind: 'base' | 'closing'): Promise<string> {
-  const ext = file.type.includes('webm') || file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
-  const contentType = ext === 'webm' ? 'video/webm' : 'video/mp4';
+async function uploadToStorage(file: File, name: string, kind: 'base' | 'closing' | 'proposta'): Promise<string> {
+  let ext: 'mp4' | 'webm' | 'pdf';
+  let contentType: string;
+  if (kind === 'proposta') {
+    ext = 'pdf';
+    contentType = 'application/pdf';
+  } else {
+    ext = file.type.includes('webm') || file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
+    contentType = ext === 'webm' ? 'video/webm' : 'video/mp4';
+  }
 
   const initRes = await fetch('/api/admin/video-modelo/upload', {
     method: 'POST',
@@ -157,11 +168,16 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [closingPreviewUrl, setClosingPreviewUrl] = useState<string | null>(null);
   const [closingPath, setClosingPath] = useState<string | null>(null); // path já salvo
 
+  const [propostaFile, setPropostaFile] = useState<File | null>(null);
+  const [propostaPath, setPropostaPath] = useState<string | null>(null); // path já salvo
+  const [propostaMessage, setPropostaMessage] = useState('');
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closingInputRef = useRef<HTMLInputElement>(null);
+  const propostaInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state on open
   useEffect(() => {
@@ -176,6 +192,8 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setThankYou(initial.thank_you_message || '');
       setIsActive(initial.is_active);
       setClosingPath(initial.closing_video_path || null);
+      setPropostaPath(initial.proposta_pdf_path || null);
+      setPropostaMessage(initial.proposta_message_template || '');
     } else {
       setName('');
       setSlug('');
@@ -186,11 +204,14 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setThankYou(DEFAULT_THANK_YOU);
       setIsActive(true);
       setClosingPath(null);
+      setPropostaPath(null);
+      setPropostaMessage('');
     }
     setVideoFile(null);
     setVideoPreviewUrl(null);
     setClosingFile(null);
     setClosingPreviewUrl(null);
+    setPropostaFile(null);
     setError(null);
     setSaving(false);
   }, [open, initial]);
@@ -231,6 +252,17 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
     setClosingPreviewUrl(URL.createObjectURL(file));
   }
 
+  function handlePropostaSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      setError('A proposta de governo deve ser um arquivo PDF.');
+      return;
+    }
+    setError(null);
+    setPropostaFile(file);
+  }
+
   async function handleSubmit() {
     setError(null);
 
@@ -262,7 +294,16 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         nextClosingPath = await uploadToStorage(closingFile, `closing_${slug}`, 'closing');
       }
 
-      // 3. POST ou PATCH
+      // 3. Upload da proposta (se houver nova)
+      let nextPropostaPath: string | null | undefined = undefined;
+      if (propostaFile) {
+        nextPropostaPath = await uploadToStorage(propostaFile, `proposta_${slug}`, 'proposta');
+      } else if (propostaPath === null && initial?.proposta_pdf_path) {
+        // usuário clicou em "remover" no modo edit
+        nextPropostaPath = null;
+      }
+
+      // 4. POST ou PATCH
       const payload: Record<string, unknown> = {
         name: name || displayName || slug,
         slug,
@@ -271,10 +312,12 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         lipsync_config: lipsync,
         whatsapp_message_template: whatsappTemplate,
         thank_you_message: thankYou,
+        proposta_message_template: propostaMessage || null,
         is_active: isActive,
       };
       if (videoPath) payload.videoPath = videoPath;
       if (nextClosingPath !== undefined) payload.closing_video_path = nextClosingPath;
+      if (nextPropostaPath !== undefined) payload.proposta_pdf_path = nextPropostaPath;
 
       let res: Response;
       if (mode === 'create') {
@@ -574,6 +617,85 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                 </button>
               )}
             </div>
+          </Section>
+
+          {/* ── Proposta de governo (PDF) ── */}
+          <Section
+            icon={<FileType2 size={20} className="text-orange-400" />}
+            iconBg="bg-orange-500/10"
+            title="Proposta de governo (opcional)"
+            subtitle="PDF enviado por WhatsApp logo após o vídeo. Use {name} no texto."
+          >
+            {/* Existing/new file indicator */}
+            {(propostaFile || propostaPath) && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-white/[0.04] border border-white/[0.08] rounded-xl">
+                <div className="p-2 rounded-lg bg-orange-500/10">
+                  <FileType2 size={16} className="text-orange-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-white font-medium truncate">
+                    {propostaFile ? propostaFile.name : (propostaPath?.split('/').pop() || 'proposta.pdf')}
+                  </p>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    {propostaFile ? 'Novo arquivo · não salvo' : 'PDF atual no storage'}
+                  </p>
+                </div>
+                {propostaFile && (
+                  <span className="px-2 py-1 bg-amber-500/20 text-amber-400 rounded-lg text-[10px] font-medium uppercase tracking-wider">
+                    Novo
+                  </span>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mt-4">
+              <input
+                ref={propostaInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={handlePropostaSelect}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => propostaInputRef.current?.click()}
+                disabled={saving}
+                className={ghostBtnClass}
+              >
+                <Upload size={16} />
+                {propostaPath || propostaFile ? 'Trocar PDF' : 'Upload do PDF'}
+              </button>
+              {(propostaPath || propostaFile) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPropostaPath(null);
+                    setPropostaFile(null);
+                  }}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors duration-200"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+
+            <div className="mt-4">
+              <Field label="Texto que acompanha o PDF no WhatsApp" hint="Use {name} para inserir o nome do eleitor.">
+                <textarea
+                  value={propostaMessage}
+                  onChange={(e) => setPropostaMessage(e.target.value)}
+                  rows={3}
+                  className={cn(inputClass, 'resize-y')}
+                  placeholder={DEFAULT_PROPOSTA_MESSAGE}
+                />
+              </Field>
+            </div>
+
+            <p className="text-xs text-zinc-500 mt-3 leading-relaxed">
+              💡 Para o político <em>falar no vídeo</em> que está enviando a proposta, adicione uma instrução no
+              campo &quot;Prompt do GPT-4&quot; acima — algo como &quot;Mencione que estamos enviando a proposta de governo
+              em anexo&quot;.
+            </p>
           </Section>
         </div>
 
