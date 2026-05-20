@@ -1,90 +1,32 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { Upload, Save, Trash2, Check, AlertCircle, Video, Mic, FileText, Loader2, Settings2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Plus,
+  Loader2,
+  Check,
+  AlertCircle,
+  Edit,
+  Trash2,
+  Power,
+  Mic,
+  Video as VideoIcon,
+  Settings2,
+  Film,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-interface VoiceModel {
-  id: string;
-  name: string;
-  status: string;
-  elevenlabs_voice_id: string | null;
-}
-
-interface LipsyncConfig {
-  model: string;
-  sync_mode: string;
-  temperature: number;
-}
-
-const DEFAULT_LIPSYNC: LipsyncConfig = {
-  model: 'lipsync-2-pro',
-  sync_mode: 'loop',
-  temperature: 0.3,
-};
-
-interface BaseModel {
-  id: string;
-  name: string;
-  video_storage_path: string;
-  voice_model_id: string;
-  prompt_template: string;
-  lipsync_config: LipsyncConfig | null;
-  is_active: boolean;
-  created_at: string;
-  voice_models: VoiceModel | null;
-}
-
-interface UploadInitResponse {
-  uploadUrl: string;
-  videoPath: string;
-}
-
-const DEFAULT_PROMPT = `Você é um assistente responsável por escrever respostas em vídeo para um político do estado do Piauí responder eleitores que gravaram vídeos falando por que apoiam ele ou qual é o principal problema da cidade ou do estado.
-
-A resposta será lida pelo político em vídeo. O objetivo é fazer o eleitor sentir que foi ouvido, respeitado, teve sua realidade compreendida e que o político está próximo e atento ao Piauí.
-
-A resposta deve parecer humana, natural e direta, como um vídeo curto gravado espontaneamente.
-
-ESTRUTURA DA RESPOSTA:
-1 — Início natural com o nome da pessoa. O nome NUNCA pode aparecer no início da frase. Sempre começar com uma pequena introdução e só depois mencionar o nome. Exemplos: "Meu amigo {nome},", "Muito obrigado pela sua mensagem, {nome},", "Que bom ouvir você, {nome},", "Obrigado por participar, {nome},".
-2 — Reconhecer o problema citado. Mencionar brevemente a dor ou problema citado. Mostrar que o político entendeu a realidade local.
-3 — Mensagem central sobre o PIAUÍ. Sempre reforçar que juntos é o caminho para resolver os problemas do Piauí. Ideias possíveis: juntos podemos transformar o estado, o Piauí precisa de união, é com trabalho conjunto que avançamos, ninguém resolve sozinho.
-4 — Compromisso político realista. O político pode: lutar por melhorias, cobrar autoridades, defender a população, trabalhar por políticas públicas. NUNCA prometer resolver diretamente problemas executivos.
-5 — Fechamento obrigatório com convite ou saudação. Exemplos: "Seguimos juntos pelo Piauí.", "Conte comigo nessa caminhada.", "Vamos juntos transformar o Piauí."
-
-REGRA PARA PEGADINHAS OU OFENSAS:
-Se o vídeo contiver piadas, provocações, ofensas ou situações não sérias: responder de forma educada, neutra e elegante. Encerrar de forma positiva. Nunca reagir com agressividade ou ironia.
-
-REGRA PARA NOMES DE CIDADES E BAIRROS:
-Sempre escreva o nome completo da cidade ou bairro exatamente como se pronuncia em português brasileiro. NUNCA abrevie ou corte nomes. Se o eleitor mencionar uma cidade, repita o nome completo na resposta.
-
-FORMATAÇÃO OBRIGATÓRIA PARA PRONÚNCIA:
-O texto será lido por um sistema TTS (text-to-speech). Para que a pronúncia fique natural, SIGA ESTAS REGRAS DE FORMATAÇÃO:
-- Use quebra de linha para criar pausas médias entre frases.
-- Use linha em branco para criar pausas longas entre blocos.
-- Use reticências (…) para criar pausas curtas e naturais dentro da frase.
-- Use vírgula antes de nomes e antes de expressões de ênfase.
-
-EXEMPLO DE FORMATAÇÃO CORRETA:
-
-Muito obrigado pela sua mensagem Arthur, Direto de Minas Gerais.
-
-É muito bom saber que você acredita no progresso do nosso país.
-Porque é isso, com união, com trabalho…
-a gente constrói um futuro melhor!
-
-Seguimos juntos, Pelo Piauí!
-
-TAMANHO: máximo 35 palavras. Nunca ultrapassar esse limite.
-TOM: humano, próximo, respeitoso, simples, verdadeiro. Evitar discurso longo, frases artificiais ou propaganda exagerada.
-Sem emojis. Apenas gere o texto da resposta, sem explicações ou comentários.`;
+import VideoModeloModal, { BaseModel } from './VideoModeloModal';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
 
+function getVideoPublicUrl(path: string | null) {
+  if (!path) return null;
+  return `${SUPABASE_URL}/storage/v1/object/public/voice-models/${path}`;
+}
+
 async function readJsonSafe<T>(res: Response): Promise<T | null> {
   try {
-    return await res.json() as T;
+    return (await res.json()) as T;
   } catch {
     return null;
   }
@@ -92,732 +34,412 @@ async function readJsonSafe<T>(res: Response): Promise<T | null> {
 
 async function readApiError(res: Response, fallback: string): Promise<string> {
   const contentType = res.headers.get('content-type') || '';
-
   if (contentType.includes('application/json')) {
     const data = await readJsonSafe<{ error?: string }>(res);
     if (data?.error?.trim()) return data.error;
     return fallback;
   }
-
   const text = (await res.text().catch(() => '')).trim();
   return text || fallback;
 }
 
 export default function VideoModeloPage() {
-  const [model, setModel] = useState<BaseModel | null>(null);
+  const [models, setModels] = useState<BaseModel[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Form state
-  const [name, setName] = useState('Modelo Principal');
-  const [promptTemplate, setPromptTemplate] = useState(DEFAULT_PROMPT);
-  const [lipsyncConfig, setLipsyncConfig] = useState<LipsyncConfig>({ ...DEFAULT_LIPSYNC });
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [modalInitial, setModalInitial] = useState<BaseModel | null>(null);
 
-  function updateLipsync<K extends keyof LipsyncConfig>(key: K, value: LipsyncConfig[K]) {
-    setLipsyncConfig(prev => ({ ...prev, [key]: value }));
-  }
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Track unsaved changes
-  const hasUnsavedChanges = model && !videoFile && (
-    name !== model.name ||
-    promptTemplate !== model.prompt_template ||
-    JSON.stringify(lipsyncConfig) !== JSON.stringify({ ...DEFAULT_LIPSYNC, ...(model.lipsync_config || {}) })
-  );
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadModel();
+    loadModels();
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-    };
-  }, [videoPreviewUrl]);
-
-  function getVideoPublicUrl(path: string) {
-    return `${SUPABASE_URL}/storage/v1/object/public/voice-models/${path}`;
-  }
-
-  async function loadModel() {
+  async function loadModels() {
     try {
+      setLoading(true);
       const res = await fetch('/api/admin/video-modelo');
-      if (!res.ok) {
-        throw new Error(await readApiError(res, 'Falha ao carregar modelo'));
-      }
-      const data = await readJsonSafe<{ model?: BaseModel }>(res);
-
-      if (data?.model) {
-        setModel(data.model);
-        setName(data.model.name);
-        setPromptTemplate(data.model.prompt_template);
-        setLipsyncConfig({ ...DEFAULT_LIPSYNC, ...(data.model.lipsync_config || {}) });
-      }
+      if (!res.ok) throw new Error(await readApiError(res, 'Falha ao listar modelos'));
+      const data = await readJsonSafe<{ models?: BaseModel[] }>(res);
+      setModels(data?.models || []);
     } catch (err) {
-      console.error('Error loading model:', err);
+      const msg = err instanceof Error ? err.message : 'Erro ao carregar';
+      setMessage({ type: 'error', text: msg });
     } finally {
       setLoading(false);
     }
   }
 
-  function handleVideoSelect(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-
-    setVideoFile(file);
-    setVideoPreviewUrl(URL.createObjectURL(file));
-    setMessage(null);
+  function openCreate() {
+    setModalMode('create');
+    setModalInitial(null);
+    setModalOpen(true);
   }
 
-  async function uploadVideoToStorage(file: File): Promise<string> {
-    const ext = file.type.includes('webm') || file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
-    const contentType = ext === 'webm' ? 'video/webm' : 'video/mp4';
+  function openEdit(model: BaseModel) {
+    setModalMode('edit');
+    setModalInitial(model);
+    setModalOpen(true);
+  }
 
-    const initRes = await fetch('/api/admin/video-modelo/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, ext }),
+  function handleSaved(saved: BaseModel) {
+    setModalOpen(false);
+    setMessage({ type: 'success', text: modalMode === 'create' ? 'Modelo criado!' : 'Modelo atualizado!' });
+    setModels((prev) => {
+      const idx = prev.findIndex((m) => m.id === saved.id);
+      if (idx === -1) return [saved, ...prev];
+      const next = [...prev];
+      next[idx] = saved;
+      return next;
     });
-
-    if (!initRes.ok) {
-      throw new Error(await readApiError(initRes, 'Falha ao iniciar upload'));
-    }
-
-    const initData = await readJsonSafe<UploadInitResponse>(initRes);
-    if (!initData?.uploadUrl || !initData?.videoPath) {
-      throw new Error('Resposta inválida ao iniciar upload');
-    }
-
-    const uploadRes = await fetch(initData.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: file,
-    });
-
-    if (!uploadRes.ok) {
-      throw new Error(await readApiError(uploadRes, 'Falha no upload do vídeo'));
-    }
-
-    return initData.videoPath;
   }
 
-  async function handleCreate() {
-    if (!videoFile) {
-      setMessage({ type: 'error', text: 'Faça upload do vídeo base' });
-      return;
-    }
-    if (!promptTemplate.trim()) {
-      setMessage({ type: 'error', text: 'Configure o prompt template' });
-      return;
-    }
-
+  async function toggleActive(model: BaseModel) {
+    setBusyId(model.id);
     try {
-      setProcessing(true);
-      setMessage(null);
-
-      // Step 1: Upload vídeo ao Storage
-      const videoPath = await uploadVideoToStorage(videoFile);
-
-      // Step 2: Clonar voz + criar modelo base
-      const res = await fetch('/api/admin/video-modelo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath, name, prompt_template: promptTemplate, lipsync_config: lipsyncConfig }),
-      });
-
-      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao criar modelo'));
-      const data = await readJsonSafe<{ model?: BaseModel }>(res);
-      if (!data?.model) throw new Error('Resposta inválida ao criar modelo');
-
-      setModel(data.model);
-      setVideoFile(null);
-      if (videoPreviewUrl) {
-        URL.revokeObjectURL(videoPreviewUrl);
-        setVideoPreviewUrl(null);
-      }
-      setMessage({ type: 'success', text: 'Modelo criado! Vídeo salvo e voz clonada com sucesso.' });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao criar modelo';
-      setMessage({ type: 'error', text: msg });
-    } finally {
-      setProcessing(false);
-    }
-  }
-
-  async function handleUpdate() {
-    if (!model) return;
-
-    try {
-      setSaving(true);
-      setMessage(null);
-
       const res = await fetch('/api/admin/video-modelo', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: model.id,
-          name,
-          prompt_template: promptTemplate,
-          lipsync_config: lipsyncConfig,
-        }),
+        body: JSON.stringify({ id: model.id, is_active: !model.is_active }),
       });
-
-      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao atualizar modelo'));
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao alterar status'));
       const data = await readJsonSafe<{ model?: BaseModel }>(res);
-      if (!data?.model) throw new Error('Resposta inválida ao atualizar modelo');
-
-      setModel(data.model);
-      // Sync local state from DB response to confirm save worked
-      setName(data.model.name);
-      setPromptTemplate(data.model.prompt_template);
-      setLipsyncConfig({ ...DEFAULT_LIPSYNC, ...(data.model.lipsync_config || {}) });
-      setMessage({ type: 'success', text: 'Modelo atualizado!' });
+      if (data?.model) {
+        setModels((prev) => prev.map((m) => (m.id === model.id ? data.model! : m)));
+        setMessage({ type: 'success', text: data.model.is_active ? 'Modelo ativado' : 'Modelo desativado' });
+      }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao atualizar';
+      const msg = err instanceof Error ? err.message : 'Erro ao alterar status';
       setMessage({ type: 'error', text: msg });
     } finally {
-      setSaving(false);
+      setBusyId(null);
     }
   }
 
-  async function handleReplace() {
-    if (!videoFile || !model) return;
-
+  async function handleDelete(id: string) {
+    setBusyId(id);
     try {
-      setProcessing(true);
-      setMessage(null);
-
-      // Desativar modelo atual
-      const deactivateRes = await fetch(`/api/admin/video-modelo?id=${model.id}`, { method: 'DELETE' });
-      if (!deactivateRes.ok) {
-        throw new Error(await readApiError(deactivateRes, 'Erro ao desativar modelo atual'));
-      }
-
-      // Step 1: Upload novo vídeo ao Storage
-      const videoPath = await uploadVideoToStorage(videoFile);
-
-      // Step 2: Clonar voz + criar novo modelo
-      const res = await fetch('/api/admin/video-modelo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoPath, name, prompt_template: promptTemplate, lipsync_config: lipsyncConfig }),
-      });
-
-      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao trocar modelo'));
-      const data = await readJsonSafe<{ model?: BaseModel }>(res);
-      if (!data?.model) throw new Error('Resposta inválida ao trocar modelo');
-
-      setModel(data.model);
-      setVideoFile(null);
-      if (videoPreviewUrl) {
-        URL.revokeObjectURL(videoPreviewUrl);
-        setVideoPreviewUrl(null);
-      }
-      setMessage({ type: 'success', text: 'Vídeo trocado e voz re-clonada com sucesso!' });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Erro ao trocar vídeo';
-      setMessage({ type: 'error', text: msg });
-    } finally {
-      setProcessing(false);
-    }
-  }
-
-  async function handleDelete() {
-    if (!model) return;
-
-    try {
-      setSaving(true);
-      const res = await fetch(`/api/admin/video-modelo?id=${model.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(await readApiError(res, 'Falha ao desativar'));
-
-      setModel(null);
-      setName('Modelo Principal');
-      setPromptTemplate(DEFAULT_PROMPT);
-      setLipsyncConfig({ ...DEFAULT_LIPSYNC });
+      const res = await fetch(`/api/admin/video-modelo?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(await readApiError(res, 'Erro ao desativar'));
+      // Soft-delete → atualiza is_active local
+      setModels((prev) => prev.map((m) => (m.id === id ? { ...m, is_active: false } : m)));
       setMessage({ type: 'success', text: 'Modelo desativado' });
-    } catch {
-      setMessage({ type: 'error', text: 'Erro ao desativar modelo' });
+      setConfirmDeleteId(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao desativar';
+      setMessage({ type: 'error', text: msg });
     } finally {
-      setSaving(false);
+      setBusyId(null);
     }
-  }
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="flex items-center gap-3 text-zinc-400">
-          <Loader2 size={24} className="animate-spin" />
-          <span>Carregando...</span>
-        </div>
-      </div>
-    );
   }
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="max-w-4xl mx-auto p-6 md:p-8 space-y-8">
+      <div className="max-w-6xl mx-auto p-6 md:p-8 space-y-8">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Modelo de Vídeo</h1>
-            <p className="text-zinc-500 mt-1">Configure o vídeo base para o pipeline de selfie</p>
+            <h1 className="text-3xl font-bold text-white tracking-tight">Modelos de Vídeo</h1>
+            <p className="text-zinc-500 mt-1">
+              Gerencie os vídeos base por político. Cada modelo tem seu próprio prompt, voz clonada e config de lip-sync.
+            </p>
           </div>
-          <div className="flex items-center gap-3">
-            {model && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-xs font-medium">
-                <Check size={12} /> Ativo
-              </span>
+          <button
+            onClick={openCreate}
+            className={cn(
+              'inline-flex items-center gap-2 px-5 py-2.5',
+              'bg-emerald-500 hover:bg-emerald-400',
+              'text-black font-semibold text-sm rounded-xl',
+              'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
+              'active:scale-[0.97] transition-all duration-200',
             )}
-          </div>
+          >
+            <Plus size={16} /> Novo modelo
+          </button>
         </div>
 
         {/* Message */}
         {message && (
-          <div className={cn(
-            'flex items-center gap-3 px-4 py-3 rounded-xl border text-sm',
-            message.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-              : 'bg-red-500/10 border-red-500/20 text-red-400'
-          )}>
-            {message.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
-            {message.text}
+          <div
+            className={cn(
+              'flex items-center justify-between gap-3 px-4 py-3 rounded-xl border text-sm',
+              message.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                : 'bg-red-500/10 border-red-500/20 text-red-400',
+            )}
+          >
+            <div className="flex items-center gap-2">
+              {message.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
+              <span>{message.text}</span>
+            </div>
+            <button
+              onClick={() => setMessage(null)}
+              className="text-zinc-500 hover:text-white transition-colors duration-200 text-xs"
+            >
+              fechar
+            </button>
           </div>
         )}
 
-        {/* Unsaved changes warning */}
-        {hasUnsavedChanges && (
-          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl border bg-amber-500/10 border-amber-500/20 text-amber-400 text-sm">
-            <div className="flex items-center gap-2">
-              <AlertCircle size={16} />
-              <span>Você tem alterações não salvas</span>
+        {/* List */}
+        {loading ? (
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-32 bg-zinc-900/50 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        ) : models.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+              <VideoIcon size={32} className="text-zinc-600" />
             </div>
+            <p className="text-zinc-400 mb-1">Nenhum modelo cadastrado ainda</p>
+            <p className="text-zinc-600 text-sm mb-6">Crie o primeiro modelo para começar a receber selfies.</p>
             <button
-              onClick={handleUpdate}
-              disabled={saving}
+              onClick={openCreate}
               className={cn(
-                'inline-flex items-center gap-2 px-4 py-1.5',
-                'bg-amber-500 hover:bg-amber-400',
-                'text-black font-semibold text-xs',
-                'rounded-lg',
+                'inline-flex items-center gap-2 px-5 py-2.5',
+                'bg-emerald-500 hover:bg-emerald-400',
+                'text-black font-semibold text-sm rounded-xl',
+                'shadow-lg shadow-emerald-500/25',
+                'active:scale-[0.97] transition-all duration-200',
+              )}
+            >
+              <Plus size={16} /> Criar primeiro modelo
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            {models.map((m) => (
+              <ModelCard
+                key={m.id}
+                model={m}
+                busy={busyId === m.id}
+                onEdit={() => openEdit(m)}
+                onToggleActive={() => toggleActive(m)}
+                onDelete={() => setConfirmDeleteId(m.id)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Confirm delete modal */}
+      {confirmDeleteId && (() => {
+        const target = models.find((m) => m.id === confirmDeleteId);
+        if (!target) return null;
+        return (
+          <div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm flex items-center justify-center px-4"
+            onClick={() => !busyId && setConfirmDeleteId(null)}
+          >
+            <div
+              className="bg-zinc-950 border border-white/[0.08] rounded-2xl p-6 max-w-md w-full shadow-2xl shadow-black/60"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 rounded-xl bg-red-500/10">
+                  <Trash2 size={20} className="text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-semibold text-white">Desativar modelo</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Soft-delete · selfies históricas permanecem
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-zinc-400 leading-relaxed mb-6">
+                O modelo <strong className="text-white">{target.display_name || target.name}</strong> ficará inativo.
+                Novas selfies para este político não serão aceitas até reativar.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setConfirmDeleteId(null)}
+                  disabled={!!busyId}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-5 py-2.5',
+                    'bg-white/[0.05] hover:bg-white/[0.1]',
+                    'text-zinc-300 hover:text-white',
+                    'border border-white/[0.08] hover:border-white/[0.15]',
+                    'rounded-xl font-medium text-sm',
+                    'active:scale-[0.97] transition-all duration-200',
+                    'disabled:opacity-50',
+                  )}
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={() => handleDelete(target.id)}
+                  disabled={!!busyId}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-5 py-2.5',
+                    'bg-red-500 hover:bg-red-400',
+                    'text-white font-semibold text-sm',
+                    'rounded-xl shadow-lg shadow-red-500/25',
+                    'active:scale-[0.97] transition-all duration-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {busyId ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Desativar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Edit/Create modal */}
+      <VideoModeloModal
+        open={modalOpen}
+        mode={modalMode}
+        initial={modalInitial}
+        onClose={() => setModalOpen(false)}
+        onSaved={handleSaved}
+      />
+    </div>
+  );
+}
+
+function ModelCard({
+  model,
+  busy,
+  onEdit,
+  onToggleActive,
+  onDelete,
+}: {
+  model: BaseModel;
+  busy: boolean;
+  onEdit: () => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const videoUrl = getVideoPublicUrl(model.video_storage_path);
+  const lipsync = model.lipsync_config || { model: '—', sync_mode: '—', temperature: 0 };
+  const hasClosing = !!model.closing_video_path;
+
+  return (
+    <div className="group bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.12] rounded-2xl overflow-hidden shadow-xl shadow-black/20 transition-all duration-300 ease-out">
+      <div className="flex">
+        {/* Video preview */}
+        <div className="w-40 shrink-0 aspect-[9/12] bg-zinc-900/80 relative overflow-hidden">
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              muted
+              playsInline
+              className="absolute inset-0 w-full h-full object-cover"
+              onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+              onMouseLeave={(e) => {
+                e.currentTarget.pause();
+                e.currentTarget.currentTime = 0;
+              }}
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-zinc-700">
+              <VideoIcon size={28} />
+            </div>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 p-5 flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-semibold text-white truncate">
+                  {model.display_name || model.name}
+                </h3>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wider',
+                    model.is_active
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : 'bg-zinc-700/40 text-zinc-400 border border-zinc-600/30',
+                  )}
+                >
+                  {model.is_active ? 'Ativo' : 'Inativo'}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500 mt-1 font-mono truncate">/{model.slug || '—'}</p>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="flex flex-wrap gap-2">
+            <Tag icon={<Mic size={11} />}>
+              {model.voice_models?.elevenlabs_voice_id ? 'Voz clonada' : 'Sem voz'}
+            </Tag>
+            <Tag icon={<Settings2 size={11} />}>{lipsync.model}</Tag>
+            <Tag>temp {Number(lipsync.temperature).toFixed(1)}</Tag>
+            {hasClosing && <Tag icon={<Film size={11} />}>Encerramento</Tag>}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 mt-auto pt-2">
+            <button
+              onClick={onEdit}
+              disabled={busy}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5',
+                'bg-white/[0.05] hover:bg-white/[0.1]',
+                'text-zinc-300 hover:text-white',
+                'border border-white/[0.08] hover:border-white/[0.15]',
+                'rounded-lg text-xs font-medium',
                 'active:scale-[0.97] transition-all duration-200',
                 'disabled:opacity-50',
               )}
             >
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-              Salvar agora
+              <Edit size={12} /> Editar
             </button>
-          </div>
-        )}
-
-        {/* Video Base */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-violet-500/10">
-              <Video size={20} className="text-violet-400" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-white">Vídeo Base</h2>
-              <p className="text-xs text-zinc-500">O vídeo será usado para lip-sync e a voz será clonada automaticamente</p>
-            </div>
-          </div>
-
-          {/* Saved video from DB */}
-          {model?.video_storage_path && !videoFile && (
-            <div className="relative rounded-xl overflow-hidden bg-zinc-900/50 aspect-video max-w-md">
-              <video
-                src={getVideoPublicUrl(model.video_storage_path)}
-                controls
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
-
-          {/* New file selected (not yet saved) */}
-          {videoPreviewUrl && videoFile && (
-            <div className="relative rounded-xl overflow-hidden bg-zinc-900/50 aspect-video max-w-md">
-              <video
-                src={videoPreviewUrl}
-                controls
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute top-2 right-2 px-2 py-1 bg-amber-500/20 text-amber-400 rounded-lg text-xs font-medium backdrop-blur-sm">
-                Novo arquivo (não salvo)
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-3">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/mp4,video/*"
-              onChange={handleVideoSelect}
-              className="hidden"
-            />
             <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={processing}
+              onClick={onToggleActive}
+              disabled={busy}
               className={cn(
-                'inline-flex items-center gap-2 px-5 py-2.5',
-                'bg-white/[0.05] hover:bg-white/[0.1]',
-                'text-zinc-300 hover:text-white',
-                'border border-white/[0.08] hover:border-white/[0.15]',
-                'rounded-xl font-medium text-sm',
+                'inline-flex items-center gap-1.5 px-3 py-1.5',
+                model.is_active
+                  ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20 hover:border-amber-500/30'
+                  : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20 hover:border-emerald-500/30',
+                'border rounded-lg text-xs font-medium',
                 'active:scale-[0.97] transition-all duration-200',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'disabled:opacity-50',
               )}
             >
-              <Upload size={16} />
-              {model?.video_storage_path ? 'Trocar vídeo base' : 'Upload do vídeo base'}
+              {busy ? <Loader2 size={12} className="animate-spin" /> : <Power size={12} />}
+              {model.is_active ? 'Desativar' : 'Ativar'}
             </button>
-          </div>
-
-          {/* Voice clone info */}
-          {model?.voice_models && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-emerald-500/5 border border-emerald-500/10 rounded-xl">
-              <Mic size={16} className="text-emerald-400 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm text-white font-medium">Voz clonada: {model.voice_models.name}</p>
-                <p className="text-xs text-zinc-500">ID: {model.voice_models.elevenlabs_voice_id?.slice(0, 12)}...</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Prompt Template */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 space-y-4">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-amber-500/10">
-              <FileText size={20} className="text-amber-400" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-white">Prompt Template</h2>
-              <p className="text-xs text-zinc-500">Use {'{nome}'} e {'{transcricao}'} como variáveis</p>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2 block">Nome do modelo</label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className={cn(
-                'w-full px-4 py-3',
-                'bg-white/[0.04] hover:bg-white/[0.06]',
-                'border border-white/[0.08] focus:border-emerald-500/50',
-                'rounded-xl text-sm text-white placeholder:text-zinc-600',
-                'outline-none focus:ring-2 focus:ring-emerald-500/20',
-                'transition-all duration-200',
-              )}
-              placeholder="Ex: Modelo Principal"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2 block">Prompt do GPT-4</label>
-            <textarea
-              value={promptTemplate}
-              onChange={(e) => setPromptTemplate(e.target.value)}
-              rows={8}
-              className={cn(
-                'w-full px-4 py-3',
-                'bg-white/[0.04] hover:bg-white/[0.06]',
-                'border border-white/[0.08] focus:border-emerald-500/50',
-                'rounded-xl text-sm text-white placeholder:text-zinc-600',
-                'outline-none focus:ring-2 focus:ring-emerald-500/20',
-                'transition-all duration-200 resize-y',
-              )}
-              placeholder="Prompt template..."
-            />
-          </div>
-
-          {/* Preview parsed prompt */}
-          <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2">Preview (exemplo)</p>
-            <p className="text-sm text-zinc-400 leading-relaxed whitespace-pre-wrap">
-              {promptTemplate
-                .replace(/{nome}/g, 'João Carlos')
-                .replace(/{transcricao}/g, 'Eu voto nele porque ele se preocupa com a gente. O maior problema aqui no bairro é o esgoto a céu aberto, ninguém resolve isso.')}
-            </p>
-          </div>
-        </div>
-
-        {/* Lip-sync Config (Sync Labs) */}
-        <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 space-y-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 rounded-xl bg-sky-500/10">
-              <Settings2 size={20} className="text-sky-400" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-white">Configurações do Lip-Sync</h2>
-              <p className="text-xs text-zinc-500">Parâmetros do Sync Labs para controlar a sincronização labial</p>
-            </div>
-          </div>
-
-          {/* Model */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block">
-              Modelo
-            </label>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {[
-                { value: 'lipsync-2-pro', label: 'Lipsync 2 Pro', desc: 'Melhor qualidade. Mais lento e mais caro, mas gera resultados mais realistas.' },
-                { value: 'lipsync-2', label: 'Lipsync 2', desc: 'Boa qualidade com processamento mais rápido. Equilíbrio entre velocidade e resultado.' },
-                { value: 'lipsync-1.9.0-beta', label: 'Lipsync 1.9 Beta', desc: 'Versão anterior. Pode funcionar melhor com certos tipos de vídeo.' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => updateLipsync('model', opt.value)}
-                  className={cn(
-                    'text-left p-4 rounded-xl border transition-all duration-200',
-                    lipsyncConfig.model === opt.value
-                      ? 'bg-sky-500/10 border-sky-500/30 ring-1 ring-sky-500/20'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]',
-                  )}
-                >
-                  <p className={cn(
-                    'text-sm font-medium',
-                    lipsyncConfig.model === opt.value ? 'text-sky-400' : 'text-zinc-300',
-                  )}>{opt.label}</p>
-                  <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Sync Mode */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block">
-              Modo de sincronização
-            </label>
-            <p className="text-xs text-zinc-600 mb-3">
-              Define o que acontece quando o áudio e o vídeo têm durações diferentes.
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {[
-                { value: 'cut_off', label: 'Cortar', desc: 'Corta o conteúdo mais longo para igualar o mais curto. Ideal para a maioria dos casos.' },
-                { value: 'bounce', label: 'Bounce', desc: 'O vídeo vai e volta (rebobina) para cobrir o áudio inteiro. Pode parecer artificial.' },
-                { value: 'loop', label: 'Loop', desc: 'O vídeo reinicia do começo quando acaba. Bom se o vídeo base tem início/fim suave.' },
-                { value: 'silence', label: 'Silêncio', desc: 'Preenche a diferença com silêncio. O vídeo congela no último frame.' },
-                { value: 'remap', label: 'Remapear', desc: 'Acelera ou desacelera o vídeo para coincidir com a duração do áudio.' },
-              ].map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => updateLipsync('sync_mode', opt.value)}
-                  className={cn(
-                    'text-left p-4 rounded-xl border transition-all duration-200',
-                    lipsyncConfig.sync_mode === opt.value
-                      ? 'bg-sky-500/10 border-sky-500/30 ring-1 ring-sky-500/20'
-                      : 'bg-white/[0.02] border-white/[0.06] hover:bg-white/[0.05] hover:border-white/[0.12]',
-                  )}
-                >
-                  <p className={cn(
-                    'text-sm font-medium',
-                    lipsyncConfig.sync_mode === opt.value ? 'text-sky-400' : 'text-zinc-300',
-                  )}>{opt.label}</p>
-                  <p className="text-xs text-zinc-500 mt-1 leading-relaxed">{opt.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Temperature */}
-          <div className="space-y-2">
-            <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 block">
-              Expressividade (Temperature) — {lipsyncConfig.temperature.toFixed(1)}
-            </label>
-            <p className="text-xs text-zinc-600 mb-3">
-              Controla o quanto a boca se movimenta. Valores baixos geram movimentos mais sutis e naturais. Valores altos geram movimentos mais amplos, podendo mostrar mais os dentes e parecer exagerado.
-            </p>
-            <div className="flex items-center gap-4">
-              <span className="text-xs text-zinc-500 shrink-0 w-12 text-right">0.0</span>
-              <div className="flex-1 relative">
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={lipsyncConfig.temperature}
-                  onChange={(e) => updateLipsync('temperature', parseFloat(e.target.value))}
-                  className="w-full h-2 bg-white/[0.06] rounded-full appearance-none cursor-pointer accent-sky-500"
-                />
-                <div className="flex justify-between mt-2">
-                  <span className="text-xs text-zinc-600">Sutil / Natural</span>
-                  <span className="text-xs text-zinc-600">Expressivo / Exagerado</span>
-                </div>
-              </div>
-              <span className="text-xs text-zinc-500 shrink-0 w-12">1.0</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 mt-3">
-              <button
-                type="button"
-                onClick={() => updateLipsync('temperature', 0.1)}
-                className={cn(
-                  'px-3 py-2 rounded-xl text-xs font-medium border transition-all duration-200',
-                  lipsyncConfig.temperature === 0.1
-                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:bg-white/[0.05]',
-                )}
-              >
-                Muito sutil (0.1)
-              </button>
-              <button
-                type="button"
-                onClick={() => updateLipsync('temperature', 0.3)}
-                className={cn(
-                  'px-3 py-2 rounded-xl text-xs font-medium border transition-all duration-200',
-                  lipsyncConfig.temperature === 0.3
-                    ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
-                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:bg-white/[0.05]',
-                )}
-              >
-                Recomendado (0.3)
-              </button>
-              <button
-                type="button"
-                onClick={() => updateLipsync('temperature', 0.5)}
-                className={cn(
-                  'px-3 py-2 rounded-xl text-xs font-medium border transition-all duration-200',
-                  lipsyncConfig.temperature === 0.5
-                    ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
-                    : 'bg-white/[0.02] border-white/[0.06] text-zinc-400 hover:bg-white/[0.05]',
-                )}
-              >
-                Padrão Sync (0.5)
-              </button>
-            </div>
-          </div>
-
-          {/* Config Summary */}
-          <div className="bg-zinc-900/50 rounded-xl p-4 border border-zinc-800/50">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2">Configuração atual</p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full text-xs font-medium">
-                Modelo: {lipsyncConfig.model}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full text-xs font-medium">
-                Sync: {lipsyncConfig.sync_mode}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-sky-500/10 text-sky-400 border border-sky-500/20 rounded-full text-xs font-medium">
-                Expressividade: {lipsyncConfig.temperature.toFixed(1)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Processing indicator */}
-        {processing && (
-          <div className="bg-violet-500/10 border border-violet-500/20 rounded-2xl p-6">
-            <div className="flex items-center gap-4">
-              <Loader2 size={24} className="text-violet-400 animate-spin shrink-0" />
-              <div>
-                <p className="text-white font-medium">Processando vídeo...</p>
-                <p className="text-zinc-400 text-sm mt-1">
-                  Fazendo upload do vídeo e clonando a voz automaticamente via ElevenLabs. Isso pode levar alguns segundos.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex items-center justify-between gap-4">
-          {model && (
             <button
-              onClick={handleDelete}
-              disabled={saving || processing}
+              onClick={onDelete}
+              disabled={busy || !model.is_active}
+              title={!model.is_active ? 'Já desativado' : 'Desativar (soft-delete)'}
               className={cn(
-                'inline-flex items-center gap-2 px-5 py-2.5',
+                'inline-flex items-center gap-1.5 px-3 py-1.5 ml-auto',
                 'bg-red-500/10 hover:bg-red-500/20',
                 'text-red-400 hover:text-red-300',
                 'border border-red-500/20 hover:border-red-500/30',
-                'rounded-xl font-medium text-sm',
+                'rounded-lg text-xs font-medium',
                 'active:scale-[0.97] transition-all duration-200',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
+                'disabled:opacity-30 disabled:cursor-not-allowed',
               )}
             >
-              <Trash2 size={16} />
-              Desativar
+              <Trash2 size={12} />
             </button>
-          )}
-
-          <div className="flex items-center gap-3 ml-auto">
-            {/* Save prompt/name changes (no new video) */}
-            {model && !videoFile && (
-              <button
-                onClick={handleUpdate}
-                disabled={saving || processing || !promptTemplate.trim()}
-                className={cn(
-                  'inline-flex items-center gap-2 px-6 py-3',
-                  'font-semibold text-sm rounded-xl',
-                  'active:scale-[0.97] transition-all duration-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  hasUnsavedChanges
-                    ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/25 hover:shadow-amber-400/30 animate-pulse'
-                    : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
-                )}
-              >
-                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {saving ? 'Salvando...' : hasUnsavedChanges ? 'Salvar alterações*' : 'Salvar alterações'}
-              </button>
-            )}
-
-            {/* Create new model (first time) */}
-            {!model && videoFile && (
-              <button
-                onClick={handleCreate}
-                disabled={processing || !promptTemplate.trim()}
-                className={cn(
-                  'inline-flex items-center gap-2 px-6 py-3',
-                  'bg-emerald-500 hover:bg-emerald-400',
-                  'text-black font-semibold text-sm',
-                  'rounded-xl',
-                  'shadow-lg shadow-emerald-500/25',
-                  'hover:shadow-emerald-400/30',
-                  'active:scale-[0.97]',
-                  'transition-all duration-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                )}
-              >
-                {processing ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />}
-                {processing ? 'Criando modelo + clonando voz...' : 'Criar modelo e clonar voz'}
-              </button>
-            )}
-
-            {/* Replace video on existing model */}
-            {model && videoFile && (
-              <button
-                onClick={handleReplace}
-                disabled={processing || !promptTemplate.trim()}
-                className={cn(
-                  'inline-flex items-center gap-2 px-6 py-3',
-                  'bg-violet-500 hover:bg-violet-400',
-                  'text-white font-semibold text-sm',
-                  'rounded-xl',
-                  'shadow-lg shadow-violet-500/25',
-                  'hover:shadow-violet-400/30',
-                  'active:scale-[0.97]',
-                  'transition-all duration-200',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                )}
-              >
-                {processing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                {processing ? 'Trocando vídeo + re-clonando voz...' : 'Trocar vídeo e re-clonar voz'}
-              </button>
-            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function Tag({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/[0.04] border border-white/[0.06] text-zinc-400 rounded-full text-[11px] font-medium">
+      {icon}
+      {children}
+    </span>
   );
 }
