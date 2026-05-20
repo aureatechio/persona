@@ -467,24 +467,24 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                 <select
                   value={lipsync.model}
                   onChange={(e) => setLipsync((p) => ({ ...p, model: e.target.value }))}
-                  className={inputClass}
+                  className={selectClass}
                 >
-                  <option value="lipsync-2-pro">lipsync-2-pro · melhor qualidade</option>
-                  <option value="lipsync-2">lipsync-2 · equilíbrio</option>
-                  <option value="lipsync-1.9.0-beta">lipsync-1.9.0-beta · legado</option>
+                  <option className={optionClass} value="lipsync-2-pro">lipsync-2-pro · melhor qualidade</option>
+                  <option className={optionClass} value="lipsync-2">lipsync-2 · equilíbrio</option>
+                  <option className={optionClass} value="lipsync-1.9.0-beta">lipsync-1.9.0-beta · legado</option>
                 </select>
               </Field>
               <Field label="Modo de sincronização">
                 <select
                   value={lipsync.sync_mode}
                   onChange={(e) => setLipsync((p) => ({ ...p, sync_mode: e.target.value }))}
-                  className={inputClass}
+                  className={selectClass}
                 >
-                  <option value="cut_off">cut_off · corta o conteúdo mais longo</option>
-                  <option value="bounce">bounce · rebobina</option>
-                  <option value="loop">loop · reinicia o vídeo</option>
-                  <option value="silence">silence · congela no último frame</option>
-                  <option value="remap">remap · acelera/desacelera</option>
+                  <option className={optionClass} value="cut_off">cut_off · corta o conteúdo mais longo</option>
+                  <option className={optionClass} value="bounce">bounce · rebobina</option>
+                  <option className={optionClass} value="loop">loop · reinicia o vídeo</option>
+                  <option className={optionClass} value="silence">silence · congela no último frame</option>
+                  <option className={optionClass} value="remap">remap · acelera/desacelera</option>
                 </select>
               </Field>
               <Field label={`Expressividade (${lipsync.temperature.toFixed(1)})`} hint="0 = sutil, 1 = exagerado. Recomendado: 0.3">
@@ -619,6 +619,18 @@ const inputClass = cn(
   'outline-none focus:ring-2 focus:ring-emerald-500/20',
   'transition-all duration-200',
 );
+
+// <select> não herda bg do <input> no popup do SO; força appearance + chevron.
+const selectClass = cn(
+  inputClass,
+  'appearance-none pr-10 cursor-pointer',
+  'bg-no-repeat bg-[length:18px_18px] bg-[position:right_12px_center]',
+  // chevron SVG inline (zinc-400)
+  "bg-[url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23a1a1aa'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E\")]",
+);
+
+// <option> usa cores do SO por padrão; força bg escuro para Chromium/Firefox.
+const optionClass = 'bg-zinc-900 text-white';
 
 const ghostBtnClass = cn(
   'inline-flex items-center gap-2 px-5 py-2.5',

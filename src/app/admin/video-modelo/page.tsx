@@ -13,6 +13,7 @@ import {
   Video as VideoIcon,
   Settings2,
   Film,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoModeloModal, { BaseModel } from './VideoModeloModal';
@@ -54,6 +55,19 @@ export default function VideoModeloPage() {
 
   const [busyId, setBusyId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [cleanupPreview, setCleanupPreview] = useState<{
+    totalVoices: number;
+    referencedCount: number;
+    orphans: Array<{ voice_id: string; name: string; category: string }>;
+  } | null>(null);
+  const [cleanupResult, setCleanupResult] = useState<{
+    deleted: Array<{ voice_id: string; name: string }>;
+    failed: Array<{ voice_id: string; name: string; error: string }>;
+  } | null>(null);
 
   useEffect(() => {
     loadModels();
@@ -120,6 +134,53 @@ export default function VideoModeloPage() {
     }
   }
 
+  async function openCleanup() {
+    setCleanupOpen(true);
+    setCleanupResult(null);
+    setCleanupPreview(null);
+    setCleanupLoading(true);
+    try {
+      const res = await fetch('/api/admin/video-modelo/cleanup-voices');
+      if (!res.ok) throw new Error(await readApiError(res, 'Falha ao listar vozes'));
+      const data = await readJsonSafe<{
+        totalVoices: number;
+        referencedCount: number;
+        orphans: Array<{ voice_id: string; name: string; category: string }>;
+      }>(res);
+      if (data) setCleanupPreview(data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao listar vozes';
+      setMessage({ type: 'error', text: msg });
+      setCleanupOpen(false);
+    } finally {
+      setCleanupLoading(false);
+    }
+  }
+
+  async function runCleanup() {
+    setCleanupRunning(true);
+    try {
+      const res = await fetch('/api/admin/video-modelo/cleanup-voices', { method: 'POST' });
+      if (!res.ok) throw new Error(await readApiError(res, 'Falha na limpeza'));
+      const data = await readJsonSafe<{
+        deleted: Array<{ voice_id: string; name: string }>;
+        failed: Array<{ voice_id: string; name: string; error: string }>;
+      }>(res);
+      if (data) {
+        setCleanupResult(data);
+        setMessage({
+          type: data.failed.length > 0 ? 'error' : 'success',
+          text: `Apagadas ${data.deleted.length} vozes órfãs${data.failed.length ? ` · ${data.failed.length} falhas` : ''}`,
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao limpar';
+      setMessage({ type: 'error', text: msg });
+    } finally {
+      setCleanupRunning(false);
+    }
+  }
+
   async function handleDelete(id: string) {
     setBusyId(id);
     try {
@@ -148,18 +209,34 @@ export default function VideoModeloPage() {
               Gerencie os vídeos base por político. Cada modelo tem seu próprio prompt, voz clonada e config de lip-sync.
             </p>
           </div>
-          <button
-            onClick={openCreate}
-            className={cn(
-              'inline-flex items-center gap-2 px-5 py-2.5',
-              'bg-emerald-500 hover:bg-emerald-400',
-              'text-black font-semibold text-sm rounded-xl',
-              'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
-              'active:scale-[0.97] transition-all duration-200',
-            )}
-          >
-            <Plus size={16} /> Novo modelo
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={openCleanup}
+              title="Apaga do ElevenLabs vozes que não estão referenciadas no banco (libera slots do plano)"
+              className={cn(
+                'inline-flex items-center gap-2 px-4 py-2.5',
+                'bg-white/[0.05] hover:bg-white/[0.1]',
+                'text-zinc-300 hover:text-white',
+                'border border-white/[0.08] hover:border-white/[0.15]',
+                'rounded-xl font-medium text-sm',
+                'active:scale-[0.97] transition-all duration-200',
+              )}
+            >
+              <Sparkles size={14} /> Limpar vozes órfãs
+            </button>
+            <button
+              onClick={openCreate}
+              className={cn(
+                'inline-flex items-center gap-2 px-5 py-2.5',
+                'bg-emerald-500 hover:bg-emerald-400',
+                'text-black font-semibold text-sm rounded-xl',
+                'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
+                'active:scale-[0.97] transition-all duration-200',
+              )}
+            >
+              <Plus size={16} /> Novo modelo
+            </button>
+          </div>
         </div>
 
         {/* Message */}
@@ -301,6 +378,138 @@ export default function VideoModeloPage() {
         onClose={() => setModalOpen(false)}
         onSaved={handleSaved}
       />
+
+      {/* Cleanup modal */}
+      {cleanupOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4"
+          onClick={() => !cleanupRunning && setCleanupOpen(false)}
+        >
+          <div
+            className="bg-zinc-950 border border-white/[0.08] rounded-2xl max-w-lg w-full shadow-2xl shadow-black/60 flex flex-col max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06]">
+              <div className="p-2 rounded-xl bg-emerald-500/10">
+                <Sparkles size={20} className="text-emerald-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base font-semibold text-white">Limpar vozes órfãs no ElevenLabs</h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Apaga vozes &quot;cloned/generated&quot; sem referência em <code>voice_models</code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              {cleanupLoading ? (
+                <div className="flex items-center gap-3 text-zinc-400 py-8 justify-center">
+                  <Loader2 size={20} className="animate-spin" />
+                  <span className="text-sm">Listando vozes no ElevenLabs…</span>
+                </div>
+              ) : cleanupResult ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Stat label="Apagadas" value={cleanupResult.deleted.length} accent="emerald" />
+                    <Stat label="Falhas" value={cleanupResult.failed.length} accent="red" />
+                  </div>
+                  {cleanupResult.failed.length > 0 && (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {cleanupResult.failed.map((f) => (
+                        <div key={f.voice_id} className="text-xs px-3 py-2 bg-red-500/5 border border-red-500/10 rounded-lg">
+                          <div className="text-red-400 font-medium">{f.name}</div>
+                          <div className="text-zinc-500 mt-0.5">{f.error}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : cleanupPreview ? (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Stat label="Total ElevenLabs" value={cleanupPreview.totalVoices} accent="zinc" />
+                    <Stat label="Referenciadas" value={cleanupPreview.referencedCount} accent="sky" />
+                    <Stat label="Órfãs" value={cleanupPreview.orphans.length} accent="amber" />
+                  </div>
+                  {cleanupPreview.orphans.length === 0 ? (
+                    <p className="text-sm text-zinc-400 text-center py-6">
+                      Nenhuma voz órfã. Tudo limpo.
+                    </p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-zinc-500">Serão apagadas no ElevenLabs:</p>
+                      <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                        {cleanupPreview.orphans.map((o) => (
+                          <div
+                            key={o.voice_id}
+                            className="flex items-center justify-between gap-3 px-3 py-2 bg-white/[0.03] border border-white/[0.06] rounded-lg text-sm"
+                          >
+                            <div className="min-w-0">
+                              <div className="text-zinc-200 truncate">{o.name}</div>
+                              <div className="text-xs text-zinc-500 font-mono">{o.voice_id.slice(0, 12)}… · {o.category}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              ) : null}
+            </div>
+
+            <div className="shrink-0 flex items-center justify-end gap-3 px-6 py-4 border-t border-white/[0.06]">
+              <button
+                onClick={() => setCleanupOpen(false)}
+                disabled={cleanupRunning}
+                className={cn(
+                  'inline-flex items-center gap-2 px-5 py-2.5',
+                  'bg-white/[0.05] hover:bg-white/[0.1]',
+                  'text-zinc-300 hover:text-white',
+                  'border border-white/[0.08] hover:border-white/[0.15]',
+                  'rounded-xl font-medium text-sm',
+                  'active:scale-[0.97] transition-all duration-200',
+                  'disabled:opacity-50',
+                )}
+              >
+                Fechar
+              </button>
+              {!cleanupResult && cleanupPreview && cleanupPreview.orphans.length > 0 && (
+                <button
+                  onClick={runCleanup}
+                  disabled={cleanupRunning}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-5 py-2.5',
+                    'bg-red-500 hover:bg-red-400',
+                    'text-white font-semibold text-sm rounded-xl',
+                    'shadow-lg shadow-red-500/25',
+                    'active:scale-[0.97] transition-all duration-200',
+                    'disabled:opacity-50 disabled:cursor-not-allowed',
+                  )}
+                >
+                  {cleanupRunning ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                  Apagar {cleanupPreview.orphans.length} {cleanupPreview.orphans.length === 1 ? 'voz' : 'vozes'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat({ label, value, accent }: { label: string; value: number; accent: 'zinc' | 'sky' | 'emerald' | 'amber' | 'red' }) {
+  const colors: Record<string, string> = {
+    zinc: 'text-zinc-300',
+    sky: 'text-sky-400',
+    emerald: 'text-emerald-400',
+    amber: 'text-amber-400',
+    red: 'text-red-400',
+  };
+  return (
+    <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 text-center">
+      <div className={cn('text-2xl font-bold', colors[accent])}>{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-zinc-500 mt-1">{label}</div>
     </div>
   );
 }
