@@ -181,8 +181,17 @@ function StepProgress({ status }: { status: string }) {
 
 // ── Selfie Card ──────────────────────────────────────────────────────────────
 
-function SelfieCard({ selfie, onPlay }: { selfie: Selfie; onPlay: (s: Selfie) => void }) {
+function SelfieCard({
+  selfie,
+  onPlay,
+  onReprocess,
+}: {
+  selfie: Selfie;
+  onPlay: (s: Selfie) => void;
+  onReprocess: (s: Selfie) => Promise<void>;
+}) {
   const [elapsed, setElapsed] = useState(formatElapsed(selfie.created_at));
+  const [reprocessing, setReprocessing] = useState(false);
   const isFailed = selfie.status === 'failed';
   const isCompleted = selfie.status === 'completed' || selfie.whatsapp_sent;
   const stepConfig = isCompleted ? getStepConfig('completed') : getStepConfig(selfie.status);
@@ -281,23 +290,61 @@ function SelfieCard({ selfie, onPlay }: { selfie: Selfie; onPlay: (s: Selfie) =>
       {/* Progress bar */}
       <StepProgress status={selfie.status} />
 
-      {/* Play button for completed */}
-      {isCompleted && selfie.videoUrl && (
-        <button
-          onClick={() => onPlay(selfie)}
-          className={cn(
-            'mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5',
-            'bg-emerald-500 hover:bg-emerald-400',
-            'text-black font-semibold text-sm',
-            'rounded-xl',
-            'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
-            'active:scale-[0.97]',
-            'transition-all duration-200',
+      {/* Actions */}
+      {(isCompleted || isFailed) && (
+        <div className="mt-4 flex items-center gap-2">
+          {isCompleted && selfie.videoUrl && (
+            <button
+              onClick={() => onPlay(selfie)}
+              className={cn(
+                'flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5',
+                'bg-emerald-500 hover:bg-emerald-400',
+                'text-black font-semibold text-sm',
+                'rounded-xl',
+                'shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30',
+                'active:scale-[0.97]',
+                'transition-all duration-200',
+              )}
+            >
+              <Play size={14} />
+              Assistir video
+            </button>
           )}
-        >
-          <Play size={14} />
-          Assistir video
-        </button>
+          {isFailed && (
+            <button
+              onClick={async () => {
+                setReprocessing(true);
+                try {
+                  await onReprocess(selfie);
+                } finally {
+                  setReprocessing(false);
+                }
+              }}
+              disabled={reprocessing}
+              className={cn(
+                'flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5',
+                'bg-amber-500/15 hover:bg-amber-500/25',
+                'text-amber-300 hover:text-amber-200',
+                'border border-amber-500/30 hover:border-amber-500/50',
+                'font-semibold text-sm rounded-xl',
+                'active:scale-[0.97] transition-all duration-200',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+              )}
+            >
+              {reprocessing ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" />
+                  Reprocessando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={14} />
+                  Reprocessar
+                </>
+              )}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -331,6 +378,25 @@ export default function SelfieMonitorPage() {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  }, [fetchData]);
+
+  const handleReprocess = useCallback(async (selfie: Selfie) => {
+    try {
+      const res = await fetch('/api/selfie-video/reprocess', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selfie.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Falha ao reprocessar');
+      }
+      // Refresh imediato pra mostrar o item saindo de "failed"
+      await fetchData();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Erro ao reprocessar';
+      alert(msg);
+    }
   }, [fetchData]);
 
   const failed = selfies.filter((s) => s.status === 'failed' && !s.whatsapp_sent);
@@ -411,7 +477,7 @@ export default function SelfieMonitorPage() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {inProgress.map((s) => (
-                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} />
+                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
               ))}
             </div>
           </section>
@@ -426,7 +492,7 @@ export default function SelfieMonitorPage() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {completed.map((s) => (
-                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} />
+                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
               ))}
             </div>
           </section>
@@ -441,7 +507,7 @@ export default function SelfieMonitorPage() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {failed.map((s) => (
-                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} />
+                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
               ))}
             </div>
           </section>

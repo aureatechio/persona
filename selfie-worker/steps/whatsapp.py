@@ -126,21 +126,28 @@ def send_whatsapp(phone: str, name: str, video_url: str, message_template: str |
 
     logger.info("Sending WhatsApp video to %s...", phone)
 
-    resp = requests.post(
-        f"{UAZAPI_URL}/send/media",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "token": UAZAPI_TOKEN,
-        },
-        json={
-            "number": phone,
-            "type": "video",
-            "file": video_url,
-            "text": text,
-        },
-        timeout=60,
-    )
+    try:
+        resp = requests.post(
+            f"{UAZAPI_URL}/send/media",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "token": UAZAPI_TOKEN,
+            },
+            json={
+                "number": phone,
+                "type": "video",
+                "file": video_url,
+                "text": text,
+            },
+            timeout=60,
+        )
+    except requests.RequestException as e:
+        # ConnectTimeout, ReadTimeout, ConnectionError, etc. SEM esse wrap, a
+        # exceção vaza pelo bloco do worker e a linha fica em `sending` com
+        # whatsapp_sent=true (já marcado pelo claim atômico), invisível pro
+        # watchdog que filtra por whatsapp_sent IS NOT TRUE.
+        raise WhatsAppSendError(f"UAZAPI network error: {e}") from e
 
     if resp.ok:
         logger.info("WhatsApp video sent successfully to %s (status: %d)", phone, resp.status_code)
@@ -172,22 +179,25 @@ def send_whatsapp_document(
 
     logger.info("Sending WhatsApp document to %s (doc: %s)...", phone, doc_name)
 
-    resp = requests.post(
-        f"{UAZAPI_URL}/send/media",
-        headers={
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "token": UAZAPI_TOKEN,
-        },
-        json={
-            "number": phone,
-            "type": "document",
-            "file": pdf_url,
-            "text": text,
-            "docName": doc_name,
-        },
-        timeout=60,
-    )
+    try:
+        resp = requests.post(
+            f"{UAZAPI_URL}/send/media",
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "token": UAZAPI_TOKEN,
+            },
+            json={
+                "number": phone,
+                "type": "document",
+                "file": pdf_url,
+                "text": text,
+                "docName": doc_name,
+            },
+            timeout=60,
+        )
+    except requests.RequestException as e:
+        raise WhatsAppSendError(f"UAZAPI document network error: {e}") from e
 
     if resp.ok:
         logger.info("WhatsApp document sent to %s (status: %d)", phone, resp.status_code)

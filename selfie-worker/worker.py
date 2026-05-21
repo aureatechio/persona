@@ -15,6 +15,7 @@ Runs as a long-lived daemon process. Handles retries and crash recovery.
 import signal
 import sys
 import time
+import threading
 import traceback
 import logging
 
@@ -362,19 +363,34 @@ def main():
     logger.info("Worker ID: %s", db.WORKER_ID)
     logger.info("Config OK. Polling every %ds. Max retries: %d", POLL_INTERVAL, MAX_RETRIES)
 
+    # Watchdog em thread separada — antes ele rodava inline a cada ~60 polls,
+    # mas se TODAS as instâncias estavam dentro de process_selfie (ex: lipsync
+    # poll de 30min), o loop principal nunca tocava e o watchdog não rodava.
+    # Resultado: itens travados acumulavam por meses (vimos 9 zumbis de 7–77
+    # dias). Daemon thread garante que watchdog roda independentemente.
+    def _watchdog_loop():
+        while not _shutdown:
+            try:
+                failed_count = db.run_watchdog()
+                if failed_count:
+                    logger.warning("Watchdog: cleaned up %d stuck selfies", failed_count)
+            except Exception as e:
+                logger.error("Watchdog thread error: %s", e)
+            # Roda a cada 60s. Mesmo que uma instância morra com sigkill,
+            # outras das 18 continuam rodando watchdog em paralelo.
+            for _ in range(60):
+                if _shutdown:
+                    return
+                time.sleep(1)
+
+    watchdog_thread = threading.Thread(target=_watchdog_loop, daemon=True, name="watchdog")
+    watchdog_thread.start()
+    logger.info("Watchdog thread started (runs every 60s)")
+
     consecutive_errors = 0
-    watchdog_counter = 0
 
     while not _shutdown:
         try:
-            # Run watchdog every ~60 polls (~3min) to auto-fail items stuck >30min
-            watchdog_counter += 1
-            if watchdog_counter >= 60:
-                watchdog_counter = 0
-                failed_count = db.run_watchdog()
-                if failed_count:
-                    logger.warning("Watchdog: marked %d stuck selfies as failed", failed_count)
-
             # Priority 1: atomically claim queued items
             selfie = db.claim_queued()
 
