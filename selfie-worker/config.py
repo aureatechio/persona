@@ -17,9 +17,17 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 # Sync Labs (lip-sync)
 SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
 
-# UAZAPI (WhatsApp)
+# UAZAPI (WhatsApp não-oficial — fallback)
 UAZAPI_URL = os.getenv("UAZAPI_URL", "https://aureatech.uazapi.com")
 UAZAPI_TOKEN = os.getenv("UAZAPI_TOKEN", "")
+
+# WhatsApp Business Cloud API (oficial, preferencial)
+WHATSAPP_API_URL = os.getenv("WHATSAPP_API_URL", "https://graph.facebook.com/v22.0")
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+# Template aprovado pela Meta para envio do vídeo (header video + link).
+WHATSAPP_VIDEO_TEMPLATE = os.getenv("WHATSAPP_VIDEO_TEMPLATE", "videochamadapl")
+WHATSAPP_VIDEO_TEMPLATE_LANG = os.getenv("WHATSAPP_VIDEO_TEMPLATE_LANG", "pt_BR")
 
 # Worker settings
 POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "3"))

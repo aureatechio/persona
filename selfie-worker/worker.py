@@ -25,7 +25,12 @@ from steps.generate import generate_text
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
 from steps.compose import compose_videos
-from steps.whatsapp import send_whatsapp, send_whatsapp_document, WhatsAppSendError
+from steps.whatsapp import (
+    send_whatsapp,
+    send_whatsapp_document,
+    send_video_official,
+    WhatsAppSendError,
+)
 
 # ─── Logging ───────────────────────────────────────────────
 logging.basicConfig(
@@ -273,15 +278,34 @@ def process_selfie(selfie: dict):
         logger.info("Step 6/6: Sending via WhatsApp...")
 
         video_signed = db.create_signed_url(final_path)
+        # Tenta a Cloud API oficial primeiro (template aprovado pela Meta).
+        # Qualquer falha → fallback automático para UAZAPI.
+        # A escolha é registrada em whatsapp_provider pra visibilidade no monitor.
+        provider_used = None
         try:
-            send_whatsapp(
-                selfie["phone"], selfie["name"], video_signed,
-                message_template=base_model.get("whatsapp_message_template"),
+            send_video_official(selfie["phone"], video_signed)
+            provider_used = "official"
+        except WhatsAppSendError as e:
+            logger.warning(
+                "Cloud API failed for %s, falling back to UAZAPI: %s", sid, e,
             )
-        except WhatsAppSendError:
-            # Reset claim so retry can attempt again
-            db.reset_whatsapp_claim(sid)
-            raise
+            try:
+                send_whatsapp(
+                    selfie["phone"], selfie["name"], video_signed,
+                    message_template=base_model.get("whatsapp_message_template"),
+                )
+                provider_used = "uazapi"
+            except WhatsAppSendError:
+                # Ambos falharam — reset claim pra permitir retry
+                db.reset_whatsapp_claim(sid)
+                raise
+
+        try:
+            db.update_status(sid, "sending", whatsapp_provider=provider_used)
+        except Exception:
+            # Coluna pode não existir ainda em produção (migration pendente).
+            # Não é crítico — só perdemos a telemetria deste envio.
+            pass
 
         # Proposta de governo (opcional): se configurada, envia o PDF logo
         # após o vídeo. Falha aqui NÃO faz retry — o vídeo já saiu e o
