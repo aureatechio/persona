@@ -88,6 +88,15 @@ def process_selfie(selfie: dict):
     status = selfie["status"]
     logger.info("═══ Processing selfie %s (status: %s, name: %s) ═══", sid, status, selfie["name"])
 
+    # Primeiro nome (capitalização original) usado em todo conteúdo que vai
+    # pra IA ou aparece nas mensagens. Mantém a coluna `name` intacta no
+    # banco (preserva o full name pra analytics), mas garante que o vídeo
+    # gerado, o TTS e o template do WhatsApp só usem "Pedro" mesmo quando
+    # o eleitor digita "Pedro Ricardo". Também alinha com o agrupamento
+    # de cache, que usa first_name normalizado a partir desse mesmo token.
+    _name_parts = (selfie.get("name") or "").strip().split()
+    display_first_name = _name_parts[0] if _name_parts else (selfie.get("name") or "")
+
     # Resolve base_model for this selfie.
     # Primary: selfie['base_model_id'] (set at upload time via per-politician URL).
     # Fallback: legacy rows without base_model_id → first is_active=true model.
@@ -189,7 +198,7 @@ def process_selfie(selfie: dict):
                 first_name, category,
             )
             prompt_template = base_model.get("prompt_template", "")
-            generated_text = generate_text(selfie["name"], transcription, prompt_template)
+            generated_text = generate_text(display_first_name, transcription, prompt_template)
 
             db.update_status(sid, "generating_tts", generated_text=generated_text)
             selfie["generated_text"] = generated_text
@@ -373,7 +382,7 @@ def process_selfie(selfie: dict):
             )
             try:
                 send_whatsapp(
-                    selfie["phone"], selfie["name"], video_signed,
+                    selfie["phone"], display_first_name, video_signed,
                     message_template=base_model.get("whatsapp_message_template"),
                 )
                 provider_used = "uazapi"
@@ -399,7 +408,7 @@ def process_selfie(selfie: dict):
                 logger.info("Step 6/6 (extra): Sending proposta PDF...")
                 proposta_signed = db.create_signed_url(proposta_pdf_path)
                 send_whatsapp_document(
-                    selfie["phone"], selfie["name"], proposta_signed,
+                    selfie["phone"], display_first_name, proposta_signed,
                     message_template=base_model.get("proposta_message_template"),
                 )
             except Exception as e:
