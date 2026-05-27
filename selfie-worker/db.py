@@ -211,6 +211,43 @@ def get_base_model(base_model_id: str):
     return res.data[0] if res.data else None
 
 
+def find_cached_video(
+    base_model_id: str, first_name: str, category: str
+) -> dict | None:
+    """
+    Procura um vídeo já finalizado para a tupla (base_model_id, first_name,
+    category) que possa ser reusado em vez de gerar um novo. Filtra apenas
+    rows originais (cached_from IS NULL) e completas (status='completed' +
+    final_video_path NOT NULL) para evitar cadeia de reusos.
+
+    Retorna a row mais recente que casar, ou None se não há cache.
+    """
+    if not (base_model_id and first_name and category):
+        return None
+    try:
+        res = (
+            client.table("video_selfies")
+            .select("id, final_video_path, generated_text, category, first_name")
+            .eq("base_model_id", base_model_id)
+            .eq("first_name", first_name)
+            .eq("category", category)
+            .eq("status", "completed")
+            .is_("cached_from", "null")
+            .not_.is_("final_video_path", "null")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        import logging
+        logging.getLogger("worker.db").warning(
+            "find_cached_video failed for (%s, %s, %s): %s",
+            base_model_id, first_name, category, e,
+        )
+        return None
+
+
 def download_file(path: str) -> bytes:
     """Download a file from Supabase Storage."""
     return client.storage.from_(STORAGE_BUCKET).download(path)

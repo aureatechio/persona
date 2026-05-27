@@ -22,6 +22,7 @@ import logging
 from config import POLL_INTERVAL, MAX_RETRIES
 import db
 from steps.transcribe import transcribe
+from steps.classify import classify_category, normalize_first_name
 from steps.generate import generate_text
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
@@ -140,17 +141,56 @@ def process_selfie(selfie: dict):
     else:
         transcription = selfie.get("transcription", "")
 
-    # ─── Step 2: Generate text ───
+    # ─── Step 2: Classify + cache lookup + (maybe) generate text ───
     if _should_run_step(status, "generating_text"):
         if selfie.get("status") != "generating_text":
             db.update_status(sid, "generating_text")
-        logger.info("Step 2/6: Generating text...")
+        logger.info("Step 2/6: Classifying + checking cache...")
 
-        prompt_template = base_model.get("prompt_template", "")
-        generated_text = generate_text(selfie["name"], transcription, prompt_template)
+        # Classify category + normalize first_name (cache keys).
+        # Reusa valores já gravados em retry pra economizar uma chamada GPT.
+        category = selfie.get("category")
+        first_name = selfie.get("first_name")
+        if not (category and first_name):
+            category = classify_category(transcription)
+            first_name = normalize_first_name(selfie["name"])
+            db.update_status(
+                sid, "generating_text",
+                first_name=first_name, category=category,
+            )
+            selfie["category"] = category
+            selfie["first_name"] = first_name
 
-        db.update_status(sid, "generating_tts", generated_text=generated_text)
-        selfie["generated_text"] = generated_text
+        # Existe vídeo finalizado pra (base_model, primeiro_nome, categoria)?
+        cached = db.find_cached_video(base_model["id"], first_name, category)
+
+        if cached:
+            logger.info(
+                "Step 2/6: CACHE HIT (source=%s, name=%s, category=%s) — skipping generation/TTS/lipsync/compose",
+                cached["id"], first_name, category,
+            )
+            db.update_status(
+                sid, "sending",
+                final_video_path=cached["final_video_path"],
+                cached_from=cached["id"],
+                generated_text=cached.get("generated_text"),
+            )
+            selfie["final_video_path"] = cached["final_video_path"]
+            selfie["generated_text"] = cached.get("generated_text", "") or ""
+            generated_text = selfie["generated_text"]
+            # Status local pula direto pro step 6 — _should_run_step decide
+            # se cada bloco abaixo roda ou não com base nesse valor.
+            status = "sending"
+        else:
+            logger.info(
+                "Step 2/6: CACHE MISS (name=%s, category=%s) — generating new video",
+                first_name, category,
+            )
+            prompt_template = base_model.get("prompt_template", "")
+            generated_text = generate_text(selfie["name"], transcription, prompt_template)
+
+            db.update_status(sid, "generating_tts", generated_text=generated_text)
+            selfie["generated_text"] = generated_text
     else:
         generated_text = selfie.get("generated_text", "")
 
