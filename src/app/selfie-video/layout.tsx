@@ -1,9 +1,7 @@
 import type { Viewport } from 'next';
 
 // Shared viewport config for every /selfie-video/[politician] screen.
-// Theme-specific background and OG metadata live in each politician's
-// own layout (e.g. /selfie-video/flavio/layout.tsx) so each one can
-// ship its own colors, logo, and social-share image.
+// O tema padrão (cores e logo do PL) vive em [slug]/SelfieCapture.tsx.
 
 export const viewport: Viewport = {
   width: 'device-width',

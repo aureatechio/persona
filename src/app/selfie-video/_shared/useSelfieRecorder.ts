@@ -3,20 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * Shared recorder/upload hook used by every /selfie-video/[politician] page.
+ * Shared recorder/upload hook usado pelo [slug]/SelfieCapture.tsx.
  *
- * The UI layer (flavio/page.tsx, ciro/page.tsx, jorginho/page.tsx) renders
- * whatever theme it wants; this hook owns the mechanics that are painful to
- * duplicate and easy to break: camera permissions, MediaRecorder edge cases
- * (iOS Safari hates explicit mimeTypes), 20s timer, XHR upload with progress,
- * and cleanup.
+ * Encapsula a mecânica chata: permissões de câmera, MediaRecorder edge
+ * cases (iOS Safari odeia mimeTypes explícitos), timer de 20s, XHR upload
+ * com progresso e cleanup.
  *
- * The only per-politician input is `slug` — it's posted to
- * /api/selfie-video/process which resolves the base_model_id and stamps it
- * on the video_selfies row.
+ * O único input por político é `slug` — vai pro /api/selfie-video/process
+ * que resolve o base_model_id e carimba na row de video_selfies.
  */
 
-export type SelfieStep = 'dados' | 'gravacao' | 'preview' | 'enviando' | 'obrigado';
+export type SelfieStep = 'dados' | 'gravacao' | 'preview' | 'enviando' | 'whatsapp' | 'obrigado';
 
 export function formatPhone(value: string): string {
   let digits = value.replace(/\D/g, '');
@@ -55,6 +52,7 @@ export function useSelfieRecorder({
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [sending, setSending] = useState(false);
+  const [selfieId, setSelfieId] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -208,6 +206,7 @@ export function useSelfieRecorder({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao criar registro');
 
+      setSelfieId(data.id);
       setUploadProgress(10);
 
       await new Promise<void>((resolve, reject) => {
@@ -244,7 +243,7 @@ export function useSelfieRecorder({
         body: JSON.stringify({ id: data.id }),
       });
 
-      setStep('obrigado');
+      setStep('whatsapp');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao enviar';
       setError(msg);
@@ -263,6 +262,25 @@ export function useSelfieRecorder({
     setError(null);
     setRecordingTime(0);
     setSending(false);
+    setSelfieId(null);
+  }
+
+  function handleWhatsAppClick() {
+    if (selfieId) {
+      // Fire-and-forget: não bloquear o redirect pro WhatsApp esperando o
+      // banco. Se cair, perdemos só a métrica desse click — não o vídeo.
+      fetch('/api/selfie-video/whatsapp-click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: selfieId }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+    setStep('obrigado');
+  }
+
+  function handleWhatsAppSkip() {
+    setStep('obrigado');
   }
 
   const canContinueDados = name.trim().length > 0 && phone.replace(/\D/g, '').length === 11;
@@ -302,5 +320,7 @@ export function useSelfieRecorder({
     handleRegravar,
     handleEnviar,
     handleReset,
+    handleWhatsAppClick,
+    handleWhatsAppSkip,
   };
 }
