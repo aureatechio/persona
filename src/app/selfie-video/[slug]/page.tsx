@@ -10,7 +10,7 @@ interface Props {
 async function fetchModel(slug: string): Promise<ModelConfig | null> {
   const { data, error } = await supabaseAdmin
     .from('video_base_models')
-    .select('id, slug, display_name, name, thank_you_message, is_active, video_storage_path')
+    .select('id, slug, display_name, name, thank_you_message, is_active, video_storage_path, whatsapp_number')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -21,6 +21,7 @@ async function fetchModel(slug: string): Promise<ModelConfig | null> {
     displayName: data.display_name || data.name || data.slug,
     thankYouMessage: data.thank_you_message || null,
     hasVideoBase: !!data.video_storage_path,
+    whatsappNumber: data.whatsapp_number || null,
   };
 }
 

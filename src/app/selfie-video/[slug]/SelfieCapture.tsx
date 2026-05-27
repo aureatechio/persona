@@ -10,9 +10,9 @@ export interface ModelConfig {
   displayName: string;
   thankYouMessage: string | null;
   hasVideoBase: boolean;
+  whatsappNumber: string | null;
 }
 
-const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/\D/g, '');
 const WHATSAPP_GREETING = encodeURIComponent('Quero receber meu vídeo');
 
 export default function SelfieCapture({ model }: { model: ModelConfig }) {
@@ -23,8 +23,13 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
     '{name}, em até alguns minutos você recebe sua resposta no WhatsApp.'
   ).replace(/\{name\}/g, r.name);
 
-  const waHref = WHATSAPP_NUMBER
-    ? `https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_GREETING}`
+  // Número do banco tem prioridade; cai pro env legado se ainda não
+  // populado em video_base_models.whatsapp_number.
+  const rawNumber =
+    model.whatsappNumber || process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '';
+  const waNumber = rawNumber.replace(/\D/g, '');
+  const waHref = waNumber
+    ? `https://wa.me/${waNumber}?text=${WHATSAPP_GREETING}`
     : '#';
 
   return (
@@ -381,7 +386,7 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={r.handleWhatsAppClick}
-                aria-disabled={!WHATSAPP_NUMBER}
+                aria-disabled={!waNumber}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-3 px-6 py-4',
                   'bg-[#25D366] hover:bg-[#1ebe5b]',
@@ -389,7 +394,7 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
                   'rounded-xl',
                   'shadow-lg shadow-[#25D366]/30',
                   'active:scale-[0.97] transition-all duration-200',
-                  !WHATSAPP_NUMBER && 'opacity-50 pointer-events-none',
+                  !waNumber && 'opacity-50 pointer-events-none',
                 )}
               >
                 <MessageCircle size={18} />
