@@ -215,10 +215,14 @@ def find_cached_video(
     base_model_id: str, first_name: str, category: str
 ) -> dict | None:
     """
-    Procura um vídeo já finalizado para a tupla (base_model_id, first_name,
-    category) que possa ser reusado em vez de gerar um novo. Filtra apenas
-    rows originais (cached_from IS NULL) e completas (status='completed' +
-    final_video_path NOT NULL) para evitar cadeia de reusos.
+    Procura um lipsync já gerado para a tupla (base_model_id, first_name,
+    category) que possa ser reusado. Cacheamos só o lipsync do candidato
+    (sem a selfie do eleitor) — o compose roda em cada HIT com a selfie
+    do eleitor atual.
+
+    Filtra rows originais (cached_from IS NULL), completas
+    (status='completed') e que tenham o lipsync salvo no Storage
+    (lipsync_cached_path NOT NULL).
 
     Retorna a row mais recente que casar, ou None se não há cache.
     """
@@ -227,13 +231,13 @@ def find_cached_video(
     try:
         res = (
             client.table("video_selfies")
-            .select("id, final_video_path, generated_text, category, first_name")
+            .select("id, lipsync_cached_path, generated_text, category, first_name")
             .eq("base_model_id", base_model_id)
             .eq("first_name", first_name)
             .eq("category", category)
             .eq("status", "completed")
             .is_("cached_from", "null")
-            .not_.is_("final_video_path", "null")
+            .not_.is_("lipsync_cached_path", "null")
             .order("created_at", desc=True)
             .limit(1)
             .execute()

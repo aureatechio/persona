@@ -19,6 +19,8 @@ import threading
 import traceback
 import logging
 
+import requests
+
 from config import POLL_INTERVAL, MAX_RETRIES
 import db
 from steps.transcribe import transcribe
@@ -166,21 +168,21 @@ def process_selfie(selfie: dict):
 
         if cached:
             logger.info(
-                "Step 2/6: CACHE HIT (source=%s, name=%s, category=%s) — skipping generation/TTS/lipsync/compose",
+                "Step 2/6: CACHE HIT (source=%s, name=%s, category=%s) — skipping generation/TTS/lipsync; compose with selfie atual",
                 cached["id"], first_name, category,
             )
             db.update_status(
-                sid, "sending",
-                final_video_path=cached["final_video_path"],
+                sid, "composing",
+                lipsync_cached_path=cached["lipsync_cached_path"],
                 cached_from=cached["id"],
                 generated_text=cached.get("generated_text"),
             )
-            selfie["final_video_path"] = cached["final_video_path"]
+            selfie["lipsync_cached_path"] = cached["lipsync_cached_path"]
             selfie["generated_text"] = cached.get("generated_text", "") or ""
             generated_text = selfie["generated_text"]
-            # Status local pula direto pro step 6 — _should_run_step decide
-            # se cada bloco abaixo roda ou não com base nesse valor.
-            status = "sending"
+            # Pula steps 3 (TTS) e 4 (lipsync) — o lipsync já está pronto.
+            # Step 5 (compose) ainda precisa rodar com a selfie do eleitor atual.
+            status = "composing"
         else:
             logger.info(
                 "Step 2/6: CACHE MISS (name=%s, category=%s) — generating new video",
@@ -265,8 +267,35 @@ def process_selfie(selfie: dict):
                     sync_mode=lip_cfg.get("sync_mode", "loop"),
                     temperature=float(lip_cfg.get("temperature", 0.3)),
                 )
-                db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
+
+                # Persiste o lipsync no Storage — a URL retornada pelo
+                # Sync expira em 24-48h, então não dá pra usar como
+                # fonte de cache a longo prazo. Falha aqui não trava o
+                # pipeline (esse vídeo só não vira fonte de cache).
+                lipsync_cached_path: str | None = None
+                try:
+                    lipsync_resp = requests.get(lipsync_url, timeout=120)
+                    lipsync_resp.raise_for_status()
+                    lipsync_cached_path = f"lipsync_cached/{sid}.mp4"
+                    db.upload_file(lipsync_cached_path, lipsync_resp.content, "video/mp4")
+                    logger.info(
+                        "Step 4/6: Lipsync persisted to %s (%d bytes) — disponível pra cache",
+                        lipsync_cached_path, len(lipsync_resp.content),
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Step 4/6: Falha ao persistir lipsync no Storage (%s) — vídeo não vira fonte de cache",
+                        e,
+                    )
+                    lipsync_cached_path = None
+
+                db.update_status(
+                    sid, "composing",
+                    lipsync_video_url=lipsync_url,
+                    lipsync_cached_path=lipsync_cached_path,
+                )
                 selfie["lipsync_video_url"] = lipsync_url
+                selfie["lipsync_cached_path"] = lipsync_cached_path
             except SyncLabsKeyRejected:
                 # 401/402 — esta chave foi revogada/sem cota.
                 # Bloqueia ela no pool por 15min para que o retry pegue outra.
@@ -292,8 +321,20 @@ def process_selfie(selfie: dict):
         selfie_bytes = db.download_file(selfie["selfie_video_path"])
         ext = "webm" if selfie["selfie_video_path"].endswith(".webm") else "mp4"
 
+        # Prefere o lipsync persistido no Storage (signed URL não expira em 24h
+        # como a do Sync). Cache HIT só popula lipsync_cached_path; lipsync_url
+        # nesse caso está vazio. Em MISS ambos podem estar setados — pegamos
+        # o cached porque é o que vai sobreviver pra reuso futuro.
+        lipsync_cached_path = selfie.get("lipsync_cached_path")
+        if lipsync_cached_path:
+            compose_lipsync_url = db.create_signed_url(lipsync_cached_path)
+            logger.info("Step 5/6: usando lipsync cacheado em %s", lipsync_cached_path)
+        else:
+            compose_lipsync_url = lipsync_url
+            logger.info("Step 5/6: usando lipsync_url direto (sem cache persistido)")
+
         final_bytes = compose_videos(
-            selfie_bytes, ext, lipsync_url,
+            selfie_bytes, ext, compose_lipsync_url,
             closing_video_path=base_model.get("closing_video_path"),
         )
 
