@@ -17,9 +17,16 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 # Sync Labs (lip-sync)
 SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
 
-# UAZAPI (WhatsApp não-oficial — fallback)
+# UAZAPI (WhatsApp não-oficial — usado com peso configurável junto da Cloud API)
 UAZAPI_URL = os.getenv("UAZAPI_URL", "https://aureatech.uazapi.com")
 UAZAPI_TOKEN = os.getenv("UAZAPI_TOKEN", "")
+
+# Distribuição ponderada entre Meta Cloud API e UAZAPI no envio do vídeo.
+# Default 2:1 — pra cada 3 envios, ~2 vão pra Meta e ~1 pra UAZAPI.
+# Peso 0 desabilita o canal correspondente. Em escala, a proporção
+# converge pros pesos via random.choices ponderado.
+WHATSAPP_META_WEIGHT = int(os.getenv("WHATSAPP_META_WEIGHT", "2"))
+WHATSAPP_UAZAPI_WEIGHT = int(os.getenv("WHATSAPP_UAZAPI_WEIGHT", "1"))
 
 # WhatsApp Business Cloud API (oficial, canal primário)
 WHATSAPP_API_URL = os.getenv("WHATSAPP_API_URL", "https://graph.facebook.com/v22.0")

@@ -21,6 +21,8 @@ from config import (
     WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_VIDEO_TEMPLATE,
     WHATSAPP_VIDEO_TEMPLATE_LANG,
+    WHATSAPP_META_WEIGHT,
+    WHATSAPP_UAZAPI_WEIGHT,
 )
 
 logger = logging.getLogger("worker.whatsapp")
@@ -48,6 +50,30 @@ def _pick_phone_number_id() -> str:
     if not WHATSAPP_PHONE_NUMBER_IDS:
         raise WhatsAppSendError("Nenhum WHATSAPP_PHONE_NUMBER_IDS configurado")
     return random.choice(WHATSAPP_PHONE_NUMBER_IDS)
+
+
+def pick_provider() -> str:
+    """Decide o canal de envio ('meta' ou 'uazapi') via random ponderado
+    pelos pesos das envs WHATSAPP_META_WEIGHT e WHATSAPP_UAZAPI_WEIGHT.
+
+    - meta_weight=0 força UAZAPI
+    - uazapi_weight=0 força Meta
+    - ambos 0 levanta WhatsAppSendError
+    """
+    meta = max(0, WHATSAPP_META_WEIGHT)
+    uazapi = max(0, WHATSAPP_UAZAPI_WEIGHT)
+
+    if meta <= 0 and uazapi <= 0:
+        raise WhatsAppSendError(
+            "Nenhum provider habilitado (WHATSAPP_META_WEIGHT e "
+            "WHATSAPP_UAZAPI_WEIGHT estão zerados)"
+        )
+    if uazapi <= 0:
+        return "meta"
+    if meta <= 0:
+        return "uazapi"
+
+    return random.choices(["meta", "uazapi"], weights=[meta, uazapi])[0]
 
 
 def send_video_official(phone: str, video_url: str) -> tuple[str, str]:

@@ -34,6 +34,7 @@ from steps.whatsapp import (
     send_whatsapp,
     send_whatsapp_document,
     send_video_official,
+    pick_provider,
     WhatsAppSendError,
 )
 
@@ -549,17 +550,29 @@ def process_selfie(selfie: dict):
         logger.info("Step 6/6: Sending via WhatsApp...")
 
         video_signed = db.create_signed_url(final_path)
-        # Envio via Cloud API oficial — distribui random entre os
-        # phone_number_ids configurados em WHATSAPP_PHONE_NUMBER_IDS.
-        # Sem fallback UAZAPI: falha aqui faz retry via claim reset.
+        # Distribuição ponderada entre Meta Cloud API e UAZAPI
+        # (WHATSAPP_META_WEIGHT × WHATSAPP_UAZAPI_WEIGHT, default 2:1).
+        # Falha do canal sorteado faz reset do claim → retry sorteia
+        # de novo (pode cair no outro canal na próxima tentativa).
+        provider = pick_provider()
+        logger.info("Step 6/6: provider sorteado = %s", provider)
+
         try:
-            _, sender_id = send_video_official(selfie["phone"], video_signed)
+            if provider == "meta":
+                _msg_id, sender_id = send_video_official(selfie["phone"], video_signed)
+                provider_used = "official"
+            else:
+                send_whatsapp(
+                    selfie["phone"], display_first_name, video_signed,
+                    message_template=base_model.get("whatsapp_message_template"),
+                )
+                provider_used = "uazapi"
         except WhatsAppSendError:
             db.reset_whatsapp_claim(sid)
             raise
 
         try:
-            db.update_status(sid, "sending", whatsapp_provider="official")
+            db.update_status(sid, "sending", whatsapp_provider=provider_used)
         except Exception:
             # Coluna pode não existir ainda em produção (migration pendente).
             # Não é crítico — só perdemos a telemetria deste envio.
