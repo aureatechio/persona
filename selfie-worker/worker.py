@@ -557,6 +557,18 @@ def process_selfie(selfie: dict):
         provider = pick_provider()
         logger.info("Step 6/6: provider sorteado = %s", provider)
 
+        # Resolve label do tema escolhido pelo classifier (pra usar como
+        # variável {tema} no template do UAZAPI).
+        theme_label = ""
+        try:
+            themes = db.get_themes_template()
+            theme_label = next(
+                (t.get("label", "") for t in themes if t.get("slug") == selfie.get("theme_slug")),
+                "",
+            )
+        except Exception:
+            theme_label = ""
+
         try:
             if provider == "meta":
                 _msg_id, sender_id = send_video_official(selfie["phone"], video_signed)
@@ -565,6 +577,8 @@ def process_selfie(selfie: dict):
                 send_whatsapp(
                     selfie["phone"], display_first_name, video_signed,
                     message_template=base_model.get("whatsapp_message_template"),
+                    theme_label=theme_label,
+                    slug=base_model.get("slug") or "",
                 )
                 provider_used = "uazapi"
         except WhatsAppSendError:

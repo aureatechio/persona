@@ -159,17 +159,31 @@ def send_video_official(phone: str, video_url: str) -> tuple[str, str]:
     return msg_id, phone_number_id
 
 
-def send_whatsapp(phone: str, name: str, video_url: str, message_template: str | None = None):
+def send_whatsapp(
+    phone: str,
+    name: str,
+    video_url: str,
+    message_template: str | None = None,
+    theme_label: str | None = None,
+    slug: str | None = None,
+):
     """
     Send the final video via UAZAPI WhatsApp.
     Sends EXACTLY ONCE — no retries to prevent duplicate messages.
 
-    ``message_template`` comes from the base_model (per-politician). Supports
-    ``{name}`` substitution. Falls back to a neutral default when empty.
+    ``message_template`` vem do base_model (per-politician). Suporta
+    substituições: ``{name}``, ``{tema}`` (label do tema escolhido pelo
+    classifier) e ``{slug}`` (slug do candidato — usado em links de
+    convite). Cai num default neutro quando vazio.
     """
     phone = _normalize_phone(phone)
     template = message_template or DEFAULT_MESSAGE_TEMPLATE
-    text = template.replace("{name}", name)
+    text = (
+        template
+        .replace("{name}", name or "")
+        .replace("{tema}", theme_label or "")
+        .replace("{slug}", slug or "")
+    )
 
     logger.info("Sending WhatsApp video to %s...", phone)
 

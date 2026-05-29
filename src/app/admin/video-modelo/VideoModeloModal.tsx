@@ -167,7 +167,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [thankYou, setThankYou] = useState(DEFAULT_THANK_YOU);
   const [isActive, setIsActive] = useState(true);
   const [videoStrategy, setVideoStrategy] = useState<VideoStrategy>('name_sync');
-  const [themeIntroSeconds, setThemeIntroSeconds] = useState<number>(4);
+  const [themeIntroSeconds, setThemeIntroSeconds] = useState<number>(4.5);
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -205,7 +205,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setThemeIntroSeconds(
         typeof initial.theme_intro_seconds === 'number' && Number.isFinite(initial.theme_intro_seconds)
           ? initial.theme_intro_seconds
-          : 4,
+          : 4.5,
       );
     } else {
       setName('');
@@ -220,7 +220,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaPath(null);
       setPropostaMessage('');
       setVideoStrategy('name_sync');
-      setThemeIntroSeconds(4);
+      setThemeIntroSeconds(4.5);
     }
     setVideoFile(null);
     setVideoPreviewUrl(null);
@@ -640,15 +640,18 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
           </Section>
 
           {/* ── WhatsApp ── */}
-          <Section icon={<MessageCircle size={20} className="text-emerald-400" />} iconBg="bg-emerald-500/10" title="WhatsApp e mensagens" subtitle="Use {name} para inserir o nome do eleitor">
+          <Section icon={<MessageCircle size={20} className="text-emerald-400" />} iconBg="bg-emerald-500/10" title="WhatsApp e mensagens" subtitle="Use {name}, {tema} e {slug} como variáveis no texto">
             <div className="space-y-4">
-              <Field label="Texto enviado junto com o vídeo no WhatsApp">
+              <Field
+                label="Texto enviado junto com o vídeo no WhatsApp"
+                hint="Variáveis disponíveis: {name} (primeiro nome do eleitor), {tema} (label do tema classificado), {slug} (slug do candidato — use em links). Envio via Cloud API depende de template aprovado na Meta — texto livre só funciona via UAZAPI hoje."
+              >
                 <textarea
                   value={whatsappTemplate}
                   onChange={(e) => setWhatsappTemplate(e.target.value)}
-                  rows={2}
+                  rows={6}
                   className={cn(inputClass, 'resize-y')}
-                  placeholder="Olá, {name}! Obrigado pela sua mensagem!"
+                  placeholder="Olá {name}, obrigado pela sua mensagem!&#10;&#10;{tema} é um assunto muito importante para o nosso plano de governo. Conte comigo para tratar esse tema com responsabilidade, atenção e seriedade.&#10;&#10;E você que está vendo esse vídeo, se também quer receber uma resposta minha, acesse o link https://video.queromefiliaraopl.com.br/selfie-video/{slug} e envie sua mensagem."
                 />
               </Field>
               <Field label="Mensagem de agradecimento (após gravar a selfie)">
