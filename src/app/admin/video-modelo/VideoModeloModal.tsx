@@ -167,7 +167,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [thankYou, setThankYou] = useState(DEFAULT_THANK_YOU);
   const [isActive, setIsActive] = useState(true);
   const [videoStrategy, setVideoStrategy] = useState<VideoStrategy>('name_sync');
-  const [themeIntroSeconds, setThemeIntroSeconds] = useState<number>(4.5);
+  const [themeIntroSeconds, setThemeIntroSeconds] = useState<number>(1.5);
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -205,7 +205,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setThemeIntroSeconds(
         typeof initial.theme_intro_seconds === 'number' && Number.isFinite(initial.theme_intro_seconds)
           ? initial.theme_intro_seconds
-          : 4.5,
+          : 1.5,
       );
     } else {
       setName('');
@@ -220,7 +220,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaPath(null);
       setPropostaMessage('');
       setVideoStrategy('name_sync');
-      setThemeIntroSeconds(4.5);
+      setThemeIntroSeconds(1.5);
     }
     setVideoFile(null);
     setVideoPreviewUrl(null);

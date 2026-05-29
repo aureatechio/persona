@@ -234,7 +234,10 @@ def process_selfie(selfie: dict):
                     "Step 2/6: NAME_SYNC MISS (first_name=%s, theme=%s) — gerando sync curto",
                     first_name, theme_slug,
                 )
-                generated_text = f"{display_first_name}, obrigado pelo seu vídeo!"
+                # Sync curto pra economizar custo e tempo de Sync.so e
+                # evitar o duplo corte (nome + agradecimento) que aparecia
+                # quando o sync tinha 3s. Agora ~1-1.5s só com a saudação.
+                generated_text = f"Olá {display_first_name}!"
                 db.update_status(sid, "generating_tts", generated_text=generated_text)
                 selfie["generated_text"] = generated_text
 
