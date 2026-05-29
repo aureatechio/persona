@@ -814,7 +814,7 @@ const selectClass = cn(
   'appearance-none pr-10 cursor-pointer',
   'bg-no-repeat bg-[length:18px_18px] bg-[position:right_12px_center]',
   // chevron SVG inline (zinc-400)
-  "bg-[url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23a1a1aa'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpolyline%20points='6%209%2012%2015%2018%209'/%3E%3C/svg%3E\")]",
+  "bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%2024%2024%27%20fill=%27none%27%20stroke=%27%23a1a1aa%27%20stroke-width=%272%27%20stroke-linecap=%27round%27%20stroke-linejoin=%27round%27%3E%3Cpolyline%20points=%276%209%2012%2015%2018%209%27/%3E%3C/svg%3E')]",
 );
 
 // <option> usa cores do SO por padrão; força bg escuro para Chromium/Firefox.
