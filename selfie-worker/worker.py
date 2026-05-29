@@ -481,6 +481,7 @@ def process_selfie(selfie: dict):
         theme_slug = selfie.get("theme_slug")
 
         middle_urls: list[str] = []
+        middle_offsets: list[float] = []
         if name_sync_cached_path and theme_slug:
             theme_model_now = db.get_theme_model(base_model["id"], theme_slug)
             theme_video_path = (
@@ -489,13 +490,19 @@ def process_selfie(selfie: dict):
                 else None
             )
             if theme_video_path:
+                # A candidata grava os primeiros N segundos do theme_video
+                # falando um placeholder; esses segundos são substituídos
+                # pelo name_sync. Pra evitar repetição visual, o
+                # theme_video começa após esses N segundos no compose.
+                intro_seconds = float(base_model.get("theme_intro_seconds") or 4)
                 middle_urls = [
                     db.create_signed_url(name_sync_cached_path),
                     db.create_signed_url(theme_video_path),
                 ]
+                middle_offsets = [0.0, intro_seconds]
                 logger.info(
-                    "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s)",
-                    name_sync_cached_path, theme_video_path,
+                    "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s, skip %.1fs intro)",
+                    name_sync_cached_path, theme_video_path, intro_seconds,
                 )
 
         if not middle_urls:
@@ -517,6 +524,7 @@ def process_selfie(selfie: dict):
         final_bytes = compose_videos(
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
+            middle_offsets=middle_offsets if middle_offsets else None,
         )
 
         final_path = f"final/{sid}.mp4"
