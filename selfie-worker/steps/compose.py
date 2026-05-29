@@ -78,18 +78,24 @@ def _has_audio_stream(file_path: str) -> bool:
         return False
 
 
-def _normalize(input_path: str, output_path: str):
+def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
     """
-    Normalize a video to 720x1280 30fps h264+aac.
-    If the input has no audio stream, generates a silent audio track
-    so that concat always has matching streams.
+    Normalize a video to 720x1280 30fps h264+aac. Se start_offset > 0,
+    o ffmpeg recebe -ss antes do -i pra pular os primeiros N segundos
+    (fast seek por keyframe — usado pra cortar a intro neutra do
+    theme_video no fluxo name_sync).
     """
     has_audio = _has_audio_stream(input_path)
-    logger.info("Normalizing %s (has_audio=%s)...", os.path.basename(input_path), has_audio)
+    logger.info(
+        "Normalizing %s (has_audio=%s, start_offset=%.2fs)...",
+        os.path.basename(input_path), has_audio, start_offset,
+    )
+
+    seek_args = ["-ss", f"{start_offset:.3f}"] if start_offset > 0 else []
 
     if has_audio:
         _run_ffmpeg([
-            "-i", input_path,
+            *seek_args, "-i", input_path,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
             "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
@@ -99,7 +105,7 @@ def _normalize(input_path: str, output_path: str):
     else:
         # Generate silent audio to match video duration
         _run_ffmpeg([
-            "-i", input_path,
+            *seek_args, "-i", input_path,
             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
@@ -187,6 +193,7 @@ def compose_videos(
     middle_urls: str | list[str],
     closing_video_path: str | None = None,
     closing_music_path: str | None = None,
+    middle_offsets: list[float] | None = None,
 ) -> bytes:
     """
     Baixa todos os "vídeos do meio", normaliza tudo e concatena na ordem:
@@ -197,6 +204,11 @@ def compose_videos(
     uma lista (fluxo novo: ``[name_sync_url, theme_video_url]``). Cada
     URL pode ser do Sync.so, signed URL do Supabase Storage ou qualquer
     HTTP que retorne mp4.
+
+    ``middle_offsets`` (opcional) — lista de segundos a pular no início
+    de cada middle. Usado no fluxo name_sync pra cortar a intro neutra
+    do theme_video (que foi substituída pelo name_sync). Se omitido,
+    todos começam do segundo 0.
 
     ``closing_video_path`` / ``closing_music_path`` sobrescrevem os
     defaults — quando None, cai nos assets globais.
@@ -232,7 +244,12 @@ def compose_videos(
             with open(raw_path, "wb") as f:
                 f.write(resp.content)
             logger.info("middle[%d] downloaded: %d bytes", idx, len(resp.content))
-            _normalize(raw_path, norm_path)
+            offset = (
+                middle_offsets[idx]
+                if middle_offsets and idx < len(middle_offsets)
+                else 0.0
+            )
+            _normalize(raw_path, norm_path, start_offset=offset)
             middle_norms.append(norm_path)
 
         # 3. Closing (mesmo comportamento de antes)

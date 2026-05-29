@@ -50,6 +50,7 @@ export interface BaseModel {
   proposta_message_template: string | null;
   is_active: boolean;
   video_strategy: VideoStrategy | null;
+  theme_intro_seconds: number | null;
   created_at: string;
   updated_at?: string;
   voice_models: VoiceModel | null;
@@ -166,6 +167,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [thankYou, setThankYou] = useState(DEFAULT_THANK_YOU);
   const [isActive, setIsActive] = useState(true);
   const [videoStrategy, setVideoStrategy] = useState<VideoStrategy>('name_sync');
+  const [themeIntroSeconds, setThemeIntroSeconds] = useState<number>(4);
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -200,6 +202,11 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaPath(initial.proposta_pdf_path || null);
       setPropostaMessage(initial.proposta_message_template || '');
       setVideoStrategy(initial.video_strategy === 'full_video' ? 'full_video' : 'name_sync');
+      setThemeIntroSeconds(
+        typeof initial.theme_intro_seconds === 'number' && Number.isFinite(initial.theme_intro_seconds)
+          ? initial.theme_intro_seconds
+          : 4,
+      );
     } else {
       setName('');
       setSlug('');
@@ -213,6 +220,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaPath(null);
       setPropostaMessage('');
       setVideoStrategy('name_sync');
+      setThemeIntroSeconds(4);
     }
     setVideoFile(null);
     setVideoPreviewUrl(null);
@@ -322,6 +330,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         proposta_message_template: propostaMessage || null,
         is_active: isActive,
         video_strategy: videoStrategy,
+        theme_intro_seconds: themeIntroSeconds,
       };
       if (videoPath) payload.videoPath = videoPath;
       if (nextClosingPath !== undefined) payload.closing_video_path = nextClosingPath;
@@ -501,6 +510,28 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                 </div>
               </Field>
             </div>
+
+            {videoStrategy === 'name_sync' && (
+              <div className="mt-4 max-w-xs">
+                <Field
+                  label="Intro neutra do tema (segundos)"
+                  hint="Quantos segundos iniciais do vídeo do tema serão SUBSTITUÍDOS pelo sync do nome. A candidata grava esses primeiros segundos falando um placeholder, e a câmera muda de posição depois — o compose pula esses segundos pra não repetir visualmente."
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    value={themeIntroSeconds}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value);
+                      setThemeIntroSeconds(Number.isFinite(v) ? Math.max(0, v) : 0);
+                    }}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
+            )}
           </Section>
 
           {/* ── Vídeo Base ── */}

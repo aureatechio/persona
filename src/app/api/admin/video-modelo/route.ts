@@ -224,6 +224,7 @@ export async function POST(request: NextRequest) {
       proposta_message_template,
       is_active,
       video_strategy,
+      theme_intro_seconds,
     } = body;
 
     if (!prompt_template || typeof prompt_template !== 'string' || !prompt_template.trim()) {
@@ -268,6 +269,9 @@ export async function POST(request: NextRequest) {
       is_active: is_active !== false, // default true
       video_strategy: normalizedStrategy,
     };
+    if (typeof theme_intro_seconds === 'number' && Number.isFinite(theme_intro_seconds)) {
+      insertData.theme_intro_seconds = Math.max(0, theme_intro_seconds);
+    }
     if (whatsapp_message_template) insertData.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) insertData.thank_you_message = thank_you_message;
     if (closing_video_path !== undefined) insertData.closing_video_path = closing_video_path;
@@ -369,6 +373,13 @@ export async function PATCH(request: NextRequest) {
     if (body.video_strategy !== undefined) {
       updates.video_strategy =
         body.video_strategy === 'full_video' ? 'full_video' : 'name_sync';
+    }
+    if (
+      body.theme_intro_seconds !== undefined &&
+      typeof body.theme_intro_seconds === 'number' &&
+      Number.isFinite(body.theme_intro_seconds)
+    ) {
+      updates.theme_intro_seconds = Math.max(0, body.theme_intro_seconds);
     }
 
     // Troca de vídeo base → re-clonar voz
