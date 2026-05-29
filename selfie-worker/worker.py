@@ -153,20 +153,26 @@ def process_selfie(selfie: dict):
     else:
         transcription = selfie.get("transcription", "")
 
-    # ─── Step 2: Classify theme + decide fluxo (NOVO vs LEGACY) ───
+    # ─── Step 2: Classify theme + decide strategy ───
     #
-    # FLUXO NOVO: o candidato já gravou o vídeo do tema (video_theme_models
-    # com is_uploaded=true). Gera só o sync do nome (3s) — o vídeo do tema
-    # vem pronto. Cache do name_sync por (base_model, first_name).
+    # Três caminhos possíveis:
     #
-    # FLUXO LEGACY: tema sem vídeo gravado pelo candidato (is_uploaded=false
-    # ou row inexistente). Cai no pipeline antigo: GPT gera resposta
-    # completa, TTS longo, lipsync de 15-20s. Cache por (base_model,
-    # first_name, theme_slug).
+    # 1. NAME_SYNC  (theme uploaded + strategy='name_sync'):
+    #    Lipsync curto de 3s do nome + concat com video do tema. Barato
+    #    (~$0.10/vídeo), pode ter "corte" perceptível na transição.
+    #
+    # 2. FULL_VIDEO (theme uploaded + strategy='full_video'):
+    #    GPT gera resposta completa, TTS longo, lipsync de até 30s SOBRE
+    #    o vídeo do tema (puppet). Compose junta selfie + lipsync + closing.
+    #    Caro (~$1-2/vídeo), visualmente linear.
+    #
+    # 3. LEGACY     (theme NÃO uploaded):
+    #    Mesmo que full_video, mas lipsync sobre video base "neutro" do
+    #    candidato. Fallback quando o candidato não gravou o vídeo do tema.
     if _should_run_step(status, "generating_text"):
         if selfie.get("status") != "generating_text":
             db.update_status(sid, "generating_text")
-        logger.info("Step 2/6: Classifying theme + checking cache...")
+        logger.info("Step 2/6: Classifying theme + checking strategy...")
 
         theme_slug = selfie.get("theme_slug")
         first_name = selfie.get("first_name")
@@ -182,21 +188,36 @@ def process_selfie(selfie: dict):
             selfie["first_name"] = first_name
 
         theme_model = db.get_theme_model(base_model["id"], theme_slug)
-        use_new_flow = bool(
+        theme_available = bool(
             theme_model
             and theme_model.get("is_uploaded")
             and theme_model.get("video_storage_path")
         )
 
-        if use_new_flow:
-            # ── FLUXO NOVO ──
+        # Strategy do candidato (default 'name_sync'). Persiste na row
+        # da selfie pra retries serem determinísticos.
+        configured_strategy = (base_model.get("video_strategy") or "name_sync").lower()
+        if not theme_available:
+            effective_strategy = "legacy"
+        elif configured_strategy == "full_video":
+            effective_strategy = "full_video"
+        else:
+            effective_strategy = "name_sync"
+
+        # Persiste no banco se ainda não tinha (1ª passagem do step 2)
+        if not selfie.get("video_strategy"):
+            db.update_status(sid, "generating_text", video_strategy=effective_strategy)
+            selfie["video_strategy"] = effective_strategy
+
+        if effective_strategy == "name_sync":
+            # ── PLANO A: NAME_SYNC ──
             name_sync_cached = db.find_cached_name_sync(
                 base_model["id"], first_name, theme_slug,
             )
 
             if name_sync_cached:
                 logger.info(
-                    "Step 2/6: NEW FLOW + NAME_SYNC HIT (source=%s, first_name=%s, theme=%s)",
+                    "Step 2/6: NAME_SYNC HIT (source=%s, first_name=%s, theme=%s)",
                     name_sync_cached["id"], first_name, theme_slug,
                 )
                 db.update_status(
@@ -206,27 +227,24 @@ def process_selfie(selfie: dict):
                 )
                 selfie["name_sync_cached_path"] = name_sync_cached["name_sync_cached_path"]
                 generated_text = ""
-                # Pula TTS/lipsync — só o compose roda com selfie+name_sync+theme_video
                 status = "composing"
             else:
                 logger.info(
-                    "Step 2/6: NEW FLOW + NAME_SYNC MISS (first_name=%s, theme=%s) — gerando sync curto",
+                    "Step 2/6: NAME_SYNC MISS (first_name=%s, theme=%s) — gerando sync curto",
                     first_name, theme_slug,
                 )
                 generated_text = f"{display_first_name}, obrigado pelo seu vídeo!"
                 db.update_status(sid, "generating_tts", generated_text=generated_text)
                 selfie["generated_text"] = generated_text
-        else:
-            # ── FLUXO LEGACY ──
-            logger.info(
-                "Step 2/6: LEGACY FLOW theme=%s (sem vídeo do candidato gravado)",
-                theme_slug,
-            )
-            cached = db.find_cached_video(base_model["id"], first_name, theme_slug)
 
+        elif effective_strategy == "full_video":
+            # ── PLANO B: FULL_VIDEO (lipsync longo sobre video do tema) ──
+            cached = db.find_cached_video(
+                base_model["id"], first_name, theme_slug, strategy="full_video",
+            )
             if cached:
                 logger.info(
-                    "Step 2/6: LEGACY CACHE HIT (source=%s, name=%s, theme=%s)",
+                    "Step 2/6: FULL_VIDEO CACHE HIT (source=%s, name=%s, theme=%s)",
                     cached["id"], first_name, theme_slug,
                 )
                 db.update_status(
@@ -241,9 +259,38 @@ def process_selfie(selfie: dict):
                 status = "composing"
             else:
                 logger.info(
-                    "Step 2/6: LEGACY CACHE MISS (name=%s, theme=%s) — generating via GPT",
+                    "Step 2/6: FULL_VIDEO MISS (name=%s, theme=%s) — GPT + TTS longo + lipsync sobre video do tema",
                     first_name, theme_slug,
                 )
+                prompt_template = base_model.get("prompt_template", "")
+                generated_text = generate_text(display_first_name, transcription, prompt_template)
+                db.update_status(sid, "generating_tts", generated_text=generated_text)
+                selfie["generated_text"] = generated_text
+
+        else:
+            # ── LEGACY: tema não tem vídeo gravado ──
+            logger.info(
+                "Step 2/6: LEGACY (theme=%s sem vídeo do candidato — fallback IA completa)",
+                theme_slug,
+            )
+            cached = db.find_cached_video(
+                base_model["id"], first_name, theme_slug, strategy="legacy",
+            )
+            if cached:
+                logger.info(
+                    "Step 2/6: LEGACY CACHE HIT (source=%s)", cached["id"],
+                )
+                db.update_status(
+                    sid, "composing",
+                    lipsync_cached_path=cached["lipsync_cached_path"],
+                    cached_from=cached["id"],
+                    generated_text=cached.get("generated_text"),
+                )
+                selfie["lipsync_cached_path"] = cached["lipsync_cached_path"]
+                selfie["generated_text"] = cached.get("generated_text", "") or ""
+                generated_text = selfie["generated_text"]
+                status = "composing"
+            else:
                 prompt_template = base_model.get("prompt_template", "")
                 generated_text = generate_text(display_first_name, transcription, prompt_template)
                 db.update_status(sid, "generating_tts", generated_text=generated_text)
@@ -269,23 +316,18 @@ def process_selfie(selfie: dict):
 
         voice_id = voice_model["elevenlabs_voice_id"]
 
-        # Decide TTS: name_sync (curto, sem música, settings limpos) ou
-        # fluxo legacy (com música de fundo + fix_pronunciation).
-        theme_model_now = db.get_theme_model(
-            base_model["id"], selfie.get("theme_slug")
-        )
-        is_new_flow = bool(
-            theme_model_now
-            and theme_model_now.get("is_uploaded")
-            and theme_model_now.get("video_storage_path")
-        )
-
-        if is_new_flow:
+        # Decide TTS por strategy persistida: name_sync (curto, sem música,
+        # settings limpos) ou full_video/legacy (longo, com música).
+        strategy = (selfie.get("video_strategy") or "name_sync").lower()
+        if strategy == "name_sync":
             logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, sem música)...")
             audio_bytes = generate_tts_name_sync(generated_text, voice_id)
             tts_processed_text = generated_text
         else:
-            logger.info("Step 3/6: Generating TTS (legacy, com música)...")
+            logger.info(
+                "Step 3/6: Generating TTS (%s, com música + fix_pronunciation)...",
+                strategy,
+            )
             audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id)
 
         tts_path = f"tts/selfie_{sid}.mp3"
@@ -321,24 +363,21 @@ def process_selfie(selfie: dict):
 
                 db.update_status(sid, "generating_lipsync")
 
-                # Decide fluxo ANTES de gerar signed URL: NEW usa o vídeo
-                # do tema como input visual (continuidade visual perfeita
-                # entre name_sync e theme_video — ambos da mesma gravação);
-                # LEGACY usa o vídeo base "neutro" do candidato.
+                # Decide input visual do lipsync por strategy:
+                # - name_sync e full_video: usa video do tema (continuidade
+                #   visual com o conteúdo concatenado / coerência semântica).
+                # - legacy: usa video base "neutro" (fallback quando o tema
+                #   não tem vídeo gravado).
+                strategy = (selfie.get("video_strategy") or "name_sync").lower()
                 theme_model_now = db.get_theme_model(
                     base_model["id"], selfie.get("theme_slug")
                 )
-                is_new_flow = bool(
-                    theme_model_now
-                    and theme_model_now.get("is_uploaded")
-                    and theme_model_now.get("video_storage_path")
-                )
 
-                if is_new_flow:
+                if strategy in ("name_sync", "full_video") and theme_model_now:
                     lipsync_video_source = theme_model_now["video_storage_path"]
                     logger.info(
-                        "Step 4/6: NEW FLOW — lipsync usa video do tema (%s) pra continuidade visual",
-                        lipsync_video_source,
+                        "Step 4/6: %s — lipsync usa video do tema (%s)",
+                        strategy.upper(), lipsync_video_source,
                     )
                 else:
                     lipsync_video_source = base_model["video_storage_path"]
@@ -368,7 +407,9 @@ def process_selfie(selfie: dict):
                 try:
                     lipsync_resp = requests.get(lipsync_url, timeout=120)
                     lipsync_resp.raise_for_status()
-                    if is_new_flow:
+                    # name_sync: cache curto de 3s no name_sync_cached_path.
+                    # full_video/legacy: cache longo no lipsync_cached_path.
+                    if strategy == "name_sync":
                         cached_path = f"name_sync_cached/{sid}.mp4"
                         db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
                         logger.info(
@@ -385,8 +426,8 @@ def process_selfie(selfie: dict):
                         cached_path = f"lipsync_cached/{sid}.mp4"
                         db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
                         logger.info(
-                            "Step 4/6: LIPSYNC persisted to %s (%d bytes)",
-                            cached_path, len(lipsync_resp.content),
+                            "Step 4/6: LIPSYNC (%s) persisted to %s (%d bytes)",
+                            strategy, cached_path, len(lipsync_resp.content),
                         )
                         db.update_status(
                             sid, "composing",

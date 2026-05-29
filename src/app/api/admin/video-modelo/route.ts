@@ -223,11 +223,15 @@ export async function POST(request: NextRequest) {
       proposta_pdf_path,
       proposta_message_template,
       is_active,
+      video_strategy,
     } = body;
 
     if (!prompt_template || typeof prompt_template !== 'string' || !prompt_template.trim()) {
       return NextResponse.json({ error: 'prompt_template é obrigatório' }, { status: 400 });
     }
+
+    const normalizedStrategy =
+      video_strategy === 'full_video' ? 'full_video' : 'name_sync';
 
     const slug = normalizeSlug(rawSlug);
     if (!slug) {
@@ -262,6 +266,7 @@ export async function POST(request: NextRequest) {
       prompt_template,
       lipsync_config: lipsync_config || DEFAULT_LIPSYNC,
       is_active: is_active !== false, // default true
+      video_strategy: normalizedStrategy,
     };
     if (whatsapp_message_template) insertData.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) insertData.thank_you_message = thank_you_message;
@@ -361,6 +366,10 @@ export async function PATCH(request: NextRequest) {
     if (proposta_pdf_path !== undefined) updates.proposta_pdf_path = proposta_pdf_path;
     if (proposta_message_template !== undefined) updates.proposta_message_template = proposta_message_template;
     if (is_active !== undefined) updates.is_active = Boolean(is_active);
+    if (body.video_strategy !== undefined) {
+      updates.video_strategy =
+        body.video_strategy === 'full_video' ? 'full_video' : 'name_sync';
+    }
 
     // Troca de vídeo base → re-clonar voz
     if (videoPath && typeof videoPath === 'string') {

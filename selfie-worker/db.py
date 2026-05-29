@@ -303,13 +303,14 @@ def find_cached_name_sync(
 
 
 def find_cached_video(
-    base_model_id: str, first_name: str, theme_slug: str
+    base_model_id: str, first_name: str, theme_slug: str, strategy: str | None = None
 ) -> dict | None:
     """
-    Cache do fluxo LEGACY: procura um lipsync já gerado para a tupla
-    (base_model_id, first_name, theme_slug). Usado quando o candidato
-    NÃO tem vídeo gravado pro tema — o pipeline antigo (GPT+TTS+lipsync
-    inteiro) é executado, e o resultado vira fonte de cache.
+    Cache de lipsync longo (full_video ou legacy). Discriminado por
+    video_strategy porque os dois fluxos geram visuais diferentes:
+    full_video usa o video do tema como visual; legacy usa o base
+    "neutro" do candidato. Mesma (first_name, theme_slug) com strategy
+    diferente NÃO bate cache.
 
     Filtra rows originais (cached_from IS NULL), completadas e com
     lipsync persistido (lipsync_cached_path NOT NULL).
@@ -317,25 +318,25 @@ def find_cached_video(
     if not (base_model_id and first_name and theme_slug):
         return None
     try:
-        res = (
+        query = (
             client.table("video_selfies")
-            .select("id, lipsync_cached_path, generated_text, theme_slug, first_name")
+            .select("id, lipsync_cached_path, generated_text, theme_slug, first_name, video_strategy")
             .eq("base_model_id", base_model_id)
             .eq("first_name", first_name)
             .eq("theme_slug", theme_slug)
             .eq("status", "completed")
             .is_("cached_from", "null")
             .not_.is_("lipsync_cached_path", "null")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
         )
+        if strategy:
+            query = query.eq("video_strategy", strategy)
+        res = query.order("created_at", desc=True).limit(1).execute()
         return res.data[0] if res.data else None
     except Exception as e:
         import logging
         logging.getLogger("worker.db").warning(
-            "find_cached_video failed for (%s, %s, %s): %s",
-            base_model_id, first_name, theme_slug, e,
+            "find_cached_video failed for (%s, %s, %s, %s): %s",
+            base_model_id, first_name, theme_slug, strategy, e,
         )
         return None
 

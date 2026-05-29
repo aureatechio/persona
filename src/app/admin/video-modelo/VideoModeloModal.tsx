@@ -32,6 +32,8 @@ export interface LipsyncConfig {
   temperature: number;
 }
 
+export type VideoStrategy = 'name_sync' | 'full_video';
+
 export interface BaseModel {
   id: string;
   name: string;
@@ -47,6 +49,7 @@ export interface BaseModel {
   proposta_pdf_path: string | null;
   proposta_message_template: string | null;
   is_active: boolean;
+  video_strategy: VideoStrategy | null;
   created_at: string;
   updated_at?: string;
   voice_models: VoiceModel | null;
@@ -162,6 +165,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [whatsappTemplate, setWhatsappTemplate] = useState(DEFAULT_WHATSAPP_TEMPLATE);
   const [thankYou, setThankYou] = useState(DEFAULT_THANK_YOU);
   const [isActive, setIsActive] = useState(true);
+  const [videoStrategy, setVideoStrategy] = useState<VideoStrategy>('name_sync');
 
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
@@ -195,6 +199,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setClosingPath(initial.closing_video_path || null);
       setPropostaPath(initial.proposta_pdf_path || null);
       setPropostaMessage(initial.proposta_message_template || '');
+      setVideoStrategy(initial.video_strategy === 'full_video' ? 'full_video' : 'name_sync');
     } else {
       setName('');
       setSlug('');
@@ -207,6 +212,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setClosingPath(null);
       setPropostaPath(null);
       setPropostaMessage('');
+      setVideoStrategy('name_sync');
     }
     setVideoFile(null);
     setVideoPreviewUrl(null);
@@ -315,6 +321,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         thank_you_message: thankYou,
         proposta_message_template: propostaMessage || null,
         is_active: isActive,
+        video_strategy: videoStrategy,
       };
       if (videoPath) payload.videoPath = videoPath;
       if (nextClosingPath !== undefined) payload.closing_video_path = nextClosingPath;
@@ -436,6 +443,62 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                   </span>
                   <span className="text-xs text-zinc-500">Clique para alternar</span>
                 </button>
+              </Field>
+            </div>
+
+            <div className="mt-4">
+              <Field
+                label="Estratégia de vídeo"
+                hint="Como o vídeo final é montado quando o tema tem vídeo gravado pelo candidato."
+              >
+                <div className="grid md:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setVideoStrategy('name_sync')}
+                    className={cn(
+                      'p-4 rounded-xl border text-left transition-all duration-200',
+                      videoStrategy === 'name_sync'
+                        ? 'bg-emerald-500/10 border-emerald-500/40'
+                        : 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.06]',
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full',
+                          videoStrategy === 'name_sync' ? 'bg-emerald-400' : 'bg-zinc-600',
+                        )}
+                      />
+                      <span className="text-sm font-semibold text-white">Sync do nome (rápido)</span>
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      Gera só 3s falando o nome + concatena com o vídeo do tema. ~$0.10/vídeo. Pode ter um corte perceptível na transição.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVideoStrategy('full_video')}
+                    className={cn(
+                      'p-4 rounded-xl border text-left transition-all duration-200',
+                      videoStrategy === 'full_video'
+                        ? 'bg-violet-500/10 border-violet-500/40'
+                        : 'bg-white/[0.04] border-white/[0.08] hover:bg-white/[0.06]',
+                    )}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full',
+                          videoStrategy === 'full_video' ? 'bg-violet-400' : 'bg-zinc-600',
+                        )}
+                      />
+                      <span className="text-sm font-semibold text-white">Vídeo completo (premium)</span>
+                    </div>
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      GPT gera resposta + TTS longo + lipsync sobre o vídeo do tema. ~$1-2/vídeo. Sem corte visual.
+                    </p>
+                  </button>
+                </div>
               </Field>
             </div>
           </Section>
