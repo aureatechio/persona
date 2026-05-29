@@ -190,7 +190,9 @@ def process_selfie(selfie: dict):
 
         if use_new_flow:
             # ── FLUXO NOVO ──
-            name_sync_cached = db.find_cached_name_sync(base_model["id"], first_name)
+            name_sync_cached = db.find_cached_name_sync(
+                base_model["id"], first_name, theme_slug,
+            )
 
             if name_sync_cached:
                 logger.info(
@@ -318,10 +320,35 @@ def process_selfie(selfie: dict):
                     raise RuntimeError(f"Sync Labs key {slot_key_id} not found in database")
 
                 db.update_status(sid, "generating_lipsync")
-                logger.info("Step 4/6: Generating lip-sync (key: %s)...", str(slot_key_id)[:8])
+
+                # Decide fluxo ANTES de gerar signed URL: NEW usa o vídeo
+                # do tema como input visual (continuidade visual perfeita
+                # entre name_sync e theme_video — ambos da mesma gravação);
+                # LEGACY usa o vídeo base "neutro" do candidato.
+                theme_model_now = db.get_theme_model(
+                    base_model["id"], selfie.get("theme_slug")
+                )
+                is_new_flow = bool(
+                    theme_model_now
+                    and theme_model_now.get("is_uploaded")
+                    and theme_model_now.get("video_storage_path")
+                )
+
+                if is_new_flow:
+                    lipsync_video_source = theme_model_now["video_storage_path"]
+                    logger.info(
+                        "Step 4/6: NEW FLOW — lipsync usa video do tema (%s) pra continuidade visual",
+                        lipsync_video_source,
+                    )
+                else:
+                    lipsync_video_source = base_model["video_storage_path"]
+                    logger.info(
+                        "Step 4/6: LEGACY — lipsync usa video base (%s)",
+                        lipsync_video_source,
+                    )
 
                 # Generate signed URLs AFTER claiming slot (fresh expiry)
-                video_signed = db.create_signed_url(base_model["video_storage_path"])
+                video_signed = db.create_signed_url(lipsync_video_source)
                 audio_signed = db.create_signed_url(tts_path)
 
                 # Heartbeat keeps locked_at fresh during long Sync Labs polling
@@ -336,24 +363,6 @@ def process_selfie(selfie: dict):
                     model=lip_cfg.get("model", "lipsync-2-pro"),
                     sync_mode=lip_cfg.get("sync_mode", "loop"),
                     temperature=float(lip_cfg.get("temperature", 0.3)),
-                )
-
-                # Persiste o lipsync no Storage. A URL do Sync expira em
-                # 24-48h — sem persistir, o cache não funciona depois.
-                # Falha aqui não trava o pipeline; só impede esse vídeo
-                # de virar fonte de cache.
-                #
-                # Decide se persiste como NAME_SYNC (fluxo novo: lipsync
-                # curto de 3s reusável por (base_model, first_name)) ou
-                # como LIPSYNC regular (fluxo legacy: lipsync longo
-                # reusável por (base_model, first_name, theme_slug)).
-                theme_model_now = db.get_theme_model(
-                    base_model["id"], selfie.get("theme_slug")
-                )
-                is_new_flow = bool(
-                    theme_model_now
-                    and theme_model_now.get("is_uploaded")
-                    and theme_model_now.get("video_storage_path")
                 )
 
                 try:

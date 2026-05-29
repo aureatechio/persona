@@ -267,21 +267,24 @@ def get_theme_model(base_model_id: str, theme_slug: str) -> dict | None:
 
 
 def find_cached_name_sync(
-    base_model_id: str, first_name: str
+    base_model_id: str, first_name: str, theme_slug: str
 ) -> dict | None:
     """
     Cache do sync do nome (~3s lipsync "{Nome}, obrigado pelo seu vídeo!").
-    Independente do tema — só depende do candidato e do primeiro nome do
-    eleitor. Cobertura típica: rebatendo o mesmo "joão" em qualquer tema.
+    Agora indexado por (base_model_id, first_name, theme_slug) porque o
+    lipsync usa o vídeo do tema como input visual — então o name_sync
+    "joão+educacao" tem visual diferente do "joão+saude" e não pode ser
+    reusado entre temas.
     """
-    if not (base_model_id and first_name):
+    if not (base_model_id and first_name and theme_slug):
         return None
     try:
         res = (
             client.table("video_selfies")
-            .select("id, name_sync_cached_path, first_name")
+            .select("id, name_sync_cached_path, first_name, theme_slug")
             .eq("base_model_id", base_model_id)
             .eq("first_name", first_name)
+            .eq("theme_slug", theme_slug)
             .eq("status", "completed")
             .is_("cached_from", "null")
             .not_.is_("name_sync_cached_path", "null")
@@ -293,8 +296,8 @@ def find_cached_name_sync(
     except Exception as e:
         import logging
         logging.getLogger("worker.db").warning(
-            "find_cached_name_sync failed for (%s, %s): %s",
-            base_model_id, first_name, e,
+            "find_cached_name_sync failed for (%s, %s, %s): %s",
+            base_model_id, first_name, theme_slug, e,
         )
         return None
 
