@@ -129,7 +129,9 @@ export default function VideoThemesSection({ baseModelId }: Props) {
                 busy={!!busy[theme.theme_slug]}
                 setBusy={(v) => setBusy((b) => ({ ...b, [theme.theme_slug]: v }))}
                 onUpdated={(updated) => {
-                  setThemes((prev) => prev.map((t) => (t.theme_slug === updated.theme_slug ? { ...t, ...updated } : t)));
+                  setThemes((prev) =>
+                    prev.map((t) => (t.theme_slug === theme.theme_slug ? { ...t, ...updated } : t)),
+                  );
                 }}
               />
             ))}
@@ -232,7 +234,9 @@ function ThemeRowItem({
     <div
       className={cn(
         'rounded-xl border p-3 transition-all duration-200',
-        theme.is_uploaded
+        busy
+          ? 'bg-amber-500/[0.06] border-amber-500/30'
+          : theme.is_uploaded
           ? 'bg-emerald-500/[0.04] border-emerald-500/20'
           : 'bg-white/[0.02] border-white/[0.06]',
       )}
@@ -252,8 +256,13 @@ function ThemeRowItem({
               </span>
             )}
           </div>
-          {hasVideo && (
+          {hasVideo && !busy && (
             <p className="text-[11px] text-zinc-500 mt-1 truncate font-mono">{theme.video_storage_path}</p>
+          )}
+          {busy && (
+            <p className="text-xs text-amber-300 mt-1.5 flex items-center gap-1.5">
+              <Loader2 size={12} className="animate-spin" /> Enviando vídeo, aguarde...
+            </p>
           )}
           {localError && (
             <p className="text-xs text-red-300 mt-1.5 flex items-center gap-1">
@@ -299,14 +308,16 @@ function ThemeRowItem({
             disabled={busy}
             className={cn(
               'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium',
-              'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white',
+              busy
+                ? 'bg-amber-500/15 text-amber-300'
+                : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white',
               'transition-all duration-200',
               'disabled:opacity-40 disabled:cursor-not-allowed',
             )}
             title={hasVideo ? 'Substituir vídeo' : 'Subir vídeo'}
           >
             {busy ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-            {hasVideo ? 'Substituir' : 'Subir vídeo'}
+            {busy ? 'Enviando…' : hasVideo ? 'Substituir' : 'Subir vídeo'}
           </button>
         </div>
       </div>
