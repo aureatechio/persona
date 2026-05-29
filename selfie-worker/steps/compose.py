@@ -184,59 +184,75 @@ def _prepare_closing_video(
 def compose_videos(
     selfie_bytes: bytes,
     selfie_ext: str,
-    lipsync_url: str,
+    middle_urls: str | list[str],
     closing_video_path: str | None = None,
     closing_music_path: str | None = None,
 ) -> bytes:
     """
-    Download lipsync video, normalize all parts, concatenate:
-    selfie + lipsync + closing video (with background music).
+    Baixa todos os "vídeos do meio", normaliza tudo e concatena na ordem:
 
-    ``closing_video_path`` / ``closing_music_path`` override the defaults
-    when set on the active base_model (so each politician can have their
-    own closing). When None, falls back to the shared default assets.
+        selfie + middle[0] + middle[1] + ... + closing
 
-    Returns final video bytes (MP4).
+    ``middle_urls`` pode ser uma string (lipsync único — fluxo antigo) ou
+    uma lista (fluxo novo: ``[name_sync_url, theme_video_url]``). Cada
+    URL pode ser do Sync.so, signed URL do Supabase Storage ou qualquer
+    HTTP que retorne mp4.
+
+    ``closing_video_path`` / ``closing_music_path`` sobrescrevem os
+    defaults — quando None, cai nos assets globais.
+
+    Retorna o MP4 final em bytes.
     """
+    if isinstance(middle_urls, str):
+        middle_urls = [middle_urls]
+    middle_urls = [u for u in middle_urls if u]
+    if not middle_urls:
+        raise ValueError("compose_videos: middle_urls vazio")
+
     tmpdir = tempfile.mkdtemp(prefix="selfie_compose_")
     selfie_path = os.path.join(tmpdir, f"selfie.{selfie_ext}")
-    lipsync_path = os.path.join(tmpdir, "lipsync.mp4")
     selfie_norm = os.path.join(tmpdir, "selfie_norm.mp4")
-    lipsync_norm = os.path.join(tmpdir, "lipsync_norm.mp4")
     concat_list = os.path.join(tmpdir, "concat.txt")
     output_path = os.path.join(tmpdir, "final.mp4")
 
     try:
-        # 1. Write selfie
+        # 1. Selfie do eleitor
         with open(selfie_path, "wb") as f:
             f.write(selfie_bytes)
-
-        # 2. Download lipsync video
-        logger.info("Downloading lipsync video...")
-        resp = requests.get(lipsync_url, timeout=60)
-        resp.raise_for_status()
-        with open(lipsync_path, "wb") as f:
-            f.write(resp.content)
-        logger.info("Lipsync downloaded: %d bytes", len(resp.content))
-
-        # 3. Normalize selfie + lipsync
         _normalize(selfie_path, selfie_norm)
-        _normalize(lipsync_path, lipsync_norm)
 
-        # 4. Prepare closing video (with background music) — per-politician
+        # 2. Baixa e normaliza cada middle part (name_sync, theme_video, ...)
+        middle_norms: list[str] = []
+        for idx, url in enumerate(middle_urls):
+            raw_path = os.path.join(tmpdir, f"middle_{idx}.mp4")
+            norm_path = os.path.join(tmpdir, f"middle_{idx}_norm.mp4")
+            logger.info("Downloading middle[%d] from %s...", idx, url[:80])
+            resp = requests.get(url, timeout=120)
+            resp.raise_for_status()
+            with open(raw_path, "wb") as f:
+                f.write(resp.content)
+            logger.info("middle[%d] downloaded: %d bytes", idx, len(resp.content))
+            _normalize(raw_path, norm_path)
+            middle_norms.append(norm_path)
+
+        # 3. Closing (mesmo comportamento de antes)
         closing_norm = _prepare_closing_video(
             tmpdir,
             video_storage_path=closing_video_path or DEFAULT_CLOSING_VIDEO_PATH,
             music_storage_path=closing_music_path or DEFAULT_CLOSING_MUSIC_PATH,
         )
 
-        # 5. Build concat list
-        logger.info("Concatenating...")
+        # 4. Concat list
+        logger.info("Concatenating %d parts (selfie + %d middle + closing=%s)...",
+                    2 + len(middle_norms) + (1 if closing_norm else 0),
+                    len(middle_norms),
+                    bool(closing_norm))
         with open(concat_list, "w") as f:
-            f.write(f"file '{selfie_norm}'\nfile '{lipsync_norm}'\n")
+            f.write(f"file '{selfie_norm}'\n")
+            for m in middle_norms:
+                f.write(f"file '{m}'\n")
             if closing_norm:
                 f.write(f"file '{closing_norm}'\n")
-                logger.info("Closing video included in concat")
 
         _run_ffmpeg([
             "-f", "concat", "-safe", "0", "-i", concat_list,
@@ -252,7 +268,6 @@ def compose_videos(
         return final_bytes
 
     finally:
-        # Cleanup all temp files
         for fname in os.listdir(tmpdir):
             try:
                 os.unlink(os.path.join(tmpdir, fname))

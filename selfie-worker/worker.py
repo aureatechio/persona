@@ -24,7 +24,8 @@ import requests
 from config import POLL_INTERVAL, MAX_RETRIES
 import db
 from steps.transcribe import transcribe
-from steps.classify import classify_category, normalize_first_name
+from steps.classify import normalize_first_name
+from steps.classify_theme import classify_theme, DEFAULT_THEME_SLUG
 from steps.generate import generate_text
 from steps.tts import generate_tts
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
@@ -152,56 +153,99 @@ def process_selfie(selfie: dict):
     else:
         transcription = selfie.get("transcription", "")
 
-    # ─── Step 2: Classify + cache lookup + (maybe) generate text ───
+    # ─── Step 2: Classify theme + decide fluxo (NOVO vs LEGACY) ───
+    #
+    # FLUXO NOVO: o candidato já gravou o vídeo do tema (video_theme_models
+    # com is_uploaded=true). Gera só o sync do nome (3s) — o vídeo do tema
+    # vem pronto. Cache do name_sync por (base_model, first_name).
+    #
+    # FLUXO LEGACY: tema sem vídeo gravado pelo candidato (is_uploaded=false
+    # ou row inexistente). Cai no pipeline antigo: GPT gera resposta
+    # completa, TTS longo, lipsync de 15-20s. Cache por (base_model,
+    # first_name, theme_slug).
     if _should_run_step(status, "generating_text"):
         if selfie.get("status") != "generating_text":
             db.update_status(sid, "generating_text")
-        logger.info("Step 2/6: Classifying + checking cache...")
+        logger.info("Step 2/6: Classifying theme + checking cache...")
 
-        # Classify category + normalize first_name (cache keys).
-        # Reusa valores já gravados em retry pra economizar uma chamada GPT.
-        category = selfie.get("category")
+        theme_slug = selfie.get("theme_slug")
         first_name = selfie.get("first_name")
-        if not (category and first_name):
-            category = classify_category(transcription)
+        if not (theme_slug and first_name):
+            themes = db.get_themes_template()
+            theme_slug = classify_theme(transcription, themes) or DEFAULT_THEME_SLUG
             first_name = normalize_first_name(selfie["name"])
             db.update_status(
                 sid, "generating_text",
-                first_name=first_name, category=category,
+                first_name=first_name, theme_slug=theme_slug,
             )
-            selfie["category"] = category
+            selfie["theme_slug"] = theme_slug
             selfie["first_name"] = first_name
 
-        # Existe vídeo finalizado pra (base_model, primeiro_nome, categoria)?
-        cached = db.find_cached_video(base_model["id"], first_name, category)
+        theme_model = db.get_theme_model(base_model["id"], theme_slug)
+        use_new_flow = bool(
+            theme_model
+            and theme_model.get("is_uploaded")
+            and theme_model.get("video_storage_path")
+        )
 
-        if cached:
-            logger.info(
-                "Step 2/6: CACHE HIT (source=%s, name=%s, category=%s) — skipping generation/TTS/lipsync; compose with selfie atual",
-                cached["id"], first_name, category,
-            )
-            db.update_status(
-                sid, "composing",
-                lipsync_cached_path=cached["lipsync_cached_path"],
-                cached_from=cached["id"],
-                generated_text=cached.get("generated_text"),
-            )
-            selfie["lipsync_cached_path"] = cached["lipsync_cached_path"]
-            selfie["generated_text"] = cached.get("generated_text", "") or ""
-            generated_text = selfie["generated_text"]
-            # Pula steps 3 (TTS) e 4 (lipsync) — o lipsync já está pronto.
-            # Step 5 (compose) ainda precisa rodar com a selfie do eleitor atual.
-            status = "composing"
+        if use_new_flow:
+            # ── FLUXO NOVO ──
+            name_sync_cached = db.find_cached_name_sync(base_model["id"], first_name)
+
+            if name_sync_cached:
+                logger.info(
+                    "Step 2/6: NEW FLOW + NAME_SYNC HIT (source=%s, first_name=%s, theme=%s)",
+                    name_sync_cached["id"], first_name, theme_slug,
+                )
+                db.update_status(
+                    sid, "composing",
+                    name_sync_cached_path=name_sync_cached["name_sync_cached_path"],
+                    cached_from=name_sync_cached["id"],
+                )
+                selfie["name_sync_cached_path"] = name_sync_cached["name_sync_cached_path"]
+                generated_text = ""
+                # Pula TTS/lipsync — só o compose roda com selfie+name_sync+theme_video
+                status = "composing"
+            else:
+                logger.info(
+                    "Step 2/6: NEW FLOW + NAME_SYNC MISS (first_name=%s, theme=%s) — gerando sync curto",
+                    first_name, theme_slug,
+                )
+                generated_text = f"{display_first_name}, obrigado pelo seu vídeo!"
+                db.update_status(sid, "generating_tts", generated_text=generated_text)
+                selfie["generated_text"] = generated_text
         else:
+            # ── FLUXO LEGACY ──
             logger.info(
-                "Step 2/6: CACHE MISS (name=%s, category=%s) — generating new video",
-                first_name, category,
+                "Step 2/6: LEGACY FLOW theme=%s (sem vídeo do candidato gravado)",
+                theme_slug,
             )
-            prompt_template = base_model.get("prompt_template", "")
-            generated_text = generate_text(display_first_name, transcription, prompt_template)
+            cached = db.find_cached_video(base_model["id"], first_name, theme_slug)
 
-            db.update_status(sid, "generating_tts", generated_text=generated_text)
-            selfie["generated_text"] = generated_text
+            if cached:
+                logger.info(
+                    "Step 2/6: LEGACY CACHE HIT (source=%s, name=%s, theme=%s)",
+                    cached["id"], first_name, theme_slug,
+                )
+                db.update_status(
+                    sid, "composing",
+                    lipsync_cached_path=cached["lipsync_cached_path"],
+                    cached_from=cached["id"],
+                    generated_text=cached.get("generated_text"),
+                )
+                selfie["lipsync_cached_path"] = cached["lipsync_cached_path"]
+                selfie["generated_text"] = cached.get("generated_text", "") or ""
+                generated_text = selfie["generated_text"]
+                status = "composing"
+            else:
+                logger.info(
+                    "Step 2/6: LEGACY CACHE MISS (name=%s, theme=%s) — generating via GPT",
+                    first_name, theme_slug,
+                )
+                prompt_template = base_model.get("prompt_template", "")
+                generated_text = generate_text(display_first_name, transcription, prompt_template)
+                db.update_status(sid, "generating_tts", generated_text=generated_text)
+                selfie["generated_text"] = generated_text
     else:
         generated_text = selfie.get("generated_text", "")
 
@@ -277,34 +321,61 @@ def process_selfie(selfie: dict):
                     temperature=float(lip_cfg.get("temperature", 0.3)),
                 )
 
-                # Persiste o lipsync no Storage — a URL retornada pelo
-                # Sync expira em 24-48h, então não dá pra usar como
-                # fonte de cache a longo prazo. Falha aqui não trava o
-                # pipeline (esse vídeo só não vira fonte de cache).
-                lipsync_cached_path: str | None = None
+                # Persiste o lipsync no Storage. A URL do Sync expira em
+                # 24-48h — sem persistir, o cache não funciona depois.
+                # Falha aqui não trava o pipeline; só impede esse vídeo
+                # de virar fonte de cache.
+                #
+                # Decide se persiste como NAME_SYNC (fluxo novo: lipsync
+                # curto de 3s reusável por (base_model, first_name)) ou
+                # como LIPSYNC regular (fluxo legacy: lipsync longo
+                # reusável por (base_model, first_name, theme_slug)).
+                theme_model_now = db.get_theme_model(
+                    base_model["id"], selfie.get("theme_slug")
+                )
+                is_new_flow = bool(
+                    theme_model_now
+                    and theme_model_now.get("is_uploaded")
+                    and theme_model_now.get("video_storage_path")
+                )
+
                 try:
                     lipsync_resp = requests.get(lipsync_url, timeout=120)
                     lipsync_resp.raise_for_status()
-                    lipsync_cached_path = f"lipsync_cached/{sid}.mp4"
-                    db.upload_file(lipsync_cached_path, lipsync_resp.content, "video/mp4")
-                    logger.info(
-                        "Step 4/6: Lipsync persisted to %s (%d bytes) — disponível pra cache",
-                        lipsync_cached_path, len(lipsync_resp.content),
-                    )
+                    if is_new_flow:
+                        cached_path = f"name_sync_cached/{sid}.mp4"
+                        db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
+                        logger.info(
+                            "Step 4/6: NAME_SYNC persisted to %s (%d bytes)",
+                            cached_path, len(lipsync_resp.content),
+                        )
+                        db.update_status(
+                            sid, "composing",
+                            lipsync_video_url=lipsync_url,
+                            name_sync_cached_path=cached_path,
+                        )
+                        selfie["name_sync_cached_path"] = cached_path
+                    else:
+                        cached_path = f"lipsync_cached/{sid}.mp4"
+                        db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
+                        logger.info(
+                            "Step 4/6: LIPSYNC persisted to %s (%d bytes)",
+                            cached_path, len(lipsync_resp.content),
+                        )
+                        db.update_status(
+                            sid, "composing",
+                            lipsync_video_url=lipsync_url,
+                            lipsync_cached_path=cached_path,
+                        )
+                        selfie["lipsync_cached_path"] = cached_path
                 except Exception as e:
                     logger.warning(
-                        "Step 4/6: Falha ao persistir lipsync no Storage (%s) — vídeo não vira fonte de cache",
+                        "Step 4/6: persist lipsync failed (%s) — vídeo não vira fonte de cache",
                         e,
                     )
-                    lipsync_cached_path = None
+                    db.update_status(sid, "composing", lipsync_video_url=lipsync_url)
 
-                db.update_status(
-                    sid, "composing",
-                    lipsync_video_url=lipsync_url,
-                    lipsync_cached_path=lipsync_cached_path,
-                )
                 selfie["lipsync_video_url"] = lipsync_url
-                selfie["lipsync_cached_path"] = lipsync_cached_path
             except SyncLabsKeyRejected:
                 # 401/402 — esta chave foi revogada/sem cota.
                 # Bloqueia ela no pool por 15min para que o retry pegue outra.
@@ -322,6 +393,15 @@ def process_selfie(selfie: dict):
         lipsync_url = selfie.get("lipsync_video_url", "")
 
     # ─── Step 5: Compose (FFmpeg) ───
+    #
+    # Monta a lista de "vídeos do meio" que vai entre selfie e closing:
+    #
+    # FLUXO NOVO  : [name_sync (3s do nome) , theme_video (vídeo do tema)]
+    # FLUXO LEGACY: [lipsync (15-20s)]
+    #
+    # A escolha vem do state persistido em video_selfies — `name_sync_cached_path`
+    # presente implica fluxo novo; caso contrário usa lipsync_cached_path
+    # ou lipsync_video_url como fallback.
     if _should_run_step(status, "composing"):
         if selfie.get("status") != "composing":
             db.update_status(sid, "composing")
@@ -330,20 +410,45 @@ def process_selfie(selfie: dict):
         selfie_bytes = db.download_file(selfie["selfie_video_path"])
         ext = "webm" if selfie["selfie_video_path"].endswith(".webm") else "mp4"
 
-        # Prefere o lipsync persistido no Storage (signed URL não expira em 24h
-        # como a do Sync). Cache HIT só popula lipsync_cached_path; lipsync_url
-        # nesse caso está vazio. Em MISS ambos podem estar setados — pegamos
-        # o cached porque é o que vai sobreviver pra reuso futuro.
-        lipsync_cached_path = selfie.get("lipsync_cached_path")
-        if lipsync_cached_path:
-            compose_lipsync_url = db.create_signed_url(lipsync_cached_path)
-            logger.info("Step 5/6: usando lipsync cacheado em %s", lipsync_cached_path)
-        else:
-            compose_lipsync_url = lipsync_url
-            logger.info("Step 5/6: usando lipsync_url direto (sem cache persistido)")
+        name_sync_cached_path = selfie.get("name_sync_cached_path")
+        theme_slug = selfie.get("theme_slug")
+
+        middle_urls: list[str] = []
+        if name_sync_cached_path and theme_slug:
+            theme_model_now = db.get_theme_model(base_model["id"], theme_slug)
+            theme_video_path = (
+                theme_model_now.get("video_storage_path")
+                if theme_model_now and theme_model_now.get("is_uploaded")
+                else None
+            )
+            if theme_video_path:
+                middle_urls = [
+                    db.create_signed_url(name_sync_cached_path),
+                    db.create_signed_url(theme_video_path),
+                ]
+                logger.info(
+                    "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s)",
+                    name_sync_cached_path, theme_video_path,
+                )
+
+        if not middle_urls:
+            # Fluxo LEGACY: usa lipsync único
+            lipsync_cached_path = selfie.get("lipsync_cached_path")
+            if lipsync_cached_path:
+                middle_urls = [db.create_signed_url(lipsync_cached_path)]
+                logger.info("Step 5/6: LEGACY — lipsync_cached (%s)", lipsync_cached_path)
+            elif lipsync_url:
+                middle_urls = [lipsync_url]
+                logger.info("Step 5/6: LEGACY — lipsync_url direto (sem cache persistido)")
+            else:
+                raise RuntimeError(
+                    f"compose: nenhum middle disponível para {sid} "
+                    f"(name_sync=%s, lipsync_cached=%s, lipsync_url=%s)"
+                    % (name_sync_cached_path, selfie.get("lipsync_cached_path"), lipsync_url)
+                )
 
         final_bytes = compose_videos(
-            selfie_bytes, ext, compose_lipsync_url,
+            selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
         )
 

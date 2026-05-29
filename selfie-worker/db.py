@@ -211,30 +211,115 @@ def get_base_model(base_model_id: str):
     return res.data[0] if res.data else None
 
 
-def find_cached_video(
-    base_model_id: str, first_name: str, category: str
+# ─── Novos helpers do fluxo por tema (AM) ─────────────────────
+
+_themes_cache: list[dict] | None = None
+
+
+def get_themes_template(force_refresh: bool = False) -> list[dict]:
+    """
+    Carrega os 31 temas (30 latentes do AM + ``padrao``) da tabela
+    ``themes_template``. Cache em memória: a tabela é praticamente
+    estática e é lida a cada selfie no classifier.
+    """
+    global _themes_cache
+    if _themes_cache is not None and not force_refresh:
+        return _themes_cache
+    try:
+        res = (
+            client.table("themes_template")
+            .select("slug, label, category, priority, description, is_default, display_order")
+            .order("display_order")
+            .execute()
+        )
+        _themes_cache = res.data or []
+    except Exception as e:
+        import logging
+        logging.getLogger("worker.db").error("get_themes_template failed: %s", e)
+        _themes_cache = []
+    return _themes_cache
+
+
+def get_theme_model(base_model_id: str, theme_slug: str) -> dict | None:
+    """
+    Retorna a row de ``video_theme_models`` para (base_model_id, theme_slug)
+    com video_storage_path e is_uploaded. Decide se vamos pelo fluxo NOVO
+    (is_uploaded=true) ou fallback (legacy).
+    """
+    if not (base_model_id and theme_slug):
+        return None
+    try:
+        res = (
+            client.table("video_theme_models")
+            .select("id, theme_slug, video_storage_path, is_uploaded")
+            .eq("base_model_id", base_model_id)
+            .eq("theme_slug", theme_slug)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        import logging
+        logging.getLogger("worker.db").warning(
+            "get_theme_model failed for (%s, %s): %s", base_model_id, theme_slug, e,
+        )
+        return None
+
+
+def find_cached_name_sync(
+    base_model_id: str, first_name: str
 ) -> dict | None:
     """
-    Procura um lipsync já gerado para a tupla (base_model_id, first_name,
-    category) que possa ser reusado. Cacheamos só o lipsync do candidato
-    (sem a selfie do eleitor) — o compose roda em cada HIT com a selfie
-    do eleitor atual.
-
-    Filtra rows originais (cached_from IS NULL), completas
-    (status='completed') e que tenham o lipsync salvo no Storage
-    (lipsync_cached_path NOT NULL).
-
-    Retorna a row mais recente que casar, ou None se não há cache.
+    Cache do sync do nome (~3s lipsync "{Nome}, obrigado pelo seu vídeo!").
+    Independente do tema — só depende do candidato e do primeiro nome do
+    eleitor. Cobertura típica: rebatendo o mesmo "joão" em qualquer tema.
     """
-    if not (base_model_id and first_name and category):
+    if not (base_model_id and first_name):
         return None
     try:
         res = (
             client.table("video_selfies")
-            .select("id, lipsync_cached_path, generated_text, category, first_name")
+            .select("id, name_sync_cached_path, first_name")
             .eq("base_model_id", base_model_id)
             .eq("first_name", first_name)
-            .eq("category", category)
+            .eq("status", "completed")
+            .is_("cached_from", "null")
+            .not_.is_("name_sync_cached_path", "null")
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return res.data[0] if res.data else None
+    except Exception as e:
+        import logging
+        logging.getLogger("worker.db").warning(
+            "find_cached_name_sync failed for (%s, %s): %s",
+            base_model_id, first_name, e,
+        )
+        return None
+
+
+def find_cached_video(
+    base_model_id: str, first_name: str, theme_slug: str
+) -> dict | None:
+    """
+    Cache do fluxo LEGACY: procura um lipsync já gerado para a tupla
+    (base_model_id, first_name, theme_slug). Usado quando o candidato
+    NÃO tem vídeo gravado pro tema — o pipeline antigo (GPT+TTS+lipsync
+    inteiro) é executado, e o resultado vira fonte de cache.
+
+    Filtra rows originais (cached_from IS NULL), completadas e com
+    lipsync persistido (lipsync_cached_path NOT NULL).
+    """
+    if not (base_model_id and first_name and theme_slug):
+        return None
+    try:
+        res = (
+            client.table("video_selfies")
+            .select("id, lipsync_cached_path, generated_text, theme_slug, first_name")
+            .eq("base_model_id", base_model_id)
+            .eq("first_name", first_name)
+            .eq("theme_slug", theme_slug)
             .eq("status", "completed")
             .is_("cached_from", "null")
             .not_.is_("lipsync_cached_path", "null")
@@ -247,7 +332,7 @@ def find_cached_video(
         import logging
         logging.getLogger("worker.db").warning(
             "find_cached_video failed for (%s, %s, %s): %s",
-            base_model_id, first_name, category, e,
+            base_model_id, first_name, theme_slug, e,
         )
         return None
 
