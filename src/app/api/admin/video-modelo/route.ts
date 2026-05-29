@@ -280,6 +280,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Falha ao criar modelo base' }, { status: 500 });
     }
 
+    // Popula as 31 rows em video_theme_models (1 por tema). is_uploaded=false
+    // por default — o candidato sobe o vídeo de cada tema depois. A migration
+    // já fez backfill pros base_models existentes; aqui é só pros NOVOS.
+    try {
+      const { data: themes } = await supabaseAdmin
+        .from('themes_template')
+        .select('slug');
+      if (themes && themes.length > 0) {
+        const rows = themes.map((t) => ({ base_model_id: model.id, theme_slug: t.slug }));
+        await supabaseAdmin.from('video_theme_models').insert(rows);
+      }
+    } catch (err) {
+      // Não bloqueia a criação do modelo — o admin pode rodar /api/admin/video-modelo/themes
+      // pra inicializar manualmente depois.
+      console.warn('[video-modelo] Falha ao inicializar video_theme_models:', err);
+    }
+
     return NextResponse.json({ model });
   } catch (err) {
     const { status, message } = statusFromError(err);

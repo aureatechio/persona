@@ -17,6 +17,7 @@ import {
   FileType2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import VideoThemesSection from './VideoThemesSection';
 
 export interface VoiceModel {
   id: string;
@@ -697,6 +698,8 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
               em anexo&quot;.
             </p>
           </Section>
+
+          <VideoThemesSection baseModelId={initial?.id || null} />
         </div>
 
         {/* Footer */}
