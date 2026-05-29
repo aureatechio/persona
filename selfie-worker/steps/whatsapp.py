@@ -10,13 +10,14 @@ Dois canais suportados:
 """
 
 import logging
+import random
 import requests
 
 from config import (
     UAZAPI_URL,
     UAZAPI_TOKEN,
     WHATSAPP_API_URL,
-    WHATSAPP_PHONE_NUMBER_ID,
+    WHATSAPP_PHONE_NUMBER_IDS,
     WHATSAPP_ACCESS_TOKEN,
     WHATSAPP_VIDEO_TEMPLATE,
     WHATSAPP_VIDEO_TEMPLATE_LANG,
@@ -37,21 +38,33 @@ def _normalize_phone(phone: str) -> str:
 
 
 def _official_enabled() -> bool:
-    return bool(WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID and WHATSAPP_VIDEO_TEMPLATE)
+    return bool(WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_IDS and WHATSAPP_VIDEO_TEMPLATE)
 
 
-def send_video_official(phone: str, video_url: str) -> str:
+def _pick_phone_number_id() -> str:
+    """Escolhe random um dos phone_number_ids configurados em
+    WHATSAPP_PHONE_NUMBER_IDS. Distribui o load e reduz risco de
+    rate limit/bloqueio por número."""
+    if not WHATSAPP_PHONE_NUMBER_IDS:
+        raise WhatsAppSendError("Nenhum WHATSAPP_PHONE_NUMBER_IDS configurado")
+    return random.choice(WHATSAPP_PHONE_NUMBER_IDS)
+
+
+def send_video_official(phone: str, video_url: str) -> tuple[str, str]:
     """
     Envia o vídeo final via WhatsApp Business Cloud API usando o template
-    aprovado pela Meta (header `video` com link parametrizado).
+    aprovado pela Meta (header `video` com link parametrizado). Distribui
+    entre N phone_number_ids configurados em WHATSAPP_PHONE_NUMBER_IDS,
+    escolhendo random a cada chamada.
 
-    Retorna o ``message_id`` retornado pela Meta. Levanta ``WhatsAppSendError``
+    Retorna (message_id, phone_number_id_usado). Levanta WhatsAppSendError
     em qualquer falha (rede, 4xx, 5xx, JSON inválido).
     """
     if not _official_enabled():
         raise WhatsAppSendError("Cloud API não configurada (faltam envs WHATSAPP_*)")
 
     phone = _normalize_phone(phone)
+    phone_number_id = _pick_phone_number_id()
 
     payload = {
         "messaging_product": "whatsapp",
@@ -76,13 +89,13 @@ def send_video_official(phone: str, video_url: str) -> str:
     }
 
     logger.info(
-        "Sending WhatsApp video via Cloud API to %s (template=%s)...",
-        phone, WHATSAPP_VIDEO_TEMPLATE,
+        "Sending WhatsApp video via Cloud API to %s (sender=%s, template=%s)...",
+        phone, phone_number_id, WHATSAPP_VIDEO_TEMPLATE,
     )
 
     try:
         resp = requests.post(
-            f"{WHATSAPP_API_URL}/{WHATSAPP_PHONE_NUMBER_ID}/messages",
+            f"{WHATSAPP_API_URL}/{phone_number_id}/messages",
             headers={
                 "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
                 "Content-Type": "application/json",
@@ -91,12 +104,17 @@ def send_video_official(phone: str, video_url: str) -> str:
             timeout=60,
         )
     except requests.RequestException as e:
-        raise WhatsAppSendError(f"Cloud API network error: {e}") from e
+        raise WhatsAppSendError(f"Cloud API network error (sender={phone_number_id}): {e}") from e
 
     if not resp.ok:
         body = resp.text[:400]
-        logger.error("Cloud API returned %d: %s", resp.status_code, body)
-        raise WhatsAppSendError(f"Cloud API returned {resp.status_code}: {body}")
+        logger.error(
+            "Cloud API returned %d (sender=%s): %s",
+            resp.status_code, phone_number_id, body,
+        )
+        raise WhatsAppSendError(
+            f"Cloud API returned {resp.status_code} (sender={phone_number_id}): {body}"
+        )
 
     try:
         data = resp.json()
@@ -108,8 +126,11 @@ def send_video_official(phone: str, video_url: str) -> str:
         raise WhatsAppSendError(f"Cloud API success without message id: {data}")
 
     msg_id = messages[0]["id"]
-    logger.info("Cloud API sent successfully to %s (message_id=%s)", phone, msg_id)
-    return msg_id
+    logger.info(
+        "Cloud API sent successfully (sender=%s, message_id=%s, to=%s)",
+        phone_number_id, msg_id, phone,
+    )
+    return msg_id, phone_number_id
 
 
 def send_whatsapp(phone: str, name: str, video_url: str, message_template: str | None = None):

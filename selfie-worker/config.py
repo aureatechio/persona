@@ -21,10 +21,20 @@ SYNC_API_KEY = os.getenv("SYNC_API_KEY", "")
 UAZAPI_URL = os.getenv("UAZAPI_URL", "https://aureatech.uazapi.com")
 UAZAPI_TOKEN = os.getenv("UAZAPI_TOKEN", "")
 
-# WhatsApp Business Cloud API (oficial, preferencial)
+# WhatsApp Business Cloud API (oficial, canal primário)
 WHATSAPP_API_URL = os.getenv("WHATSAPP_API_URL", "https://graph.facebook.com/v22.0")
-WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
 WHATSAPP_ACCESS_TOKEN = os.getenv("WHATSAPP_ACCESS_TOKEN", "")
+
+# Lista de phone_number_ids (separados por vírgula). A cada envio o worker
+# escolhe um random pra distribuir o load entre os números — reduz risco
+# de rate limit/bloqueio. Aceita também WHATSAPP_PHONE_NUMBER_ID (singular)
+# como fallback de retrocompatibilidade.
+_phone_ids_raw = (
+    os.getenv("WHATSAPP_PHONE_NUMBER_IDS", "")
+    or os.getenv("WHATSAPP_PHONE_NUMBER_ID", "")
+)
+WHATSAPP_PHONE_NUMBER_IDS = [p.strip() for p in _phone_ids_raw.split(",") if p.strip()]
+
 # Template aprovado pela Meta para envio do vídeo (header video + link).
 WHATSAPP_VIDEO_TEMPLATE = os.getenv("WHATSAPP_VIDEO_TEMPLATE", "videochamadapl")
 WHATSAPP_VIDEO_TEMPLATE_LANG = os.getenv("WHATSAPP_VIDEO_TEMPLATE_LANG", "pt_BR")

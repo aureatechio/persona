@@ -541,30 +541,17 @@ def process_selfie(selfie: dict):
         logger.info("Step 6/6: Sending via WhatsApp...")
 
         video_signed = db.create_signed_url(final_path)
-        # Tenta a Cloud API oficial primeiro (template aprovado pela Meta).
-        # Qualquer falha → fallback automático para UAZAPI.
-        # A escolha é registrada em whatsapp_provider pra visibilidade no monitor.
-        provider_used = None
+        # Envio via Cloud API oficial — distribui random entre os
+        # phone_number_ids configurados em WHATSAPP_PHONE_NUMBER_IDS.
+        # Sem fallback UAZAPI: falha aqui faz retry via claim reset.
         try:
-            send_video_official(selfie["phone"], video_signed)
-            provider_used = "official"
-        except WhatsAppSendError as e:
-            logger.warning(
-                "Cloud API failed for %s, falling back to UAZAPI: %s", sid, e,
-            )
-            try:
-                send_whatsapp(
-                    selfie["phone"], display_first_name, video_signed,
-                    message_template=base_model.get("whatsapp_message_template"),
-                )
-                provider_used = "uazapi"
-            except WhatsAppSendError:
-                # Ambos falharam — reset claim pra permitir retry
-                db.reset_whatsapp_claim(sid)
-                raise
+            _, sender_id = send_video_official(selfie["phone"], video_signed)
+        except WhatsAppSendError:
+            db.reset_whatsapp_claim(sid)
+            raise
 
         try:
-            db.update_status(sid, "sending", whatsapp_provider=provider_used)
+            db.update_status(sid, "sending", whatsapp_provider="official")
         except Exception:
             # Coluna pode não existir ainda em produção (migration pendente).
             # Não é crítico — só perdemos a telemetria deste envio.

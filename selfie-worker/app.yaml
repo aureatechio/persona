@@ -34,6 +34,8 @@ workers:
         scope: RUN_AND_BUILD_TIME
         type: SECRET
         value: "QMhHJYFMdDRbKGKaRpCrhPJf83FBGTGt"
+      # UAZAPI (legado) — usado apenas pelo envio do PDF da proposta.
+      # O envio do vídeo migrou pra Cloud API oficial (WHATSAPP_PHONE_NUMBER_IDS).
       - key: UAZAPI_URL
         scope: RUN_AND_BUILD_TIME
         value: "https://aureatech.uazapi.com"
@@ -41,6 +43,10 @@ workers:
         scope: RUN_AND_BUILD_TIME
         type: SECRET
         value: "0abdc72b-f461-40e8-865a-25ef59ccbe5d"
+      # WhatsApp Cloud API (oficial). Configurar via painel DO:
+      #   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_IDS (separados por
+      #   vírgula), WHATSAPP_VIDEO_TEMPLATE, WHATSAPP_VIDEO_TEMPLATE_LANG.
+      # Worker escolhe random um phone_number_id a cada envio.
       - key: WORKER_POLL_INTERVAL
         scope: RUN_AND_BUILD_TIME
         value: "3"
