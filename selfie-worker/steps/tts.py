@@ -264,23 +264,30 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     return final_audio, processed_text
 
 
-def generate_tts_name_sync(text: str, voice_id: str) -> bytes:
+def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None) -> bytes:
     """
-    TTS dedicado ao name_sync do fluxo novo (3s, texto fixo
-    "{nome}, obrigado pelo seu vídeo!").
+    TTS dedicado ao name_sync do fluxo novo (saudação curta com nome).
 
-    Diferenças em relação a generate_tts:
-      - SEM background music (música começando antes da voz ficava
-        ininteligível e quebrava o sync curto).
-      - Settings alinhados com o painel do ElevenLabs (stability 50%,
-        similarity 75%, style 0%, speed 1.0) — calibrados pra clipe
-        curto sem variação expressiva indesejada.
-      - Sem _fix_pronunciation: o texto é fixo + nome do eleitor, não
-        tem siglas/PT-BR raro que precise correção.
+    Settings configuráveis via ``tts_settings`` (lidos de
+    ``base_model.lipsync_config.tts``). Fallback pros defaults
+    originais se não informado.
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
-    logger.info("Generating NAME_SYNC TTS for voice '%s': '%s'", voice_id, text)
+    voice_settings = {
+        "stability": 0.5,
+        "similarity_boost": 0.75,
+        "style": 0.0,
+        "use_speaker_boost": True,
+        "speed": 1.0,
+    }
+    if tts_settings:
+        voice_settings.update(tts_settings)
+
+    logger.info(
+        "Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s)",
+        voice_id, text, bool(tts_settings),
+    )
 
     response = requests.post(
         url + "?output_format=mp3_44100_128",
@@ -293,13 +300,7 @@ def generate_tts_name_sync(text: str, voice_id: str) -> bytes:
             "model_id": "eleven_multilingual_v2",
             "language_code": "pt",
             "apply_text_normalization": "off",
-            "voice_settings": {
-                "stability": 0.5,
-                "similarity_boost": 0.75,
-                "style": 0.0,
-                "use_speaker_boost": True,
-                "speed": 1.0,
-            },
+            "voice_settings": voice_settings,
         },
         timeout=TTS_TIMEOUT,
     )

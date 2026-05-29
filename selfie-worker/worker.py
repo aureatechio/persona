@@ -241,10 +241,12 @@ def process_selfie(selfie: dict):
                     "Step 2/6: NAME_SYNC MISS (first_name=%s, theme=%s) — gerando sync curto",
                     first_name, theme_slug,
                 )
-                # Sync curto pra economizar custo e tempo de Sync.so e
-                # evitar o duplo corte (nome + agradecimento) que aparecia
-                # quando o sync tinha 3s. Agora ~1-1.5s só com a saudação.
-                generated_text = f"Olá {display_first_name}!"
+                lip_cfg = base_model.get("lipsync_config") or {}
+                greeting_tpl = lip_cfg.get(
+                    "greeting_template",
+                    "{nome}, obrigado pelo seu vídeo!",
+                )
+                generated_text = greeting_tpl.replace("{nome}", display_first_name)
                 db.update_status(sid, "generating_tts", generated_text=generated_text)
                 selfie["generated_text"] = generated_text
 
@@ -331,8 +333,10 @@ def process_selfie(selfie: dict):
         # settings limpos) ou full_video/legacy (longo, com música).
         strategy = (selfie.get("video_strategy") or "name_sync").lower()
         if strategy == "name_sync":
-            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, sem música)...")
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id)
+            lip_cfg = base_model.get("lipsync_config") or {}
+            tts_settings = lip_cfg.get("tts")
+            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, sem música, custom=%s)...", bool(tts_settings))
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings)
             tts_processed_text = generated_text
         else:
             logger.info(
@@ -513,15 +517,16 @@ def process_selfie(selfie: dict):
                 else None
             )
             if theme_video_path:
-                # Modelo NOVO (greeting_video gravado): theme_video já vem
-                # sem placeholder inicial — não corta nada.
-                # Modelo LEGADO (sem greeting): theme_video tem N segundos
-                # de placeholder no início que foram substituídos pelo
-                # name_sync; pula esses N segundos no compose.
-                if selfie.get("name_sync_uses_greeting"):
-                    intro_seconds = 0.0
-                else:
-                    intro_seconds = float(base_model.get("theme_intro_seconds") or 0)
+                # A candidata grava os primeiros N segundos do theme_video
+                # falando um placeholder; esses segundos são substituídos
+                # pelo name_sync. Pra evitar repetição visual, o
+                # theme_video começa após esses N segundos no compose.
+                lip_cfg_intro = base_model.get("lipsync_config") or {}
+                intro_seconds = float(
+                    lip_cfg_intro.get("theme_greeting_end")
+                    or base_model.get("theme_intro_seconds")
+                    or 4
+                )
                 middle_urls = [
                     db.create_signed_url(name_sync_cached_path),
                     db.create_signed_url(theme_video_path),
