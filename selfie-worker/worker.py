@@ -27,7 +27,7 @@ from steps.transcribe import transcribe
 from steps.classify import normalize_first_name
 from steps.classify_theme import classify_theme, DEFAULT_THEME_SLUG
 from steps.generate import generate_text
-from steps.tts import generate_tts
+from steps.tts import generate_tts, generate_tts_name_sync
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
 from steps.compose import compose_videos
 from steps.whatsapp import (
@@ -264,10 +264,27 @@ def process_selfie(selfie: dict):
             return
 
         db.update_status(sid, "generating_tts")
-        logger.info("Step 3/6: Generating TTS...")
 
         voice_id = voice_model["elevenlabs_voice_id"]
-        audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id)
+
+        # Decide TTS: name_sync (curto, sem música, settings limpos) ou
+        # fluxo legacy (com música de fundo + fix_pronunciation).
+        theme_model_now = db.get_theme_model(
+            base_model["id"], selfie.get("theme_slug")
+        )
+        is_new_flow = bool(
+            theme_model_now
+            and theme_model_now.get("is_uploaded")
+            and theme_model_now.get("video_storage_path")
+        )
+
+        if is_new_flow:
+            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, sem música)...")
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id)
+            tts_processed_text = generated_text
+        else:
+            logger.info("Step 3/6: Generating TTS (legacy, com música)...")
+            audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id)
 
         tts_path = f"tts/selfie_{sid}.mp3"
         db.upload_file(tts_path, audio_bytes, "audio/mpeg")

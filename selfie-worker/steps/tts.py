@@ -264,6 +264,55 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     return final_audio, processed_text
 
 
+def generate_tts_name_sync(text: str, voice_id: str) -> bytes:
+    """
+    TTS dedicado ao name_sync do fluxo novo (3s, texto fixo
+    "{nome}, obrigado pelo seu vídeo!").
+
+    Diferenças em relação a generate_tts:
+      - SEM background music (música começando antes da voz ficava
+        ininteligível e quebrava o sync curto).
+      - Settings alinhados com o painel do ElevenLabs (stability 50%,
+        similarity 75%, style 0%, speed 1.0) — calibrados pra clipe
+        curto sem variação expressiva indesejada.
+      - Sem _fix_pronunciation: o texto é fixo + nome do eleitor, não
+        tem siglas/PT-BR raro que precise correção.
+    """
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+
+    logger.info("Generating NAME_SYNC TTS for voice '%s': '%s'", voice_id, text)
+
+    response = requests.post(
+        url + "?output_format=mp3_44100_128",
+        headers={
+            "Content-Type": "application/json",
+            "xi-api-key": ELEVENLABS_API_KEY,
+        },
+        json={
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "language_code": "pt",
+            "apply_text_normalization": "off",
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+                "style": 0.0,
+                "use_speaker_boost": True,
+                "speed": 1.0,
+            },
+        },
+        timeout=TTS_TIMEOUT,
+    )
+
+    response.raise_for_status()
+    audio = response.content
+    logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
+
+    # Tail silence ajuda o lip-sync não cortar a última sílaba — mas
+    # mantém curto pra não estender o clipe além de ~3.5s.
+    return _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
+
+
 def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:
     """Append silence at the end of audio to prevent abrupt cut in lip-sync."""
     tmpdir = tempfile.mkdtemp(prefix="tts_pad_")
