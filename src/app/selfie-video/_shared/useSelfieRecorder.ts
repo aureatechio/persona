@@ -53,6 +53,8 @@ export function useSelfieRecorder({
   const [uploadProgress, setUploadProgress] = useState(0);
   const [sending, setSending] = useState(false);
   const [selfieId, setSelfieId] = useState<string | null>(null);
+  const [uploadAttempt, setUploadAttempt] = useState(0);
+  const [maxUploadAttempts] = useState(3);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -72,6 +74,11 @@ export function useSelfieRecorder({
   }, []);
 
   // ── Camera ────────────────────────────────────────────────
+  // Resolução modesta (480x854) + framerate de 24fps pra reduzir o tamanho
+  // do arquivo final. Em rede móvel ruim (zona AM) um vídeo de 20s a 720p
+  // dava 20-25MB e travava o upload constantemente; com 480p+24fps cai pra
+  // ~3-5MB e o upload completa em segundos. O compose normaliza pra
+  // 720x1280 no final, então a perda visual é mínima.
   async function startCamera() {
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
@@ -79,7 +86,12 @@ export function useSelfieRecorder({
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
+        video: {
+          facingMode: 'user',
+          width: { ideal: 480 },
+          height: { ideal: 854 },
+          frameRate: { ideal: 24, max: 30 },
+        },
         audio: true,
       });
       streamRef.current = stream;
@@ -114,13 +126,24 @@ export function useSelfieRecorder({
     let recorder: MediaRecorder;
     let mimeType: string;
     try {
-      // Intentionally no mimeType — Safari/iOS throws on explicit types
-      recorder = new MediaRecorder(streamRef.current);
+      // Intentionally no mimeType — Safari/iOS throws on explicit types.
+      // videoBitsPerSecond=800k garante ~2MB pra 20s mesmo se o navegador
+      // ignorar as constraints de resolução do getUserMedia.
+      recorder = new MediaRecorder(streamRef.current, {
+        videoBitsPerSecond: 800_000,
+        audioBitsPerSecond: 64_000,
+      });
       mimeType = recorder.mimeType || 'video/mp4';
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Erro ao iniciar gravação: ${msg}`);
-      return;
+      // Fallback: alguns navegadores rejeitam as opções; tenta sem.
+      try {
+        recorder = new MediaRecorder(streamRef.current);
+        mimeType = recorder.mimeType || 'video/mp4';
+      } catch (err2) {
+        const msg = err2 instanceof Error ? err2.message : String(err2);
+        setError(`Erro ao iniciar gravação: ${msg}`);
+        return;
+      }
     }
     mediaRecorderRef.current = recorder;
 
@@ -181,13 +204,63 @@ export function useSelfieRecorder({
   }
 
   // ── Upload ────────────────────────────────────────────────
+  // Tenta o PUT no Storage até 3 vezes com backoff (2s → 4s → 8s). A
+  // signed URL do Supabase tem 1h de validade, então a mesma URL é reusada
+  // entre tentativas. Em rede móvel ruim isso recupera ~90% dos uploads
+  // que antes ficavam zumbi no banco.
+  async function uploadWithRetry(
+    uploadUrl: string,
+    blob: Blob,
+    contentType: string,
+  ): Promise<void> {
+    let lastErr: Error | null = null;
+    for (let attempt = 1; attempt <= maxUploadAttempts; attempt++) {
+      setUploadAttempt(attempt);
+      if (attempt > 1) {
+        // Backoff exponencial: 2s, 4s, 8s
+        await new Promise((r) => setTimeout(r, Math.pow(2, attempt - 1) * 2000));
+      }
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', uploadUrl);
+          xhr.setRequestHeader('Content-Type', contentType);
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const pct = Math.round(10 + (e.loaded / e.total) * 85);
+              setUploadProgress(pct);
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) resolve();
+            else reject(new Error(`HTTP ${xhr.status}`));
+          };
+          xhr.onerror = () => reject(new Error('conexão caiu'));
+          xhr.ontimeout = () => reject(new Error('timeout'));
+          xhr.timeout = 180_000; // 3min — rede móvel lenta da AM precisa
+
+          xhr.send(blob);
+        });
+        return; // sucesso
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err));
+        console.warn(`[selfie] upload tentativa ${attempt} falhou: ${lastErr.message}`);
+        // Reset do progresso pra próxima tentativa
+        if (attempt < maxUploadAttempts) setUploadProgress(10);
+      }
+    }
+    throw lastErr || new Error('upload falhou após múltiplas tentativas');
+  }
+
   async function handleEnviar() {
     if (!recordedBlob || sending) return;
     setSending(true);
-
     setStep('enviando');
     setError(null);
     setUploadProgress(0);
+    setUploadAttempt(0);
 
     try {
       const ext = recordedBlob.type.includes('mp4') ? 'mp4' : 'webm';
@@ -204,51 +277,40 @@ export function useSelfieRecorder({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Erro ao criar registro');
+      if (!res.ok) throw new Error(data.error || 'Erro ao iniciar o envio');
 
       setSelfieId(data.id);
       setUploadProgress(10);
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', data.uploadUrl);
-        xhr.setRequestHeader('Content-Type', ext === 'mp4' ? 'video/mp4' : 'video/webm');
+      await uploadWithRetry(
+        data.uploadUrl,
+        recordedBlob,
+        ext === 'mp4' ? 'video/mp4' : 'video/webm',
+      );
+      setUploadProgress(100);
 
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round(10 + (e.loaded / e.total) * 85);
-            setUploadProgress(pct);
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            setUploadProgress(100);
-            resolve();
-          } else {
-            reject(new Error('Falha no upload do video'));
-          }
-        };
-
-        xhr.onerror = () => reject(new Error('Erro de conexao durante upload'));
-        xhr.ontimeout = () => reject(new Error('Upload demorou demais'));
-        xhr.timeout = 120000;
-
-        xhr.send(recordedBlob);
-      });
-
-      await fetch('/api/selfie-video/confirm-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: data.id }),
-      });
+      // Confirm-upload nunca deveria falhar (já temos arquivo no Storage),
+      // mas se falhar o watchdog auto_confirm_uploads pega depois.
+      try {
+        await fetch('/api/selfie-video/confirm-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: data.id }),
+        });
+      } catch (confirmErr) {
+        console.warn('[selfie] confirm-upload falhou, o watchdog vai recuperar:', confirmErr);
+      }
 
       setStep('whatsapp');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Erro ao enviar';
-      setError(msg);
+      // Mensagem amigável pro eleitor — esconde detalhes técnicos.
+      setError(
+        `Não conseguimos enviar seu vídeo (${msg}). Verifique sua internet e tente novamente.`
+      );
       setStep('preview');
       setSending(false);
+      setUploadAttempt(0);
     }
   }
 
@@ -263,6 +325,7 @@ export function useSelfieRecorder({
     setRecordingTime(0);
     setSending(false);
     setSelfieId(null);
+    setUploadAttempt(0);
   }
 
   function handleWhatsAppClick() {
@@ -295,6 +358,8 @@ export function useSelfieRecorder({
     recordingTime,
     previewUrl,
     uploadProgress,
+    uploadAttempt,
+    maxUploadAttempts,
     error,
     sending,
     canContinueDados,

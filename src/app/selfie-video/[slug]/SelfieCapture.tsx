@@ -332,6 +332,11 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
             <p className="text-white font-medium">
               {r.uploadProgress < 10 ? 'Preparando...' : r.uploadProgress < 95 ? 'Enviando seu vídeo...' : 'Finalizando...'}
             </p>
+            {r.uploadAttempt > 1 && (
+              <p className="text-yellow-300 text-xs mt-1 font-medium">
+                Tentativa {r.uploadAttempt} de {r.maxUploadAttempts} — sua conexão parece instável
+              </p>
+            )}
             <p className="text-white/40 text-sm mt-2">Não feche esta tela</p>
 
             <div className="w-full max-w-xs mt-6">
