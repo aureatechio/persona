@@ -45,6 +45,23 @@ def run_watchdog() -> int:
         return 0
 
 
+def run_auto_confirm_uploads() -> dict:
+    """Recupera selfies presas em 'uploading' devido a rede instável do eleitor.
+
+    Promove pra 'queued' quando o arquivo já chegou ao Storage há > 2min
+    (eleitor terminou o PUT mas nunca chamou /confirm-upload). Marca como
+    'failed' quando NÃO chegou ao Storage há > 10min (rede do eleitor caiu
+    durante o PUT). Retorna {"confirmed": N, "failed": M}.
+    """
+    try:
+        res = client.rpc("auto_confirm_uploads", {}).execute()
+        return res.data if isinstance(res.data, dict) else {"confirmed": 0, "failed": 0}
+    except Exception as e:
+        import logging
+        logging.getLogger("worker.db").warning("auto_confirm_uploads failed: %s", e)
+        return {"confirmed": 0, "failed": 0}
+
+
 def update_status(selfie_id: str, status: str, **extra):
     """Update selfie status, renew lock, and set optional extra fields."""
     from datetime import datetime, timezone

@@ -663,6 +663,22 @@ def main():
                     logger.warning("Watchdog: cleaned up %d stuck selfies", failed_count)
             except Exception as e:
                 logger.error("Watchdog thread error: %s", e)
+
+            # Auto-confirm uploads órfãos (rede do eleitor cai depois do
+            # PUT no Storage mas antes do /confirm-upload). Sem isso, a row
+            # fica zumbi em 'uploading' pra sempre.
+            try:
+                result = db.run_auto_confirm_uploads()
+                confirmed = result.get("confirmed", 0)
+                failed = result.get("failed", 0)
+                if confirmed or failed:
+                    logger.warning(
+                        "Auto-confirm: %d promovidos pra queued, %d marcados failed",
+                        confirmed, failed,
+                    )
+            except Exception as e:
+                logger.error("Auto-confirm thread error: %s", e)
+
             # Roda a cada 60s. Mesmo que uma instância morra com sigkill,
             # outras das 18 continuam rodando watchdog em paralelo.
             for _ in range(60):
