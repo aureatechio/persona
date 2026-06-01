@@ -21,6 +21,7 @@ import {
   X,
   ShoppingCart,
   Mic,
+  FileText,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -512,6 +513,13 @@ export default function AdminDashboardPage() {
               title="Monitor de Vídeos"
               description="Pipeline em tempo real com status de cada selfie"
               accent="rose"
+            />
+            <QuickLinkCard
+              href="/admin/relatorios/selfie-video"
+              icon={FileText}
+              title="Relatório Selfie-Vídeo"
+              description="Filtre por candidato e exporte histórico de vídeos enviados, completos ou só intro"
+              accent="sky"
             />
             <QuickLinkCard
               href="/selfie-video"
