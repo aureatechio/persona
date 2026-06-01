@@ -158,6 +158,9 @@ function progressForRow(it: ReportItem): string {
   return 'em_processo';
 }
 
+// <option> usa cores do SO por padrão; força bg escuro para Chromium/Firefox.
+const OPTION_CLASS = 'bg-zinc-900 text-white';
+
 function formatDateTime(iso: string | null) {
   if (!iso) return '—';
   try {
@@ -428,9 +431,9 @@ export default function RelatorioSelfieVideoPage() {
                 onChange={(e) => setBaseModelId(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option value="">Todos os candidatos</option>
+                <option className={OPTION_CLASS} value="">Todos os candidatos</option>
                 {baseModels.map((m) => (
-                  <option key={m.id} value={m.id}>
+                  <option className={OPTION_CLASS} key={m.id} value={m.id}>
                     {m.display_name || m.name}
                     {m.slug ? ` (${m.slug})` : ''}
                     {m.is_active ? '' : ' — inativo'}
@@ -446,9 +449,9 @@ export default function RelatorioSelfieVideoPage() {
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option value="">Todos os status</option>
+                <option className={OPTION_CLASS} value="">Todos os status</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
+                  <option className={OPTION_CLASS} key={k} value={k}>{v}</option>
                 ))}
               </select>
             </div>
@@ -460,9 +463,9 @@ export default function RelatorioSelfieVideoPage() {
                 onChange={(e) => setStrategy(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option value="">Todas</option>
-                <option value="name_sync">Sync do nome (curto)</option>
-                <option value="full_video">Vídeo completo</option>
+                <option className={OPTION_CLASS} value="">Todas</option>
+                <option className={OPTION_CLASS} value="name_sync">Sync do nome (curto)</option>
+                <option className={OPTION_CLASS} value="full_video">Vídeo completo</option>
               </select>
             </div>
 
