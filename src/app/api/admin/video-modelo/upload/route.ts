@@ -12,7 +12,8 @@ function sanitizeName(value: string): string {
 }
 
 // Upload init: returns signed URL so browser uploads directly to Storage.
-// kind = 'base'     → vídeo principal (lip-sync source) — mp4/webm
+// kind = 'base'     → vídeo principal (lip-sync source legado) — mp4/webm
+// kind = 'greeting' → vídeo saudação 3s (lip-sync source novo) — mp4/webm
 // kind = 'closing'  → vídeo de encerramento (concatenado pelo ffmpeg) — mp4/webm
 // kind = 'proposta' → PDF da proposta de governo enviada via WhatsApp
 export async function POST(request: NextRequest) {
@@ -20,8 +21,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const name = typeof body?.name === 'string' ? body.name : 'Modelo';
     const ext = typeof body?.ext === 'string' ? body.ext.toLowerCase() : 'mp4';
-    const kind =
-      body?.kind === 'closing' ? 'closing' : body?.kind === 'proposta' ? 'proposta' : 'base';
+    const allowedKinds = ['base', 'greeting', 'closing', 'proposta'] as const;
+    const kind = (allowedKinds as readonly string[]).includes(body?.kind)
+      ? (body.kind as 'base' | 'greeting' | 'closing' | 'proposta')
+      : 'base';
 
     if (kind === 'proposta') {
       if (ext !== 'pdf') {
@@ -33,7 +36,13 @@ export async function POST(request: NextRequest) {
 
     const safeName = sanitizeName(name) || 'Modelo';
     const prefix =
-      kind === 'closing' ? 'closing-videos' : kind === 'proposta' ? 'propostas' : 'base-models';
+      kind === 'closing'
+        ? 'closing-videos'
+        : kind === 'proposta'
+        ? 'propostas'
+        : kind === 'greeting'
+        ? 'greeting-videos'
+        : 'base-models';
     const videoPath = `${prefix}/${Date.now()}_${safeName}.${ext}`;
 
     const { data: signed, error: uploadError } = await supabaseAdmin

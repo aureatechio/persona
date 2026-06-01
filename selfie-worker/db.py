@@ -284,37 +284,49 @@ def get_theme_model(base_model_id: str, theme_slug: str) -> dict | None:
 
 
 def find_cached_name_sync(
-    base_model_id: str, first_name: str, theme_slug: str
+    base_model_id: str,
+    first_name: str,
+    theme_slug: str | None = None,
+    uses_greeting: bool = False,
 ) -> dict | None:
     """
-    Cache do sync do nome (~3s lipsync "{Nome}, obrigado pelo seu vídeo!").
-    Agora indexado por (base_model_id, first_name, theme_slug) porque o
-    lipsync usa o vídeo do tema como input visual — então o name_sync
-    "joão+educacao" tem visual diferente do "joão+saude" e não pode ser
-    reusado entre temas.
+    Cache do sync do nome.
+
+    Modo NOVO (uses_greeting=True): a chave é (base_model, first_name) —
+    o sync usa o video_saudação como visual, que é o MESMO pra todos
+    os temas, então o sync de "joão" pra educação pode ser reusado em
+    saúde, segurança, etc. Filtra name_sync_uses_greeting=true pra não
+    pegar caches antigos com visual diferente.
+
+    Modo LEGADO (uses_greeting=False): chave é (base_model, first_name,
+    theme_slug) — o sync usa o início do theme_video como visual, então
+    cada tema tem seu próprio cache.
     """
-    if not (base_model_id and first_name and theme_slug):
+    if not (base_model_id and first_name):
+        return None
+    if not uses_greeting and not theme_slug:
         return None
     try:
-        res = (
+        query = (
             client.table("video_selfies")
-            .select("id, name_sync_cached_path, first_name, theme_slug")
+            .select("id, name_sync_cached_path, first_name, theme_slug, name_sync_uses_greeting")
             .eq("base_model_id", base_model_id)
             .eq("first_name", first_name)
-            .eq("theme_slug", theme_slug)
             .eq("status", "completed")
             .is_("cached_from", "null")
             .not_.is_("name_sync_cached_path", "null")
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
         )
+        if uses_greeting:
+            query = query.eq("name_sync_uses_greeting", True)
+        else:
+            query = query.eq("theme_slug", theme_slug).eq("name_sync_uses_greeting", False)
+        res = query.order("created_at", desc=True).limit(1).execute()
         return res.data[0] if res.data else None
     except Exception as e:
         import logging
         logging.getLogger("worker.db").warning(
-            "find_cached_name_sync failed for (%s, %s, %s): %s",
-            base_model_id, first_name, theme_slug, e,
+            "find_cached_name_sync failed for (%s, %s, theme=%s, greeting=%s): %s",
+            base_model_id, first_name, theme_slug, uses_greeting, e,
         )
         return None
 

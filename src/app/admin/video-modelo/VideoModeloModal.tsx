@@ -51,6 +51,7 @@ export interface BaseModel {
   is_active: boolean;
   video_strategy: VideoStrategy | null;
   theme_intro_seconds: number | null;
+  greeting_video_path: string | null;
   created_at: string;
   updated_at?: string;
   voice_models: VoiceModel | null;
@@ -113,7 +114,7 @@ async function readApiError(res: Response, fallback: string): Promise<string> {
   return text || fallback;
 }
 
-async function uploadToStorage(file: File, name: string, kind: 'base' | 'closing' | 'proposta'): Promise<string> {
+async function uploadToStorage(file: File, name: string, kind: 'base' | 'greeting' | 'closing' | 'proposta'): Promise<string> {
   let ext: 'mp4' | 'webm' | 'pdf';
   let contentType: string;
   if (kind === 'proposta') {
@@ -179,12 +180,17 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [propostaPath, setPropostaPath] = useState<string | null>(null); // path já salvo
   const [propostaMessage, setPropostaMessage] = useState('');
 
+  const [greetingFile, setGreetingFile] = useState<File | null>(null);
+  const [greetingPreviewUrl, setGreetingPreviewUrl] = useState<string | null>(null);
+  const [greetingPath, setGreetingPath] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closingInputRef = useRef<HTMLInputElement>(null);
   const propostaInputRef = useRef<HTMLInputElement>(null);
+  const greetingInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state on open
   useEffect(() => {
@@ -201,6 +207,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setClosingPath(initial.closing_video_path || null);
       setPropostaPath(initial.proposta_pdf_path || null);
       setPropostaMessage(initial.proposta_message_template || '');
+      setGreetingPath(initial.greeting_video_path || null);
       setVideoStrategy(initial.video_strategy === 'full_video' ? 'full_video' : 'name_sync');
       setThemeIntroSeconds(
         typeof initial.theme_intro_seconds === 'number' && Number.isFinite(initial.theme_intro_seconds)
@@ -221,7 +228,10 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaMessage('');
       setVideoStrategy('name_sync');
       setThemeIntroSeconds(1.5);
+      setGreetingPath(null);
     }
+    setGreetingFile(null);
+    setGreetingPreviewUrl(null);
     setVideoFile(null);
     setVideoPreviewUrl(null);
     setClosingFile(null);
@@ -318,6 +328,14 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         nextPropostaPath = null;
       }
 
+      // 3b. Upload do vídeo saudação (se houver novo)
+      let nextGreetingPath: string | null | undefined = undefined;
+      if (greetingFile) {
+        nextGreetingPath = await uploadToStorage(greetingFile, `greeting_${slug}`, 'greeting');
+      } else if (greetingPath === null && initial?.greeting_video_path) {
+        nextGreetingPath = null;
+      }
+
       // 4. POST ou PATCH
       const payload: Record<string, unknown> = {
         name: name || displayName || slug,
@@ -334,6 +352,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       };
       if (videoPath) payload.videoPath = videoPath;
       if (nextClosingPath !== undefined) payload.closing_video_path = nextClosingPath;
+      if (nextGreetingPath !== undefined) payload.greeting_video_path = nextGreetingPath;
       if (nextPropostaPath !== undefined) payload.proposta_pdf_path = nextPropostaPath;
 
       let res: Response;
@@ -585,6 +604,79 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                 </div>
               </div>
             )}
+          </Section>
+
+          {/* ── Vídeo Saudação ── */}
+          <Section
+            icon={<Video size={20} className="text-emerald-400" />}
+            iconBg="bg-emerald-500/10"
+            title="Vídeo saudação (3s)"
+            subtitle='Curto, com a candidata falando "Olá pessoal" ou similar. Vai ser usado pra fazer lip-sync com o nome de cada eleitor.'
+          >
+            {!greetingFile && greetingPath && (
+              <div className="relative rounded-xl overflow-hidden bg-zinc-900/50 aspect-video max-w-md">
+                <video
+                  src={getStoragePublicUrl(greetingPath) ?? undefined}
+                  controls
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+            {greetingPreviewUrl && greetingFile && (
+              <div className="relative rounded-xl overflow-hidden bg-zinc-900/50 aspect-video max-w-md">
+                <video src={greetingPreviewUrl} controls className="w-full h-full object-cover" />
+                <div className="absolute top-2 right-2 px-2 py-1 bg-amber-500/20 text-amber-400 rounded-lg text-xs font-medium backdrop-blur-sm">
+                  Novo arquivo (não salvo)
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 mt-4">
+              <input
+                ref={greetingInputRef}
+                type="file"
+                accept="video/mp4,video/*"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  if (greetingPreviewUrl) URL.revokeObjectURL(greetingPreviewUrl);
+                  setGreetingFile(f);
+                  setGreetingPreviewUrl(URL.createObjectURL(f));
+                  e.target.value = '';
+                }}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => greetingInputRef.current?.click()}
+                disabled={saving}
+                className={ghostBtnClass}
+              >
+                <Upload size={16} />
+                {greetingPath || greetingFile ? 'Trocar vídeo saudação' : 'Upload do vídeo saudação'}
+              </button>
+              {(greetingPath || greetingFile) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (greetingPreviewUrl) URL.revokeObjectURL(greetingPreviewUrl);
+                    setGreetingFile(null);
+                    setGreetingPreviewUrl(null);
+                    setGreetingPath(null);
+                  }}
+                  disabled={saving}
+                  className="text-xs text-red-400 hover:text-red-300 px-2"
+                >
+                  Remover
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-zinc-500 mt-3 leading-relaxed">
+              💡 Quando este vídeo estiver definido, o sync do nome reusa entre TODOS os temas
+              (cache compartilhado por primeiro nome). Sem ele, o sync é gerado a partir dos
+              primeiros segundos de cada vídeo de tema (cache por tema, menos eficiente).
+            </p>
           </Section>
 
           {/* ── Prompt ── */}

@@ -212,8 +212,15 @@ def process_selfie(selfie: dict):
 
         if effective_strategy == "name_sync":
             # ── PLANO A: NAME_SYNC ──
+            # Se o candidato tem greeting_video gravado, o cache é
+            # independente do tema (mesmo visual). Senão, cai no modo
+            # legado onde o cache depende de (nome, tema).
+            uses_greeting = bool(base_model.get("greeting_video_path"))
             name_sync_cached = db.find_cached_name_sync(
-                base_model["id"], first_name, theme_slug,
+                base_model["id"],
+                first_name,
+                theme_slug=theme_slug,
+                uses_greeting=uses_greeting,
             )
 
             if name_sync_cached:
@@ -368,16 +375,26 @@ def process_selfie(selfie: dict):
                 db.update_status(sid, "generating_lipsync")
 
                 # Decide input visual do lipsync por strategy:
-                # - name_sync e full_video: usa video do tema (continuidade
-                #   visual com o conteúdo concatenado / coerência semântica).
-                # - legacy: usa video base "neutro" (fallback quando o tema
-                #   não tem vídeo gravado).
+                # - name_sync com greeting_video: usa o vídeo saudação
+                #   dedicado (3s placeholder). Mesmo visual pra qualquer
+                #   tema, cache compartilhado.
+                # - name_sync sem greeting / full_video: usa o início do
+                #   theme_video (modo legado, cache por tema).
+                # - legacy: vídeo base "neutro" (fallback sem tema).
                 strategy = (selfie.get("video_strategy") or "name_sync").lower()
                 theme_model_now = db.get_theme_model(
                     base_model["id"], selfie.get("theme_slug")
                 )
+                greeting_path = base_model.get("greeting_video_path")
+                use_greeting = strategy == "name_sync" and bool(greeting_path)
 
-                if strategy in ("name_sync", "full_video") and theme_model_now:
+                if use_greeting:
+                    lipsync_video_source = greeting_path
+                    logger.info(
+                        "Step 4/6: NAME_SYNC — lipsync usa video saudação (%s)",
+                        lipsync_video_source,
+                    )
+                elif strategy in ("name_sync", "full_video") and theme_model_now:
                     lipsync_video_source = theme_model_now["video_storage_path"]
                     logger.info(
                         "Step 4/6: %s — lipsync usa video do tema (%s)",
@@ -417,15 +434,17 @@ def process_selfie(selfie: dict):
                         cached_path = f"name_sync_cached/{sid}.mp4"
                         db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
                         logger.info(
-                            "Step 4/6: NAME_SYNC persisted to %s (%d bytes)",
-                            cached_path, len(lipsync_resp.content),
+                            "Step 4/6: NAME_SYNC persisted to %s (%d bytes, uses_greeting=%s)",
+                            cached_path, len(lipsync_resp.content), use_greeting,
                         )
                         db.update_status(
                             sid, "composing",
                             lipsync_video_url=lipsync_url,
                             name_sync_cached_path=cached_path,
+                            name_sync_uses_greeting=use_greeting,
                         )
                         selfie["name_sync_cached_path"] = cached_path
+                        selfie["name_sync_uses_greeting"] = use_greeting
                     else:
                         cached_path = f"lipsync_cached/{sid}.mp4"
                         db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
@@ -494,19 +513,24 @@ def process_selfie(selfie: dict):
                 else None
             )
             if theme_video_path:
-                # A candidata grava os primeiros N segundos do theme_video
-                # falando um placeholder; esses segundos são substituídos
-                # pelo name_sync. Pra evitar repetição visual, o
-                # theme_video começa após esses N segundos no compose.
-                intro_seconds = float(base_model.get("theme_intro_seconds") or 4)
+                # Modelo NOVO (greeting_video gravado): theme_video já vem
+                # sem placeholder inicial — não corta nada.
+                # Modelo LEGADO (sem greeting): theme_video tem N segundos
+                # de placeholder no início que foram substituídos pelo
+                # name_sync; pula esses N segundos no compose.
+                if selfie.get("name_sync_uses_greeting"):
+                    intro_seconds = 0.0
+                else:
+                    intro_seconds = float(base_model.get("theme_intro_seconds") or 0)
                 middle_urls = [
                     db.create_signed_url(name_sync_cached_path),
                     db.create_signed_url(theme_video_path),
                 ]
                 middle_offsets = [0.0, intro_seconds]
                 logger.info(
-                    "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s, skip %.1fs intro)",
+                    "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s, skip %.1fs intro, greeting=%s)",
                     name_sync_cached_path, theme_video_path, intro_seconds,
+                    bool(selfie.get("name_sync_uses_greeting")),
                 )
 
         if not middle_urls:
