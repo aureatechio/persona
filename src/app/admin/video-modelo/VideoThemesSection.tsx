@@ -183,13 +183,21 @@ function ThemeRowItem({
       if (!initRes.ok) throw new Error((await initRes.json().catch(() => ({}))).error || 'Falha ao iniciar upload');
       const initData = (await initRes.json()) as { uploadUrl: string; path: string };
 
-      // 2. PUT no Storage
+      // 2. PUT no Storage — x-upsert obrigatório pra substituir arquivos
+      // existentes (mesmo com upsert no token, o Supabase Storage retorna
+      // 400 sem esse header quando o path já tem conteúdo).
       const putRes = await fetch(initData.uploadUrl, {
         method: 'PUT',
-        headers: { 'Content-Type': contentType },
+        headers: {
+          'Content-Type': contentType,
+          'x-upsert': 'true',
+        },
         body: file,
       });
-      if (!putRes.ok) throw new Error('Falha no upload pro storage');
+      if (!putRes.ok) {
+        const body = await putRes.text().catch(() => '');
+        throw new Error(`Falha no upload (${putRes.status}): ${body.slice(0, 160)}`);
+      }
 
       // 3. Confirma + marca is_uploaded=true
       const confRes = await fetch('/api/admin/video-modelo/themes', {
