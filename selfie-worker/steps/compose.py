@@ -93,13 +93,23 @@ def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
 
     seek_args = ["-ss", f"{start_offset:.3f}"] if start_offset > 0 else []
 
+    # setsar=1 garante SAR quadrado após o pad (sem isso alguns players mobile
+    # interpretam o vídeo com dimensão diferente mesmo sendo 720x1280).
+    # yuv420p é obrigatório para compatibilidade máxima com concat -c copy.
+    _VF = (
+        "scale=720:1280:force_original_aspect_ratio=decrease,"
+        "pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
+        "setsar=1"
+    )
+
     if has_audio:
         _run_ffmpeg([
             *seek_args, "-i", input_path,
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-pix_fmt", "yuv420p",
             "-r", "30", "-video_track_timescale", "15360",
             "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
-            "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+            "-vf", _VF,
             "-movflags", "+faststart", "-y", output_path,
         ])
     else:
@@ -108,9 +118,10 @@ def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
             *seek_args, "-i", input_path,
             "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+            "-pix_fmt", "yuv420p",
             "-r", "30", "-video_track_timescale", "15360",
             "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
-            "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+            "-vf", _VF,
             "-map", "0:v:0", "-map", "1:a:0", "-shortest",
             "-movflags", "+faststart", "-y", output_path,
         ])
