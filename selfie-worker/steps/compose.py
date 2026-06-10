@@ -93,12 +93,13 @@ def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
 
     seek_args = ["-ss", f"{start_offset:.3f}"] if start_offset > 0 else []
 
-    # setsar=1 garante SAR quadrado após o pad (sem isso alguns players mobile
-    # interpretam o vídeo com dimensão diferente mesmo sendo 720x1280).
-    # yuv420p é obrigatório para compatibilidade máxima com concat -c copy.
+    # "cover": escala pra preencher 720x1280 e corta as bordas excedentes.
+    # force_original_aspect_ratio=increase garante que nenhum eixo fique
+    # menor que o alvo antes do crop — sem barras pretas, ocupa tela cheia.
+    # yuv420p obrigatório para compatibilidade máxima com concat -c copy.
     _VF = (
-        "scale=720:1280:force_original_aspect_ratio=decrease,"
-        "pad=720:1280:(ow-iw)/2:(oh-ih)/2,"
+        "scale=720:1280:force_original_aspect_ratio=increase,"
+        "crop=720:1280,"
         "setsar=1"
     )
 
