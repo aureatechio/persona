@@ -311,7 +311,8 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
 
     # Tail silence ajuda o lip-sync não cortar a última sílaba — mas
     # mantém curto pra não estender o clipe além de ~3.5s.
-    return _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
+    padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
+    return _mix_background_music(padded)
 
 
 def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:
