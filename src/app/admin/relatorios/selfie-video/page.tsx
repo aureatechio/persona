@@ -15,6 +15,7 @@ import {
   Loader2,
   Lock,
   MessageCircle,
+  Play,
   MousePointerClick,
   Phone,
   RefreshCw,
@@ -61,6 +62,7 @@ interface ReportItem {
   hasLipsync: boolean;
   hasFinalVideo: boolean;
   finalVideoPath: string | null;
+  finalVideoUrl: string | null;
   cachedFrom: string | null;
   isCached: boolean;
   whatsappSent: boolean;
@@ -305,6 +307,30 @@ function BreakdownBar({
   );
 }
 
+function VideoModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="relative bg-zinc-950 border border-white/[0.08] rounded-2xl overflow-hidden max-w-lg w-full shadow-2xl shadow-black/60"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-white/[0.06]">
+          <span className="text-sm font-semibold text-white truncate">{title}</span>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-xl hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-colors duration-200"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4">
+          <video src={url} controls autoPlay className="w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PipelineDots({ item }: { item: ReportItem }) {
   const steps = [
     { key: 'selfie', done: item.hasSelfie, label: 'Selfie' },
@@ -328,7 +354,7 @@ function PipelineDots({ item }: { item: ReportItem }) {
   );
 }
 
-function ExpandedRow({ item }: { item: ReportItem }) {
+function ExpandedRow({ item, onPlayVideo }: { item: ReportItem; onPlayVideo: (url: string, title: string) => void }) {
   return (
     <tr className="bg-white/[0.02]">
       <td colSpan={9} className="px-4 py-4">
@@ -386,8 +412,23 @@ function ExpandedRow({ item }: { item: ReportItem }) {
             )}
           </div>
 
-          {/* WhatsApp delivery */}
+          {/* Video + WhatsApp delivery */}
           <div className="space-y-2">
+            {item.finalVideoUrl && (
+              <button
+                onClick={() => onPlayVideo(item.finalVideoUrl!, `${item.name} — ${item.themeSlug ?? 'video'}`)}
+                className={cn(
+                  'w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 mb-3',
+                  'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400',
+                  'border border-emerald-500/20 hover:border-emerald-500/30',
+                  'rounded-xl text-sm font-medium',
+                  'active:scale-[0.97] transition-all duration-200',
+                )}
+              >
+                <Play size={14} />
+                Assistir video
+              </button>
+            )}
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Entrega WhatsApp</h4>
             {item.whatsappSent ? (
               <>
@@ -443,6 +484,7 @@ export default function RelatorioSelfieVideoPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [playingVideo, setPlayingVideo] = useState<{ url: string; title: string } | null>(null);
 
   // Filters
   const [baseModelId, setBaseModelId] = useState<string>('');
@@ -1004,6 +1046,21 @@ export default function RelatorioSelfieVideoPage() {
                           {/* Expanded detail */}
                           {isExpanded && (
                             <div className="border-t border-white/[0.06] p-4 space-y-3 text-xs">
+                              {it.finalVideoUrl && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setPlayingVideo({ url: it.finalVideoUrl!, title: `${it.name} — ${it.themeSlug ?? 'video'}` }); }}
+                                  className={cn(
+                                    'w-full inline-flex items-center justify-center gap-2 px-4 py-2.5',
+                                    'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400',
+                                    'border border-emerald-500/20 hover:border-emerald-500/30',
+                                    'rounded-xl text-sm font-medium',
+                                    'active:scale-[0.97] transition-all duration-200',
+                                  )}
+                                >
+                                  <Play size={14} />
+                                  Assistir video
+                                </button>
+                              )}
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
                                   <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Candidato</span>
@@ -1166,7 +1223,7 @@ export default function RelatorioSelfieVideoPage() {
                                     </div>
                                   </td>
                                 </tr>
-                                {isExpanded && <ExpandedRow item={it} />}
+                                {isExpanded && <ExpandedRow item={it} onPlayVideo={(url, title) => setPlayingVideo({ url, title })} />}
                               </Fragment>
                             );
                           })}
@@ -1180,6 +1237,14 @@ export default function RelatorioSelfieVideoPage() {
           </>
         )}
       </div>
+
+      {playingVideo && (
+        <VideoModal
+          url={playingVideo.url}
+          title={playingVideo.title}
+          onClose={() => setPlayingVideo(null)}
+        />
+      )}
     </div>
   );
 }

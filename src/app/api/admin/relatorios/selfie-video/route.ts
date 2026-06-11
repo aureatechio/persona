@@ -67,6 +67,7 @@ interface ReportItem {
   hasLipsync: boolean;
   hasFinalVideo: boolean;
   finalVideoPath: string | null;
+  finalVideoUrl: string | null;
   cachedFrom: string | null;
   isCached: boolean;
   whatsappSent: boolean;
@@ -79,6 +80,12 @@ interface ReportItem {
   baseModelId: string | null;
   baseModelSlug: string | null;
   baseModelName: string | null;
+}
+
+async function signedUrl(path: string | null | undefined): Promise<string | null> {
+  if (!path) return null;
+  const { data } = await supabaseAdmin.storage.from('voice-models').createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
 }
 
 function parseDate(value: string | null): string | null {
@@ -202,6 +209,7 @@ export async function GET(request: NextRequest) {
       hasLipsync: !!r.lipsync_video_url,
       hasFinalVideo: !!r.final_video_path,
       finalVideoPath: r.final_video_path,
+      finalVideoUrl: null,
       cachedFrom: r.cached_from,
       isCached: !!r.cached_from || !!r.name_sync_cached_path || !!r.lipsync_cached_path,
       whatsappSent: !!r.whatsapp_sent,
@@ -215,6 +223,19 @@ export async function GET(request: NextRequest) {
       baseModelSlug: r.v2_base_models?.slug ?? null,
       baseModelName: r.v2_base_models?.display_name ?? r.v2_base_models?.name ?? null,
     }));
+
+    // Generate signed URLs for items with final video (max 50 to avoid latency)
+    const itemsWithVideo = items.filter((it) => it.finalVideoPath).slice(0, 50);
+    const signedUrls = await Promise.all(
+      itemsWithVideo.map(async (it) => {
+        const url = await signedUrl(it.finalVideoPath);
+        return { id: it.id, url };
+      }),
+    );
+    const urlMap = new Map(signedUrls.map((s) => [s.id, s.url]));
+    for (const it of items) {
+      it.finalVideoUrl = urlMap.get(it.id) ?? null;
+    }
 
     // Aggregations
     const summary = {
