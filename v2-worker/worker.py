@@ -250,8 +250,9 @@ def process_selfie(selfie: dict):
         if strategy == "name_sync":
             lip_cfg = base_model.get("lipsync_config") or {}
             tts_settings = lip_cfg.get("tts")
-            logger.info("Step 3/6: NAME_SYNC TTS (curto, sem música)...")
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings)
+            intro_seconds = float(base_model.get("theme_intro_seconds") or 0)
+            logger.info("Step 3/6: NAME_SYNC TTS (curto, sem música, target=%.1fs)...", intro_seconds)
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings, target_duration=intro_seconds)
             tts_processed_text = generated_text
         else:
             logger.info("Step 3/6: TTS (%s, com música)...", strategy)

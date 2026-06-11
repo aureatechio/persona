@@ -85,7 +85,7 @@ def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
             "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
-            "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+            "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280",
             "-movflags", "+faststart", "-y", output_path,
         ])
     else:
@@ -95,7 +95,7 @@ def _normalize(input_path: str, output_path: str, start_offset: float = 0.0):
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
             "-r", "30", "-video_track_timescale", "15360",
             "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
-            "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+            "-vf", "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280",
             "-map", "0:v:0", "-map", "1:a:0", "-shortest",
             "-movflags", "+faststart", "-y", output_path,
         ])
