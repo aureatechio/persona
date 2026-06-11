@@ -25,12 +25,12 @@ async function fetchTable(table: 'video_selfies' | 'v2_video_selfies', now: numb
 
   const error = e1 || e2;
   const seen = new Set<string>();
-  const rows: typeof inProgress = [];
+  const rows: Array<Record<string, unknown>> = [];
   for (const row of [...(inProgress ?? []), ...(finished ?? [])]) {
     const key = `${table}:${row.id}`;
     if (!seen.has(key)) {
       seen.add(key);
-      rows.push({ ...row, _table: table });
+      rows.push({ ...(row as Record<string, unknown>), _table: table });
     }
   }
   return { rows, error };
