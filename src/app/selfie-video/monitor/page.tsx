@@ -34,6 +34,7 @@ interface Selfie {
   updated_at: string;
   whatsapp_sent: boolean;
   videoUrl: string | null;
+  _table?: string;
 }
 
 // ── Step config ──────────────────────────────────────────────────────────────
@@ -234,7 +235,12 @@ function SelfieCard({
             <User size={18} className={c.text} />
           </div>
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-white truncate">{selfie.name}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-white truncate">{selfie.name}</h3>
+              {selfie._table === 'v2_video_selfies' && (
+                <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30">v2</span>
+              )}
+            </div>
             <p className="text-xs text-zinc-500 mt-0.5">{selfie.phone}</p>
           </div>
         </div>
@@ -386,8 +392,11 @@ export default function SelfieMonitorPage() {
   }, [fetchData]);
 
   const handleReprocess = useCallback(async (selfie: Selfie) => {
+    const endpoint = selfie._table === 'v2_video_selfies'
+      ? '/api/v2/reprocess'
+      : '/api/selfie-video/reprocess';
     try {
-      const res = await fetch('/api/selfie-video/reprocess', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: selfie.id }),

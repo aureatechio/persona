@@ -3,48 +3,61 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
+const SELECT_COLS = 'id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent';
+
+async function fetchTable(table: 'video_selfies' | 'v2_video_selfies', now: number) {
+  const [{ data: inProgress, error: e1 }, { data: finished, error: e2 }] = await Promise.all([
+    supabaseAdmin
+      .from(table)
+      .select(SELECT_COLS)
+      .not('status', 'in', '("completed","failed")')
+      .eq('whatsapp_sent', false)
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from(table)
+      .select(SELECT_COLS)
+      .gte('updated_at', new Date(now - 24 * 60 * 60 * 1000).toISOString())
+      .or('status.eq.completed,status.eq.failed,whatsapp_sent.eq.true')
+      .order('created_at', { ascending: false })
+      .limit(100),
+  ]);
+
+  const error = e1 || e2;
+  const seen = new Set<string>();
+  const rows: typeof inProgress = [];
+  for (const row of [...(inProgress ?? []), ...(finished ?? [])]) {
+    const key = `${table}:${row.id}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      rows.push({ ...row, _table: table });
+    }
+  }
+  return { rows, error };
+}
+
 export async function GET() {
   try {
     const now = Date.now();
 
-    // In-progress: all non-terminal items (no date cap — stuck items must stay visible)
-    const { data: inProgress, error: errProgress } = await supabaseAdmin
-      .from('video_selfies')
-      .select('id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent')
-      .not('status', 'in', '("completed","failed")')
-      .eq('whatsapp_sent', false)
-      .order('created_at', { ascending: false })
-      .limit(100);
+    const [v1, v2] = await Promise.all([
+      fetchTable('video_selfies', now),
+      fetchTable('v2_video_selfies', now),
+    ]);
 
-    // Completed/failed: last 24h
-    const { data: finished, error: errFinished } = await supabaseAdmin
-      .from('video_selfies')
-      .select('id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent')
-      .gte('updated_at', new Date(now - 24 * 60 * 60 * 1000).toISOString())
-      .or('status.eq.completed,status.eq.failed,whatsapp_sent.eq.true')
-      .order('created_at', { ascending: false })
-      .limit(100);
-
-    const error = errProgress || errFinished;
-
-    // Deduplicate by id (an item could match both queries)
-    const seen = new Set<string>();
-    const data: typeof inProgress = [];
-    for (const row of [...(inProgress || []), ...(finished || [])]) {
-      if (!seen.has(row.id)) {
-        seen.add(row.id);
-        data.push(row);
-      }
-    }
-
+    const error = v1.error || v2.error;
     if (error) {
       console.error('Monitor fetch error:', error);
       return NextResponse.json({ error: 'Falha ao buscar dados' }, { status: 500 });
     }
 
+    const allRows = [...(v1.rows ?? []), ...(v2.rows ?? [])].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+
     // Generate signed URLs for completed videos
     const enriched = await Promise.all(
-      (data || []).map(async (row) => {
+      allRows.map(async (row) => {
         let videoUrl: string | null = null;
         if (row.final_video_path && (row.status === 'completed' || row.whatsapp_sent)) {
           const { data: signed } = await supabaseAdmin.storage
