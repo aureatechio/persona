@@ -52,7 +52,7 @@ export async function GET() {
     }
 
     const allRows = [...(v1.rows ?? []), ...(v2.rows ?? [])].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      (a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime(),
     );
 
     // Generate signed URLs for completed videos
