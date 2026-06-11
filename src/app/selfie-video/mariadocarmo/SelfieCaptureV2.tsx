@@ -1,10 +1,11 @@
 'use client';
 
 import { Camera, ChevronRight, MessageCircle, RotateCcw, Send, User } from 'lucide-react';
+import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { useSelfieRecorderV2 } from './useSelfieRecorderV2';
 
-const SLUG = 'mariadocarmo-new';
+const SLUG = 'mariadocarmo';
 const DISPLAY_NAME = 'Maria do Carmo';
 const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/\D/g, '');
 const WHATSAPP_GREETING = encodeURIComponent('Quero receber meu vídeo');
@@ -19,16 +20,20 @@ export default function SelfieCaptureV2() {
     : '#';
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-zinc-950 via-black to-zinc-950 flex flex-col overflow-x-hidden">
-      <style>{`html, body { background-color: #000 !important; }`}</style>
+    <div className="min-h-[100dvh] bg-gradient-to-b from-[#1B3A8C] via-[#2056A5] to-[#1B3A8C] flex flex-col overflow-x-hidden">
+      <style>{`html, body { background-color: #1B3A8C !important; }`}</style>
 
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/[0.04] backdrop-blur-xl border-b border-white/[0.06] px-4 py-3">
+      <header className="sticky top-0 z-50 bg-white/10 backdrop-blur-xl border-b border-white/10 px-4 py-3">
         <div className="flex items-center justify-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-emerald-500/15 flex items-center justify-center border border-emerald-500/20">
-            <span className="text-emerald-400 font-bold text-sm">MC</span>
-          </div>
-          <span className="text-white font-semibold text-sm tracking-tight">{DISPLAY_NAME}</span>
+          <Image
+            src="/logo-pl.png"
+            alt="PL - Partido Liberal"
+            width={52}
+            height={52}
+            className="h-10 w-auto rounded-lg"
+            priority
+          />
         </div>
       </header>
 
@@ -36,41 +41,45 @@ export default function SelfieCaptureV2() {
         {/* ===== STEP: DADOS ===== */}
         {r.step === 'dados' && (
           <div className="flex-1 flex flex-col justify-center px-6 py-8 max-w-md mx-auto w-full relative">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-yellow-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-500/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center mb-8">
               <div className="mb-6">
-                <div className="w-24 h-24 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 mx-auto">
-                  <span className="text-emerald-400 font-bold text-2xl">MC</span>
-                </div>
+                <Image
+                  src="/logo-pl.png"
+                  alt="PL - Partido Liberal"
+                  width={160}
+                  height={160}
+                  className="w-32 md:w-36 h-auto mx-auto drop-shadow-lg rounded-2xl"
+                />
               </div>
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
                 Grave seu depoimento
               </h1>
-              <p className="text-zinc-400 mt-3 text-base leading-relaxed">
+              <p className="text-blue-200/70 mt-3 text-base leading-relaxed">
                 Grave um vídeo curto e receba uma resposta personalizada de{' '}
                 <span className="text-white font-semibold">{DISPLAY_NAME}</span> no WhatsApp.
               </p>
             </div>
 
-            <div className="bg-white/[0.03] backdrop-blur-2xl border border-white/[0.06] rounded-2xl p-6 shadow-xl shadow-black/20 space-y-5">
+            <div className="bg-white/[0.08] backdrop-blur-2xl border border-white/[0.12] rounded-2xl p-6 shadow-xl shadow-black/20 space-y-5">
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2 block">
+                <label className="text-xs font-semibold uppercase tracking-wider text-blue-200/60 mb-2 block">
                   Como quer ser chamado?
                 </label>
                 <div className="relative">
-                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" />
+                  <User size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" />
                   <input
                     type="text"
                     value={r.name}
                     onChange={(e) => r.setName(e.target.value)}
                     className={cn(
                       'w-full pl-11 pr-4 py-3.5',
-                      'bg-white/[0.04] hover:bg-white/[0.06]',
-                      'border border-white/[0.08] focus:border-emerald-500/50',
-                      'rounded-xl text-base text-white placeholder:text-zinc-600',
-                      'outline-none focus:ring-2 focus:ring-emerald-500/20',
+                      'bg-white/[0.08] hover:bg-white/[0.12]',
+                      'border border-white/[0.12] focus:border-yellow-400/50',
+                      'rounded-xl text-base text-white placeholder:text-white/30',
+                      'outline-none focus:ring-2 focus:ring-yellow-400/20',
                       'transition-all duration-200',
                     )}
                     placeholder="Seu nome"
@@ -80,11 +89,11 @@ export default function SelfieCaptureV2() {
               </div>
 
               <div>
-                <label className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-2 block">
+                <label className="text-xs font-semibold uppercase tracking-wider text-blue-200/60 mb-2 block">
                   Seu telefone
                 </label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-zinc-500 text-sm pointer-events-none">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-white/40 text-sm pointer-events-none">
                     <span className="text-base leading-none">🇧🇷</span>
                     <span className="font-medium">+55</span>
                   </span>
@@ -94,10 +103,10 @@ export default function SelfieCaptureV2() {
                     onChange={(e) => r.setPhone(e.target.value)}
                     className={cn(
                       'w-full pl-[5.25rem] pr-4 py-3.5',
-                      'bg-white/[0.04] hover:bg-white/[0.06]',
-                      'border border-white/[0.08] focus:border-emerald-500/50',
-                      'rounded-xl text-base text-white placeholder:text-zinc-600',
-                      'outline-none focus:ring-2 focus:ring-emerald-500/20',
+                      'bg-white/[0.08] hover:bg-white/[0.12]',
+                      'border border-white/[0.12] focus:border-yellow-400/50',
+                      'rounded-xl text-base text-white placeholder:text-white/30',
+                      'outline-none focus:ring-2 focus:ring-yellow-400/20',
                       'transition-all duration-200',
                     )}
                     placeholder="(XX) XXXXX-XXXX"
@@ -111,11 +120,11 @@ export default function SelfieCaptureV2() {
                 disabled={!r.canContinueDados}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 px-6 py-4 mt-2',
-                  'bg-emerald-500 hover:bg-emerald-400',
-                  'text-black font-bold text-sm',
+                  'bg-yellow-400 hover:bg-yellow-300',
+                  'text-[#1B3A8C] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-emerald-500/25',
-                  'hover:shadow-emerald-400/30',
+                  'shadow-lg shadow-black/20',
+                  'hover:shadow-xl hover:shadow-black/25',
                   'active:scale-[0.97]',
                   'transition-all duration-200',
                   'disabled:opacity-40 disabled:cursor-not-allowed',
@@ -175,7 +184,7 @@ export default function SelfieCaptureV2() {
                         r.setError(null);
                         r.startCamera();
                       }}
-                      className="px-4 py-2 bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] rounded-xl text-white text-sm transition-all duration-200"
+                      className="px-4 py-2 bg-white/10 rounded-xl text-white text-sm transition-colors duration-200 hover:bg-white/20"
                     >
                       Tentar novamente
                     </button>
@@ -184,7 +193,7 @@ export default function SelfieCaptureV2() {
               )}
             </div>
 
-            <div className="shrink-0 bg-zinc-950 border-t border-white/[0.06] px-6 py-6">
+            <div className="shrink-0 bg-[#1B3A8C] border-t border-white/10 px-6 py-6">
               <div className="flex items-center justify-center">
                 {!r.isRecording ? (
                   <button
@@ -196,7 +205,7 @@ export default function SelfieCaptureV2() {
                       'flex items-center justify-center',
                       'active:scale-[0.95]',
                       'transition-all duration-200',
-                      'ring-4 ring-white/10',
+                      'ring-4 ring-white/20',
                     )}
                   >
                     <div className="w-7 h-7 bg-white rounded-full" />
@@ -212,7 +221,7 @@ export default function SelfieCaptureV2() {
                       'flex items-center justify-center',
                       'active:scale-[0.95]',
                       'transition-all duration-200',
-                      'ring-4 ring-white/10',
+                      'ring-4 ring-white/20',
                       'disabled:opacity-50',
                     )}
                   >
@@ -221,7 +230,7 @@ export default function SelfieCaptureV2() {
                 )}
               </div>
               {r.isRecording && !r.canStopRecording && (
-                <p className="text-center text-zinc-600 text-xs mt-3">
+                <p className="text-center text-white/40 text-xs mt-3">
                   Mínimo {r.minSeconds} segundos
                 </p>
               )}
@@ -243,7 +252,7 @@ export default function SelfieCaptureV2() {
               />
             </div>
 
-            <div className="shrink-0 bg-zinc-950 border-t border-white/[0.06] px-6 py-6">
+            <div className="shrink-0 bg-[#1B3A8C] border-t border-white/10 px-6 py-6">
               {r.error && (
                 <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 mb-4 text-center">
                   <p className="text-red-400 text-xs">{r.error}</p>
@@ -254,9 +263,9 @@ export default function SelfieCaptureV2() {
                   onClick={r.handleRegravar}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5',
-                    'bg-white/[0.05] hover:bg-white/[0.1]',
-                    'text-zinc-300 hover:text-white',
-                    'border border-white/[0.08] hover:border-white/[0.15]',
+                    'bg-white/[0.08] hover:bg-white/[0.15]',
+                    'text-white/80 hover:text-white',
+                    'border border-white/[0.12] hover:border-white/[0.25]',
                     'rounded-xl font-medium text-sm',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
@@ -269,10 +278,10 @@ export default function SelfieCaptureV2() {
                   onClick={r.handleEnviar}
                   className={cn(
                     'flex-1 inline-flex items-center justify-center gap-2 px-5 py-3.5',
-                    'bg-emerald-500 hover:bg-emerald-400',
-                    'text-black font-bold text-sm',
+                    'bg-white hover:bg-sky-50',
+                    'text-[#003560] font-bold text-sm',
                     'rounded-xl',
-                    'shadow-lg shadow-emerald-500/25',
+                    'shadow-lg shadow-black/20',
                     'active:scale-[0.97] transition-all duration-200',
                   )}
                 >
@@ -288,18 +297,18 @@ export default function SelfieCaptureV2() {
         {r.step === 'enviando' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl" />
+              <div className="w-64 h-64 bg-yellow-400/10 rounded-full blur-3xl" />
             </div>
 
             <div className="relative w-20 h-20 mb-6">
               <svg className="w-20 h-20 -rotate-90" viewBox="0 0 80 80">
-                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+                <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
                 <circle
                   cx="40"
                   cy="40"
                   r="34"
                   fill="none"
-                  stroke="#10b981"
+                  stroke="white"
                   strokeWidth="4"
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 34}`}
@@ -315,12 +324,12 @@ export default function SelfieCaptureV2() {
             <p className="text-white font-medium">
               {r.uploadProgress < 10 ? 'Preparando...' : r.uploadProgress < 95 ? 'Enviando seu vídeo...' : 'Finalizando...'}
             </p>
-            <p className="text-zinc-500 text-sm mt-2">Não feche esta tela</p>
+            <p className="text-white/40 text-sm mt-2">Não feche esta tela</p>
 
             <div className="w-full max-w-xs mt-6">
-              <div className="h-1.5 bg-white/[0.06] rounded-full overflow-hidden">
+              <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500 rounded-full transition-all duration-500 ease-out"
+                  className="h-full bg-white rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${r.uploadProgress}%` }}
                 />
               </div>
@@ -331,18 +340,18 @@ export default function SelfieCaptureV2() {
         {/* ===== STEP: WHATSAPP ===== */}
         {r.step === 'whatsapp' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-yellow-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-500/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center max-w-sm space-y-6 relative">
               <div className="relative inline-flex">
-                <div className="w-28 h-28 rounded-full bg-[#25D366]/10 backdrop-blur-sm flex items-center justify-center border border-[#25D366]/20">
-                  <div className="w-20 h-20 rounded-full bg-[#25D366]/15 flex items-center justify-center">
+                <div className="w-28 h-28 rounded-full bg-[#25D366]/15 backdrop-blur-sm flex items-center justify-center border border-[#25D366]/30">
+                  <div className="w-20 h-20 rounded-full bg-[#25D366]/25 flex items-center justify-center">
                     <MessageCircle size={36} className="text-[#25D366]" />
                   </div>
                 </div>
                 <div
-                  className="absolute inset-0 rounded-full animate-ping bg-[#25D366]/10"
+                  className="absolute inset-0 rounded-full animate-ping bg-[#25D366]/15"
                   style={{ animationDuration: '2s' }}
                 />
               </div>
@@ -350,9 +359,9 @@ export default function SelfieCaptureV2() {
               <div>
                 <h2 className="text-2xl font-bold text-white tracking-tight mb-3">
                   Falta só um passo,{' '}
-                  <span className="text-emerald-400">{r.name}</span>!
+                  <span className="text-yellow-300">{r.name}</span>!
                 </h2>
-                <p className="text-zinc-400 text-sm leading-relaxed">
+                <p className="text-blue-100/70 text-sm leading-relaxed">
                   Toque no botão abaixo e envie a mensagem no WhatsApp.
                   <br />
                   Assim seu vídeo chega mais rápido.
@@ -370,7 +379,7 @@ export default function SelfieCaptureV2() {
                   'bg-[#25D366] hover:bg-[#1ebe5b]',
                   'text-white font-bold text-base',
                   'rounded-xl',
-                  'shadow-lg shadow-[#25D366]/20',
+                  'shadow-lg shadow-[#25D366]/30',
                   'active:scale-[0.97] transition-all duration-200',
                   !WHATSAPP_NUMBER && 'opacity-50 pointer-events-none',
                 )}
@@ -381,7 +390,7 @@ export default function SelfieCaptureV2() {
 
               <button
                 onClick={r.handleWhatsAppSkip}
-                className="text-zinc-500 hover:text-white text-xs underline-offset-4 hover:underline transition-colors duration-200"
+                className="text-blue-200/50 hover:text-white text-xs underline-offset-4 hover:underline transition-colors duration-200"
               >
                 Pular esta etapa
               </button>
@@ -392,18 +401,24 @@ export default function SelfieCaptureV2() {
         {/* ===== STEP: OBRIGADO ===== */}
         {r.step === 'obrigado' && (
           <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 relative">
-            <div className="absolute -top-40 -right-40 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -top-40 -right-40 w-80 h-80 bg-yellow-400/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-green-500/8 rounded-full blur-3xl pointer-events-none" />
 
             <div className="text-center max-w-sm space-y-6 relative">
               <div className="relative inline-flex">
-                <div className="w-28 h-28 rounded-full bg-white/[0.04] backdrop-blur-sm flex items-center justify-center border border-white/[0.08]">
-                  <div className="w-20 h-20 rounded-full bg-emerald-500/10 flex items-center justify-center">
-                    <span className="text-emerald-400 font-bold text-xl">MC</span>
+                <div className="w-28 h-28 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/15">
+                  <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center">
+                    <Image
+                      src="/logo-pl.png"
+                      alt="PL"
+                      width={48}
+                      height={48}
+                      className="w-12 h-auto rounded-lg"
+                    />
                   </div>
                 </div>
                 <div
-                  className="absolute inset-0 rounded-full animate-ping bg-emerald-500/5"
+                  className="absolute inset-0 rounded-full animate-ping bg-yellow-400/10"
                   style={{ animationDuration: '2s' }}
                 />
               </div>
@@ -412,17 +427,17 @@ export default function SelfieCaptureV2() {
                 <h2 className="text-2xl font-bold text-white tracking-tight mb-3">
                   Obrigado pelo seu depoimento!
                 </h2>
-                <p className="text-zinc-400 text-sm leading-relaxed">{thankYou}</p>
+                <p className="text-blue-100/60 text-sm leading-relaxed">{thankYou}</p>
               </div>
 
               <button
                 onClick={r.handleReset}
                 className={cn(
                   'w-full inline-flex items-center justify-center gap-2 px-6 py-4',
-                  'bg-emerald-500 hover:bg-emerald-400',
-                  'text-black font-bold text-sm',
+                  'bg-yellow-400 hover:bg-yellow-300',
+                  'text-[#1B3A8C] font-bold text-sm',
                   'rounded-xl',
-                  'shadow-lg shadow-emerald-500/25',
+                  'shadow-lg shadow-black/20',
                   'active:scale-[0.97] transition-all duration-200',
                 )}
               >
