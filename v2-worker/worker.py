@@ -250,9 +250,8 @@ def process_selfie(selfie: dict):
         if strategy == "name_sync":
             lip_cfg = base_model.get("lipsync_config") or {}
             tts_settings = lip_cfg.get("tts")
-            intro_seconds = float(base_model.get("theme_intro_seconds") or 0)
-            logger.info("Step 3/6: NAME_SYNC TTS (curto, sem música, target=%.1fs)...", intro_seconds)
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings, target_duration=intro_seconds)
+            logger.info("Step 3/6: NAME_SYNC TTS (curto, sem música)...")
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings)
             tts_processed_text = generated_text
         else:
             logger.info("Step 3/6: TTS (%s, com música)...", strategy)
@@ -293,9 +292,12 @@ def process_selfie(selfie: dict):
                 strategy = (selfie.get("video_strategy") or "name_sync").lower()
                 theme_model_now = db.get_theme_model(base_model["id"], selfie.get("theme_slug"))
 
-                if strategy in ("name_sync", "full_video") and theme_model_now:
+                if strategy == "name_sync":
+                    lipsync_video_source = base_model["video_storage_path"]
+                    logger.info("Step 4/6: NAME_SYNC — lipsync on base video (theme stays intact)")
+                elif strategy == "full_video" and theme_model_now:
                     lipsync_video_source = theme_model_now["video_storage_path"]
-                    logger.info("Step 4/6: %s — lipsync on theme video (%s)", strategy.upper(), lipsync_video_source)
+                    logger.info("Step 4/6: FULL_VIDEO — lipsync on theme video (%s)", lipsync_video_source)
                 else:
                     lipsync_video_source = base_model["video_storage_path"]
                     logger.info("Step 4/6: LEGACY — lipsync on base video")
@@ -362,7 +364,6 @@ def process_selfie(selfie: dict):
         theme_slug = selfie.get("theme_slug")
 
         middle_urls: list[str] = []
-        middle_offsets: list[float] = []
         if name_sync_cached_path and theme_slug:
             theme_model_now = db.get_theme_model(base_model["id"], theme_slug)
             theme_video_path = (
@@ -371,13 +372,11 @@ def process_selfie(selfie: dict):
                 else None
             )
             if theme_video_path:
-                intro_seconds = float(base_model.get("theme_intro_seconds") or 4.9)
                 middle_urls = [
                     db.create_signed_url(name_sync_cached_path),
                     db.create_signed_url(theme_video_path),
                 ]
-                middle_offsets = [0.0, intro_seconds]
-                logger.info("Step 5/6: name_sync + theme_video (skip %.1fs intro)", intro_seconds)
+                logger.info("Step 5/6: name_sync + theme_video (trimmed)")
 
         if not middle_urls:
             lipsync_cached_path = selfie.get("lipsync_cached_path")
@@ -392,7 +391,6 @@ def process_selfie(selfie: dict):
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
             closing_music_path=base_model.get("closing_music_path"),
-            middle_offsets=middle_offsets if middle_offsets else None,
         )
 
         final_path = f"v2/final/{sid}.mp4"

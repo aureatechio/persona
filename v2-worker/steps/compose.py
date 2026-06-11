@@ -159,13 +159,11 @@ def compose_videos(
     middle_urls: str | list[str],
     closing_video_path: str | None = None,
     closing_music_path: str | None = None,
-    middle_offsets: list[float] | None = None,
 ) -> bytes:
     """
     Compose final video: selfie + middle[0..N] + closing.
 
     middle_urls: single URL or list of URLs (name_sync + theme_video).
-    middle_offsets: seconds to skip at start of each middle.
     """
     if isinstance(middle_urls, str):
         middle_urls = [middle_urls]
@@ -194,8 +192,7 @@ def compose_videos(
             with open(raw_path, "wb") as f:
                 f.write(resp.content)
             logger.info("middle[%d]: %d bytes", idx, len(resp.content))
-            offset = middle_offsets[idx] if middle_offsets and idx < len(middle_offsets) else 0.0
-            _normalize(raw_path, norm_path, start_offset=offset)
+            _normalize(raw_path, norm_path)
             middle_norms.append(norm_path)
 
         closing_norm = _prepare_closing_video(

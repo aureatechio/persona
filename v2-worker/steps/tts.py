@@ -238,75 +238,8 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     return final_audio, processed_text
 
 
-def _pad_to_duration(audio: bytes, target_seconds: float) -> bytes:
-    """Pad audio with silence to reach exactly target_seconds duration."""
-    tmpdir = tempfile.mkdtemp(prefix="v2_tts_target_")
-    input_path = os.path.join(tmpdir, "input.mp3")
-    output_path = os.path.join(tmpdir, "padded.mp3")
-
-    try:
-        with open(input_path, "wb") as f:
-            f.write(audio)
-
-        # Get current duration
-        probe = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=noprint_wrappers=1:nokey=1", input_path],
-            capture_output=True, timeout=10,
-        )
-        current_dur = float(probe.stdout.decode().strip())
-        pad_needed = target_seconds - current_dur
-
-        if pad_needed <= 0.05:
-            logger.info("Audio already %.2fs (target %.2fs), no padding needed", current_dur, target_seconds)
-            return audio
-
-        logger.info("Padding audio from %.2fs to %.2fs (+%.2fs silence)", current_dur, target_seconds, pad_needed)
-
-        result = subprocess.run(
-            [
-                "ffmpeg", "-i", input_path,
-                "-af", f"apad=pad_dur={pad_needed}",
-                "-c:a", "libmp3lame", "-b:a", "192k",
-                "-y", output_path,
-            ],
-            capture_output=True, timeout=10,
-        )
-
-        if result.returncode != 0:
-            logger.warning("Pad to duration failed, returning original")
-            return audio
-
-        with open(output_path, "rb") as f:
-            padded = f.read()
-
-        logger.info("Padded to target: %d -> %d bytes (%.2fs)", len(audio), len(padded), target_seconds)
-        return padded
-
-    except Exception as e:
-        logger.warning("Pad to duration failed: %s", e)
-        return audio
-
-    finally:
-        for fname in os.listdir(tmpdir):
-            try:
-                os.unlink(os.path.join(tmpdir, fname))
-            except OSError:
-                pass
-        try:
-            os.rmdir(tmpdir)
-        except OSError:
-            pass
-
-
-def generate_tts_name_sync(
-    text: str, voice_id: str, tts_settings: dict | None = None, target_duration: float = 0,
-) -> bytes:
-    """TTS for name_sync flow (short greeting, no background music).
-
-    If target_duration > 0, pads the audio with silence to match the
-    theme video intro length so the lipsync replaces the intro exactly.
-    """
+def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None) -> bytes:
+    """TTS for name_sync flow (short greeting, no background music)."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     voice_settings = {
@@ -319,7 +252,7 @@ def generate_tts_name_sync(
     if tts_settings:
         voice_settings.update(tts_settings)
 
-    logger.info("Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s, target=%.1fs)", voice_id, text, bool(tts_settings), target_duration)
+    logger.info("Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s)", voice_id, text, bool(tts_settings))
 
     response = requests.post(
         url + "?output_format=mp3_44100_128",
@@ -340,9 +273,6 @@ def generate_tts_name_sync(
     response.raise_for_status()
     audio = response.content
     logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
-
-    if target_duration > 0:
-        return _pad_to_duration(audio, target_duration)
 
     padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
     return padded
