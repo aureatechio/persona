@@ -39,7 +39,7 @@ def _official_enabled() -> bool:
 
 def pick_provider() -> str:
     """Decide channel ('meta' or 'uazapi') via weighted random."""
-    meta = max(0, WHATSAPP_META_WEIGHT)
+    meta = max(0, WHATSAPP_META_WEIGHT) if _official_enabled() else 0
     uazapi = max(0, WHATSAPP_UAZAPI_WEIGHT)
 
     if meta <= 0 and uazapi <= 0:
