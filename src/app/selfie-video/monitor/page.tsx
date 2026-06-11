@@ -291,7 +291,7 @@ function SelfieCard({
       <StepProgress status={selfie.status} />
 
       {/* Actions */}
-      {(isCompleted || isFailed) && (
+      {(isCompleted || isFailed || (!isCompleted && !isFailed)) && (
         <div className="mt-4 flex items-center gap-2">
           {isCompleted && selfie.videoUrl && (
             <button
@@ -310,7 +310,7 @@ function SelfieCard({
               Assistir video
             </button>
           )}
-          {isFailed && (
+          {(isFailed || (!isCompleted && !isFailed)) && (
             <button
               onClick={async () => {
                 setReprocessing(true);
@@ -323,9 +323,9 @@ function SelfieCard({
               disabled={reprocessing}
               className={cn(
                 'flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5',
-                'bg-amber-500/15 hover:bg-amber-500/25',
-                'text-amber-300 hover:text-amber-200',
-                'border border-amber-500/30 hover:border-amber-500/50',
+                isFailed
+                  ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 hover:border-amber-500/50'
+                  : 'bg-white/[0.04] hover:bg-white/[0.08] text-zinc-400 hover:text-white border border-white/[0.08] hover:border-white/[0.15]',
                 'font-semibold text-sm rounded-xl',
                 'active:scale-[0.97] transition-all duration-200',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
@@ -339,7 +339,7 @@ function SelfieCard({
               ) : (
                 <>
                   <RefreshCw size={14} />
-                  Reprocessar
+                  {isFailed ? 'Reprocessar' : 'Forçar fila'}
                 </>
               )}
             </button>
@@ -355,17 +355,22 @@ function SelfieCard({
 export default function SelfieMonitorPage() {
   const [selfies, setSelfies] = useState<Selfie[]>([]);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [playingSelfie, setPlayingSelfie] = useState<Selfie | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
       const res = await fetch('/api/selfie-video/monitor', { cache: 'no-store' });
-      if (!res.ok) throw new Error('fetch failed');
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error || `HTTP ${res.status}`);
+      }
       const json = await res.json();
       setSelfies(json.selfies ?? []);
-    } catch {
-      // silently retry on next interval
+      setApiError(null);
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Erro ao carregar monitor');
     } finally {
       setLoading(false);
     }
@@ -449,6 +454,17 @@ export default function SelfieMonitorPage() {
         {/* Divider */}
         <div className="h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
 
+        {/* API error banner */}
+        {apiError && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-sm text-red-400">
+            <AlertCircle size={16} className="shrink-0" />
+            <span>Erro ao carregar dados: <span className="font-medium">{apiError}</span></span>
+            <button onClick={fetchData} className="ml-auto shrink-0 underline hover:no-underline transition-all">
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
         {/* Loading */}
         {loading && (
           <div className="space-y-4">
@@ -459,12 +475,12 @@ export default function SelfieMonitorPage() {
         )}
 
         {/* Empty state */}
-        {!loading && selfies.length === 0 && (
+        {!loading && !apiError && selfies.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
               <Film size={32} className="text-zinc-600" />
             </div>
-            <p className="text-zinc-500 text-sm">Nenhum video nas ultimas 24 horas</p>
+            <p className="text-zinc-500 text-sm">Nenhum video pendente ou em processamento</p>
           </div>
         )}
 
