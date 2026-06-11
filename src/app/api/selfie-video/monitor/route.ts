@@ -62,7 +62,7 @@ export async function GET() {
         if (row.final_video_path && (row.status === 'completed' || row.whatsapp_sent)) {
           const { data: signed } = await supabaseAdmin.storage
             .from('voice-models')
-            .createSignedUrl(row.final_video_path, 3600);
+            .createSignedUrl(row.final_video_path as string, 3600);
           videoUrl = signed?.signedUrl ?? null;
         }
         return { ...row, videoUrl };
