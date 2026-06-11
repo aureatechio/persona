@@ -508,6 +508,21 @@ export default function SelfieMonitorPage() {
           </section>
         )}
 
+        {/* Failed section — before completed so failures are always visible */}
+        {failed.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold text-white tracking-tight mb-4 flex items-center gap-2">
+              <AlertCircle size={18} className="text-red-400" />
+              Falhas
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {failed.map((s) => (
+                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Completed section */}
         {completed.length > 0 && (
           <section>
@@ -517,21 +532,6 @@ export default function SelfieMonitorPage() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {completed.map((s) => (
-                <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Failed section */}
-        {failed.length > 0 && (
-          <section>
-            <h2 className="text-lg font-semibold text-white tracking-tight mb-4 flex items-center gap-2">
-              <AlertCircle size={18} className="text-red-400" />
-              Falhas
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {failed.map((s) => (
                 <SelfieCard key={s.id} selfie={s} onPlay={setPlayingSelfie} onReprocess={handleReprocess} />
               ))}
             </div>
