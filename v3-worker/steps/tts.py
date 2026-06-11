@@ -16,32 +16,32 @@ logger = logging.getLogger("v3-worker.tts")
 TTS_TIMEOUT = 60
 FFMPEG_TIMEOUT = 30
 
-BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35
 TAIL_SILENCE_S = 0.5
 VOICE_VOLUME = 2.0
 
-_bg_music_cache: bytes | None = None
+_bg_music_cache: dict[str, bytes] = {}
 
 
-def _get_background_music() -> bytes | None:
-    global _bg_music_cache
-    if _bg_music_cache is not None:
-        return _bg_music_cache
+def _get_background_music(storage_path: str) -> bytes | None:
+    if storage_path in _bg_music_cache:
+        return _bg_music_cache[storage_path]
     try:
-        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{BG_MUSIC_STORAGE_PATH}"
+        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{storage_path}"
         resp = requests.get(url, headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"}, timeout=15)
         resp.raise_for_status()
-        _bg_music_cache = resp.content
-        logger.info("Background music downloaded: %d bytes", len(_bg_music_cache))
-        return _bg_music_cache
+        _bg_music_cache[storage_path] = resp.content
+        logger.info("Background music downloaded (%s): %d bytes", storage_path, len(resp.content))
+        return _bg_music_cache[storage_path]
     except Exception as e:
-        logger.warning("Failed to download background music: %s", e)
+        logger.warning("Failed to download background music (%s): %s", storage_path, e)
         return None
 
 
-def _mix_background_music(voice_audio: bytes) -> bytes:
-    bg_music = _get_background_music()
+def _mix_background_music(voice_audio: bytes, bg_music_path: str | None = None) -> bytes:
+    if not bg_music_path:
+        return voice_audio
+    bg_music = _get_background_music(bg_music_path)
     if bg_music is None:
         return voice_audio
 
@@ -116,8 +116,8 @@ def _add_tail_silence(audio: bytes, seconds: float = 0.5) -> bytes:
         except OSError: pass
 
 
-def generate_tts_full(text: str, voice_id: str, tts_config: dict | None = None) -> tuple[bytes, str]:
-    """Generate full TTS with background music for V3 pipeline."""
+def generate_tts_full(text: str, voice_id: str, tts_config: dict | None = None, bg_music_path: str | None = None) -> tuple[bytes, str]:
+    """Generate full TTS with optional background music for V3 pipeline."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     voice_settings = {
@@ -150,6 +150,6 @@ def generate_tts_full(text: str, voice_id: str, tts_config: dict | None = None) 
     logger.info("V3 TTS raw audio: %d bytes", len(raw_audio))
 
     padded = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S)
-    final_audio = _mix_background_music(padded)
+    final_audio = _mix_background_music(padded, bg_music_path=bg_music_path)
 
     return final_audio, text

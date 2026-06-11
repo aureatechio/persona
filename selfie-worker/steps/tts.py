@@ -18,39 +18,37 @@ FFMPEG_TIMEOUT = 30  # seconds
 PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 
 # Background music config
-BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35  # 35% volume
 VOICE_DELAY_MS = 0  # delay removido — causava atraso na boca no lip-sync
 TAIL_SILENCE_S = 0.05  # 50ms silence after speech ends
 VOICE_VOLUME = 2.0  # 2x volume boost on voice
 
-# Cache for downloaded background music
-_bg_music_cache: bytes | None = None
+# Cache for downloaded background music (keyed by storage path)
+_bg_music_cache: dict[str, bytes] = {}
 
 
-def _get_background_music() -> bytes | None:
-    """Download background music from Supabase Storage (cached)."""
-    global _bg_music_cache
-    if _bg_music_cache is not None:
-        return _bg_music_cache
+def _get_background_music(storage_path: str) -> bytes | None:
+    """Download background music from Supabase Storage (cached by path)."""
+    if storage_path in _bg_music_cache:
+        return _bg_music_cache[storage_path]
 
     try:
-        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{BG_MUSIC_STORAGE_PATH}"
+        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{storage_path}"
         resp = requests.get(
             url,
             headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
             timeout=15,
         )
         resp.raise_for_status()
-        _bg_music_cache = resp.content
-        logger.info("Background music downloaded: %d bytes", len(_bg_music_cache))
-        return _bg_music_cache
+        _bg_music_cache[storage_path] = resp.content
+        logger.info("Background music downloaded (%s): %d bytes", storage_path, len(resp.content))
+        return _bg_music_cache[storage_path]
     except Exception as e:
-        logger.warning("Failed to download background music: %s", e)
+        logger.warning("Failed to download background music (%s): %s", storage_path, e)
         return None
 
 
-def _mix_background_music(voice_audio: bytes) -> bytes:
+def _mix_background_music(voice_audio: bytes, bg_music_path: str | None = None) -> bytes:
     """
     Mix voice audio with background music track.
     - 300ms delay at start (avoid TTS glitch)
@@ -58,7 +56,9 @@ def _mix_background_music(voice_audio: bytes) -> bytes:
     - Fade in/out on music
     Returns mixed audio bytes. Falls back to voice_audio on failure.
     """
-    bg_music = _get_background_music()
+    if not bg_music_path:
+        return voice_audio
+    bg_music = _get_background_music(bg_music_path)
     if bg_music is None:
         return voice_audio
 
@@ -215,7 +215,7 @@ def _fix_pronunciation(text: str) -> str:
     return text
 
 
-def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
+def generate_tts(text: str, voice_id: str, bg_music_path: str | None = None) -> tuple[bytes, str]:
     """
     Generate TTS audio using ElevenLabs + apply outdoor environment FX.
     Returns (processed_audio_bytes, processed_text_sent_to_elevenlabs).
@@ -258,13 +258,13 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     # Tail silence (skip if 0)
     padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S) if TAIL_SILENCE_S > 0 else raw_audio
 
-    # Mixar trilha de fundo
-    final_audio = _mix_background_music(padded_audio)
+    # Mixar trilha de fundo (só se bg_music_path informado)
+    final_audio = _mix_background_music(padded_audio, bg_music_path=bg_music_path)
 
     return final_audio, processed_text
 
 
-def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None) -> bytes:
+def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None, bg_music_path: str | None = None) -> bytes:
     """
     TTS dedicado ao name_sync do fluxo novo (saudação curta com nome).
 
@@ -312,7 +312,7 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     # Tail silence ajuda o lip-sync não cortar a última sílaba — mas
     # mantém curto pra não estender o clipe além de ~3.5s.
     padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
-    return _mix_background_music(padded)
+    return _mix_background_music(padded, bg_music_path=bg_music_path)
 
 
 def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:

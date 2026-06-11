@@ -335,15 +335,17 @@ def process_selfie(selfie: dict):
         if strategy == "name_sync":
             lip_cfg = base_model.get("lipsync_config") or {}
             tts_settings = lip_cfg.get("tts")
-            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, sem música, custom=%s)...", bool(tts_settings))
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings)
+            bg_music = base_model.get("bg_music_path")
+            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, bg_music=%s, custom=%s)...", bg_music, bool(tts_settings))
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings, bg_music_path=bg_music)
             tts_processed_text = generated_text
         else:
             logger.info(
                 "Step 3/6: Generating TTS (%s, com música + fix_pronunciation)...",
                 strategy,
             )
-            audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id)
+            bg_music = base_model.get("bg_music_path")
+            audio_bytes, tts_processed_text = generate_tts(generated_text, voice_id, bg_music_path=bg_music)
 
         tts_path = f"tts/selfie_{sid}.mp3"
         db.upload_file(tts_path, audio_bytes, "audio/mpeg")

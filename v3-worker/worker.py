@@ -184,10 +184,11 @@ def process_selfie(selfie: dict):
             return
 
         db.update_status(sid, "generating_tts")
-        logger.info("Step 3/6: Full TTS with music...")
+        bg_music = base_model.get("bg_music_path")
+        logger.info("Step 3/6: Full TTS (bg_music=%s)...", bg_music)
 
         tts_config = base_model.get("tts_config") or {}
-        audio_bytes, tts_processed_text = generate_tts_full(generated_text, voice_id, tts_config=tts_config)
+        audio_bytes, tts_processed_text = generate_tts_full(generated_text, voice_id, tts_config=tts_config, bg_music_path=bg_music)
 
         tts_path = f"v3/tts/selfie_{sid}.mp3"
         db.upload_file(tts_path, audio_bytes, "audio/mpeg")

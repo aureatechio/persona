@@ -17,38 +17,38 @@ FFMPEG_TIMEOUT = 30
 PRONUNCIATION_DICT_ID = "d9hTg7V9pjOs8aojKFYl"
 
 # Background music config
-BG_MUSIC_STORAGE_PATH = "assets/background_music.mp3"
 BG_MUSIC_VOLUME = 0.35
 TAIL_SILENCE_S = 0.05
 VOICE_VOLUME = 2.0
 
-_bg_music_cache: bytes | None = None
+_bg_music_cache: dict[str, bytes] = {}
 
 
-def _get_background_music() -> bytes | None:
-    """Download background music from Supabase Storage (cached)."""
-    global _bg_music_cache
-    if _bg_music_cache is not None:
-        return _bg_music_cache
+def _get_background_music(storage_path: str) -> bytes | None:
+    """Download background music from Supabase Storage (cached by path)."""
+    if storage_path in _bg_music_cache:
+        return _bg_music_cache[storage_path]
     try:
-        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{BG_MUSIC_STORAGE_PATH}"
+        url = f"{SUPABASE_URL}/storage/v1/object/voice-models/{storage_path}"
         resp = requests.get(
             url,
             headers={"Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}"},
             timeout=15,
         )
         resp.raise_for_status()
-        _bg_music_cache = resp.content
-        logger.info("Background music downloaded: %d bytes", len(_bg_music_cache))
-        return _bg_music_cache
+        _bg_music_cache[storage_path] = resp.content
+        logger.info("Background music downloaded (%s): %d bytes", storage_path, len(resp.content))
+        return _bg_music_cache[storage_path]
     except Exception as e:
-        logger.warning("Failed to download background music: %s", e)
+        logger.warning("Failed to download background music (%s): %s", storage_path, e)
         return None
 
 
-def _mix_background_music(voice_audio: bytes) -> bytes:
+def _mix_background_music(voice_audio: bytes, bg_music_path: str | None = None) -> bytes:
     """Mix voice audio with background music track."""
-    bg_music = _get_background_music()
+    if not bg_music_path:
+        return voice_audio
+    bg_music = _get_background_music(bg_music_path)
     if bg_music is None:
         return voice_audio
 
@@ -196,8 +196,8 @@ def _fix_pronunciation(text: str) -> str:
     return text
 
 
-def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
-    """Generate TTS audio using ElevenLabs (full_video/legacy flow — with music)."""
+def generate_tts(text: str, voice_id: str, bg_music_path: str | None = None) -> tuple[bytes, str]:
+    """Generate TTS audio using ElevenLabs (full_video/legacy flow)."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     processed_text = _fix_pronunciation(text)
@@ -233,13 +233,13 @@ def generate_tts(text: str, voice_id: str) -> tuple[bytes, str]:
     logger.info("TTS raw audio: %d bytes", len(raw_audio))
 
     padded_audio = _add_tail_silence(raw_audio, seconds=TAIL_SILENCE_S) if TAIL_SILENCE_S > 0 else raw_audio
-    final_audio = _mix_background_music(padded_audio)
+    final_audio = _mix_background_music(padded_audio, bg_music_path=bg_music_path)
 
     return final_audio, processed_text
 
 
-def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None) -> bytes:
-    """TTS for name_sync flow (short greeting, no background music)."""
+def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None, bg_music_path: str | None = None) -> bytes:
+    """TTS for name_sync flow (short greeting)."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     voice_settings = {
@@ -275,4 +275,4 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
 
     padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
-    return padded
+    return _mix_background_music(padded, bg_music_path=bg_music_path)
