@@ -41,7 +41,7 @@ function emptyMetrics(): SourceMetrics {
   };
 }
 
-async function fetchMetrics(table: 'video_selfies' | 'supia_videos'): Promise<SourceMetrics> {
+async function fetchMetrics(table: 'video_selfies' | 'supia_videos' | 'v2_video_selfies'): Promise<SourceMetrics> {
   const now = Date.now();
   const since7d = new Date(now - SEVEN_DAYS_MS).toISOString();
   const since24h = new Date(now - ONE_DAY_MS).toISOString();
@@ -100,7 +100,7 @@ async function fetchMetrics(table: 'video_selfies' | 'supia_videos'): Promise<So
 
 export async function GET() {
   try {
-    const [selfie, supia, { count: usersCount }, baseModel] = await Promise.all([
+    const [selfie, supia, v2, { count: usersCount }, baseModel, v2BaseModel] = await Promise.all([
       fetchMetrics('video_selfies').catch((err) => {
         console.error('selfie metrics error:', err);
         return emptyMetrics();
@@ -109,32 +109,43 @@ export async function GET() {
         console.error('supia metrics error:', err);
         return emptyMetrics();
       }),
+      fetchMetrics('v2_video_selfies').catch((err) => {
+        console.error('v2 metrics error:', err);
+        return emptyMetrics();
+      }),
       supabaseAdmin.from('users').select('id', { count: 'exact', head: true }),
       supabaseAdmin
         .from('video_base_models')
         .select('id, name, video_storage_path, created_at, voice_models(name, elevenlabs_voice_id)')
         .eq('is_active', true)
         .maybeSingle(),
+      supabaseAdmin
+        .from('v2_base_models')
+        .select('id, name, slug, display_name, video_strategy, is_active')
+        .eq('is_active', true)
+        .maybeSingle(),
     ]);
 
-    const totalGenerated = selfie.completed + supia.completed;
-    const totalAttempts = selfie.total + supia.total;
+    const totalGenerated = selfie.completed + supia.completed + v2.completed;
+    const totalAttempts = selfie.total + supia.total + v2.total;
     const successRate = totalAttempts > 0 ? Math.round((totalGenerated / totalAttempts) * 100) : 0;
 
     return NextResponse.json({
       selfie,
       supia,
+      v2,
       summary: {
         totalGenerated,
         totalAttempts,
         successRate,
-        totalFailed: selfie.failed + supia.failed,
-        totalInProgress: selfie.inProgress + supia.inProgress,
-        last7d: selfie.last7d + supia.last7d,
-        last24h: selfie.last24h + supia.last24h,
+        totalFailed: selfie.failed + supia.failed + v2.failed,
+        totalInProgress: selfie.inProgress + supia.inProgress + v2.inProgress,
+        last7d: selfie.last7d + supia.last7d + v2.last7d,
+        last24h: selfie.last24h + supia.last24h + v2.last24h,
         usersCount: usersCount ?? 0,
       },
       activeBaseModel: baseModel.data ?? null,
+      v2ActiveBaseModel: v2BaseModel.data ?? null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro interno';

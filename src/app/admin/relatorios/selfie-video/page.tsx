@@ -1,20 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   AlertCircle,
   BarChart3,
   Check,
+  ChevronDown,
+  ChevronUp,
   Download,
   FileText,
   Film,
   Filter,
   Loader2,
+  Lock,
   MessageCircle,
   MousePointerClick,
+  Phone,
   RefreshCw,
   Search,
+  Send,
   Sparkles,
   Video,
   X,
@@ -32,25 +37,38 @@ interface BaseModelOption {
   video_strategy: string | null;
 }
 
+interface ThemeOption {
+  slug: string;
+  label: string;
+}
+
 interface ReportItem {
   id: string;
   name: string;
   phone: string;
+  firstName: string | null;
   status: string;
   errorMessage: string | null;
   createdAt: string;
   updatedAt: string;
-  whatsappSent: boolean;
-  whatsappSentAt: string | null;
-  whatsappButtonClickedAt: string | null;
+  transcription: string | null;
+  themeSlug: string | null;
+  generatedText: string | null;
   videoStrategy: string | null;
   category: string | null;
-  firstName: string | null;
-  cachedFrom: string | null;
-  hasFinalVideo: boolean;
-  hasLipsyncOnly: boolean;
   hasSelfie: boolean;
-  hasTranscription: boolean;
+  hasTts: boolean;
+  hasLipsync: boolean;
+  hasFinalVideo: boolean;
+  finalVideoPath: string | null;
+  cachedFrom: string | null;
+  isCached: boolean;
+  whatsappSent: boolean;
+  whatsappSentAt: string | null;
+  whatsappProvider: string | null;
+  whatsappButtonClickedAt: string | null;
+  isLocked: boolean;
+  lockedAt: string | null;
   retryCount: number;
   baseModelId: string | null;
   baseModelSlug: string | null;
@@ -65,42 +83,52 @@ interface ReportSummary {
   inProgress: number;
   whatsappSent: number;
   whatsappClicked: number;
+  whatsappOfficial: number;
+  whatsappUazapi: number;
   cached: number;
   hasFinalVideo: number;
-  hasLipsyncOnly: number;
+  hasLipsync: number;
   recordingOnly: number;
+  locked: number;
 }
 
 interface ReportData {
+  pipeline: string;
   filters: {
     baseModelId: string | null;
     status: string | null;
     strategy: string | null;
+    theme: string | null;
+    whatsapp: string | null;
     from: string | null;
     to: string | null;
     search: string | null;
     limit: number;
   };
   baseModels: BaseModelOption[];
+  themes: ThemeOption[];
   summary: ReportSummary;
   byStatus: { status: string; count: number }[];
   byStrategy: { strategy: string; count: number }[];
   byCategory: { category: string; count: number }[];
+  byTheme: { theme: string; count: number }[];
   byProgress: { progress: string; count: number }[];
+  byProvider: { provider: string; count: number }[];
   byDay: { date: string; count: number }[];
   items: ReportItem[];
 }
 
 const STATUS_LABELS: Record<string, string> = {
   recording: 'Gravando',
+  uploading: 'Enviando',
   queued: 'Na fila',
   transcribing: 'Transcrevendo',
   generating_text: 'Gerando texto',
   generating_tts: 'Gerando voz',
   generating_lipsync: 'Lip-sync',
   composing: 'Compondo',
-  sending: 'Enviando',
-  completed: 'Concluído',
+  sending: 'Enviando WA',
+  completed: 'Concluido',
   failed: 'Falhou',
 };
 
@@ -109,6 +137,7 @@ const STATUS_COLORS: Record<string, string> = {
   failed: 'bg-red-500/10 text-red-400 border-red-500/20',
   queued: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
   recording: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
+  uploading: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20',
   transcribing: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
   generating_text: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
   generating_tts: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
@@ -119,15 +148,15 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STRATEGY_LABELS: Record<string, string> = {
   name_sync: 'Sync do nome (curto)',
-  full_video: 'Vídeo completo',
-  unknown: 'Sem estratégia',
+  full_video: 'Video completo',
+  unknown: 'Sem estrategia',
 };
 
 const PROGRESS_LABELS: Record<string, string> = {
   completo_enviado: 'Completo + enviado',
   completo_nao_enviado: 'Completo, sem envio',
-  video_pronto_pendente: 'Vídeo pronto, finalizando',
-  so_inicio_gravando: 'Só o início (gravando)',
+  video_pronto_pendente: 'Video pronto, finalizando',
+  so_inicio_gravando: 'So o inicio (gravando)',
   em_processo: 'Em processo',
   falhou: 'Falhou',
 };
@@ -139,6 +168,11 @@ const PROGRESS_COLORS: Record<string, string> = {
   so_inicio_gravando: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/20',
   em_processo: 'text-violet-400 bg-violet-500/10 border-violet-500/20',
   falhou: 'text-red-400 bg-red-500/10 border-red-500/20',
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+  official: 'Meta Cloud API',
+  uazapi: 'UAZAPI',
 };
 
 function statusLabel(s: string) {
@@ -158,16 +192,27 @@ function progressForRow(it: ReportItem): string {
   return 'em_processo';
 }
 
-// <option> usa cores do SO por padrão; força bg escuro para Chromium/Firefox.
 const OPTION_CLASS = 'bg-zinc-900 text-white';
 
 function formatDateTime(iso: string | null) {
-  if (!iso) return '—';
+  if (!iso) return '\u2014';
   try {
     return new Date(iso).toLocaleString('pt-BR');
   } catch {
     return iso;
   }
+}
+
+function formatRelative(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return 'agora';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d`;
 }
 
 function StatCard({
@@ -260,16 +305,151 @@ function BreakdownBar({
   );
 }
 
+function PipelineDots({ item }: { item: ReportItem }) {
+  const steps = [
+    { key: 'selfie', done: item.hasSelfie, label: 'Selfie' },
+    { key: 'tts', done: item.hasTts, label: 'TTS' },
+    { key: 'lipsync', done: item.hasLipsync, label: 'Lipsync' },
+    { key: 'video', done: item.hasFinalVideo, label: 'Video' },
+    { key: 'wa', done: item.whatsappSent, label: 'WhatsApp' },
+  ];
+  return (
+    <div className="flex items-center gap-1" title={steps.map((s) => `${s.label}: ${s.done ? 'OK' : '-'}`).join(' | ')}>
+      {steps.map((s) => (
+        <div
+          key={s.key}
+          className={cn(
+            'w-2 h-2 rounded-full transition-colors',
+            s.done ? 'bg-emerald-400' : 'bg-zinc-700',
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ExpandedRow({ item }: { item: ReportItem }) {
+  return (
+    <tr className="bg-white/[0.02]">
+      <td colSpan={9} className="px-4 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          {/* Dados do eleitor */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Eleitor</h4>
+            <div className="flex items-center gap-2">
+              <Phone size={11} className="text-zinc-500" />
+              <span className="text-zinc-300">{item.phone}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Nome detectado: </span>
+              <span className="text-zinc-300">{item.firstName ?? '\u2014'}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Criado: </span>
+              <span className="text-zinc-300">{formatDateTime(item.createdAt)}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Atualizado: </span>
+              <span className="text-zinc-300">{formatDateTime(item.updatedAt)}</span>
+            </div>
+            {item.retryCount > 0 && (
+              <div>
+                <span className="text-amber-400">{item.retryCount} tentativa{item.retryCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Transcricao e classificacao */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Processamento</h4>
+            {item.transcription && (
+              <div>
+                <span className="text-zinc-500 block mb-1">Transcricao:</span>
+                <p className="text-zinc-300 bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 line-clamp-4 leading-relaxed">
+                  {item.transcription}
+                </p>
+              </div>
+            )}
+            <div>
+              <span className="text-zinc-500">Tema: </span>
+              <span className="text-zinc-300">{item.themeSlug ?? '\u2014'}</span>
+            </div>
+            <div>
+              <span className="text-zinc-500">Categoria: </span>
+              <span className="text-zinc-300">{item.category ?? '\u2014'}</span>
+            </div>
+            {item.isCached && (
+              <div className="inline-flex items-center gap-1 text-violet-400">
+                <Sparkles size={11} /> Reusou cache
+                {item.cachedFrom && <span className="text-zinc-500 text-[10px]">({item.cachedFrom.slice(0, 8)})</span>}
+              </div>
+            )}
+          </div>
+
+          {/* WhatsApp delivery */}
+          <div className="space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mb-2">Entrega WhatsApp</h4>
+            {item.whatsappSent ? (
+              <>
+                <div className="flex items-center gap-2 text-emerald-400">
+                  <Check size={12} />
+                  <span>Enviado</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Quando: </span>
+                  <span className="text-zinc-300">{formatDateTime(item.whatsappSentAt)}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Provedor: </span>
+                  <span className={cn(
+                    'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium',
+                    item.whatsappProvider === 'official'
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                  )}>
+                    {PROVIDER_LABELS[item.whatsappProvider ?? ''] ?? item.whatsappProvider ?? '\u2014'}
+                  </span>
+                </div>
+                {item.whatsappButtonClickedAt ? (
+                  <div className="flex items-center gap-2 text-violet-400">
+                    <MousePointerClick size={12} />
+                    <span>Clicou em {formatDateTime(item.whatsappButtonClickedAt)}</span>
+                  </div>
+                ) : (
+                  <div className="text-zinc-600 text-[10px]">Nao clicou no botao</div>
+                )}
+              </>
+            ) : (
+              <div className="text-zinc-600">Nao enviado</div>
+            )}
+            {item.errorMessage && (
+              <div className="mt-2">
+                <span className="text-red-400 text-[10px] block mb-1">Erro:</span>
+                <p className="text-red-300/70 bg-red-500/5 border border-red-500/10 rounded-xl p-3 text-[11px] break-all">
+                  {item.errorMessage}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function RelatorioSelfieVideoPage() {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Filtros
+  // Filters
   const [baseModelId, setBaseModelId] = useState<string>('');
   const [status, setStatus] = useState<string>('');
   const [strategy, setStrategy] = useState<string>('');
+  const [themeSlug, setThemeSlug] = useState<string>('');
+  const [whatsappFilter, setWhatsappFilter] = useState<string>('');
   const [fromDate, setFromDate] = useState<string>('');
   const [toDate, setToDate] = useState<string>('');
   const [search, setSearch] = useState<string>('');
@@ -278,12 +458,14 @@ export default function RelatorioSelfieVideoPage() {
   const buildQuery = useCallback(
     (overrides?: Partial<{ format: string }>) => {
       const params = new URLSearchParams();
+      params.set('pipeline', 'v2');
       if (baseModelId) params.set('baseModelId', baseModelId);
       if (status) params.set('status', status);
       if (strategy) params.set('strategy', strategy);
+      if (themeSlug) params.set('theme', themeSlug);
+      if (whatsappFilter) params.set('whatsapp', whatsappFilter);
       if (fromDate) params.set('from', new Date(fromDate).toISOString());
       if (toDate) {
-        // Inclui o dia inteiro
         const t = new Date(toDate);
         t.setHours(23, 59, 59, 999);
         params.set('to', t.toISOString());
@@ -293,7 +475,7 @@ export default function RelatorioSelfieVideoPage() {
       params.set('limit', '2000');
       return params.toString();
     },
-    [baseModelId, status, strategy, fromDate, toDate, search],
+    [baseModelId, status, strategy, themeSlug, whatsappFilter, fromDate, toDate, search],
   );
 
   const fetchData = useCallback(async () => {
@@ -308,7 +490,7 @@ export default function RelatorioSelfieVideoPage() {
       const j = (await res.json()) as ReportData;
       setData(j);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar relatório');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar relatorio');
     }
   }, [buildQuery]);
 
@@ -321,6 +503,14 @@ export default function RelatorioSelfieVideoPage() {
     return () => {
       cancelled = true;
     };
+  }, [fetchData]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchData();
+    }, 30000);
+    return () => clearInterval(interval);
   }, [fetchData]);
 
   async function handleRefresh() {
@@ -338,6 +528,8 @@ export default function RelatorioSelfieVideoPage() {
     setBaseModelId('');
     setStatus('');
     setStrategy('');
+    setThemeSlug('');
+    setWhatsappFilter('');
     setFromDate('');
     setToDate('');
     setSearch('');
@@ -350,15 +542,16 @@ export default function RelatorioSelfieVideoPage() {
   }
 
   const baseModels = useMemo(() => data?.baseModels ?? [], [data?.baseModels]);
+  const themes = useMemo(() => data?.themes ?? [], [data?.themes]);
   const items = data?.items ?? [];
   const summary = data?.summary;
-  const selectedCandidate = useMemo(
-    () => baseModels.find((m) => m.id === baseModelId) ?? null,
-    [baseModels, baseModelId],
-  );
 
   const hasActiveFilters =
-    !!baseModelId || !!status || !!strategy || !!fromDate || !!toDate || !!search;
+    !!baseModelId || !!status || !!strategy || !!themeSlug || !!whatsappFilter || !!fromDate || !!toDate || !!search;
+
+  const deliveryRate = summary && summary.completed > 0
+    ? Math.round((summary.whatsappSent / summary.completed) * 100)
+    : 0;
 
   return (
     <div className="min-h-screen bg-black">
@@ -373,10 +566,10 @@ export default function RelatorioSelfieVideoPage() {
             <div>
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight flex items-center gap-3">
                 <FileText size={28} className="text-emerald-400" />
-                Relatório Selfie-Vídeo
+                Observabilidade V2
               </h1>
               <p className="text-zinc-500 mt-1">
-                Histórico e estatísticas por candidato — completos, parciais, enviados e falhas
+                Pipeline V2 — quem enviou, o que recebeu, se recebeu. Auto-refresh 30s.
               </p>
             </div>
 
@@ -393,13 +586,13 @@ export default function RelatorioSelfieVideoPage() {
                 )}
               >
                 <Download size={14} />
-                Baixar CSV
+                CSV
               </button>
               <button
                 onClick={handleRefresh}
                 disabled={refreshing}
                 className="p-2 rounded-xl hover:bg-white/[0.08] text-zinc-400 hover:text-white transition-colors duration-200 disabled:opacity-50"
-                title="Atualizar"
+                title="Atualizar agora"
               >
                 <RefreshCw size={16} className={cn(refreshing && 'animate-spin')} />
               </button>
@@ -407,7 +600,7 @@ export default function RelatorioSelfieVideoPage() {
           </div>
         </div>
 
-        {/* Filtros */}
+        {/* Filters */}
         <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             <Filter size={16} className="text-zinc-400" />
@@ -431,12 +624,12 @@ export default function RelatorioSelfieVideoPage() {
                 onChange={(e) => setBaseModelId(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option className={OPTION_CLASS} value="">Todos os candidatos</option>
+                <option className={OPTION_CLASS} value="">Todos</option>
                 {baseModels.map((m) => (
                   <option className={OPTION_CLASS} key={m.id} value={m.id}>
                     {m.display_name || m.name}
                     {m.slug ? ` (${m.slug})` : ''}
-                    {m.is_active ? '' : ' — inativo'}
+                    {m.is_active ? '' : ' \u2014 inativo'}
                   </option>
                 ))}
               </select>
@@ -449,7 +642,7 @@ export default function RelatorioSelfieVideoPage() {
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option className={OPTION_CLASS} value="">Todos os status</option>
+                <option className={OPTION_CLASS} value="">Todos</option>
                 {Object.entries(STATUS_LABELS).map(([k, v]) => (
                   <option className={OPTION_CLASS} key={k} value={k}>{v}</option>
                 ))}
@@ -457,15 +650,30 @@ export default function RelatorioSelfieVideoPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Estratégia</label>
+              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Tema</label>
               <select
-                value={strategy}
-                onChange={(e) => setStrategy(e.target.value)}
+                value={themeSlug}
+                onChange={(e) => setThemeSlug(e.target.value)}
                 className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
               >
-                <option className={OPTION_CLASS} value="">Todas</option>
-                <option className={OPTION_CLASS} value="name_sync">Sync do nome (curto)</option>
-                <option className={OPTION_CLASS} value="full_video">Vídeo completo</option>
+                <option className={OPTION_CLASS} value="">Todos os temas</option>
+                {themes.map((t) => (
+                  <option className={OPTION_CLASS} key={t.slug} value={t.slug}>{t.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">WhatsApp</label>
+              <select
+                value={whatsappFilter}
+                onChange={(e) => setWhatsappFilter(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
+              >
+                <option className={OPTION_CLASS} value="">Todos</option>
+                <option className={OPTION_CLASS} value="sent">Enviados</option>
+                <option className={OPTION_CLASS} value="not_sent">Nao enviados</option>
+                <option className={OPTION_CLASS} value="clicked">Clicaram no botao</option>
               </select>
             </div>
 
@@ -477,11 +685,24 @@ export default function RelatorioSelfieVideoPage() {
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Ex.: João, 5511..."
+                  placeholder="Joao, 5592..."
                   className="w-full pl-9 pr-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white placeholder:text-zinc-600 outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
                 />
               </div>
             </form>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Estrategia</label>
+              <select
+                value={strategy}
+                onChange={(e) => setStrategy(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white/[0.04] hover:bg-white/[0.06] border border-white/[0.08] focus:border-emerald-500/50 rounded-xl text-sm text-white outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200"
+              >
+                <option className={OPTION_CLASS} value="">Todas</option>
+                <option className={OPTION_CLASS} value="name_sync">Sync do nome</option>
+                <option className={OPTION_CLASS} value="full_video">Video completo</option>
+              </select>
+            </div>
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">De</label>
@@ -494,7 +715,7 @@ export default function RelatorioSelfieVideoPage() {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Até</label>
+              <label className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">Ate</label>
               <input
                 type="date"
                 value={toDate}
@@ -503,27 +724,14 @@ export default function RelatorioSelfieVideoPage() {
               />
             </div>
           </div>
-
-          {selectedCandidate && (
-            <div className="mt-4 flex items-center gap-2 text-xs text-zinc-400">
-              <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                {selectedCandidate.display_name || selectedCandidate.name}
-              </span>
-              {selectedCandidate.video_strategy && (
-                <span className="text-zinc-500">
-                  estratégia padrão: <span className="text-zinc-300">{STRATEGY_LABELS[selectedCandidate.video_strategy] ?? selectedCandidate.video_strategy}</span>
-                </span>
-              )}
-            </div>
-          )}
         </div>
 
-        {/* Conteúdo */}
+        {/* Content */}
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="flex items-center gap-3 text-zinc-400">
               <Loader2 size={20} className="animate-spin" />
-              <span>Carregando relatório...</span>
+              <span>Carregando...</span>
             </div>
           </div>
         ) : error ? (
@@ -533,33 +741,33 @@ export default function RelatorioSelfieVideoPage() {
           </div>
         ) : (
           <>
-            {/* Stats grid */}
+            {/* Primary KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               <StatCard
                 label="Total"
                 value={summary?.total ?? 0}
-                hint={summary && summary.totalInDb > summary.total ? `${summary.totalInDb} no total (limite ${data?.filters.limit})` : 'no filtro'}
+                hint={summary && summary.totalInDb > summary.total ? `${summary.totalInDb} no banco` : 'pedidos'}
                 icon={Film}
                 accent="zinc"
               />
               <StatCard
                 label="Completos"
                 value={summary?.completed ?? 0}
-                hint="status = completed"
+                hint={`${deliveryRate}% taxa entrega`}
                 icon={Check}
                 accent="emerald"
               />
               <StatCard
-                label="WhatsApp"
+                label="WA Enviados"
                 value={summary?.whatsappSent ?? 0}
-                hint="entregues"
-                icon={MessageCircle}
+                hint={`${summary?.whatsappOfficial ?? 0} oficial / ${summary?.whatsappUazapi ?? 0} uazapi`}
+                icon={Send}
                 accent="emerald"
               />
               <StatCard
-                label="Em proc."
+                label="Em processo"
                 value={summary?.inProgress ?? 0}
-                hint="pipeline ativo"
+                hint={summary?.locked ? `${summary.locked} travados` : 'pipeline ativo'}
                 icon={Activity}
                 accent="amber"
               />
@@ -573,51 +781,51 @@ export default function RelatorioSelfieVideoPage() {
               <StatCard
                 label="Cacheados"
                 value={summary?.cached ?? 0}
-                hint="reusaram vídeo"
+                hint="reusaram video"
                 icon={Sparkles}
                 accent="violet"
               />
             </div>
 
-            {/* Sub stats — detalhes de progressão */}
+            {/* Secondary KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatCard
-                label="Só gravação"
+                label="So gravacao"
                 value={summary?.recordingOnly ?? 0}
-                hint="início enviado, sem processar"
+                hint="inicio sem processar"
                 icon={Video}
                 accent="zinc"
               />
               <StatCard
                 label="Lipsync prontos"
-                value={summary?.hasLipsyncOnly ?? 0}
-                hint="só lipsync, falta compose"
+                value={summary?.hasLipsync ?? 0}
+                hint="falta compose"
                 icon={Zap}
                 accent="amber"
               />
               <StatCard
-                label="Vídeo final pronto"
+                label="Video final"
                 value={summary?.hasFinalVideo ?? 0}
-                hint="composição concluída"
+                hint="composicao OK"
                 icon={Film}
                 accent="sky"
               />
               <StatCard
-                label="Clicaram no link"
+                label="Clicaram link"
                 value={summary?.whatsappClicked ?? 0}
-                hint="botão pós-envio"
+                hint="engajamento pos-envio"
                 icon={MousePointerClick}
                 accent="violet"
               />
             </div>
 
             {/* Breakdowns */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Por progresso */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+              {/* Progress */}
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
                   <BarChart3 size={14} className="text-emerald-400" />
-                  Estado da geração
+                  Estado da geracao
                 </h3>
                 <div className="space-y-3">
                   {(data?.byProgress ?? []).map((b) => (
@@ -629,17 +837,14 @@ export default function RelatorioSelfieVideoPage() {
                       badgeClass={PROGRESS_COLORS[b.progress]}
                     />
                   ))}
-                  {(data?.byProgress ?? []).length === 0 && (
-                    <p className="text-xs text-zinc-500">Sem dados</p>
-                  )}
                 </div>
               </div>
 
-              {/* Por status */}
+              {/* Status */}
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
                   <Activity size={14} className="text-sky-400" />
-                  Por status do pipeline
+                  Por status
                 </h3>
                 <div className="space-y-3">
                   {(data?.byStatus ?? []).map((b) => (
@@ -651,161 +856,326 @@ export default function RelatorioSelfieVideoPage() {
                       badgeClass={statusBadge(b.status)}
                     />
                   ))}
-                  {(data?.byStatus ?? []).length === 0 && (
-                    <p className="text-xs text-zinc-500">Sem dados</p>
-                  )}
                 </div>
               </div>
 
-              {/* Por estratégia */}
+              {/* Themes (top 8) */}
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
                 <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
-                  <Zap size={14} className="text-amber-400" />
-                  Por estratégia
+                  <MessageCircle size={14} className="text-violet-400" />
+                  Top temas
                 </h3>
                 <div className="space-y-3">
-                  {(data?.byStrategy ?? []).map((b) => (
+                  {(data?.byTheme ?? []).slice(0, 8).map((b) => (
                     <BreakdownBar
-                      key={b.strategy}
-                      label={STRATEGY_LABELS[b.strategy] ?? b.strategy}
+                      key={b.theme}
+                      label={b.theme.replace(/_/g, ' ')}
                       count={b.count}
                       total={summary?.total ?? 0}
+                      badgeClass="bg-violet-500/10 text-violet-400 border-violet-500/20"
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* WhatsApp providers */}
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
+                <h3 className="text-sm font-semibold text-white mb-4 flex items-center gap-2">
+                  <Send size={14} className="text-emerald-400" />
+                  Provedor WA
+                </h3>
+                <div className="space-y-3">
+                  {(data?.byProvider ?? []).map((b) => (
+                    <BreakdownBar
+                      key={b.provider}
+                      label={PROVIDER_LABELS[b.provider] ?? b.provider}
+                      count={b.count}
+                      total={summary?.whatsappSent ?? 0}
                       badgeClass={
-                        b.strategy === 'full_video'
-                          ? 'bg-violet-500/10 text-violet-400 border-violet-500/20'
-                          : b.strategy === 'name_sync'
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-zinc-500/10 text-zinc-300 border-zinc-500/20'
+                        b.provider === 'official'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                       }
                     />
                   ))}
-                  {(data?.byStrategy ?? []).length === 0 && (
-                    <p className="text-xs text-zinc-500">Sem dados</p>
+                  {(data?.byProvider ?? []).length === 0 && (
+                    <p className="text-xs text-zinc-500">Nenhum envio</p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Sparkline diária */}
+            {/* Sparkline */}
             <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-white">Volume nos últimos 30 dias</h3>
-                <span className="text-xs text-zinc-500">{summary?.total ?? 0} no filtro atual</span>
+                <h3 className="text-sm font-semibold text-white">Volume 30 dias</h3>
+                <span className="text-xs text-zinc-500">{summary?.total ?? 0} no filtro</span>
               </div>
               <Sparkline data={(data?.byDay ?? []).map((d) => d.count)} />
               <div className="flex justify-between mt-1 text-[10px] text-zinc-600">
-                <span>30d atrás</span>
+                <span>30d atras</span>
                 <span>{toDate || 'hoje'}</span>
               </div>
             </div>
 
-            {/* Tabela */}
+            {/* Pedidos - Cards (mobile) / Table (desktop) */}
             <section>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white tracking-tight">
-                  Histórico detalhado
+                  Pedidos detalhados
                   <span className="ml-2 text-sm font-normal text-zinc-500">
                     {items.length} registro{items.length === 1 ? '' : 's'}
                   </span>
                 </h2>
               </div>
 
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden">
-                {items.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
-                      <Film size={28} className="text-zinc-600" />
-                    </div>
-                    <p className="text-zinc-500 text-sm">Nenhum registro para os filtros selecionados</p>
+              {items.length === 0 ? (
+                <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl flex flex-col items-center justify-center py-16 text-center">
+                  <div className="p-4 rounded-2xl bg-zinc-900/50 mb-4">
+                    <Film size={28} className="text-zinc-600" />
                   </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Eleitor</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Candidato</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Progresso</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Estratégia</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tema</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">WA</th>
-                          <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Criado</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/[0.04]">
-                        {items.map((it) => {
-                          const prog = progressForRow(it);
-                          return (
-                            <tr key={it.id} className="hover:bg-white/[0.03] transition-colors duration-150">
-                              <td className="px-4 py-3">
-                                <div className="font-medium text-white text-sm">{it.name}</div>
+                  <p className="text-zinc-500 text-sm">Nenhum registro para os filtros selecionados</p>
+                </div>
+              ) : (
+                <>
+                  {/* Mobile: Cards */}
+                  <div className="md:hidden space-y-3">
+                    {items.map((it) => {
+                      const isExpanded = expandedId === it.id;
+                      return (
+                        <div
+                          key={it.id}
+                          className="bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden"
+                        >
+                          <button
+                            onClick={() => setExpandedId(isExpanded ? null : it.id)}
+                            className="w-full p-4 text-left"
+                          >
+                            {/* Top row: name + status */}
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="min-w-0">
+                                <div className="font-medium text-white text-sm truncate">{it.name}</div>
                                 <div className="text-[11px] text-zinc-500">{it.phone}</div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="text-sm text-zinc-300">{it.baseModelName ?? '—'}</div>
-                                {it.baseModelSlug && (
-                                  <div className="text-[10px] text-zinc-600">{it.baseModelSlug}</div>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium', statusBadge(it.status))}>
-                                  {statusLabel(it.status)}
-                                </span>
-                                {it.status === 'failed' && it.errorMessage && (
-                                  <p className="mt-1 text-[10px] text-red-400/70 line-clamp-1 max-w-[200px]" title={it.errorMessage}>
-                                    {it.errorMessage}
-                                  </p>
-                                )}
-                                {it.retryCount > 0 && (
-                                  <p className="mt-1 text-[10px] text-amber-400/80">
-                                    {it.retryCount} retry{it.retryCount === 1 ? '' : 's'}
-                                  </p>
-                                )}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium', PROGRESS_COLORS[prog])}>
-                                  {PROGRESS_LABELS[prog] ?? prog}
-                                </span>
-                                {it.cachedFrom && (
-                                  <p className="mt-1 text-[10px] text-violet-400/80 flex items-center gap-1">
-                                    <Sparkles size={9} /> cacheado
-                                  </p>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-zinc-400">
-                                {it.videoStrategy ? STRATEGY_LABELS[it.videoStrategy] ?? it.videoStrategy : '—'}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-zinc-400">
-                                {it.category ?? '—'}
-                              </td>
-                              <td className="px-4 py-3">
+                              </div>
+                              <span className={cn('shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium', statusBadge(it.status))}>
+                                {statusLabel(it.status)}
+                              </span>
+                            </div>
+
+                            {/* Middle: pipeline dots + theme */}
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <PipelineDots item={it} />
+                              <span className="text-[11px] text-zinc-400 truncate max-w-[140px]">
+                                {it.themeSlug?.replace(/_/g, ' ') ?? ''}
+                              </span>
+                            </div>
+
+                            {/* Bottom: WA status + provider + time */}
+                            <div className="flex items-center justify-between text-[11px]">
+                              <div className="flex items-center gap-2">
                                 {it.whatsappSent ? (
-                                  <div className="flex flex-col">
-                                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
-                                      <Check size={10} /> enviado
-                                    </span>
-                                    {it.whatsappButtonClickedAt && (
-                                      <span className="text-[10px] text-violet-400 flex items-center gap-1">
-                                        <MousePointerClick size={9} /> clicou
+                                  <span className="inline-flex items-center gap-1 text-emerald-400">
+                                    <Check size={10} /> enviado
+                                    {it.whatsappProvider && (
+                                      <span className={cn(
+                                        'ml-1 px-1.5 py-0.5 rounded-full border text-[9px] font-medium',
+                                        it.whatsappProvider === 'official'
+                                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                                      )}>
+                                        {it.whatsappProvider === 'official' ? 'Meta' : 'UAZAPI'}
                                       </span>
                                     )}
-                                  </div>
+                                  </span>
+                                ) : it.status === 'completed' ? (
+                                  <span className="text-amber-400">nao enviou</span>
                                 ) : (
-                                  <span className="text-[10px] text-zinc-600">—</span>
+                                  <span className="text-zinc-600">{'\u2014'}</span>
                                 )}
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="text-[11px] text-zinc-400">{formatDateTime(it.createdAt)}</div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                                {it.whatsappButtonClickedAt && (
+                                  <MousePointerClick size={10} className="text-violet-400" />
+                                )}
+                                {it.isLocked && <Lock size={10} className="text-amber-400" />}
+                              </div>
+                              <span className="text-zinc-500">{formatRelative(it.createdAt)}</span>
+                            </div>
+                          </button>
+
+                          {/* Expanded detail */}
+                          {isExpanded && (
+                            <div className="border-t border-white/[0.06] p-4 space-y-3 text-xs">
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Candidato</span>
+                                  <span className="text-zinc-300">{it.baseModelName ?? '\u2014'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Estrategia</span>
+                                  <span className="text-zinc-300">{STRATEGY_LABELS[it.videoStrategy ?? ''] ?? '\u2014'}</span>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Criado</span>
+                                  <span className="text-zinc-300">{formatDateTime(it.createdAt)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Atualizado</span>
+                                  <span className="text-zinc-300">{formatDateTime(it.updatedAt)}</span>
+                                </div>
+                              </div>
+
+                              {it.whatsappSent && (
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">WA enviado em</span>
+                                    <span className="text-zinc-300">{formatDateTime(it.whatsappSentAt)}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Clicou botao</span>
+                                    <span className="text-zinc-300">
+                                      {it.whatsappButtonClickedAt ? formatDateTime(it.whatsappButtonClickedAt) : 'Nao'}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {it.transcription && (
+                                <div>
+                                  <span className="text-zinc-500 block text-[10px] uppercase tracking-wider mb-1">Transcricao</span>
+                                  <p className="text-zinc-300 bg-white/[0.03] border border-white/[0.06] rounded-xl p-3 leading-relaxed">
+                                    {it.transcription}
+                                  </p>
+                                </div>
+                              )}
+
+                              {it.isCached && (
+                                <div className="inline-flex items-center gap-1 text-violet-400 text-[11px]">
+                                  <Sparkles size={11} /> Reusou cache
+                                </div>
+                              )}
+
+                              {it.errorMessage && (
+                                <div>
+                                  <span className="text-red-400 text-[10px] block mb-1">Erro:</span>
+                                  <p className="text-red-300/70 bg-red-500/5 border border-red-500/10 rounded-xl p-3 text-[11px] break-all">
+                                    {it.errorMessage}
+                                  </p>
+                                </div>
+                              )}
+
+                              {it.retryCount > 0 && (
+                                <span className="text-amber-400 text-[11px]">{it.retryCount} tentativa{it.retryCount > 1 ? 's' : ''}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
+
+                  {/* Desktop: Table */}
+                  <div className="hidden md:block bg-white/[0.03] border border-white/[0.06] rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500 w-8"></th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Eleitor</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Candidato</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Status</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Pipeline</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tema</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">WhatsApp</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Provedor</th>
+                            <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-zinc-500">Quando</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/[0.04]">
+                          {items.map((it) => {
+                            const isExpanded = expandedId === it.id;
+                            return (
+                              <Fragment key={it.id}>
+                                <tr
+                                  onClick={() => setExpandedId(isExpanded ? null : it.id)}
+                                  className={cn(
+                                    'hover:bg-white/[0.03] transition-colors duration-150 cursor-pointer',
+                                    isExpanded && 'bg-white/[0.02]',
+                                  )}
+                                >
+                                  <td className="px-4 py-3">
+                                    <button className="p-1 rounded-lg hover:bg-white/[0.08] text-zinc-500 hover:text-white transition-colors">
+                                      {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </button>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-medium text-white text-sm">{it.name}</div>
+                                    <div className="text-[11px] text-zinc-500">{it.phone}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="text-sm text-zinc-300">{it.baseModelName ?? '\u2014'}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium', statusBadge(it.status))}>
+                                      {statusLabel(it.status)}
+                                    </span>
+                                    {it.isLocked && (
+                                      <span className="ml-1 text-amber-400" title={`Travado desde ${formatDateTime(it.lockedAt)}`}>
+                                        <Lock size={10} />
+                                      </span>
+                                    )}
+                                    {it.retryCount > 0 && (
+                                      <span className="ml-1 text-[10px] text-amber-400/80">{it.retryCount}x</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <PipelineDots item={it} />
+                                  </td>
+                                  <td className="px-4 py-3 text-xs text-zinc-400 max-w-[120px] truncate" title={it.themeSlug ?? undefined}>
+                                    {it.themeSlug?.replace(/_/g, ' ') ?? '\u2014'}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {it.whatsappSent ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <Check size={12} className="text-emerald-400" />
+                                        {it.whatsappButtonClickedAt && (
+                                          <MousePointerClick size={10} className="text-violet-400" />
+                                        )}
+                                      </div>
+                                    ) : it.status === 'completed' ? (
+                                      <span className="text-[10px] text-amber-400">nao enviou</span>
+                                    ) : (
+                                      <span className="text-[10px] text-zinc-600">{'\u2014'}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    {it.whatsappProvider ? (
+                                      <span className={cn(
+                                        'inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-medium',
+                                        it.whatsappProvider === 'official'
+                                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+                                      )}>
+                                        {it.whatsappProvider === 'official' ? 'Meta' : 'UAZAPI'}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] text-zinc-600">{'\u2014'}</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="text-[11px] text-zinc-400" title={formatDateTime(it.createdAt)}>
+                                      {formatRelative(it.createdAt)}
+                                    </div>
+                                  </td>
+                                </tr>
+                                {isExpanded && <ExpandedRow item={it} />}
+                              </Fragment>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              )}
             </section>
           </>
         )}
