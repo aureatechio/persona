@@ -7,22 +7,23 @@ export async function GET() {
   try {
     const now = Date.now();
 
-    // In-progress: last 24h
+    // In-progress: all non-terminal items (no date cap — stuck items must stay visible)
     const { data: inProgress, error: errProgress } = await supabaseAdmin
       .from('video_selfies')
       .select('id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent')
-      .gte('created_at', new Date(now - 24 * 60 * 60 * 1000).toISOString())
       .not('status', 'in', '("completed","failed")')
       .eq('whatsapp_sent', false)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
 
-    // Completed/failed: only last 1 hour (keeps screen clean)
+    // Completed/failed: last 24h
     const { data: finished, error: errFinished } = await supabaseAdmin
       .from('video_selfies')
       .select('id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent')
-      .gte('updated_at', new Date(now - 60 * 60 * 1000).toISOString())
+      .gte('updated_at', new Date(now - 24 * 60 * 60 * 1000).toISOString())
       .or('status.eq.completed,status.eq.failed,whatsapp_sent.eq.true')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
 
     const error = errProgress || errFinished;
 
