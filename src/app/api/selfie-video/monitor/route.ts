@@ -5,6 +5,19 @@ export const dynamic = 'force-dynamic';
 
 const SELECT_COLS = 'id, name, phone, status, error_message, created_at, updated_at, final_video_path, whatsapp_sent';
 
+interface MonitorRow {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  final_video_path: string | null;
+  whatsapp_sent: boolean;
+  _table: string;
+}
+
 async function fetchTable(table: 'video_selfies' | 'v2_video_selfies', now: number) {
   const [{ data: inProgress, error: e1 }, { data: finished, error: e2 }] = await Promise.all([
     supabaseAdmin
@@ -25,12 +38,23 @@ async function fetchTable(table: 'video_selfies' | 'v2_video_selfies', now: numb
 
   const error = e1 || e2;
   const seen = new Set<string>();
-  const rows: Array<Record<string, unknown>> = [];
+  const rows: MonitorRow[] = [];
   for (const row of [...(inProgress ?? []), ...(finished ?? [])]) {
     const key = `${table}:${row.id}`;
     if (!seen.has(key)) {
       seen.add(key);
-      rows.push({ ...(row as Record<string, unknown>), _table: table });
+      rows.push({
+        id: row.id,
+        name: row.name,
+        phone: row.phone,
+        status: row.status,
+        error_message: row.error_message,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        final_video_path: row.final_video_path,
+        whatsapp_sent: row.whatsapp_sent,
+        _table: table,
+      });
     }
   }
   return { rows, error };
@@ -51,18 +75,17 @@ export async function GET() {
       return NextResponse.json({ error: 'Falha ao buscar dados' }, { status: 500 });
     }
 
-    const allRows = [...(v1.rows ?? []), ...(v2.rows ?? [])].sort(
-      (a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime(),
+    const allRows = [...v1.rows, ...v2.rows].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
-    // Generate signed URLs for completed videos
     const enriched = await Promise.all(
       allRows.map(async (row) => {
         let videoUrl: string | null = null;
         if (row.final_video_path && (row.status === 'completed' || row.whatsapp_sent)) {
           const { data: signed } = await supabaseAdmin.storage
             .from('voice-models')
-            .createSignedUrl(row.final_video_path as string, 3600);
+            .createSignedUrl(row.final_video_path, 3600);
           videoUrl = signed?.signedUrl ?? null;
         }
         return { ...row, videoUrl };
