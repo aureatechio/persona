@@ -319,21 +319,36 @@ def _join_middles_crossfade(
     for p in part_paths:
         inputs += ["-i", p]
 
-    # Cadeia de xfade/acrossfade: cada junção começa XFADE_DURATION
-    # antes do fim acumulado dos clipes anteriores.
+    # Vídeo: cadeia de xfade — cada junção começa XFADE_DURATION antes
+    # do fim acumulado dos clipes anteriores.
+    #
+    # Áudio: SEM acrossfade. O fade atenuava a primeira palavra do tema
+    # e sobrepunha o fim da fala do nome ("fala dobrada"/fora de sync).
+    # Cada áudio entra alinhado ao seu vídeo (adelay até o início do
+    # clipe na timeline) em volume cheio; a sobreposição de 0.3s cai no
+    # tail silence do clipe anterior (por isso o TTS do name_sync leva
+    # respiro >= XFADE_DURATION).
+    n = len(part_paths)
     filters: list[str] = []
-    v_prev, a_prev = "[0:v]", "[0:a]"
+    v_prev = "[0:v]"
     offset = 0.0
-    for i in range(1, len(part_paths)):
+    a_labels = ["[0:a]"]
+    for i in range(1, n):
         offset += durations[i - 1] - XFADE_DURATION
         filters.append(
             f"{v_prev}[{i}:v]xfade=transition=fade"
             f":duration={XFADE_DURATION}:offset={offset:.3f}[v{i}]"
         )
-        filters.append(f"{a_prev}[{i}:a]acrossfade=d={XFADE_DURATION}[a{i}]")
-        v_prev, a_prev = f"[v{i}]", f"[a{i}]"
+        delay_ms = int(round(offset * 1000))
+        filters.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[ad{i}]")
+        a_labels.append(f"[ad{i}]")
+        v_prev = f"[v{i}]"
+    filters.append(
+        "".join(a_labels) + f"amix=inputs={n}:normalize=0:duration=longest[amain]"
+    )
+    a_prev = "[amain]"
 
-    total = sum(durations) - XFADE_DURATION * (len(part_paths) - 1)
+    total = sum(durations) - XFADE_DURATION * (n - 1)
 
     music_bytes = _download_storage_asset(bg_music_path) if bg_music_path else None
     if music_bytes is not None:

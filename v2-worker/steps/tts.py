@@ -325,4 +325,6 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
 
     audio = _trim_tail_silence(audio)
-    return _add_tail_silence(audio, seconds=0.1)
+    # Respiro >= XFADE_DURATION do compose (0.3s): a sobreposição do
+    # crossfade de vídeo cai no silêncio, não em cima da fala do nome.
+    return _add_tail_silence(audio, seconds=0.35)

@@ -336,7 +336,7 @@ def generate_tts_name_sync(
     voice_id: str,
     tts_settings: dict | None = None,
     pad_to_seconds: float | None = None,
-    tail_seconds: float = 0.1,
+    tail_seconds: float = 0.35,
 ) -> bytes:
     """
     TTS dedicado ao name_sync do fluxo novo (saudação curta com nome).
