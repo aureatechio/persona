@@ -99,8 +99,7 @@ def _get_duration(file_path: str) -> float:
 
 def speech_silences(video_path: str, max_seconds: float = 10.0, noise_db: int = -25, min_dur: float = 0.15) -> list[tuple[float, float]]:
     """Pausas de fala [(início, fim), ...] nos primeiros ``max_seconds``
-    de um vídeo local (silencedetect). Usado pra ancorar o clipe do nome
-    no fim real da fala placeholder e pular sobras no início do trimmed."""
+    de uma mídia local (silencedetect)."""
     try:
         result = subprocess.run(
             [
@@ -119,6 +118,41 @@ def speech_silences(video_path: str, max_seconds: float = 10.0, noise_db: int = 
     except Exception as e:
         logger.warning("speech_silences failed for %s: %s", video_path, e)
         return []
+
+
+def _cap_trailing_silence(input_path: str, keep: float = 0.35, noise_db: int = -38) -> str:
+    """
+    Corta o clipe logo após a fala terminar, mantendo só ``keep``s de
+    silêncio final. O TTS varia de duração e pode trazer respiração ou
+    ruído no rabo — sem este corte, o clipe do nome fica "parado" por
+    tempo variável antes da transição. Medindo o fim REAL da fala, a
+    transição cai sempre logo depois da última palavra, independente
+    da duração que o TTS gerou. Retorna o path (novo ou o original).
+    """
+    dur = _get_duration(input_path)
+    if dur <= 0:
+        return input_path
+    silences = speech_silences(input_path, max_seconds=dur + 1.0, noise_db=noise_db, min_dur=0.1)
+    # Silêncio final = o último que se estende até (quase) o fim do clipe
+    trailing_start = None
+    for s_start, s_end in silences:
+        if s_end >= dur - 0.1:
+            trailing_start = s_start
+    if trailing_start is None or (dur - trailing_start) <= keep + 0.05:
+        return input_path
+
+    new_dur = trailing_start + keep
+    out_path = input_path.replace(".mp4", "_capped.mp4")
+    _run_ffmpeg([
+        "-i", input_path, "-t", f"{new_dur:.3f}",
+        *ENC_ARGS,
+        "-movflags", "+faststart", "-y", out_path,
+    ])
+    logger.info(
+        "Trailing silence capped: %.2fs → %.2fs (fala termina em %.2fs, keep=%.2fs)",
+        dur, new_dur, trailing_start, keep,
+    )
+    return out_path
 
 
 def scene_cut_times(video_path: str, max_seconds: float = 10.0, threshold: float = 0.12) -> list[float]:
@@ -359,6 +393,12 @@ def _join_middles_crossfade(
     """
     if len(part_paths) < 2:
         raise ValueError("_join_middles_crossfade requer >= 2 partes")
+
+    # Clipe do nome (parte 0): corta logo após a fala terminar — a
+    # transição sempre cai depois da última palavra, qualquer que seja
+    # a duração que o TTS gerou.
+    part_paths = list(part_paths)
+    part_paths[0] = _cap_trailing_silence(part_paths[0])
 
     durations = [_get_duration(p) for p in part_paths]
     if any(d <= XFADE_DURATION for d in durations):

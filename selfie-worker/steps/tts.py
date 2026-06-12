@@ -290,7 +290,7 @@ def _audio_duration(audio: bytes) -> float:
             pass
 
 
-def _trim_tail_silence(audio: bytes, threshold_db: int = -45) -> bytes:
+def _trim_tail_silence(audio: bytes, threshold_db: int = -40) -> bytes:
     """Remove o silêncio do FIM do áudio (truque areverse + silenceremove).
     O TTS costuma devolver um rabo de silêncio que, somado ao crossfade,
     vira "ar morto" na junção. Fallback: áudio original em falha."""

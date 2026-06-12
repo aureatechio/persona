@@ -238,7 +238,7 @@ def generate_tts(text: str, voice_id: str, bg_music_path: str | None = None) -> 
     return final_audio, processed_text
 
 
-def _trim_tail_silence(audio: bytes, threshold_db: int = -45) -> bytes:
+def _trim_tail_silence(audio: bytes, threshold_db: int = -40) -> bytes:
     """Remove o silêncio do FIM do áudio (truque areverse + silenceremove).
     O TTS devolve um rabo de silêncio que, somado ao crossfade, vira
     "ar morto" na junção. Fallback: áudio original em falha."""
