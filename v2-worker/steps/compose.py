@@ -97,12 +97,40 @@ def _get_duration(file_path: str) -> float:
         return 0.0
 
 
-def scene_cut_times(video_path: str, max_seconds: float = 10.0, threshold: float = 0.25) -> list[float]:
+def speech_silences(video_path: str, max_seconds: float = 10.0, noise_db: int = -25, min_dur: float = 0.15) -> list[tuple[float, float]]:
+    """Pausas de fala [(início, fim), ...] nos primeiros ``max_seconds``
+    de um vídeo local (silencedetect). Usado pra ancorar o clipe do nome
+    no fim real da fala placeholder e pular sobras no início do trimmed."""
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-t", f"{max_seconds:.1f}", "-i", video_path,
+                "-af", f"silencedetect=noise={noise_db}dB:d={min_dur}",
+                "-f", "null", "-",
+            ],
+            capture_output=True,
+            timeout=120,
+        )
+        import re as _re
+        out = result.stderr.decode(errors="replace")
+        starts = [float(m) for m in _re.findall(r"silence_start: ([0-9.]+)", out)]
+        ends = [float(m) for m in _re.findall(r"silence_end: ([0-9.]+)", out)]
+        return list(zip(starts, ends))
+    except Exception as e:
+        logger.warning("speech_silences failed for %s: %s", video_path, e)
+        return []
+
+
+def scene_cut_times(video_path: str, max_seconds: float = 10.0, threshold: float = 0.12) -> list[float]:
     """
     Detecta cortes de cena (trocas de ângulo/take) nos primeiros
     ``max_seconds`` de um vídeo local. Usado pra achar a janela de
     ângulo único da intro do theme_video — o lipsync do nome não pode
     atravessar um corte de câmera (aparece "dois takes" na mesma fala).
+
+    Limiar 0.12: cortes entre takes do MESMO enquadramento são suaves
+    (no seguranca_crime_organizado o corte de 1.0s não passava de 0.20)
+    — 0.25 só pegava trocas de ângulo fortes.
     """
     try:
         result = subprocess.run(
