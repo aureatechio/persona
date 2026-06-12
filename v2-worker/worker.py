@@ -96,8 +96,8 @@ def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_
     from steps.compose import (
         media_duration_bytes,
         scene_cut_times,
+        speech_silences,
         trim_video_bytes,
-        _get_duration,
     )
     import tempfile
 
@@ -127,45 +127,65 @@ def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_
         )
         return None
 
-    # Cortes de cena dentro da intro (vídeo local temporário)
+    # Análise da intro no vídeo local temporário
     tmpdir = tempfile.mkdtemp(prefix="name_window_")
     src = os.path.join(tmpdir, "original.mp4")
     try:
         with open(src, "wb") as f:
             f.write(original_bytes)
-        cuts = scene_cut_times(src, max_seconds=intro_end + 1.0)
+
+        # Fim REAL da fala placeholder: o trim do editor (intro_end) pode
+        # cair antes da fala acabar — ancorar o clipe no fim da fala
+        # evita terminar no meio de gesto/palavra. Procura a primeira
+        # pausa de fala que começa perto/depois de intro_end.
+        silences = speech_silences(src, max_seconds=intro_end + 2.0)
+        placeholder_end = intro_end
+        for s_start, _s_end in silences:
+            if s_start >= intro_end - 0.4:
+                placeholder_end = max(intro_end, s_start)
+                break
+
+        # Janela de ângulo único: do último corte de cena antes do fim
+        # da fala até o fim da fala (limiar 0.12 pega cortes suaves).
+        cuts = scene_cut_times(src, max_seconds=placeholder_end + 1.0)
         window_start = max(
-            [c for c in cuts if c < intro_end - 0.5],
+            [c for c in cuts if c < placeholder_end - 0.5],
             default=0.0,
         )
-        window_avail = intro_end - window_start
-        if tts_dur + 0.15 > window_avail:
-            # TTS não cabe no último take — tenta a intro inteira
-            # (pode cruzar um corte; melhor que o base video neutro
-            # só se couber sem cruzar — senão fallback).
-            if tts_dur + 0.15 <= intro_end:
-                window_start = 0.0
-                logger.warning(
-                    "name_window: TTS %.2fs não cabe no último take (%.2fs) — "
-                    "usando intro inteira (pode ter corte de ângulo)",
-                    tts_dur, window_avail,
-                )
-            else:
-                logger.info(
-                    "name_window: TTS %.2fs não cabe na intro %.2fs — fallback",
-                    tts_dur, intro_end,
-                )
-                return None
+        window_avail = placeholder_end - window_start
 
-        base_bytes = trim_video_bytes(original_bytes, window_start, tts_dur + 0.2)
+        clip_len = tts_dur + 0.2
+        # Tolerância: o cut_off pode comer até ~0.15s do tail silence
+        # (0.35s) sem tocar na fala.
+        if clip_len <= window_avail + 0.15:
+            # Ancora o FIM do clipe no fim da fala placeholder — a
+            # transição cai no ponto natural da edição original.
+            clip_start = max(window_start, placeholder_end - clip_len)
+            sync_mode = "cut_off"
+            base_bytes = trim_video_bytes(
+                original_bytes, clip_start, placeholder_end - clip_start
+            )
+        else:
+            # Fala não cabe no take único: usa a janela inteira em
+            # bounce (vídeo vai-e-volta dentro do MESMO take — sem
+            # corte de cena, sem pulo de loop).
+            clip_start = window_start
+            sync_mode = "bounce"
+            base_bytes = trim_video_bytes(original_bytes, window_start, window_avail)
+            logger.warning(
+                "name_window: TTS %.2fs > take único %.2fs — sync_mode=bounce",
+                tts_dur, window_avail,
+            )
+
         base_path = f"v2/name_base/{sid}.mp4"
         db.upload_file(base_path, base_bytes, "video/mp4")
         logger.info(
-            "name_window: janela %.2f–%.2fs (intro_end=%.2fs, cortes=%s, tts=%.2fs) → %s",
-            window_start, window_start + tts_dur + 0.2, intro_end,
-            ["%.2f" % c for c in cuts], tts_dur, base_path,
+            "name_window: clipe %.2f–%.2fs (fala_end=%.2fs, intro_end=%.2fs, "
+            "cortes=%s, tts=%.2fs, mode=%s) → %s",
+            clip_start, placeholder_end, placeholder_end, intro_end,
+            ["%.2f" % c for c in cuts], tts_dur, sync_mode, base_path,
         )
-        return base_path
+        return {"path": base_path, "sync_mode": sync_mode}
     except Exception as e:
         logger.warning("name_window: preparo falhou (%s) — fallback base video", e)
         return None
@@ -175,6 +195,51 @@ def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_
             os.rmdir(tmpdir)
         except OSError:
             pass
+
+
+def _theme_start_offset(theme_storage_path: str) -> float:
+    """
+    Detecta sobras no INÍCIO do theme_video trimmed: se o editor cortou
+    cedo demais, o trimmed começa com o rabo da fala placeholder e/ou
+    termina num corte de cena logo adiante (visto no
+    seguranca_crime_organizado: 0.46s de fala + corte em 0.65s).
+
+    Retorna quantos segundos pular (0.0 se o trim está limpo). Capado
+    em 2s — offset maior que isso indica outro problema e é mais seguro
+    não cortar conteúdo.
+    """
+    from steps.compose import scene_cut_times, speech_silences
+    import tempfile
+
+    try:
+        data = db.download_file(theme_storage_path)
+        tmpdir = tempfile.mkdtemp(prefix="theme_offset_")
+        src = os.path.join(tmpdir, "theme.mp4")
+        with open(src, "wb") as f:
+            f.write(data)
+        try:
+            offset = 0.0
+            # Sobra de fala: primeira pausa começa já em fala (silêncio
+            # não começa em ~0) → fala residual até silence_start.
+            silences = speech_silences(src, max_seconds=2.5)
+            if silences:
+                first_start, first_end = silences[0]
+                if first_start > 0.05 and first_start < 2.0:
+                    offset = first_start + 0.05
+            # Corte de cena nos primeiros 2s: começa direto na cena nova.
+            cuts = [c for c in scene_cut_times(src, max_seconds=2.0) if c < 2.0]
+            if cuts:
+                offset = max(offset, cuts[0])
+            return min(offset, 2.0)
+        finally:
+            try:
+                os.unlink(src)
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
+    except Exception as e:
+        logger.warning("_theme_start_offset falhou (%s) — sem offset", e)
+        return 0.0
 
 
 # ─── Main pipeline ─────────────────────────────────────────
@@ -412,8 +477,8 @@ def process_selfie(selfie: dict):
                         sid, theme_model_now, tts_path, lip_cfg
                     )
                     if name_base:
-                        lipsync_video_source = name_base
-                        force_sync_mode = "cut_off"
+                        lipsync_video_source = name_base["path"]
+                        force_sync_mode = name_base["sync_mode"]
                         logger.info("Step 4/6: NAME_SYNC — janela de ângulo único da intro do tema")
                     else:
                         lipsync_video_source = base_model["video_storage_path"]
@@ -529,6 +594,7 @@ def process_selfie(selfie: dict):
                 )
 
         middle_urls: list[str] = []
+        middle_offsets: list[float] = []
         if name_sync_cached_path and theme_slug:
             theme_model_now = db.get_theme_model(base_model["id"], theme_slug)
             theme_video_path = (
@@ -541,7 +607,13 @@ def process_selfie(selfie: dict):
                     db.create_signed_url(name_sync_cached_path),
                     db.create_signed_url(theme_video_path),
                 ]
-                logger.info("Step 5/6: name_sync + theme_video (trimmed)")
+                # Pula sobra de placeholder / corte residual no início
+                # do trimmed (trim do editor pode ter cortado cedo).
+                theme_offset = _theme_start_offset(theme_video_path)
+                middle_offsets = [0.0, theme_offset]
+                logger.info(
+                    "Step 5/6: name_sync + theme_video (offset=%.2fs)", theme_offset
+                )
 
         compose_bg_music = base_model.get("bg_music_path") if len(middle_urls) >= 2 else None
 
@@ -558,6 +630,7 @@ def process_selfie(selfie: dict):
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
             closing_music_path=base_model.get("closing_music_path"),
+            middle_offsets=middle_offsets if middle_offsets else None,
             bg_music_path=compose_bg_music,
         )
 
