@@ -302,8 +302,11 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
 
     logger.info("Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s)", voice_id, text, bool(tts_settings))
 
-    request_text = text.rstrip() + ' <break time="0.5s" />'
-
+    # Fechamento afirmativo via next_text: o contexto "outra frase vem
+    # depois" faz o modelo FECHAR a melodia da frase atual — sem gerar
+    # áudio extra. NÃO usar <break> no fim: com stability baixa o
+    # ElevenLabs alucina fala dentro da pausa (capturado em produção:
+    # um "tchau, tchau" sussurrado após o nome).
     response = requests.post(
         url + "?output_format=mp3_44100_128",
         headers={
@@ -311,7 +314,8 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
             "xi-api-key": ELEVENLABS_API_KEY,
         },
         json={
-            "text": request_text,
+            "text": text.rstrip(),
+            "next_text": " Ela continua o vídeo falando sobre o tema.",
             "model_id": "eleven_multilingual_v2",
             "language_code": "pt",
             "apply_text_normalization": "off",
