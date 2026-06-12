@@ -335,9 +335,18 @@ def process_selfie(selfie: dict):
         if strategy == "name_sync":
             lip_cfg = base_model.get("lipsync_config") or {}
             tts_settings = lip_cfg.get("tts")
-            bg_music = base_model.get("bg_music_path")
-            logger.info("Step 3/6: Generating NAME_SYNC TTS (curto, bg_music=%s, custom=%s)...", bg_music, bool(tts_settings))
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings, bg_music_path=bg_music)
+            # Sem bg_music aqui: a música entra no compose como trilha
+            # contínua sob o corpo inteiro (não morre na junção).
+            # Sem padding: o silêncio do fim é aparado no TTS e fica só
+            # 0.1s de respiro — a fala emenda direto no tema (v9).
+            logger.info(
+                "Step 3/6: Generating NAME_SYNC TTS (curto, limpo, custom=%s)...",
+                bool(tts_settings),
+            )
+            audio_bytes = generate_tts_name_sync(
+                generated_text, voice_id,
+                tts_settings=tts_settings,
+            )
             tts_processed_text = generated_text
         else:
             logger.info(
@@ -384,6 +393,10 @@ def process_selfie(selfie: dict):
                 # - name_sync com greeting_video: usa o vídeo saudação
                 #   dedicado (3s placeholder). Mesmo visual pra qualquer
                 #   tema, cache compartilhado.
+                # - name_sync com name_base_start configurado: recorta a
+                #   JANELA DE ÂNGULO ÚNICO do theme_video (evita troca de
+                #   take no meio da fala do nome — o theme pode ter cortes
+                #   de câmera dentro da intro).
                 # - name_sync sem greeting / full_video: usa o início do
                 #   theme_video (modo legado, cache por tema).
                 # - legacy: vídeo base "neutro" (fallback sem tema).
@@ -393,12 +406,53 @@ def process_selfie(selfie: dict):
                 )
                 greeting_path = base_model.get("greeting_video_path")
                 use_greeting = strategy == "name_sync" and bool(greeting_path)
+                lip_cfg = base_model.get("lipsync_config") or {}
+                name_base_start = lip_cfg.get("name_base_start")
+                force_sync_mode = None
 
                 if use_greeting:
                     lipsync_video_source = greeting_path
                     logger.info(
                         "Step 4/6: NAME_SYNC — lipsync usa video saudação (%s)",
                         lipsync_video_source,
+                    )
+                elif (
+                    strategy == "name_sync"
+                    and theme_model_now
+                    and name_base_start is not None
+                ):
+                    from steps.compose import trim_video_bytes, media_duration_bytes
+
+                    tts_bytes = db.download_file(tts_path)
+                    tts_dur = media_duration_bytes(tts_bytes, ".mp3")
+                    if tts_dur <= 0:
+                        tts_dur = 4.0  # fallback conservador
+                    window_end = float(
+                        lip_cfg.get("theme_greeting_end")
+                        or base_model.get("theme_intro_seconds")
+                        or 4.9
+                    )
+                    base_dur = tts_dur + 0.2
+                    window_avail = window_end - float(name_base_start)
+                    if base_dur > window_avail + 0.05:
+                        logger.warning(
+                            "Step 4/6: TTS (%.2fs) estoura a janela de ângulo único "
+                            "(%.2fs) — base vai cruzar o corte de câmera",
+                            tts_dur, window_avail,
+                        )
+                    theme_bytes = db.download_file(theme_model_now["video_storage_path"])
+                    base_bytes = trim_video_bytes(
+                        theme_bytes, float(name_base_start), base_dur
+                    )
+                    lipsync_video_source = f"name_base/{sid}.mp4"
+                    db.upload_file(lipsync_video_source, base_bytes, "video/mp4")
+                    # cut_off obrigatório: o output termina na duração do
+                    # TTS, e o compose retoma o theme em theme_greeting_end.
+                    force_sync_mode = "cut_off"
+                    logger.info(
+                        "Step 4/6: NAME_SYNC — base = janela de ângulo único do tema "
+                        "(%.2f–%.2fs, tts=%.2fs)",
+                        float(name_base_start), float(name_base_start) + base_dur, tts_dur,
                     )
                 elif strategy in ("name_sync", "full_video") and theme_model_now:
                     lipsync_video_source = theme_model_now["video_storage_path"]
@@ -421,13 +475,23 @@ def process_selfie(selfie: dict):
                 def _heartbeat():
                     db.heartbeat(sid)
 
-                lip_cfg = base_model.get("lipsync_config") or {}
+                # Greeting video é um placeholder CURTO (pode ter ~1s) —
+                # com cut_off o Sync Labs corta o output pela duração do
+                # vídeo e decapita a fala do nome. Com greeting, sempre
+                # loop: o vídeo repete até o TTS terminar. A janela de
+                # ângulo único força cut_off (output = duração do TTS).
+                if force_sync_mode:
+                    sync_mode = force_sync_mode
+                elif use_greeting:
+                    sync_mode = "loop"
+                else:
+                    sync_mode = lip_cfg.get("sync_mode", "loop")
                 lipsync_url = run_lipsync(
                     video_signed, audio_signed,
                     api_key=key_data["access_key"],
                     heartbeat_fn=_heartbeat,
                     model=lip_cfg.get("model", "lipsync-2-pro"),
-                    sync_mode=lip_cfg.get("sync_mode", "loop"),
+                    sync_mode=sync_mode,
                     temperature=float(lip_cfg.get("temperature", 0.3)),
                 )
 
@@ -511,6 +575,7 @@ def process_selfie(selfie: dict):
 
         middle_urls: list[str] = []
         middle_offsets: list[float] = []
+        compose_bg_music = None
         if name_sync_cached_path and theme_slug:
             theme_model_now = db.get_theme_model(base_model["id"], theme_slug)
             theme_video_path = (
@@ -534,6 +599,9 @@ def process_selfie(selfie: dict):
                     db.create_signed_url(theme_video_path),
                 ]
                 middle_offsets = [0.0, intro_seconds]
+                # Música só no fluxo novo — no legacy ela já vem
+                # mixada dentro do TTS longo.
+                compose_bg_music = base_model.get("bg_music_path")
                 logger.info(
                     "Step 5/6: NEW FLOW — name_sync (%s) + theme_video (%s, skip %.1fs intro, greeting=%s)",
                     name_sync_cached_path, theme_video_path, intro_seconds,
@@ -560,6 +628,7 @@ def process_selfie(selfie: dict):
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
             middle_offsets=middle_offsets if middle_offsets else None,
+            bg_music_path=compose_bg_music,
         )
 
         final_path = f"final/{sid}.mp4"

@@ -264,13 +264,97 @@ def generate_tts(text: str, voice_id: str, bg_music_path: str | None = None) -> 
     return final_audio, processed_text
 
 
-def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None, bg_music_path: str | None = None) -> bytes:
+def _audio_duration(audio: bytes) -> float:
+    """Duração do áudio em segundos via ffprobe (0.0 em falha)."""
+    import json
+
+    tmpdir = tempfile.mkdtemp(prefix="tts_dur_")
+    path = os.path.join(tmpdir, "audio.mp3")
+    try:
+        with open(path, "wb") as f:
+            f.write(audio)
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", path],
+            capture_output=True, timeout=15,
+        )
+        if result.returncode != 0:
+            return 0.0
+        return float(json.loads(result.stdout)["format"]["duration"])
+    except Exception:
+        return 0.0
+    finally:
+        try:
+            os.unlink(path)
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
+
+
+def _trim_tail_silence(audio: bytes, threshold_db: int = -45) -> bytes:
+    """Remove o silêncio do FIM do áudio (truque areverse + silenceremove).
+    O TTS costuma devolver um rabo de silêncio que, somado ao crossfade,
+    vira "ar morto" na junção. Fallback: áudio original em falha."""
+    tmpdir = tempfile.mkdtemp(prefix="tts_trim_")
+    input_path = os.path.join(tmpdir, "in.mp3")
+    output_path = os.path.join(tmpdir, "out.mp3")
+    try:
+        with open(input_path, "wb") as f:
+            f.write(audio)
+        result = subprocess.run(
+            [
+                "ffmpeg", "-i", input_path,
+                "-af",
+                f"areverse,silenceremove=start_periods=1:"
+                f"start_threshold={threshold_db}dB:start_silence=0.03,areverse",
+                "-c:a", "libmp3lame", "-b:a", "192k",
+                "-y", output_path,
+            ],
+            capture_output=True, timeout=15,
+        )
+        if result.returncode != 0:
+            return audio
+        with open(output_path, "rb") as f:
+            trimmed = f.read()
+        logger.info("Tail silence trimmed: %d → %d bytes", len(audio), len(trimmed))
+        return trimmed
+    except Exception:
+        return audio
+    finally:
+        for fname in os.listdir(tmpdir):
+            try:
+                os.unlink(os.path.join(tmpdir, fname))
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
+
+
+def generate_tts_name_sync(
+    text: str,
+    voice_id: str,
+    tts_settings: dict | None = None,
+    pad_to_seconds: float | None = None,
+    tail_seconds: float = 0.1,
+) -> bytes:
     """
     TTS dedicado ao name_sync do fluxo novo (saudação curta com nome).
 
     Settings configuráveis via ``tts_settings`` (lidos de
     ``base_model.lipsync_config.tts``). Fallback pros defaults
     originais se não informado.
+
+    O áudio sai LIMPO (sem trilha de fundo): a música é mixada no
+    compose como trilha contínua atravessando name_sync + theme_video —
+    música mixada aqui terminava em corte seco na junção (o fade-out
+    do mix era fixo em st=18s e nunca rodava num clipe de ~3s).
+
+    ``pad_to_seconds`` (theme_greeting_end do candidato): estende o
+    silêncio final até o áudio ter exatamente essa duração. Com o
+    lipsync em cut_off, o clipe do nome termina no MESMO frame em que
+    o theme_video retoma — continuidade de take perfeita, e o silêncio
+    vira a pausa natural entre a saudação e o conteúdo do tema.
     """
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
@@ -289,6 +373,12 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
         voice_id, text, bool(tts_settings),
     )
 
+    # <break> de fechamento: sem ele o modelo termina a frase com
+    # entonação "aberta" (como quem vai continuar falando). Com a pausa
+    # explícita, ele fecha a melodia em afirmação — e o silêncio que o
+    # break gera é aparado logo abaixo.
+    request_text = text.rstrip() + ' <break time="0.5s" />'
+
     response = requests.post(
         url + "?output_format=mp3_44100_128",
         headers={
@@ -296,7 +386,7 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
             "xi-api-key": ELEVENLABS_API_KEY,
         },
         json={
-            "text": text,
+            "text": request_text,
             "model_id": "eleven_multilingual_v2",
             "language_code": "pt",
             "apply_text_normalization": "off",
@@ -309,10 +399,27 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     audio = response.content
     logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
 
-    # Tail silence ajuda o lip-sync não cortar a última sílaba — mas
-    # mantém curto pra não estender o clipe além de ~3.5s.
-    padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
-    return _mix_background_music(padded, bg_music_path=bg_music_path)
+    # Primeiro APARA o silêncio que o próprio TTS devolve no final (com
+    # <break> no texto, o modelo fecha a entonação mas deixa o rabo de
+    # silêncio gravado — aparamos e controlamos o respiro a partir daqui).
+    audio = _trim_tail_silence(audio)
+
+    # Respiro final: tail_seconds (curto, só pro lip-sync não cortar a
+    # última sílaba). Se pad_to_seconds couber (fala + tail mínimo),
+    # preenche até a duração exata — alinhamento frame-perfeito com a
+    # retomada do theme_video.
+    pad = max(0.0, float(tail_seconds))
+    if pad_to_seconds:
+        dur = _audio_duration(audio)
+        if dur > 0 and dur + pad <= float(pad_to_seconds):
+            pad = float(pad_to_seconds) - dur
+        else:
+            pad = max(pad, 0.4)
+        logger.info(
+            "NAME_SYNC pad: fala=%.2fs, alvo=%.2fs, silêncio=+%.2fs",
+            dur, float(pad_to_seconds), pad,
+        )
+    return _add_tail_silence(audio, seconds=pad) if pad > 0 else audio
 
 
 def _add_tail_silence(audio: bytes, seconds: float = 1.5) -> bytes:
