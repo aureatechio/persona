@@ -145,36 +145,48 @@ def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_
                 placeholder_end = max(intro_end, s_start)
                 break
 
-        # Janela de ângulo único: do último corte de cena antes do fim
-        # da fala até o fim da fala (limiar 0.12 pega cortes suaves).
+        # Takes da intro: segmentos entre cortes de cena (limiar 0.12
+        # pega cortes suaves), limitados ao fim da fala placeholder.
         cuts = scene_cut_times(src, max_seconds=placeholder_end + 1.0)
-        window_start = max(
-            [c for c in cuts if c < placeholder_end - 0.5],
-            default=0.0,
+        boundaries = (
+            [0.0]
+            + sorted(c for c in cuts if 0.3 < c < placeholder_end - 0.3)
+            + [placeholder_end]
         )
-        window_avail = placeholder_end - window_start
+        takes = [
+            (boundaries[i], boundaries[i + 1])
+            for i in range(len(boundaries) - 1)
+        ]
 
         clip_len = tts_dur + 0.2
-        # Tolerância: o cut_off pode comer até ~0.15s do tail silence
-        # (0.35s) sem tocar na fala.
-        if clip_len <= window_avail + 0.15:
-            # Ancora o FIM do clipe no fim da fala placeholder — a
-            # transição cai no ponto natural da edição original.
-            clip_start = max(window_start, placeholder_end - clip_len)
+        # Escolhe o ÚLTIMO take em que a fala cabe (tolerância: o
+        # cut_off pode comer ~0.15s do tail de 0.35s sem tocar na fala).
+        # O fim do clipe ancora no fim do take — sempre um ponto de
+        # corte natural da edição original. Antes o seletor pegava
+        # cegamente o último take, mesmo com 0.7s (bounce frenético).
+        fitting = [
+            (start, end) for start, end in takes
+            if clip_len <= (end - start) + 0.15
+        ]
+        if fitting:
+            take_start, take_end = fitting[-1]
+            clip_start = max(take_start, take_end - clip_len)
             sync_mode = "cut_off"
             base_bytes = trim_video_bytes(
-                original_bytes, clip_start, placeholder_end - clip_start
+                original_bytes, clip_start, take_end - clip_start
             )
         else:
-            # Fala não cabe no take único: usa a janela inteira em
-            # bounce (vídeo vai-e-volta dentro do MESMO take — sem
-            # corte de cena, sem pulo de loop).
-            clip_start = window_start
+            # Nenhum take comporta a fala: usa o MAIOR take em bounce
+            # (vai-e-volta dentro do mesmo take — sem corte de cena).
+            take_start, take_end = max(takes, key=lambda t: t[1] - t[0])
+            clip_start = take_start
             sync_mode = "bounce"
-            base_bytes = trim_video_bytes(original_bytes, window_start, window_avail)
+            base_bytes = trim_video_bytes(
+                original_bytes, take_start, take_end - take_start
+            )
             logger.warning(
-                "name_window: TTS %.2fs > take único %.2fs — sync_mode=bounce",
-                tts_dur, window_avail,
+                "name_window: TTS %.2fs não cabe em nenhum take (maior=%.2fs) — bounce",
+                tts_dur, take_end - take_start,
             )
 
         base_path = f"v2/name_base/{sid}.mp4"
@@ -182,7 +194,7 @@ def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_
         logger.info(
             "name_window: clipe %.2f–%.2fs (fala_end=%.2fs, intro_end=%.2fs, "
             "cortes=%s, tts=%.2fs, mode=%s) → %s",
-            clip_start, placeholder_end, placeholder_end, intro_end,
+            clip_start, take_end, placeholder_end, intro_end,
             ["%.2f" % c for c in cuts], tts_dur, sync_mode, base_path,
         )
         return {"path": base_path, "sync_mode": sync_mode}
@@ -219,17 +231,23 @@ def _theme_start_offset(theme_storage_path: str) -> float:
             f.write(data)
         try:
             offset = 0.0
-            # Sobra de fala: primeira pausa começa já em fala (silêncio
-            # não começa em ~0) → fala residual até silence_start.
+            # Sobra de fala: se o vídeo NÃO começa em silêncio, há fala
+            # residual do placeholder até a primeira pausa.
             silences = speech_silences(src, max_seconds=2.5)
             if silences:
-                first_start, first_end = silences[0]
-                if first_start > 0.05 and first_start < 2.0:
+                first_start, _first_end = silences[0]
+                if 0.05 < first_start < 2.0:
                     offset = first_start + 0.05
-            # Corte de cena nos primeiros 2s: começa direto na cena nova.
-            cuts = [c for c in scene_cut_times(src, max_seconds=2.0) if c < 2.0]
-            if cuts:
-                offset = max(offset, cuts[0])
+                    # Se logo após a sobra existe um corte de cena
+                    # (resíduo do take antigo), estende até ele.
+                    cuts = [
+                        c for c in scene_cut_times(src, max_seconds=2.5)
+                        if c < offset + 0.5
+                    ]
+                    if cuts:
+                        offset = max(offset, cuts[-1])
+            # Sem fala residual: NÃO pular nada — corte de cena no início
+            # do conteúdo é edição legítima, não sobra.
             return min(offset, 2.0)
         finally:
             try:
