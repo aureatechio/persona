@@ -444,15 +444,33 @@ def process_selfie(selfie: dict):
                     lipsync_resp = requests.get(lipsync_url, timeout=120)
                     lipsync_resp.raise_for_status()
 
+                    # Upload com retry: um 503 transitório do Storage aqui
+                    # NÃO pode degradar — sem name_sync_cached_path o
+                    # compose perde o theme_video (vídeo sai sem o tema).
+                    def _upload_with_retry(path: str, data: bytes, attempts: int = 3):
+                        for attempt in range(attempts):
+                            try:
+                                db.upload_file(path, data, "video/mp4")
+                                return
+                            except Exception as e:
+                                if attempt < attempts - 1:
+                                    logger.warning(
+                                        "Step 4/6: upload %s falhou (%s) — retry %d/%d em 3s",
+                                        path, e, attempt + 2, attempts,
+                                    )
+                                    time.sleep(3)
+                                else:
+                                    raise
+
                     if strategy == "name_sync":
                         cached_path = f"v2/name_sync_cached/{sid}.mp4"
-                        db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
+                        _upload_with_retry(cached_path, lipsync_resp.content)
                         logger.info("Step 4/6: NAME_SYNC persisted (%d bytes)", len(lipsync_resp.content))
                         db.update_status(sid, "composing", lipsync_video_url=lipsync_url, name_sync_cached_path=cached_path)
                         selfie["name_sync_cached_path"] = cached_path
                     else:
                         cached_path = f"v2/lipsync_cached/{sid}.mp4"
-                        db.upload_file(cached_path, lipsync_resp.content, "video/mp4")
+                        _upload_with_retry(cached_path, lipsync_resp.content)
                         logger.info("Step 4/6: LIPSYNC persisted (%d bytes)", len(lipsync_resp.content))
                         db.update_status(sid, "composing", lipsync_video_url=lipsync_url, lipsync_cached_path=cached_path)
                         selfie["lipsync_cached_path"] = cached_path
@@ -484,6 +502,31 @@ def process_selfie(selfie: dict):
 
         name_sync_cached_path = selfie.get("name_sync_cached_path")
         theme_slug = selfie.get("theme_slug")
+
+        # Defesa contra o persist do Step 4 ter falhado (ex: 503 do
+        # Storage): sem name_sync_cached_path o compose perderia o
+        # theme_video. Reconstrói o cache a partir do lipsync_video_url.
+        if (
+            not name_sync_cached_path
+            and theme_slug
+            and (selfie.get("video_strategy") or "").lower() == "name_sync"
+            and selfie.get("lipsync_video_url")
+        ):
+            try:
+                logger.info("Step 5/6: reconstruindo name_sync_cached (persist falhou no Step 4)...")
+                resp = requests.get(selfie["lipsync_video_url"], timeout=120)
+                resp.raise_for_status()
+                name_sync_cached_path = f"v2/name_sync_cached/{sid}.mp4"
+                db.upload_file(name_sync_cached_path, resp.content, "video/mp4")
+                db.update_status(sid, "composing", name_sync_cached_path=name_sync_cached_path)
+                selfie["name_sync_cached_path"] = name_sync_cached_path
+            except Exception as e:
+                # URL do Sync Labs pode ter expirado — sem o clipe do nome
+                # não dá pra montar o vídeo certo; falha pro retry refazer
+                # o lipsync em vez de enviar um vídeo sem o tema.
+                raise RuntimeError(
+                    f"compose: name_sync sem cache e lipsync_url inacessível ({e})"
+                )
 
         middle_urls: list[str] = []
         if name_sync_cached_path and theme_slug:
