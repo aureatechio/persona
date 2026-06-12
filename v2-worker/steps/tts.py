@@ -238,8 +238,56 @@ def generate_tts(text: str, voice_id: str, bg_music_path: str | None = None) -> 
     return final_audio, processed_text
 
 
-def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None, bg_music_path: str | None = None) -> bytes:
-    """TTS for name_sync flow (short greeting)."""
+def _trim_tail_silence(audio: bytes, threshold_db: int = -45) -> bytes:
+    """Remove o silêncio do FIM do áudio (truque areverse + silenceremove).
+    O TTS devolve um rabo de silêncio que, somado ao crossfade, vira
+    "ar morto" na junção. Fallback: áudio original em falha."""
+    tmpdir = tempfile.mkdtemp(prefix="tts_trim_")
+    input_path = os.path.join(tmpdir, "in.mp3")
+    output_path = os.path.join(tmpdir, "out.mp3")
+    try:
+        with open(input_path, "wb") as f:
+            f.write(audio)
+        result = subprocess.run(
+            [
+                "ffmpeg", "-i", input_path,
+                "-af",
+                f"areverse,silenceremove=start_periods=1:"
+                f"start_threshold={threshold_db}dB:start_silence=0.03,areverse",
+                "-c:a", "libmp3lame", "-b:a", "192k",
+                "-y", output_path,
+            ],
+            capture_output=True, timeout=15,
+        )
+        if result.returncode != 0:
+            return audio
+        with open(output_path, "rb") as f:
+            trimmed = f.read()
+        logger.info("Tail silence trimmed: %d → %d bytes", len(audio), len(trimmed))
+        return trimmed
+    except Exception:
+        return audio
+    finally:
+        for fname in os.listdir(tmpdir):
+            try:
+                os.unlink(os.path.join(tmpdir, fname))
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
+
+
+def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None = None) -> bytes:
+    """TTS for name_sync flow (short greeting).
+
+    Sai LIMPO (sem trilha de fundo): a música entra no compose como
+    trilha contínua sob o corpo inteiro — mixada aqui ela morria em
+    corte seco na junção. O <break> no fim faz o modelo FECHAR a
+    entonação (afirmação) em vez de terminar "aberta", como quem vai
+    continuar falando; o silêncio que o break gera é aparado e fica só
+    0.1s de respiro — a fala emenda direto no tema."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     voice_settings = {
@@ -254,6 +302,8 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
 
     logger.info("Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s)", voice_id, text, bool(tts_settings))
 
+    request_text = text.rstrip() + ' <break time="0.5s" />'
+
     response = requests.post(
         url + "?output_format=mp3_44100_128",
         headers={
@@ -261,7 +311,7 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
             "xi-api-key": ELEVENLABS_API_KEY,
         },
         json={
-            "text": text,
+            "text": request_text,
             "model_id": "eleven_multilingual_v2",
             "language_code": "pt",
             "apply_text_normalization": "off",
@@ -274,5 +324,5 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     audio = response.content
     logger.info("NAME_SYNC TTS raw audio: %d bytes", len(audio))
 
-    padded = _add_tail_silence(audio, seconds=0.2) if TAIL_SILENCE_S > 0 else audio
-    return _mix_background_music(padded, bg_music_path=bg_music_path)
+    audio = _trim_tail_silence(audio)
+    return _add_tail_silence(audio, seconds=0.1)
