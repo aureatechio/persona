@@ -12,6 +12,7 @@ Isolated pipeline. Polls v2_video_selfies and processes through:
 Zero shared code with selfie-worker/.
 """
 
+import os
 import signal
 import sys
 import time
@@ -75,6 +76,105 @@ def _should_run_step(current_status: str, step_status: str) -> bool:
         return STEP_ORDER.index(current_status) <= STEP_ORDER.index(step_status)
     except ValueError:
         return False
+
+
+def _prepare_name_window(sid: str, theme_model: dict | None, tts_path: str, lip_cfg: dict) -> str | None:
+    """
+    Prepara a base visual do lipsync do nome: a JANELA DE ÂNGULO ÚNICO
+    da intro do theme_video original.
+
+    O V2 usa themes "_trimmed" (sem a intro placeholder). O vídeo
+    original (com intro) vive na mesma pasta, sem o sufixo. A intro =
+    dur(original) - dur(trimmed). Dentro dela, escolhe o trecho do
+    último corte de cena até o fim — um take só, terminando exatamente
+    onde o conteúdo (trimmed) começa: a transição vira o corte natural
+    da edição original.
+
+    Retorna o storage path da base recortada, ou None pra fallback
+    (sem original, intro curta demais, ou TTS que não cabe na janela).
+    """
+    from steps.compose import (
+        media_duration_bytes,
+        scene_cut_times,
+        trim_video_bytes,
+        _get_duration,
+    )
+    import tempfile
+
+    if not (theme_model and theme_model.get("video_storage_path")):
+        return None
+    trimmed_path = theme_model["video_storage_path"]
+    if "_trimmed" not in trimmed_path:
+        return None
+    original_path = trimmed_path.replace("_trimmed", "")
+
+    try:
+        original_bytes = db.download_file(original_path)
+        trimmed_bytes = db.download_file(trimmed_path)
+        tts_bytes = db.download_file(tts_path)
+    except Exception as e:
+        logger.warning("name_window: download falhou (%s) — fallback base video", e)
+        return None
+
+    dur_original = media_duration_bytes(original_bytes)
+    dur_trimmed = media_duration_bytes(trimmed_bytes)
+    tts_dur = media_duration_bytes(tts_bytes, ".mp3")
+    intro_end = dur_original - dur_trimmed
+    if intro_end < 1.5 or tts_dur <= 0:
+        logger.info(
+            "name_window: intro %.2fs / tts %.2fs — inviável, fallback",
+            intro_end, tts_dur,
+        )
+        return None
+
+    # Cortes de cena dentro da intro (vídeo local temporário)
+    tmpdir = tempfile.mkdtemp(prefix="name_window_")
+    src = os.path.join(tmpdir, "original.mp4")
+    try:
+        with open(src, "wb") as f:
+            f.write(original_bytes)
+        cuts = scene_cut_times(src, max_seconds=intro_end + 1.0)
+        window_start = max(
+            [c for c in cuts if c < intro_end - 0.5],
+            default=0.0,
+        )
+        window_avail = intro_end - window_start
+        if tts_dur + 0.15 > window_avail:
+            # TTS não cabe no último take — tenta a intro inteira
+            # (pode cruzar um corte; melhor que o base video neutro
+            # só se couber sem cruzar — senão fallback).
+            if tts_dur + 0.15 <= intro_end:
+                window_start = 0.0
+                logger.warning(
+                    "name_window: TTS %.2fs não cabe no último take (%.2fs) — "
+                    "usando intro inteira (pode ter corte de ângulo)",
+                    tts_dur, window_avail,
+                )
+            else:
+                logger.info(
+                    "name_window: TTS %.2fs não cabe na intro %.2fs — fallback",
+                    tts_dur, intro_end,
+                )
+                return None
+
+        base_bytes = trim_video_bytes(original_bytes, window_start, tts_dur + 0.2)
+        base_path = f"v2/name_base/{sid}.mp4"
+        db.upload_file(base_path, base_bytes, "video/mp4")
+        logger.info(
+            "name_window: janela %.2f–%.2fs (intro_end=%.2fs, cortes=%s, tts=%.2fs) → %s",
+            window_start, window_start + tts_dur + 0.2, intro_end,
+            ["%.2f" % c for c in cuts], tts_dur, base_path,
+        )
+        return base_path
+    except Exception as e:
+        logger.warning("name_window: preparo falhou (%s) — fallback base video", e)
+        return None
+    finally:
+        try:
+            os.unlink(src)
+            os.rmdir(tmpdir)
+        except OSError:
+            pass
 
 
 # ─── Main pipeline ─────────────────────────────────────────
@@ -250,9 +350,10 @@ def process_selfie(selfie: dict):
         if strategy == "name_sync":
             lip_cfg = base_model.get("lipsync_config") or {}
             tts_settings = lip_cfg.get("tts")
-            bg_music = base_model.get("bg_music_path")
-            logger.info("Step 3/6: NAME_SYNC TTS (curto, bg_music=%s)...", bg_music)
-            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings, bg_music_path=bg_music)
+            # Sem bg_music aqui: a música entra no compose como trilha
+            # contínua sob o corpo inteiro (não morre na junção).
+            logger.info("Step 3/6: NAME_SYNC TTS (curto, limpo)...")
+            audio_bytes = generate_tts_name_sync(generated_text, voice_id, tts_settings=tts_settings)
             tts_processed_text = generated_text
         else:
             bg_music = base_model.get("bg_music_path")
@@ -293,10 +394,30 @@ def process_selfie(selfie: dict):
 
                 strategy = (selfie.get("video_strategy") or "name_sync").lower()
                 theme_model_now = db.get_theme_model(base_model["id"], selfie.get("theme_slug"))
+                lip_cfg = base_model.get("lipsync_config") or {}
+                force_sync_mode = None
 
                 if strategy == "name_sync":
-                    lipsync_video_source = base_model["video_storage_path"]
-                    logger.info("Step 4/6: NAME_SYNC — lipsync on base video (theme stays intact)")
+                    # Base preferencial: JANELA DE ÂNGULO ÚNICO da intro do
+                    # theme_video ORIGINAL (sem "_trimmed"). A intro tem a
+                    # candidata falando o placeholder de verdade — visual
+                    # muito melhor que o base video neutro, e a transição
+                    # pro conteúdo vira o corte natural da edição original.
+                    # Calculado automaticamente por tema:
+                    #   intro = dur(original) - dur(trimmed)
+                    #   janela = [último corte de cena antes do fim da intro, fim da intro]
+                    # Fallback: base video (comportamento anterior).
+                    lipsync_video_source = None
+                    name_base = _prepare_name_window(
+                        sid, theme_model_now, tts_path, lip_cfg
+                    )
+                    if name_base:
+                        lipsync_video_source = name_base
+                        force_sync_mode = "cut_off"
+                        logger.info("Step 4/6: NAME_SYNC — janela de ângulo único da intro do tema")
+                    else:
+                        lipsync_video_source = base_model["video_storage_path"]
+                        logger.info("Step 4/6: NAME_SYNC — lipsync on base video (fallback)")
                 elif strategy == "full_video" and theme_model_now:
                     lipsync_video_source = theme_model_now["video_storage_path"]
                     logger.info("Step 4/6: FULL_VIDEO — lipsync on theme video (%s)", lipsync_video_source)
@@ -310,13 +431,12 @@ def process_selfie(selfie: dict):
                 def _heartbeat():
                     db.heartbeat(sid)
 
-                lip_cfg = base_model.get("lipsync_config") or {}
                 lipsync_url = run_lipsync(
                     video_signed, audio_signed,
                     api_key=key_data["access_key"],
                     heartbeat_fn=_heartbeat,
                     model=lip_cfg.get("model", "lipsync-2-pro"),
-                    sync_mode=lip_cfg.get("sync_mode", "loop"),
+                    sync_mode=force_sync_mode or lip_cfg.get("sync_mode", "loop"),
                     temperature=float(lip_cfg.get("temperature", 0.3)),
                 )
 
@@ -380,6 +500,8 @@ def process_selfie(selfie: dict):
                 ]
                 logger.info("Step 5/6: name_sync + theme_video (trimmed)")
 
+        compose_bg_music = base_model.get("bg_music_path") if len(middle_urls) >= 2 else None
+
         if not middle_urls:
             lipsync_cached_path = selfie.get("lipsync_cached_path")
             if lipsync_cached_path:
@@ -393,6 +515,7 @@ def process_selfie(selfie: dict):
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
             closing_music_path=base_model.get("closing_music_path"),
+            bg_music_path=compose_bg_music,
         )
 
         final_path = f"v2/final/{sid}.mp4"
