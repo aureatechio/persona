@@ -143,6 +143,32 @@ def get_themes_template(force_refresh: bool = False) -> list[dict]:
     return _themes_cache
 
 
+def get_candidate_themes(base_model_id: str) -> list[dict]:
+    """Themes available for THIS candidate only (scoped), so the classifier
+    never mixes themes across candidates. Joins uploaded v2_theme_models with
+    the v2_themes_template catalog for labels/descriptions. Falls back to the
+    full catalog if the candidate has no scoped themes (preserves old behavior).
+    """
+    if not base_model_id:
+        return get_themes_template()
+    try:
+        tm = (
+            client.table("v2_theme_models")
+            .select("theme_slug")
+            .eq("base_model_id", base_model_id)
+            .eq("is_uploaded", True)
+            .execute()
+        )
+        slugs = sorted({r["theme_slug"] for r in (tm.data or []) if r.get("theme_slug")})
+        if not slugs:
+            return get_themes_template()
+        catalog = {t["slug"]: t for t in get_themes_template()}
+        return [catalog[s] for s in slugs if s in catalog]
+    except Exception as e:
+        logger.warning("get_candidate_themes failed for %s: %s", base_model_id, e)
+        return get_themes_template()
+
+
 def get_theme_model(base_model_id: str, theme_slug: str) -> dict | None:
     """Get v2_theme_models row for (base_model_id, theme_slug)."""
     if not (base_model_id and theme_slug):
