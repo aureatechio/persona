@@ -322,7 +322,7 @@ def process_selfie(selfie: dict):
         theme_slug = selfie.get("theme_slug")
         first_name = selfie.get("first_name")
         if not (theme_slug and first_name):
-            themes = db.get_themes_template()
+            themes = db.get_candidate_themes(base_model["id"])
             theme_slug = classify_theme(transcription, themes) or DEFAULT_THEME_SLUG
             first_name = normalize_first_name(selfie["name"])
             db.update_status(sid, "generating_text", first_name=first_name, theme_slug=theme_slug)
@@ -644,12 +644,26 @@ def process_selfie(selfie: dict):
             else:
                 raise RuntimeError(f"compose: no middle for {sid}")
 
+        # Bed instrumental contínuo sob o vídeo todo (corpo+closing), por
+        # candidato via lipsync_config.full_music = {path, volume}. Quando
+        # presente, o closing mantém o áudio original (ver compose).
+        _lip_cfg_compose = base_model.get("lipsync_config") or {}
+        _full_music = _lip_cfg_compose.get("full_music") or {}
+        _full_music_path = _full_music.get("path")
+        _full_music_volume = float(_full_music.get("volume", 0.1))
+        _final_logo_path = _lip_cfg_compose.get("final_logo_path")
+        _junction_xfade = float(_lip_cfg_compose.get("junction_xfade") or 0.3)
+
         final_bytes = compose_videos(
             selfie_bytes, ext, middle_urls,
             closing_video_path=base_model.get("closing_video_path"),
             closing_music_path=base_model.get("closing_music_path"),
             middle_offsets=middle_offsets if middle_offsets else None,
             bg_music_path=compose_bg_music,
+            full_music_path=_full_music_path,
+            full_music_volume=_full_music_volume,
+            final_logo_path=_final_logo_path,
+            xfade_duration=_junction_xfade,
         )
 
         final_path = f"v2/final/{sid}.mp4"

@@ -290,6 +290,13 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     0.1s de respiro — a fala emenda direto no tema."""
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
+    # Campos não-voice_settings podem vir dentro de tts_settings (config
+    # por candidato): retira antes de espalhar no voice_settings.
+    ts = dict(tts_settings or {})
+    text_normalization = ts.pop("apply_text_normalization", "off")
+    next_text = ts.pop("next_text", " Ela continua o vídeo falando sobre o tema.")
+    tail_silence = float(ts.pop("tail_silence", 0.35))
+
     voice_settings = {
         "stability": 0.5,
         "similarity_boost": 0.75,
@@ -297,8 +304,7 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
         "use_speaker_boost": True,
         "speed": 1.0,
     }
-    if tts_settings:
-        voice_settings.update(tts_settings)
+    voice_settings.update(ts)
 
     logger.info("Generating NAME_SYNC TTS for voice '%s': '%s' (custom=%s)", voice_id, text, bool(tts_settings))
 
@@ -315,10 +321,10 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
         },
         json={
             "text": text.rstrip(),
-            "next_text": " Ela continua o vídeo falando sobre o tema.",
+            "next_text": next_text,
             "model_id": "eleven_multilingual_v2",
             "language_code": "pt",
-            "apply_text_normalization": "off",
+            "apply_text_normalization": text_normalization,
             "voice_settings": voice_settings,
         },
         timeout=TTS_TIMEOUT,
@@ -331,4 +337,4 @@ def generate_tts_name_sync(text: str, voice_id: str, tts_settings: dict | None =
     audio = _trim_tail_silence(audio)
     # Respiro >= XFADE_DURATION do compose (0.3s): a sobreposição do
     # crossfade de vídeo cai no silêncio, não em cima da fala do nome.
-    return _add_tail_silence(audio, seconds=0.35)
+    return _add_tail_silence(audio, seconds=tail_silence)

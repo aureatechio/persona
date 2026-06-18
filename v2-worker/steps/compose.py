@@ -320,6 +320,7 @@ def _prepare_closing_video(
     tmpdir: str,
     video_storage_path: str,
     music_storage_path: str,
+    tag: str = "closing",
 ) -> str | None:
     """
     Prepare closing video with background music overlay.
@@ -330,6 +331,10 @@ def _prepare_closing_video(
     The music is cut by ``-shortest`` when the video ends (no fade-out),
     which works cleanly for closings of any duration (3s, 10s, etc).
 
+    ``tag`` nomeia os arquivos temporários — OBRIGATÓRIO ser único quando a
+    função é chamada mais de uma vez no mesmo ``tmpdir`` (ex.: encerramento
+    + take da logo), senão a segunda chamada sobrescreve a saída da primeira.
+
     Returns path to normalized closing video, or None on failure.
     """
     closing_bytes = _download_storage_asset(video_storage_path)
@@ -337,17 +342,20 @@ def _prepare_closing_video(
         logger.warning("No closing video available at %s, skipping", video_storage_path)
         return None
 
-    closing_raw = os.path.join(tmpdir, "closing_raw.mp4")
-    closing_norm = os.path.join(tmpdir, "closing_norm.mp4")
+    closing_raw = os.path.join(tmpdir, f"{tag}_raw.mp4")
+    closing_norm = os.path.join(tmpdir, f"{tag}_norm.mp4")
 
     with open(closing_raw, "wb") as f:
         f.write(closing_bytes)
 
-    # Mix background music into closing video
-    music_bytes = _download_storage_asset(music_storage_path)
+    # Mix background music into closing video. ``music_storage_path == "none"``
+    # desliga a troca de áudio: o closing mantém o áudio ORIGINAL dele
+    # (usado por candidatos cujo vídeo de encerramento já tem voz/trilha).
+    keep_original = (music_storage_path or "").strip().lower() in ("", "none")
+    music_bytes = None if keep_original else _download_storage_asset(music_storage_path)
     if music_bytes is not None:
-        music_path = os.path.join(tmpdir, "closing_music.mp3")
-        closing_with_music = os.path.join(tmpdir, "closing_music_mixed.mp4")
+        music_path = os.path.join(tmpdir, f"{tag}_music.mp3")
+        closing_with_music = os.path.join(tmpdir, f"{tag}_music_mixed.mp4")
 
         with open(music_path, "wb") as f:
             f.write(music_bytes)
@@ -377,6 +385,7 @@ def _join_middles_crossfade(
     tmpdir: str,
     part_paths: list[str],
     bg_music_path: str | None = None,
+    xfade: float = XFADE_DURATION,
 ) -> str:
     """
     Junta os middles normalizados (name_sync + theme_video) em um único
@@ -397,11 +406,13 @@ def _join_middles_crossfade(
     # Clipe do nome (parte 0): corta logo após a fala terminar — a
     # transição sempre cai depois da última palavra, qualquer que seja
     # a duração que o TTS gerou.
+    # keep do silêncio final >= xfade: a sobreposição do crossfade cai no
+    # silêncio, nunca em cima da última palavra do nome.
     part_paths = list(part_paths)
-    part_paths[0] = _cap_trailing_silence(part_paths[0])
+    part_paths[0] = _cap_trailing_silence(part_paths[0], keep=max(0.35, xfade + 0.05))
 
     durations = [_get_duration(p) for p in part_paths]
-    if any(d <= XFADE_DURATION for d in durations):
+    if any(d <= xfade for d in durations):
         raise RuntimeError(
             f"join_middles: clipe mais curto que o crossfade (durations={durations})"
         )
@@ -427,10 +438,10 @@ def _join_middles_crossfade(
     offset = 0.0
     a_labels = ["[0:a]"]
     for i in range(1, n):
-        offset += durations[i - 1] - XFADE_DURATION
+        offset += durations[i - 1] - xfade
         filters.append(
             f"{v_prev}[{i}:v]xfade=transition=fade"
-            f":duration={XFADE_DURATION}:offset={offset:.3f}[v{i}]"
+            f":duration={xfade}:offset={offset:.3f}[v{i}]"
         )
         delay_ms = int(round(offset * 1000))
         filters.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[ad{i}]")
@@ -441,7 +452,7 @@ def _join_middles_crossfade(
     )
     a_prev = "[amain]"
 
-    total = sum(durations) - XFADE_DURATION * (n - 1)
+    total = sum(durations) - xfade * (n - 1)
 
     music_bytes = _download_storage_asset(bg_music_path) if bg_music_path else None
     if music_bytes is not None:
@@ -530,6 +541,50 @@ def _mix_body_music(tmpdir: str, body_path: str, bg_music_path: str) -> str:
         return body_path
 
 
+def _mix_full_music(
+    tmpdir: str, video_path: str, music_storage_path: str, volume: float
+) -> str:
+    """
+    Mixa uma trilha instrumental CONTÍNUA por baixo do vídeo INTEIRO
+    (corpo + closing), preservando o áudio original de todas as partes.
+    A música é loopada, entra com fade-in de 0.5s e fade-out de 1.5s no
+    fim. Diferente de ``_mix_body_music`` (que para antes do closing),
+    esta cobre o vídeo todo. Degrada pro vídeo original se a música falhar.
+    """
+    music_bytes = _download_storage_asset(music_storage_path)
+    if music_bytes is None:
+        logger.warning("Trilha cheia %s indisponível — vídeo sem bed contínuo", music_storage_path)
+        return video_path
+
+    dur = _get_duration(video_path)
+    if dur <= 0:
+        return video_path
+
+    music_path = os.path.join(tmpdir, "full_music.mp3")
+    with open(music_path, "wb") as f:
+        f.write(music_bytes)
+    out_path = os.path.join(tmpdir, "final_with_music.mp4")
+    fade_start = max(0.0, dur - 1.5)
+
+    try:
+        _run_ffmpeg([
+            "-i", video_path,
+            "-stream_loop", "-1", "-i", music_path,
+            "-filter_complex",
+            f"[1:a]volume={volume},afade=t=in:d=0.5,"
+            f"afade=t=out:st={fade_start:.3f}:d=1.5[bg];"
+            f"[0:a][bg]amix=inputs=2:duration=first:normalize=0[aout]",
+            "-map", "0:v", "-map", "[aout]",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "256k", "-ar", "44100", "-ac", "2",
+            "-movflags", "+faststart", "-y", out_path,
+        ])
+        logger.info("Bed contínuo mixado sob o vídeo todo (%.1fs, vol=%.3f)", dur, volume)
+        return out_path
+    except Exception as e:
+        logger.warning("Falha ao mixar bed contínuo (%s) — vídeo sem bed", e)
+        return video_path
+
+
 def compose_videos(
     selfie_bytes: bytes,
     selfie_ext: str,
@@ -538,6 +593,10 @@ def compose_videos(
     closing_music_path: str | None = None,
     middle_offsets: list[float] | None = None,
     bg_music_path: str | None = None,
+    full_music_path: str | None = None,
+    full_music_volume: float = 0.1,
+    final_logo_path: str | None = None,
+    xfade_duration: float = XFADE_DURATION,
 ) -> bytes:
     """
     Baixa todos os "vídeos do meio", normaliza tudo e concatena na ordem:
@@ -610,7 +669,9 @@ def compose_videos(
         # ela é mixada depois por baixo do corpo inteiro (selfie incluso).
         if len(middle_norms) >= 2:
             middle_norms = [
-                _join_middles_crossfade(tmpdir, middle_norms, bg_music_path=None)
+                _join_middles_crossfade(
+                    tmpdir, middle_norms, bg_music_path=None, xfade=xfade_duration
+                )
             ]
 
         # 3. Corpo = selfie + middles (concat -c copy; todos já normalizados
@@ -628,22 +689,47 @@ def compose_videos(
 
         # 3b. Trilha instrumental contínua por baixo do corpo inteiro —
         # atravessa selfie→name→theme mascarando as trocas de vídeo.
-        if bg_music_path:
+        # No modo full_music o bed cobre o vídeo TODO (corpo+closing) numa
+        # passada final, então o bed só-do-corpo é pulado aqui.
+        if bg_music_path and not full_music_path:
             body_path = _mix_body_music(tmpdir, body_path, bg_music_path)
 
-        # 4. Closing (trilha própria — não recebe o bed contínuo)
+        # 4. Closing. Por padrão recebe trilha própria (default/da config).
+        # No modo full_music o closing MANTÉM o áudio original ("none"),
+        # pois o bed contínuo entra por baixo dele na passada final.
+        closing_music = "none" if full_music_path else (
+            closing_music_path or DEFAULT_CLOSING_MUSIC_PATH
+        )
         closing_norm = _prepare_closing_video(
             tmpdir,
             video_storage_path=closing_video_path or DEFAULT_CLOSING_VIDEO_PATH,
-            music_storage_path=closing_music_path or DEFAULT_CLOSING_MUSIC_PATH,
+            music_storage_path=closing_music,
+            tag="closing",
         )
 
-        # 5. Concat final: corpo (com trilha) + closing
-        logger.info("Concatenating body + closing=%s...", bool(closing_norm))
+        # 4b. Take da logo (assinatura do partido) anexado APÓS o closing —
+        # mantém o áudio próprio do clipe ("none"). Igual ao final da MC.
+        # tag="logo" para não sobrescrever os temporários do closing.
+        logo_norm = None
+        if final_logo_path:
+            logo_norm = _prepare_closing_video(
+                tmpdir,
+                video_storage_path=final_logo_path,
+                music_storage_path="none",
+                tag="logo",
+            )
+
+        # 5. Concat final: corpo (com trilha) + closing + logo
+        logger.info(
+            "Concatenating body + closing=%s + logo=%s...",
+            bool(closing_norm), bool(logo_norm),
+        )
         with open(concat_list, "w") as f:
             f.write(f"file '{body_path}'\n")
             if closing_norm:
                 f.write(f"file '{closing_norm}'\n")
+            if logo_norm:
+                f.write(f"file '{logo_norm}'\n")
 
         _run_ffmpeg([
             "-f", "concat", "-safe", "0", "-i", concat_list,
@@ -651,6 +737,13 @@ def compose_videos(
             "-movflags", "+faststart",
             "-y", output_path,
         ])
+
+        # 6. Bed instrumental contínuo sob o vídeo TODO (corpo+closing),
+        # volume baixo, áudio original preservado. Só no modo full_music.
+        if full_music_path:
+            output_path = _mix_full_music(
+                tmpdir, output_path, full_music_path, full_music_volume
+            )
 
         with open(output_path, "rb") as f:
             final_bytes = f.read()

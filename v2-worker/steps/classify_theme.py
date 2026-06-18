@@ -39,7 +39,7 @@ def classify_theme(transcription: str, themes: list[dict]) -> str:
 
     system_prompt = (
         "Você é um classificador de depoimentos de eleitores em temas "
-        "políticos do Amazonas. Analise o depoimento e escolha O SLUG "
+        "políticos. Analise o depoimento e escolha O SLUG "
         "do tema que MELHOR representa o assunto principal do eleitor.\n\n"
         "REGRAS:\n"
         "- Responda APENAS o slug, sem aspas, sem markdown, sem explicação.\n"
