@@ -14,7 +14,6 @@ export interface ModelConfig {
   logoUrl: string | null;
 }
 
-// Logo grande dinâmico por político (fallback no PL). build-marker: logo-v2
 const DEFAULT_LOGO = '/logo-pl.png';
 
 const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/\D/g, '');
@@ -35,7 +34,7 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
     : '#';
 
   return (
-    <div data-build="logo-v3" className="min-h-[100dvh] bg-gradient-to-b from-[#1B3A8C] via-[#2056A5] to-[#1B3A8C] flex flex-col overflow-x-hidden">
+    <div className="min-h-[100dvh] bg-gradient-to-b from-[#1B3A8C] via-[#2056A5] to-[#1B3A8C] flex flex-col overflow-x-hidden">
       <style>{`html, body { background-color: #1B3A8C !important; }`}</style>
 
       {/* Header */}
