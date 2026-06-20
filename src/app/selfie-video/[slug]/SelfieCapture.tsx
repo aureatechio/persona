@@ -14,6 +14,7 @@ export interface ModelConfig {
   logoUrl: string | null;
 }
 
+// Logo grande dinâmico por político (fallback no PL). build-marker: logo-v2
 const DEFAULT_LOGO = '/logo-pl.png';
 
 const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/\D/g, '');
