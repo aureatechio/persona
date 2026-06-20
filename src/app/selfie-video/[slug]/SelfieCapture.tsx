@@ -35,7 +35,7 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
     : '#';
 
   return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-[#1B3A8C] via-[#2056A5] to-[#1B3A8C] flex flex-col overflow-x-hidden">
+    <div data-build="logo-v3" className="min-h-[100dvh] bg-gradient-to-b from-[#1B3A8C] via-[#2056A5] to-[#1B3A8C] flex flex-col overflow-x-hidden">
       <style>{`html, body { background-color: #1B3A8C !important; }`}</style>
 
       {/* Header */}
