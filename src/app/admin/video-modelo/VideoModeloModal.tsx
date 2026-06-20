@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Power,
   FileType2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import VideoThemesSection from './VideoThemesSection';
@@ -48,6 +49,7 @@ export interface BaseModel {
   closing_video_path: string | null;
   proposta_pdf_path: string | null;
   proposta_message_template: string | null;
+  logo_storage_path: string | null;
   is_active: boolean;
   video_strategy: VideoStrategy | null;
   theme_intro_seconds: number | null;
@@ -114,12 +116,31 @@ async function readApiError(res: Response, fallback: string): Promise<string> {
   return text || fallback;
 }
 
-async function uploadToStorage(file: File, name: string, kind: 'base' | 'greeting' | 'closing' | 'proposta'): Promise<string> {
-  let ext: 'mp4' | 'webm' | 'pdf';
+const LOGO_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+};
+
+async function uploadToStorage(
+  file: File,
+  name: string,
+  kind: 'base' | 'greeting' | 'closing' | 'proposta' | 'logo',
+): Promise<string> {
+  let ext: string;
   let contentType: string;
   if (kind === 'proposta') {
     ext = 'pdf';
     contentType = 'application/pdf';
+  } else if (kind === 'logo') {
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith('.svg') || file.type === 'image/svg+xml') ext = 'svg';
+    else if (lower.endsWith('.webp') || file.type === 'image/webp') ext = 'webp';
+    else if (lower.endsWith('.png') || file.type === 'image/png') ext = 'png';
+    else ext = 'jpg';
+    contentType = LOGO_MIME[ext] || 'image/png';
   } else {
     ext = file.type.includes('webm') || file.name.toLowerCase().endsWith('.webm') ? 'webm' : 'mp4';
     contentType = ext === 'webm' ? 'video/webm' : 'video/mp4';
@@ -184,6 +205,10 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const [greetingPreviewUrl, setGreetingPreviewUrl] = useState<string | null>(null);
   const [greetingPath, setGreetingPath] = useState<string | null>(null);
 
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
+  const [logoPath, setLogoPath] = useState<string | null>(null);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -191,6 +216,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
   const closingInputRef = useRef<HTMLInputElement>(null);
   const propostaInputRef = useRef<HTMLInputElement>(null);
   const greetingInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Reset state on open
   useEffect(() => {
@@ -208,6 +234,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setPropostaPath(initial.proposta_pdf_path || null);
       setPropostaMessage(initial.proposta_message_template || '');
       setGreetingPath(initial.greeting_video_path || null);
+      setLogoPath(initial.logo_storage_path || null);
       setVideoStrategy(initial.video_strategy === 'full_video' ? 'full_video' : 'name_sync');
       setThemeIntroSeconds(
         typeof initial.theme_intro_seconds === 'number' && Number.isFinite(initial.theme_intro_seconds)
@@ -229,7 +256,10 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       setVideoStrategy('name_sync');
       setThemeIntroSeconds(1.5);
       setGreetingPath(null);
+      setLogoPath(null);
     }
+    setLogoFile(null);
+    setLogoPreviewUrl(null);
     setGreetingFile(null);
     setGreetingPreviewUrl(null);
     setVideoFile(null);
@@ -246,8 +276,9 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
     return () => {
       if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
       if (closingPreviewUrl) URL.revokeObjectURL(closingPreviewUrl);
+      if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
     };
-  }, [videoPreviewUrl, closingPreviewUrl]);
+  }, [videoPreviewUrl, closingPreviewUrl, logoPreviewUrl]);
 
   // ESC closes
   useEffect(() => {
@@ -275,6 +306,21 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
     if (closingPreviewUrl) URL.revokeObjectURL(closingPreviewUrl);
     setClosingFile(file);
     setClosingPreviewUrl(URL.createObjectURL(file));
+  }
+
+  function handleLogoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ok = /\.(png|jpe?g|webp|svg)$/i.test(file.name) || file.type.startsWith('image/');
+    if (!ok) {
+      setError('O logo deve ser uma imagem (PNG, JPG, WEBP ou SVG).');
+      return;
+    }
+    setError(null);
+    if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+    setLogoFile(file);
+    setLogoPreviewUrl(URL.createObjectURL(file));
+    e.target.value = '';
   }
 
   function handlePropostaSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -336,6 +382,15 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
         nextGreetingPath = null;
       }
 
+      // 3c. Upload do logo personalizado (se houver novo)
+      let nextLogoPath: string | null | undefined = undefined;
+      if (logoFile) {
+        nextLogoPath = await uploadToStorage(logoFile, `logo_${slug}`, 'logo');
+      } else if (logoPath === null && initial?.logo_storage_path) {
+        // usuário removeu o logo no modo edit → volta ao padrão do PL
+        nextLogoPath = null;
+      }
+
       // 4. POST ou PATCH
       const payload: Record<string, unknown> = {
         name: name || displayName || slug,
@@ -354,6 +409,7 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
       if (nextClosingPath !== undefined) payload.closing_video_path = nextClosingPath;
       if (nextGreetingPath !== undefined) payload.greeting_video_path = nextGreetingPath;
       if (nextPropostaPath !== undefined) payload.proposta_pdf_path = nextPropostaPath;
+      if (nextLogoPath !== undefined) payload.logo_storage_path = nextLogoPath;
 
       let res: Response;
       if (mode === 'create') {
@@ -551,6 +607,66 @@ export default function VideoModeloModal({ open, mode, initial, onClose, onSaved
                 </Field>
               </div>
             )}
+          </Section>
+
+          {/* ── Logo personalizado ── */}
+          <Section
+            icon={<ImageIcon size={20} className="text-sky-400" />}
+            iconBg="bg-sky-500/10"
+            title="Logo personalizado (opcional)"
+            subtitle="Logo GRANDE exibido na tela de gravação do eleitor. Se vazio, usa o logo padrão do PL."
+          >
+            <div className="flex items-center gap-4">
+              <div className="shrink-0 w-28 h-28 rounded-2xl bg-[#1B3A8C] border border-white/[0.08] flex items-center justify-center overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={logoPreviewUrl || getStoragePublicUrl(logoPath) || '/logo-pl.png'}
+                  alt="Prévia do logo"
+                  className="w-full h-full object-contain p-2"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/svg+xml,.png,.jpg,.jpeg,.webp,.svg"
+                    onChange={handleLogoSelect}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={saving}
+                    className={ghostBtnClass}
+                  >
+                    <Upload size={16} />
+                    {logoPath || logoFile ? 'Trocar logo' : 'Upload do logo'}
+                  </button>
+                  {(logoPath || logoFile) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (logoPreviewUrl) URL.revokeObjectURL(logoPreviewUrl);
+                        setLogoFile(null);
+                        setLogoPreviewUrl(null);
+                        setLogoPath(null);
+                      }}
+                      disabled={saving}
+                      className="text-xs text-red-400 hover:text-red-300 px-2 transition-colors duration-200"
+                    >
+                      Remover (usar padrão do PL)
+                    </button>
+                  )}
+                </div>
+                {logoFile && (
+                  <p className="text-xs text-amber-400 mt-2">Novo arquivo · não salvo</p>
+                )}
+                <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+                  PNG, JPG, WEBP ou SVG. O logo menor do topo (header) permanece sempre o do PL.
+                </p>
+              </div>
+            </div>
           </Section>
 
           {/* ── Vídeo Base ── */}

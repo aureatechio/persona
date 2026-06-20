@@ -11,24 +11,34 @@ function sanitizeName(value: string): string {
     .slice(0, 64);
 }
 
+const LOGO_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'svg'];
+
 // Upload init: returns signed URL so browser uploads directly to Storage.
 // kind = 'base'     → vídeo principal (lip-sync source legado) — mp4/webm
 // kind = 'greeting' → vídeo saudação 3s (lip-sync source novo) — mp4/webm
 // kind = 'closing'  → vídeo de encerramento (concatenado pelo ffmpeg) — mp4/webm
 // kind = 'proposta' → PDF da proposta de governo enviada via WhatsApp
+// kind = 'logo'     → logo personalizado do político (imagem) exibido na tela de selfie
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const name = typeof body?.name === 'string' ? body.name : 'Modelo';
     const ext = typeof body?.ext === 'string' ? body.ext.toLowerCase() : 'mp4';
-    const allowedKinds = ['base', 'greeting', 'closing', 'proposta'] as const;
+    const allowedKinds = ['base', 'greeting', 'closing', 'proposta', 'logo'] as const;
     const kind = (allowedKinds as readonly string[]).includes(body?.kind)
-      ? (body.kind as 'base' | 'greeting' | 'closing' | 'proposta')
+      ? (body.kind as 'base' | 'greeting' | 'closing' | 'proposta' | 'logo')
       : 'base';
 
     if (kind === 'proposta') {
       if (ext !== 'pdf') {
         return NextResponse.json({ error: 'Proposta aceita apenas PDF' }, { status: 400 });
+      }
+    } else if (kind === 'logo') {
+      if (!LOGO_EXTS.includes(ext)) {
+        return NextResponse.json(
+          { error: 'Logo aceita apenas PNG, JPG, WEBP ou SVG' },
+          { status: 400 },
+        );
       }
     } else if (!['mp4', 'webm'].includes(ext)) {
       return NextResponse.json({ error: 'ext inválida. Use mp4 ou webm' }, { status: 400 });
@@ -42,6 +52,8 @@ export async function POST(request: NextRequest) {
         ? 'propostas'
         : kind === 'greeting'
         ? 'greeting-videos'
+        : kind === 'logo'
+        ? 'logos'
         : 'base-models';
     const videoPath = `${prefix}/${Date.now()}_${safeName}.${ext}`;
 

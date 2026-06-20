@@ -10,13 +10,19 @@ export interface ModelConfig {
   displayName: string;
   thankYouMessage: string | null;
   hasVideoBase: boolean;
+  /** Logo personalizado do político. Se ausente, usa o logo padrão do PL. */
+  logoUrl: string | null;
 }
+
+const DEFAULT_LOGO = '/logo-pl.png';
 
 const WHATSAPP_NUMBER = (process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '').replace(/\D/g, '');
 const WHATSAPP_GREETING = encodeURIComponent('Quero receber meu vídeo');
 
 export default function SelfieCapture({ model }: { model: ModelConfig }) {
   const r = useSelfieRecorder({ slug: model.slug });
+
+  const heroLogo = model.logoUrl || DEFAULT_LOGO;
 
   const thankYou = (
     model.thankYouMessage ||
@@ -54,12 +60,14 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
 
             <div className="text-center mb-8">
               <div className="mb-6">
-                <Image
-                  src="/logo-pl.png"
-                  alt="PL - Partido Liberal"
+                {/* Logo grande: personalizado por político, com fallback no logo padrão do PL. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={heroLogo}
+                  alt={model.logoUrl ? model.displayName : 'PL - Partido Liberal'}
                   width={160}
                   height={160}
-                  className="w-32 md:w-36 h-auto mx-auto drop-shadow-lg rounded-2xl"
+                  className="w-32 md:w-36 h-auto mx-auto drop-shadow-lg rounded-2xl object-contain"
                 />
               </div>
               <h1 className="text-3xl md:text-4xl font-bold text-white tracking-tight">
@@ -420,13 +428,15 @@ export default function SelfieCapture({ model }: { model: ModelConfig }) {
             <div className="text-center max-w-sm space-y-6 relative">
               <div className="relative inline-flex">
                 <div className="w-28 h-28 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center border border-white/15">
-                  <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center">
-                    <Image
-                      src="/logo-pl.png"
-                      alt="PL"
+                  <div className="w-20 h-20 rounded-full bg-white/15 flex items-center justify-center overflow-hidden">
+                    {/* Logo personalizado por político, com fallback no logo padrão do PL. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={heroLogo}
+                      alt={model.logoUrl ? model.displayName : 'PL'}
                       width={48}
                       height={48}
-                      className="w-12 h-auto rounded-lg"
+                      className="w-12 h-12 object-contain rounded-lg"
                     />
                   </div>
                 </div>

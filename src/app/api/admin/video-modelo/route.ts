@@ -226,6 +226,7 @@ export async function POST(request: NextRequest) {
       video_strategy,
       theme_intro_seconds,
       greeting_video_path,
+      logo_storage_path,
     } = body;
 
     if (!prompt_template || typeof prompt_template !== 'string' || !prompt_template.trim()) {
@@ -278,6 +279,7 @@ export async function POST(request: NextRequest) {
     }
     if (whatsapp_message_template) insertData.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) insertData.thank_you_message = thank_you_message;
+    if (logo_storage_path !== undefined) insertData.logo_storage_path = logo_storage_path || null;
     if (closing_video_path !== undefined) insertData.closing_video_path = closing_video_path;
     if (proposta_pdf_path !== undefined) insertData.proposta_pdf_path = proposta_pdf_path;
     if (proposta_message_template !== undefined) insertData.proposta_message_template = proposta_message_template;
@@ -370,6 +372,12 @@ export async function PATCH(request: NextRequest) {
     if (lipsync_config !== undefined) updates.lipsync_config = lipsync_config;
     if (whatsapp_message_template !== undefined) updates.whatsapp_message_template = whatsapp_message_template;
     if (thank_you_message !== undefined) updates.thank_you_message = thank_you_message;
+    if (body.logo_storage_path !== undefined) {
+      updates.logo_storage_path =
+        typeof body.logo_storage_path === 'string' && body.logo_storage_path.trim()
+          ? body.logo_storage_path
+          : null;
+    }
     if (closing_video_path !== undefined) updates.closing_video_path = closing_video_path;
     if (proposta_pdf_path !== undefined) updates.proposta_pdf_path = proposta_pdf_path;
     if (proposta_message_template !== undefined) updates.proposta_message_template = proposta_message_template;

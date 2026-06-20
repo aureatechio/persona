@@ -7,10 +7,18 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
+
+function logoPublicUrl(path: string | null): string | null {
+  if (!path) return null;
+  return `${SUPABASE_URL}/storage/v1/object/public/voice-models/${path}`;
+}
+
 async function fetchModel(slug: string): Promise<ModelConfig | null> {
   const { data, error } = await supabaseAdmin
     .from('video_base_models')
-    .select('id, slug, display_name, name, thank_you_message, is_active, video_storage_path')
+    .select('id, slug, display_name, name, thank_you_message, is_active, video_storage_path, logo_storage_path')
     .eq('slug', slug)
     .eq('is_active', true)
     .maybeSingle();
@@ -21,6 +29,7 @@ async function fetchModel(slug: string): Promise<ModelConfig | null> {
     displayName: data.display_name || data.name || data.slug,
     thankYouMessage: data.thank_you_message || null,
     hasVideoBase: !!data.video_storage_path,
+    logoUrl: logoPublicUrl(data.logo_storage_path || null),
   };
 }
 
