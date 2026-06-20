@@ -7,6 +7,10 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
+// Lê sempre do banco a cada request — assim trocar o logo/dados do político
+// no admin reflete imediatamente, sem cache estático servindo HTML antigo.
+export const dynamic = 'force-dynamic';
+
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sobfplitrzgggzqsycew.supabase.co';
 
