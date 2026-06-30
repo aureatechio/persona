@@ -22,7 +22,7 @@ import logging
 
 import requests
 
-from config import POLL_INTERVAL, MAX_RETRIES
+from config import POLL_INTERVAL, MAX_RETRIES, COMPRESS_FINAL_VIDEO
 import db
 from steps.transcribe import transcribe
 from steps.classify_theme import classify_theme, normalize_first_name, DEFAULT_THEME_SLUG
@@ -668,7 +668,8 @@ def process_selfie(selfie: dict):
         )
 
         # WhatsApp silently drops videos over ~16 MB — compress before storing.
-        final_bytes = ensure_under_limit(final_bytes)
+        if COMPRESS_FINAL_VIDEO:
+            final_bytes = ensure_under_limit(final_bytes)
 
         final_path = f"v2/final/{sid}.mp4"
         db.upload_file(final_path, final_bytes, "video/mp4")
@@ -694,7 +695,7 @@ def process_selfie(selfie: dict):
         # Size guard for crash-resume: a video composed before this fix (or by
         # an older worker) may still exceed WhatsApp's limit. Newly composed
         # videos were already compressed above, so only re-check on resume.
-        if not composed_now:
+        if COMPRESS_FINAL_VIDEO and not composed_now:
             try:
                 stored = db.download_file(final_path)
                 fixed = ensure_under_limit(stored)

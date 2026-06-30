@@ -42,3 +42,8 @@ WHATSAPP_VIDEO_TEMPLATE_LANG = os.getenv("WHATSAPP_VIDEO_TEMPLATE_LANG", "pt_BR"
 POLL_INTERVAL = int(os.getenv("WORKER_POLL_INTERVAL", "3"))
 MAX_RETRIES = int(os.getenv("WORKER_MAX_RETRIES", "3"))
 SIGNED_URL_EXPIRY = 3600
+
+# Feature flag: compress the final video when it exceeds WhatsApp's ~16 MB
+# limit before sending. ON by default; set COMPRESS_FINAL_VIDEO=0 to disable
+# the behavior without a redeploy (instant kill switch).
+COMPRESS_FINAL_VIDEO = os.getenv("COMPRESS_FINAL_VIDEO", "1").strip().lower() not in ("0", "false", "no", "off", "")
