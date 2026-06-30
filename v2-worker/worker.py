@@ -30,6 +30,7 @@ from steps.generate import generate_text
 from steps.tts import generate_tts, generate_tts_name_sync
 from steps.lipsync import run_lipsync, SyncLabsJobFailed, SyncLabsKeyRejected
 from steps.compose import compose_videos
+from steps.compress import ensure_under_limit
 from steps.send import (
     send_whatsapp,
     send_whatsapp_document,
@@ -666,12 +667,17 @@ def process_selfie(selfie: dict):
             xfade_duration=_junction_xfade,
         )
 
+        # WhatsApp silently drops videos over ~16 MB — compress before storing.
+        final_bytes = ensure_under_limit(final_bytes)
+
         final_path = f"v2/final/{sid}.mp4"
         db.upload_file(final_path, final_bytes, "video/mp4")
 
         db.update_status(sid, "sending", final_video_path=final_path)
         selfie["final_video_path"] = final_path
+        composed_now = True
     else:
+        composed_now = False
         final_path = selfie.get("final_video_path", f"v2/final/{sid}.mp4")
 
     # ─── Step 6: WhatsApp ───
@@ -684,6 +690,19 @@ def process_selfie(selfie: dict):
 
         db.update_status(sid, "sending")
         logger.info("Step 6/6: Sending via WhatsApp...")
+
+        # Size guard for crash-resume: a video composed before this fix (or by
+        # an older worker) may still exceed WhatsApp's limit. Newly composed
+        # videos were already compressed above, so only re-check on resume.
+        if not composed_now:
+            try:
+                stored = db.download_file(final_path)
+                fixed = ensure_under_limit(stored)
+                if len(fixed) != len(stored):
+                    db.upload_file(final_path, fixed, "video/mp4")
+                    logger.info("Step 6/6: re-compressed stored final to fit WhatsApp limit")
+            except Exception as e:
+                logger.warning("Step 6/6: size-guard skipped (%s)", e)
 
         video_signed = db.create_signed_url(final_path)
         provider = pick_provider()
